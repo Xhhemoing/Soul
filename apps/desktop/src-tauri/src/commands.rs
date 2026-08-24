@@ -17,8 +17,14 @@ use std::sync::{Mutex, MutexGuard};
 use soulcore::commands::draft::{Approval, DraftValue, E1DraftPlan, PersonSummaryView};
 use soulcore::commands::fileplan::PlanPreview;
 use soulcore::commands::graph::PeopleGraphView;
+use soulcore::commands::memory::{
+    ForgetConfirmation, ForgetPreview, ForgetReceiptView, MemoryChange, MemoryDetail, MemoryList,
+    NewMemory,
+};
+use soulcore::commands::profile::{GivenAnswer, IntakeReceipt, ProfileScreen, QuestionView};
 use soulcore::commands::session::{FilesView, Session, SessionRefusal, SessionStatus};
 use soulcore::commands::shell::{CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
+use soulcore::commands::store::{AuditChainView, ResearchPreviewView};
 use tauri::State;
 
 /// The one session this process has.
@@ -144,6 +150,108 @@ pub fn discard_draft(session: State<'_, SessionState>) -> bool {
     session.held().discard_draft()
 }
 
+/// The eleven questions the wizard draws, with their options.
+#[tauri::command]
+pub fn questionnaire(session: State<'_, SessionState>) -> Vec<QuestionView> {
+    session.held().questionnaire()
+}
+
+/// Record what the user answered. Blank answers leave their axes `unknown`.
+#[tauri::command]
+pub fn answer_questionnaire(
+    session: State<'_, SessionState>,
+    answers: Vec<GivenAnswer>,
+) -> Result<IntakeReceipt, SessionRefusal> {
+    session.held().answer_questionnaire(&answers)
+}
+
+#[tauri::command]
+pub fn profile_screen(session: State<'_, SessionState>) -> Result<ProfileScreen, SessionRefusal> {
+    session.held().profile()
+}
+
+/// The user corrected an axis. AC-07: it is pinned against later inference.
+#[tauri::command]
+pub fn correct_axis(
+    session: State<'_, SessionState>,
+    axis_id: String,
+    position: String,
+) -> Result<ProfileScreen, SessionRefusal> {
+    session.held().correct_axis(&axis_id, &position)
+}
+
+#[tauri::command]
+pub fn set_voice(
+    session: State<'_, SessionState>,
+    field: String,
+    option: String,
+) -> Result<ProfileScreen, SessionRefusal> {
+    session.held().set_voice(&field, &option)
+}
+
+#[tauri::command]
+pub fn memory_list(session: State<'_, SessionState>) -> Result<MemoryList, SessionRefusal> {
+    session.held().memories()
+}
+
+#[tauri::command]
+pub fn memory_detail(
+    session: State<'_, SessionState>,
+    memory_id: String,
+) -> Result<MemoryDetail, SessionRefusal> {
+    session.held().memory(&memory_id)
+}
+
+#[tauri::command]
+pub fn create_memory(
+    session: State<'_, SessionState>,
+    memory: NewMemory,
+) -> Result<MemoryDetail, SessionRefusal> {
+    session.held().write_memory(&memory)
+}
+
+#[tauri::command]
+pub fn update_memory(
+    session: State<'_, SessionState>,
+    memory_id: String,
+    change: MemoryChange,
+) -> Result<MemoryDetail, SessionRefusal> {
+    session.held().edit_memory(&memory_id, &change)
+}
+
+/// What forgetting this memory would cost. Reading the price destroys nothing.
+#[tauri::command]
+pub fn preview_forget(
+    session: State<'_, SessionState>,
+    memory_id: String,
+) -> Result<ForgetPreview, SessionRefusal> {
+    session.held().preview_forget(&memory_id)
+}
+
+/// Destroy the content key behind one memory, after the user echoed the
+/// preview they were shown. Irreversible, and not a file write.
+#[tauri::command]
+pub fn forget_memory(
+    session: State<'_, SessionState>,
+    confirmation: ForgetConfirmation,
+) -> Result<ForgetReceiptView, SessionRefusal> {
+    session.held().forget_memory(&confirmation)
+}
+
+/// What the research track would see. On screen only; nothing is written.
+#[tauri::command]
+pub fn research_preview(
+    session: State<'_, SessionState>,
+) -> Result<ResearchPreviewView, SessionRefusal> {
+    session.held().research()
+}
+
+/// The audit chain, played back and checked.
+#[tauri::command]
+pub fn audit_chain(session: State<'_, SessionState>) -> Result<AuditChainView, SessionRefusal> {
+    session.held().audit()
+}
+
 /// What the drafting screen says before there is a draft on it.
 ///
 /// Read over the IPC rather than written in TypeScript, for the reason WP09
@@ -199,4 +307,17 @@ pub const COMMAND_NAMES: &[&str] = &[
     "prepare_draft",
     "generate_draft",
     "discard_draft",
+    "questionnaire",
+    "answer_questionnaire",
+    "profile_screen",
+    "correct_axis",
+    "set_voice",
+    "memory_list",
+    "memory_detail",
+    "create_memory",
+    "update_memory",
+    "preview_forget",
+    "forget_memory",
+    "research_preview",
+    "audit_chain",
 ];

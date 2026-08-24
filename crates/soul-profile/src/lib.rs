@@ -56,7 +56,10 @@ pub use service::{
     IntakeOutcome,
 };
 pub use sink::{ProfileSink, StagedAnswer, StagedValue};
-pub use view::{profile_view, render, render_voice, AxisView, InferenceView, ProfileView};
+pub use view::{
+    field_word, profile_view, render, render_voice, setting_word, AxisView, InferenceView,
+    ProfileView,
+};
 pub use voice::{
     EmojiUse, VoiceDirectness, VoiceField, VoiceProfile, VoiceRegister, VoiceSetting, VoiceWarmth,
 };

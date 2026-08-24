@@ -23,7 +23,7 @@ use soul_store_api::ProfileStore;
 use crate::axes;
 use crate::error::{ProfileError, ProfileResult};
 use crate::service::{ordered_axes, read_profile};
-use crate::voice::VoiceProfile;
+use crate::voice::{VoiceField, VoiceProfile, VoiceSetting};
 
 /// One inference with its evidence already fetched.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -204,26 +204,43 @@ fn band_word(band: EvidenceBand) -> &'static str {
 /// the meaning was wrong; the check caught the characters, and it can only keep
 /// doing that if every combination is reachable from a test.
 pub fn render_voice(voice: &VoiceProfile) -> String {
+    let words: Vec<&'static str> = VoiceField::ALL
+        .iter()
+        .map(|field| setting_word(voice.get(*field)))
+        .collect();
+    words.join("、")
+}
+
+/// One voice value in words.
+///
+/// Split out of [`render_voice`] because a screen that offers the user a
+/// choice has to label each option, and a second spelling of these twelve
+/// words in the interface is a second place for 量表 to reappear where no
+/// Rust test is looking.
+pub fn setting_word(setting: VoiceSetting) -> &'static str {
     use crate::voice::{EmojiUse, VoiceDirectness, VoiceRegister, VoiceWarmth};
-    let register = match voice.register {
-        VoiceRegister::Casual => "随意",
-        VoiceRegister::Plain => "平实",
-        VoiceRegister::Formal => "正式",
-    };
-    let directness = match voice.directness {
-        VoiceDirectness::Reserved => "含蓄",
-        VoiceDirectness::Balanced => "适中",
-        VoiceDirectness::Direct => "直接",
-    };
-    let warmth = match voice.warmth {
-        VoiceWarmth::Cool => "克制",
-        VoiceWarmth::Even => "平和",
-        VoiceWarmth::Warm => "热络",
-    };
-    let emoji = match voice.emoji_use {
-        EmojiUse::Never => "不用表情",
-        EmojiUse::Sparing => "偶尔用表情",
-        EmojiUse::Frequent => "经常用表情",
-    };
-    format!("{register}、{directness}、{warmth}、{emoji}")
+    match setting {
+        VoiceSetting::Register(VoiceRegister::Casual) => "随意",
+        VoiceSetting::Register(VoiceRegister::Plain) => "平实",
+        VoiceSetting::Register(VoiceRegister::Formal) => "正式",
+        VoiceSetting::Directness(VoiceDirectness::Reserved) => "含蓄",
+        VoiceSetting::Directness(VoiceDirectness::Balanced) => "适中",
+        VoiceSetting::Directness(VoiceDirectness::Direct) => "直接",
+        VoiceSetting::Warmth(VoiceWarmth::Cool) => "克制",
+        VoiceSetting::Warmth(VoiceWarmth::Even) => "平和",
+        VoiceSetting::Warmth(VoiceWarmth::Warm) => "热络",
+        VoiceSetting::EmojiUse(EmojiUse::Never) => "不用表情",
+        VoiceSetting::EmojiUse(EmojiUse::Sparing) => "偶尔用表情",
+        VoiceSetting::EmojiUse(EmojiUse::Frequent) => "经常用表情",
+    }
+}
+
+/// What one voice field is about, for a screen that has to name the control.
+pub fn field_word(field: VoiceField) -> &'static str {
+    match field {
+        VoiceField::Register => "语域",
+        VoiceField::Directness => "直接程度",
+        VoiceField::Warmth => "温度",
+        VoiceField::EmojiUse => "表情符号",
+    }
 }

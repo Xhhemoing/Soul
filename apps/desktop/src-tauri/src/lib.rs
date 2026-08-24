@@ -52,7 +52,20 @@ pub fn configure<R: tauri::Runtime>(
             commands::draft_notices,
             commands::prepare_draft,
             commands::generate_draft,
-            commands::discard_draft
+            commands::discard_draft,
+            commands::questionnaire,
+            commands::answer_questionnaire,
+            commands::profile_screen,
+            commands::correct_axis,
+            commands::set_voice,
+            commands::memory_list,
+            commands::memory_detail,
+            commands::create_memory,
+            commands::update_memory,
+            commands::preview_forget,
+            commands::forget_memory,
+            commands::research_preview,
+            commands::audit_chain
         ])
 }
 

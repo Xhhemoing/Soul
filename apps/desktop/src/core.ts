@@ -246,6 +246,264 @@ export interface DraftNotices {
   readonly can_send: boolean;
 }
 
+/** What answering one question moves. */
+export type QuestionMoves = "axis" | "voice" | "boundary" | "value";
+
+/**
+ * One answer a question offers: the recorder's token, and the words for it.
+ *
+ * `value` is what goes back, because `soul-import` declares the closed set so
+ * it can refuse an option nobody offered. `reading` is built on the Rust side
+ * for the reason every other sentence on screen is: that is where the
+ * denylist can see it.
+ */
+export interface QuestionOption {
+  readonly value: string;
+  readonly reading: string;
+}
+
+/**
+ * One of the eleven questions, as `soul_import::questionnaire::QUESTIONS`
+ * declares it.
+ */
+export interface Question {
+  readonly question_id: string;
+  readonly prompt: string;
+  readonly moves: QuestionMoves;
+  readonly options: readonly QuestionOption[];
+  /** True for a text box. Its answer is sealed and never comes back here. */
+  readonly prose: boolean;
+}
+
+/** What the user gave. Blank means the question was skipped. */
+export interface GivenAnswer {
+  readonly question_id: string;
+  readonly given: string;
+}
+
+/** What one questionnaire run left behind. AC-03 is `profile_is_empty`. */
+export interface IntakeReceipt {
+  readonly answered: number;
+  readonly axes_known: number;
+  /** Axes nobody answered for. They stay `unknown`; nothing is guessed. */
+  readonly axes_unknown: number;
+  readonly voice_fields_user_set: number;
+  readonly stated_entries: number;
+  readonly profile_is_empty: boolean;
+  readonly evidence_ids: readonly string[];
+}
+
+export interface InferenceRow {
+  readonly inference_id: string;
+  readonly position: string;
+  readonly band: string;
+  readonly evidence_count: number;
+  readonly state: string;
+  readonly falsifier: string | null;
+}
+
+/** One position an axis can be corrected to, in that axis's own words. */
+export interface AxisChoice {
+  readonly position: string;
+  readonly reading: string;
+}
+
+export interface AxisRow {
+  readonly axis_id: string;
+  readonly label: string;
+  readonly position: string;
+  /** The axis in words, built in the core where the denylist could see it. */
+  readonly reading: string;
+  readonly evidence_band: string;
+  readonly evidence_count: number;
+  readonly locked_by_user: boolean;
+  readonly choices: readonly AxisChoice[];
+  /** Every stored inference, including the ones a lock refused to apply. */
+  readonly inferences: readonly InferenceRow[];
+}
+
+/** One value a voice field can take, and the word for it. */
+export interface VoiceOption {
+  readonly value: string;
+  readonly reading: string;
+}
+
+export interface VoiceFieldRow {
+  readonly field: string;
+  /** What the field is about, in words. */
+  readonly label: string;
+  readonly value: string;
+  readonly locked_by_user: boolean;
+  readonly options: readonly VoiceOption[];
+  readonly question_id: string | null;
+}
+
+export interface VoiceView {
+  readonly fields: readonly VoiceFieldRow[];
+  readonly reading: string;
+}
+
+/**
+ * One boundary or value the user stated, as a pointer.
+ *
+ * There is no field on this that holds what they wrote. The words are sealed
+ * in the event the recorder wrote, and nothing on this path opens the seal.
+ */
+export interface StatedRow {
+  readonly field: string;
+  readonly question_id: string;
+  readonly prompt: string;
+  readonly event_id: string;
+  readonly evidence_id: string;
+}
+
+export interface ProfileScreen {
+  readonly profile_id: string;
+  readonly axes: readonly AxisRow[];
+  readonly voice: VoiceView;
+  readonly stated: readonly StatedRow[];
+  readonly reading: string;
+  readonly positions: readonly string[];
+  readonly notice: string;
+}
+
+/** One memory in a list, with its prose left sealed. */
+export interface MemoryRow {
+  readonly memory_id: string;
+  readonly memory_type: string;
+  readonly forget_state: string;
+  readonly third_party_content_present: boolean;
+  readonly title_chars: number;
+  readonly summary_chars: number;
+}
+
+export interface MemoryList {
+  readonly memories: readonly MemoryRow[];
+  readonly memory_types: readonly string[];
+  readonly forget_notice: string;
+}
+
+/** One memory, opened because the user asked for this one. */
+export interface MemoryDetail {
+  readonly memory_id: string;
+  readonly memory_type: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly third_party_content_present: boolean;
+  readonly content_key_id: string;
+}
+
+export interface NewMemory {
+  readonly memory_type: string;
+  readonly title: string;
+  readonly summary: string;
+}
+
+/** A change to one. An absent field is left as it is. */
+export interface MemoryChange {
+  readonly memory_type?: string | null;
+  readonly title?: string | null;
+  readonly summary?: string | null;
+}
+
+/**
+ * What forgetting one memory would cost.
+ *
+ * `destroys_anything` is typed as the literal `false` so a component that
+ * tried to treat the preview as the act would not compile. The act is
+ * `forgetMemory`, and it refuses a confirmation that does not name this
+ * `preview_id`.
+ */
+export interface ForgetPreview {
+  readonly preview_id: string;
+  readonly memory_id: string;
+  readonly content_key_count: number;
+  readonly memories_affected: number;
+  readonly contacts_affected: number;
+  readonly sealed_blobs_destroyed: number;
+  readonly inferences_orphaned: number;
+  readonly audit_entries_retained: number;
+  readonly destroys_anything: false;
+  readonly notice: string;
+}
+
+/** What the user echoes back to say they read the preview. */
+export interface ForgetConfirmation {
+  readonly preview_id: string;
+  readonly memory_id: string;
+}
+
+export interface ForgetReceipt {
+  readonly memory_id: string;
+  readonly content_keys_destroyed: number;
+  readonly sealed_blobs_destroyed: number;
+  readonly inferences_orphaned: number;
+  /** Whether the receipt charges what the preview quoted. */
+  readonly matched_preview: boolean;
+}
+
+/** One row of the research preview. Counts and buckets, never a body. */
+export interface ResearchRow {
+  readonly event_kind: string | null;
+  readonly time_bucket_utc: string | null;
+  readonly duration_bucket: string | null;
+  readonly self_trait_axis: string | null;
+  readonly self_trait_band: string | null;
+  readonly aggregate_count: number | null;
+}
+
+/**
+ * AC-20 as a screen.
+ *
+ * `written_to_disk` and `third_party_rows` are typed as the literals the core
+ * can only produce: `soul_store_api::research::preview_manifest` sets the
+ * first itself and `zero_third_party_rows` refuses to build a manifest with
+ * anything but 0 in the second.
+ */
+export interface ResearchPreview {
+  readonly manifest_id: string;
+  readonly export_kind: string;
+  readonly written_to_disk: false;
+  readonly third_party_rows: 0;
+  readonly candidate_rows_total: number;
+  readonly third_party_rows_excluded: number;
+  readonly fields: readonly string[];
+  readonly rows: readonly ResearchRow[];
+  readonly third_party_body: string;
+  readonly notice: string;
+}
+
+/**
+ * One audit entry, played back.
+ *
+ * Ids, two vocabulary words, a reason code and counts. There is no field here
+ * that could hold prose, and `audit.schema.json` has none either.
+ */
+export interface AuditEntry {
+  readonly seq: number;
+  readonly entry_id: string;
+  readonly ts: string;
+  readonly action: string;
+  readonly decision: string;
+  readonly reason_code: string | null;
+  readonly subject_refs: readonly string[];
+  readonly items: number | null;
+  readonly bytes: number | null;
+  readonly plan_hash: string | null;
+  readonly capability_token_id: string | null;
+  readonly egress_class: string | null;
+  readonly prev_hash: string;
+  readonly entry_hash: string;
+  readonly follows_previous: boolean;
+}
+
+export interface AuditChain {
+  readonly entries: readonly AuditEntry[];
+  readonly verified: boolean;
+  readonly verification_problem: string | null;
+  readonly notice: string;
+}
+
 /**
  * Command names, spelled once.
  *
@@ -268,6 +526,19 @@ export const COMMANDS = {
   prepareDraft: "prepare_draft",
   generateDraft: "generate_draft",
   discardDraft: "discard_draft",
+  questionnaire: "questionnaire",
+  answerQuestionnaire: "answer_questionnaire",
+  profileScreen: "profile_screen",
+  correctAxis: "correct_axis",
+  setVoice: "set_voice",
+  memoryList: "memory_list",
+  memoryDetail: "memory_detail",
+  createMemory: "create_memory",
+  updateMemory: "update_memory",
+  previewForget: "preview_forget",
+  forgetMemory: "forget_memory",
+  researchPreview: "research_preview",
+  auditChain: "audit_chain",
 } as const;
 
 export function configSnapshot(): Promise<ConfigSnapshot> {
@@ -364,4 +635,86 @@ export function generateDraft(approval: Approval): Promise<Draft> {
 /** The user read the plan and said no. Returns whether there was one. */
 export function discardDraft(): Promise<boolean> {
   return invoke<boolean>(COMMANDS.discardDraft);
+}
+
+/** The eleven questions the wizard draws. Answerable with the store shut. */
+export function questionnaire(): Promise<readonly Question[]> {
+  return invoke<readonly Question[]>(COMMANDS.questionnaire);
+}
+
+/**
+ * Hand in the questionnaire. AC-03.
+ *
+ * A blank answer is a skipped question, not a guess: the core drops it, and
+ * the axis it would have moved stays `unknown`.
+ */
+export function answerQuestionnaire(
+  answers: readonly GivenAnswer[],
+): Promise<IntakeReceipt> {
+  return invoke<IntakeReceipt>(COMMANDS.answerQuestionnaire, { answers });
+}
+
+/** The profile: axes, voice, and the pointers to what the user stated. */
+export function profileScreen(): Promise<ProfileScreen> {
+  return invoke<ProfileScreen>(COMMANDS.profileScreen);
+}
+
+/** The user read an axis and said it is wrong. The core pins it. */
+export function correctAxis(axisId: string, position: string): Promise<ProfileScreen> {
+  return invoke<ProfileScreen>(COMMANDS.correctAxis, { axisId, position });
+}
+
+/** The user set one voice field by hand. Inference stops touching it. */
+export function setVoice(field: string, option: string): Promise<ProfileScreen> {
+  return invoke<ProfileScreen>(COMMANDS.setVoice, { field, option });
+}
+
+/** Every memory, with the prose still sealed. */
+export function memoryList(): Promise<MemoryList> {
+  return invoke<MemoryList>(COMMANDS.memoryList);
+}
+
+/** One memory, opened. */
+export function memoryDetail(memoryId: string): Promise<MemoryDetail> {
+  return invoke<MemoryDetail>(COMMANDS.memoryDetail, { memoryId });
+}
+
+export function createMemory(memory: NewMemory): Promise<MemoryDetail> {
+  return invoke<MemoryDetail>(COMMANDS.createMemory, { memory });
+}
+
+export function updateMemory(memoryId: string, change: MemoryChange): Promise<MemoryDetail> {
+  return invoke<MemoryDetail>(COMMANDS.updateMemory, { memoryId, change });
+}
+
+/**
+ * What forgetting this memory would cost. Nothing is destroyed by asking.
+ *
+ * The core remembers the answer it gave, and `forgetMemory` refuses a
+ * confirmation that does not name it — so a second click cannot destroy
+ * something other than what was on the screen the user read.
+ */
+export function previewForget(memoryId: string): Promise<ForgetPreview> {
+  return invoke<ForgetPreview>(COMMANDS.previewForget, { memoryId });
+}
+
+/**
+ * Destroy the content key behind one memory. Irreversible.
+ *
+ * This is a forget, which D15 defines as key destruction, and it is the one
+ * destructive thing v0.1 does. It writes no file: AC-27 is about the file
+ * plan, and there is still no command that carries one out.
+ */
+export function forgetMemory(confirmation: ForgetConfirmation): Promise<ForgetReceipt> {
+  return invoke<ForgetReceipt>(COMMANDS.forgetMemory, { confirmation });
+}
+
+/** What the research track would see. On screen only. */
+export function researchPreview(): Promise<ResearchPreview> {
+  return invoke<ResearchPreview>(COMMANDS.researchPreview);
+}
+
+/** The audit chain, played back and checked by the store. */
+export function auditChain(): Promise<AuditChain> {
+  return invoke<AuditChain>(COMMANDS.auditChain);
 }

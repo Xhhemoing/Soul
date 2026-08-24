@@ -9,10 +9,11 @@
 //! returns are the store's own query results, so the count on the confirmation
 //! screen is the count that will actually be destroyed.
 
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use soul_memory::{MemoryContent, MemoryDigest, MemoryDraft, MemoryEdit, MemoryError};
-use soul_schema::memory::SoulMemory;
+use soul_schema::memory::{MemoryType, SoulMemory};
 use soul_store::SqlCipherStore;
 use soul_store_api::forget::{ForgetImpact, ForgetReceipt};
 
@@ -63,4 +64,258 @@ pub fn forget(
     at_unix_seconds: i64,
 ) -> Result<ForgetReceipt, MemoryError> {
     soul_memory::forget(store, memory_id, at_unix_seconds)
+}
+
+// ------------------------------------------------- what a screen may draw ---
+
+/// The kinds of memory a screen may offer, as the contract spells them.
+///
+/// Read off the enum rather than written out again, so a kind added to
+/// `memory.schema.json` appears in the interface instead of being silently
+/// unreachable.
+pub const MEMORY_TYPES: [MemoryType; 5] = [
+    MemoryType::Episodic,
+    MemoryType::Semantic,
+    MemoryType::Procedural,
+    MemoryType::Preference,
+    MemoryType::Commitment,
+];
+
+/// What forgetting means here, in the core's own words.
+///
+/// It says destruction rather than deletion because that is what happens: the
+/// content key goes, the row stays as a tombstone, and nothing on disk is
+/// rewritten. Held on this side so the screen cannot soften it.
+pub const FORGET_NOTICE: &str =
+    "遗忘销毁的是这条记忆的内容密钥：正文从此打不开，行会留成一块墓碑，\
+    引用过它的推断会被标成失去依据。这一步不可撤销，也不写任何文件。";
+
+/// One memory in a list, with the prose left sealed.
+///
+/// The two character counts come off the sealed pointers. They are metadata,
+/// not text — enough for a list to say which entry is the long one, and not
+/// enough to say anything about what it says.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryRow {
+    pub memory_id: String,
+    pub memory_type: String,
+    /// `active`, `pending_forget` or `forgotten`.
+    pub forget_state: String,
+    pub third_party_content_present: bool,
+    pub title_chars: u64,
+    pub summary_chars: u64,
+}
+
+impl MemoryRow {
+    fn of(digest: &MemoryDigest) -> MemoryRow {
+        MemoryRow {
+            memory_id: digest.memory_id.to_string(),
+            memory_type: word(&digest.memory_type),
+            forget_state: word(&digest.forget_state),
+            third_party_content_present: digest.third_party_content_present,
+            title_chars: digest.title_chars,
+            summary_chars: digest.summary_chars,
+        }
+    }
+}
+
+/// The list, plus the vocabulary a screen needs to draw a form for it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryList {
+    pub memories: Vec<MemoryRow>,
+    pub memory_types: Vec<String>,
+    pub forget_notice: String,
+}
+
+/// One memory with its prose opened, because the user asked for this one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryDetail {
+    pub memory_id: String,
+    pub memory_type: String,
+    pub title: String,
+    pub summary: String,
+    pub third_party_content_present: bool,
+    pub content_key_id: String,
+}
+
+impl MemoryDetail {
+    fn of(content: &MemoryContent) -> MemoryDetail {
+        MemoryDetail {
+            memory_id: content.memory.memory_id.to_string(),
+            memory_type: word(&content.memory.memory_type),
+            title: content.title.clone(),
+            summary: content.summary.clone(),
+            third_party_content_present: content
+                .memory
+                .third_party_content_present
+                .unwrap_or(false),
+            content_key_id: content.memory.content_key_id.to_string(),
+        }
+    }
+}
+
+/// A memory the user is about to store.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NewMemory {
+    pub memory_type: String,
+    pub title: String,
+    pub summary: String,
+}
+
+/// A change to one. An absent field is left as it is.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryChange {
+    pub memory_type: Option<String>,
+    pub title: Option<String>,
+    pub summary: Option<String>,
+}
+
+/// What forgetting this memory would cost, and the identity of the answer.
+///
+/// `preview_id` is what makes the preview more than a screen. Forgetting is
+/// irreversible, so the session refuses a forget that does not echo the
+/// preview the user was actually shown — the same shape the endpoint drafting
+/// path uses, for the same reason. WP04 left this open on purpose and named
+/// it: the numbers can change between the two calls, and nothing was stopping
+/// a second click from destroying more than what was on screen.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ForgetPreview {
+    pub preview_id: String,
+    pub memory_id: String,
+    pub content_key_count: usize,
+    pub memories_affected: u64,
+    pub contacts_affected: u64,
+    pub sealed_blobs_destroyed: u64,
+    pub inferences_orphaned: u64,
+    /// Kept deliberately: the chain records that a forget happened and must
+    /// never be in a position to prevent one.
+    pub audit_entries_retained: u64,
+    /// Always false. Reading what a forget would cost destroys nothing.
+    pub destroys_anything: bool,
+    pub notice: String,
+}
+
+impl ForgetPreview {
+    pub(crate) fn of(preview_id: Uuid, memory_id: Uuid, impact: &ForgetImpact) -> ForgetPreview {
+        ForgetPreview {
+            preview_id: preview_id.to_string(),
+            memory_id: memory_id.to_string(),
+            content_key_count: impact.content_key_ids.len(),
+            memories_affected: impact.memories_affected,
+            contacts_affected: impact.contacts_affected,
+            sealed_blobs_destroyed: impact.sealed_blobs_destroyed,
+            inferences_orphaned: impact.inferences_orphaned,
+            audit_entries_retained: impact.audit_entries_retained,
+            destroys_anything: false,
+            notice: FORGET_NOTICE.to_owned(),
+        }
+    }
+}
+
+/// What the user echoes back to say they read the preview.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ForgetConfirmation {
+    pub preview_id: String,
+    pub memory_id: String,
+}
+
+/// Proof of what a completed forget did, against what was quoted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ForgetReceiptView {
+    pub memory_id: String,
+    pub content_keys_destroyed: usize,
+    pub sealed_blobs_destroyed: u64,
+    pub inferences_orphaned: u64,
+    /// Whether the receipt charges what the preview quoted.
+    pub matched_preview: bool,
+}
+
+impl ForgetReceiptView {
+    pub(crate) fn of(
+        memory_id: Uuid,
+        receipt: &ForgetReceipt,
+        quoted: &ForgetImpact,
+    ) -> ForgetReceiptView {
+        ForgetReceiptView {
+            memory_id: memory_id.to_string(),
+            content_keys_destroyed: receipt.impact.content_key_ids.len(),
+            sealed_blobs_destroyed: receipt.impact.sealed_blobs_destroyed,
+            inferences_orphaned: receipt.impact.inferences_orphaned,
+            matched_preview: &receipt.impact == quoted,
+        }
+    }
+}
+
+/// Every memory, as a list view may show them.
+pub fn rows(store: &SqlCipherStore) -> Result<MemoryList, MemoryError> {
+    Ok(MemoryList {
+        memories: list(store)?.iter().map(MemoryRow::of).collect(),
+        memory_types: MEMORY_TYPES.iter().map(word).collect(),
+        forget_notice: FORGET_NOTICE.to_owned(),
+    })
+}
+
+/// One memory, opened.
+pub fn detail(store: &SqlCipherStore, memory_id: Uuid) -> Result<MemoryDetail, MemoryError> {
+    Ok(MemoryDetail::of(&read(store, memory_id)?))
+}
+
+/// Store what the user typed. The subject is the owner: this screen writes the
+/// user's own memories, and there is no field on [`NewMemory`] that could say
+/// otherwise.
+pub fn write_new(
+    store: &mut SqlCipherStore,
+    new: &NewMemory,
+    at_unix_seconds: i64,
+) -> Result<MemoryDetail, MemoryError> {
+    let memory_type = memory_type_named(&new.memory_type).ok_or(MemoryError::Empty("type"))?;
+    let memory = create(
+        store,
+        &MemoryDraft::own(memory_type, &new.title, &new.summary),
+        at_unix_seconds,
+    )?;
+    detail(store, memory.memory_id)
+}
+
+/// Edit one in place, resealing what changed under the same key.
+pub fn write_change(
+    store: &mut SqlCipherStore,
+    memory_id: Uuid,
+    change: &MemoryChange,
+    at_unix_seconds: i64,
+) -> Result<MemoryDetail, MemoryError> {
+    let mut edit = MemoryEdit {
+        title: change.title.clone(),
+        summary: change.summary.clone(),
+        memory_type: None,
+    };
+    if let Some(named) = change.memory_type.as_deref() {
+        edit.memory_type = Some(memory_type_named(named).ok_or(MemoryError::Empty("type"))?);
+    }
+    update(store, memory_id, &edit, at_unix_seconds)?;
+    detail(store, memory_id)
+}
+
+/// The memory type this word names, if the contract has one.
+pub fn memory_type_named(named: &str) -> Option<MemoryType> {
+    MEMORY_TYPES
+        .into_iter()
+        .find(|candidate| word(candidate) == named)
+}
+
+/// The contract's own spelling of a small enum, taken from serde rather than
+/// written out a second time.
+fn word<T: Serialize>(value: &T) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_default()
 }

@@ -46,15 +46,24 @@ impl AxisDefinition {
         format!("trait_axis.{}.{}", self.key, position_key(position))
     }
 
-    /// How this axis reads to a person, given a position.
-    pub fn describe(&self, position: AxisPosition) -> String {
-        let direction = match position {
+    /// Which way this position points, without the axis's name in front.
+    ///
+    /// For a screen that has already said which axis it is asking about — the
+    /// wizard offering three answers under one question, or a correction
+    /// control sitting inside the axis's own row. [`Self::describe`] is the
+    /// same words for a line that has to stand on its own.
+    pub fn direction(&self, position: AxisPosition) -> &'static str {
+        match position {
             AxisPosition::LeansLow => self.leans_low,
             AxisPosition::LeansHigh => self.leans_high,
             AxisPosition::Mixed => "两端都有，看场合",
             AxisPosition::Unknown => "还看不出方向",
-        };
-        format!("{}：{direction}", self.label)
+        }
+    }
+
+    /// How this axis reads to a person, given a position.
+    pub fn describe(&self, position: AxisPosition) -> String {
+        format!("{}：{}", self.label, self.direction(position))
     }
 
     /// A fresh axis with no observations behind it.

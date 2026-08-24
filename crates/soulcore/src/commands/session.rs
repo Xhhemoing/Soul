@@ -54,10 +54,11 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use soul_fileplan::{Refusal, ScanLimits};
-use soul_policy::clock::now_unix_millis;
+use soul_policy::clock::{now_unix_millis, now_unix_seconds, rfc3339_utc};
 use soul_policy::hitl::{RequestOrigin, TokenIssuer};
 use soul_policy::ReasonCode;
 use soul_store::SqlCipherStore;
+use soul_store_api::forget::ForgetImpact;
 
 use crate::commands::collect::share;
 use crate::commands::draft::{
@@ -67,9 +68,16 @@ use crate::commands::fileplan::{
     AuthorizedRootView, FilePlanSession, PlanPreview, READ_ONLY_NOTICE,
 };
 use crate::commands::graph::{self as graph_commands, PeopleGraphView};
+use crate::commands::memory::{
+    self as memory_commands, ForgetConfirmation, ForgetPreview, ForgetReceiptView, MemoryChange,
+    MemoryDetail, MemoryList, NewMemory,
+};
 use crate::commands::policy::PolicySession;
+use crate::commands::profile::{
+    self as profile_commands, GivenAnswer, IntakeReceipt, ProfileScreen, QuestionView,
+};
 use crate::commands::shell::{self, CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
-use crate::commands::store as store_commands;
+use crate::commands::store::{self as store_commands, AuditChainView, ResearchPreviewView};
 use crate::config::Config;
 
 /// The environment variable that names the data directory outright.
@@ -95,6 +103,29 @@ pub const UNIX_DIRECTORY_NAME: &str = "soul";
 /// What the interface is told when the store did not open.
 pub const STORE_UNAVAILABLE_NOTICE: &str =
     "这台机器上的加密库没有打开，所以要读库的页面暂时没有内容可显示。";
+
+/// The profile this installation keeps.
+///
+/// A constant rather than a row somebody looks up, because Soul is one
+/// person's copy of themselves and `ProfileStore` has no way to list profiles
+/// — a generated id would have to be written down somewhere, and the two
+/// places it could go are both worse. In `config.json` it would be a third
+/// field on a file whose whole argument is that it has two; in the store it
+/// would be unreadable exactly when the store is what failed to open. Fixing
+/// it is the same choice `soul-profile` made for `axis_id`, for the same
+/// reason: an identifier that changes is a history that forks.
+pub const OWNER_PROFILE_ID: Uuid = Uuid::from_u128(0x0192b0c0_5001_7c01_8c01_000000000001);
+
+/// How many rows the research preview shows. It is a sample, not an export.
+pub const RESEARCH_PREVIEW_ROWS: usize = 50;
+
+/// What the wizard is told when it hands in a questionnaire with nothing in it.
+pub const NO_ANSWERS_NOTICE: &str = "这份问卷一道题都没有答，所以没有东西可以写进档案。\
+    随便答一道都行，没答的那些会留成「还看不出方向」，不会被猜。";
+
+/// What a forget is told when the preview it echoes is not the one on screen.
+pub const FORGET_NOT_PREVIEWED_NOTICE: &str = "这次遗忘对不上你刚才看过的那份影响面预览。\
+    什么都没有销毁：先看一遍这条记忆现在的预览，再决定。";
 
 /// Where this machine keeps Soul's data.
 pub fn data_directory() -> Result<PathBuf, DirectoryError> {
@@ -297,6 +328,22 @@ pub struct Session {
     issuer: TokenIssuer,
     draft: DraftSession,
     policy: PolicySession,
+    /// The last forget impact the user was shown, and for which memory.
+    ///
+    /// Forgetting is irreversible and the numbers behind it are a live query,
+    /// so the confirmation has to name the answer it read — WP04 left this
+    /// gap open and said so. One slot, replaced by the next preview, taken by
+    /// value when the forget runs: the same shape the endpoint drafting path
+    /// uses to make an approval describe what is actually about to happen.
+    held_forget: Option<HeldForget>,
+}
+
+/// One forget the user has been quoted a price for.
+#[derive(Debug, Clone)]
+struct HeldForget {
+    preview_id: Uuid,
+    memory_id: Uuid,
+    impact: ForgetImpact,
 }
 
 impl Session {
@@ -350,6 +397,7 @@ impl Session {
             issuer: TokenIssuer::new(),
             draft,
             policy,
+            held_forget: None,
         }
     }
 
@@ -507,6 +555,208 @@ impl Session {
         self.draft.discard()
     }
 
+    // ------------------------------------------------------ WP03: profile ---
+
+    /// The eleven questions, for a wizard that has to draw them.
+    ///
+    /// Answered from the canonical list rather than from the store, so a
+    /// machine whose database will not open can still ask them; recording the
+    /// answers is what needs the store, and that is the next method.
+    pub fn questionnaire(&self) -> Vec<QuestionView> {
+        profile_commands::question_views()
+    }
+
+    /// Record a completed questionnaire. AC-03.
+    ///
+    /// Blank answers are dropped rather than guessed at: an axis nobody
+    /// answered for stays `unknown`. A questionnaire where every question was
+    /// left blank is refused, because it would leave the profile exactly as
+    /// empty as it was and reporting that as a completed intake would be a
+    /// lie the wizard then repeats to the user.
+    pub fn answer_questionnaire(
+        &mut self,
+        answers: &[GivenAnswer],
+    ) -> Result<IntakeReceipt, SessionRefusal> {
+        if answers.iter().all(|answer| answer.given.trim().is_empty()) {
+            return Err(SessionRefusal {
+                reason_code: ReasonCode::Routine.as_str().to_owned(),
+                explanation: NO_ANSWERS_NOTICE.to_owned(),
+            });
+        }
+        let at = now_unix_seconds();
+        let store = self.opened_store()?;
+        let mut store = hold(&store);
+        Ok(profile_commands::intake_from(
+            &mut store,
+            OWNER_PROFILE_ID,
+            answers,
+            &rfc3339_utc(at),
+            at,
+        )?)
+    }
+
+    /// The profile screen: axes, voice, the pointers to what the user stated.
+    pub fn profile(&self) -> Result<ProfileScreen, SessionRefusal> {
+        let store = self.opened_store()?;
+        let store = hold(&store);
+        Ok(profile_commands::screen(&store, OWNER_PROFILE_ID)?)
+    }
+
+    /// The user read an axis and said it is wrong. AC-07: this pins it.
+    pub fn correct_axis(
+        &mut self,
+        axis_id: &str,
+        position: &str,
+    ) -> Result<ProfileScreen, SessionRefusal> {
+        let axis_id = profile_commands::axis_named(axis_id).ok_or_else(|| SessionRefusal {
+            reason_code: ReasonCode::Routine.as_str().to_owned(),
+            explanation: "这不是这一版档案里的那五条轴之一。".to_owned(),
+        })?;
+        let position =
+            profile_commands::position_named(position).ok_or_else(|| SessionRefusal {
+                reason_code: ReasonCode::Routine.as_str().to_owned(),
+                explanation: "一条轴只有偏向一端、偏向另一端和两端都有三种说法。".to_owned(),
+            })?;
+        let at = now_unix_seconds();
+        let store = self.opened_store()?;
+        let mut store = hold(&store);
+        profile_commands::correct_axis(&mut store, OWNER_PROFILE_ID, axis_id, position, at)?;
+        Ok(profile_commands::screen(&store, OWNER_PROFILE_ID)?)
+    }
+
+    /// The user set a voice field by hand. Inference must leave it alone after
+    /// this, and `soul-profile` is where that is enforced.
+    pub fn set_voice(
+        &mut self,
+        field: &str,
+        option: &str,
+    ) -> Result<ProfileScreen, SessionRefusal> {
+        let setting =
+            profile_commands::voice_setting_named(field, option).ok_or_else(|| SessionRefusal {
+                reason_code: ReasonCode::Routine.as_str().to_owned(),
+                explanation: "语气只有那四项，每一项只有列出来的那几个取值。".to_owned(),
+            })?;
+        let at = now_unix_seconds();
+        let store = self.opened_store()?;
+        let mut store = hold(&store);
+        profile_commands::set_voice(&mut store, OWNER_PROFILE_ID, setting, at)?;
+        Ok(profile_commands::screen(&store, OWNER_PROFILE_ID)?)
+    }
+
+    // ------------------------------------------------------- WP04: memory ---
+
+    /// Every memory, prose left sealed.
+    pub fn memories(&self) -> Result<MemoryList, SessionRefusal> {
+        let store = self.opened_store()?;
+        let store = hold(&store);
+        Ok(memory_commands::rows(&store)?)
+    }
+
+    /// One memory, opened because the user asked for this one.
+    pub fn memory(&self, memory_id: &str) -> Result<MemoryDetail, SessionRefusal> {
+        let memory_id = parse_id(memory_id, "记忆")?;
+        let store = self.opened_store()?;
+        let store = hold(&store);
+        Ok(memory_commands::detail(&store, memory_id)?)
+    }
+
+    /// Write a memory the user typed.
+    pub fn write_memory(&mut self, new: &NewMemory) -> Result<MemoryDetail, SessionRefusal> {
+        let at = now_unix_seconds();
+        let store = self.opened_store()?;
+        let mut store = hold(&store);
+        Ok(memory_commands::write_new(&mut store, new, at)?)
+    }
+
+    /// Edit one in place. The same content key is reused, so the memory stays
+    /// exactly one forget unit.
+    pub fn edit_memory(
+        &mut self,
+        memory_id: &str,
+        change: &MemoryChange,
+    ) -> Result<MemoryDetail, SessionRefusal> {
+        let memory_id = parse_id(memory_id, "记忆")?;
+        let at = now_unix_seconds();
+        let store = self.opened_store()?;
+        let mut store = hold(&store);
+        Ok(memory_commands::write_change(
+            &mut store, memory_id, change, at,
+        )?)
+    }
+
+    /// What forgetting this memory would cost. Destroys nothing.
+    ///
+    /// The preview is remembered so the forget that follows can be checked
+    /// against it. Asking twice replaces the held one, which is why the
+    /// confirmation carries an id rather than only a memory.
+    pub fn preview_forget(&mut self, memory_id: &str) -> Result<ForgetPreview, SessionRefusal> {
+        let memory_id = parse_id(memory_id, "记忆")?;
+        let impact = {
+            let store = self.opened_store()?;
+            let store = hold(&store);
+            memory_commands::preview_forget(&store, memory_id)?
+        };
+        let preview_id = Uuid::now_v7();
+        self.held_forget = Some(HeldForget {
+            preview_id,
+            memory_id,
+            impact: impact.clone(),
+        });
+        Ok(ForgetPreview::of(preview_id, memory_id, &impact))
+    }
+
+    /// Destroy the content key behind one memory. AC-15, and irreversible.
+    ///
+    /// Refused unless the confirmation names the preview the user was shown.
+    /// Forgetting is allowed — it is what D15 means by deleting — and it is
+    /// not a file write; what is not allowed is doing it because a second
+    /// click landed on a screen nobody read.
+    pub fn forget_memory(
+        &mut self,
+        confirmation: &ForgetConfirmation,
+    ) -> Result<ForgetReceiptView, SessionRefusal> {
+        let held = self
+            .held_forget
+            .take()
+            .filter(|held| {
+                held.preview_id.to_string() == confirmation.preview_id
+                    && held.memory_id.to_string() == confirmation.memory_id
+            })
+            .ok_or_else(|| SessionRefusal {
+                reason_code: ReasonCode::PlanHashMismatch.as_str().to_owned(),
+                explanation: FORGET_NOT_PREVIEWED_NOTICE.to_owned(),
+            })?;
+
+        let at = now_unix_seconds();
+        let store = self.opened_store()?;
+        let mut store = hold(&store);
+        let receipt = memory_commands::forget(&mut store, held.memory_id, at)?;
+        Ok(ForgetReceiptView::of(
+            held.memory_id,
+            &receipt,
+            &held.impact,
+        ))
+    }
+
+    // --------------------------------------- WP02: research, and the chain ---
+
+    /// What the research track would see. AC-20: no third-party row, no file.
+    pub fn research(&self) -> Result<ResearchPreviewView, SessionRefusal> {
+        let store = self.opened_store()?;
+        let store = hold(&store);
+        Ok(store_commands::research_view(
+            &store,
+            RESEARCH_PREVIEW_ROWS,
+        )?)
+    }
+
+    /// The audit chain, played back and checked. AC-23: no prose in it.
+    pub fn audit(&self) -> Result<AuditChainView, SessionRefusal> {
+        let store = self.opened_store()?;
+        let store = hold(&store);
+        Ok(store_commands::audit_view(&store)?)
+    }
+
     fn opened_store(&self) -> Result<Arc<Mutex<SqlCipherStore>>, SessionRefusal> {
         match &self.store {
             StoreHandle::Open(store) => Ok(Arc::clone(store)),
@@ -539,6 +789,15 @@ fn hold(store: &Arc<Mutex<SqlCipherStore>>) -> MutexGuard<'_, SqlCipherStore> {
     store
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// An identifier the interface handed back, or a refusal that names the kind
+/// of thing it was supposed to identify and nothing else.
+fn parse_id(id: &str, kind: &str) -> Result<Uuid, SessionRefusal> {
+    Uuid::parse_str(id).map_err(|_| SessionRefusal {
+        reason_code: ReasonCode::Routine.as_str().to_owned(),
+        explanation: format!("这不是一个认得出来的{kind}编号。"),
+    })
 }
 
 /// What the shell knows about this session that is not about capabilities.
@@ -614,6 +873,33 @@ impl From<DraftRefusal> for SessionRefusal {
 
 impl From<soul_graph::GraphError> for SessionRefusal {
     fn from(error: soul_graph::GraphError) -> SessionRefusal {
+        SessionRefusal {
+            reason_code: ReasonCode::Routine.as_str().to_owned(),
+            explanation: error.to_string(),
+        }
+    }
+}
+
+impl From<soul_profile::ProfileError> for SessionRefusal {
+    fn from(error: soul_profile::ProfileError) -> SessionRefusal {
+        SessionRefusal {
+            reason_code: ReasonCode::Routine.as_str().to_owned(),
+            explanation: error.to_string(),
+        }
+    }
+}
+
+impl From<soul_memory::MemoryError> for SessionRefusal {
+    fn from(error: soul_memory::MemoryError) -> SessionRefusal {
+        SessionRefusal {
+            reason_code: ReasonCode::Routine.as_str().to_owned(),
+            explanation: error.to_string(),
+        }
+    }
+}
+
+impl From<soul_store_api::types::StoreError> for SessionRefusal {
+    fn from(error: soul_store_api::types::StoreError) -> SessionRefusal {
         SessionRefusal {
             reason_code: ReasonCode::Routine.as_str().to_owned(),
             explanation: error.to_string(),
