@@ -1,9 +1,10 @@
 //! The Windows foreground application.
 //!
-//! Three calls, and none of them is `GetWindowText`. `GetForegroundWindow` says
-//! which window has focus, `GetWindowThreadProcessId` turns that into a process
-//! id, and `QueryFullProcessImageNameW` turns that into an executable path,
-//! whose directory is then dropped. The window's caption is never read, and
+//! Three calls, and not one of them returns a caption. `GetForegroundWindow`
+//! says which window has focus, `GetWindowThreadProcessId` turns that into a
+//! process id, and `QueryFullProcessImageNameW` turns that into an executable
+//! path, whose directory is then dropped. The window's own text is never read,
+//! and
 //! `tests/window_titles_are_not_collected.rs` checks that claim against these
 //! sources rather than against this comment.
 //!

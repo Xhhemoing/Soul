@@ -18,19 +18,40 @@ use std::fmt;
 /// the door shut rather than half open.
 pub const MAX_APP_NAME_CHARS: usize = 128;
 
+/// What a Windows executable image is called.
+///
+/// v0.1 collects on Windows only, and the name always arrives from the image
+/// path of a running process, so it always ends in one of these. Requiring it
+/// is what turns "we do not collect captions" from a habit into a rule: a
+/// window title almost never ends in `.exe`, and one that does is still only a
+/// name. Android in v0.3 has package names rather than image names and will
+/// need its own constructor; it must not get one by loosening this.
+pub const EXECUTABLE_SUFFIXES: &[&str] = &[".exe", ".com", ".scr"];
+
+/// Why a sample was refused.
+///
+/// None of these carries the offending value. An error about a rejected sample
+/// travels to logs and to the user interface, and the rejected value is exactly
+/// the thing this crate has promised not to keep.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SourceError {
     #[error("a foreground sample carried no application name")]
     EmptyName,
 
-    #[error("`{name}` is a path, not an application name; only the file name is collected")]
-    NotAFileName { name: String },
+    #[error("an application name may not contain a path, a drive or a control character")]
+    NotAFileName,
 
     #[error(
         "an application name of {chars} characters is longer than the {MAX_APP_NAME_CHARS} \
          a program name can be; window titles are not collected"
     )]
     NameTooLong { chars: usize },
+
+    #[error(
+        "an application name must be an executable image name; \
+         only the program is collected, never the window it is showing"
+    )]
+    NotAnExecutableName,
 
     /// The platform call failed. Carries the call that failed, never a name.
     #[error("the platform foreground lookup failed: {0}")]
@@ -57,21 +78,21 @@ impl AppIdentity {
         if name.is_empty() {
             return Err(SourceError::EmptyName);
         }
-        if name.contains(['/', '\\']) || name.contains(':') {
-            return Err(SourceError::NotAFileName {
-                name: name.to_owned(),
-            });
-        }
-        if name.chars().any(char::is_control) {
-            return Err(SourceError::NotAFileName {
-                name: name.escape_debug().to_string(),
-            });
+        if name.contains(['/', '\\', ':']) || name.chars().any(char::is_control) {
+            return Err(SourceError::NotAFileName);
         }
         let chars = name.chars().count();
         if chars > MAX_APP_NAME_CHARS {
             return Err(SourceError::NameTooLong { chars });
         }
-        Ok(AppIdentity(name.to_lowercase()))
+        let lowered = name.to_lowercase();
+        if !EXECUTABLE_SUFFIXES
+            .iter()
+            .any(|suffix| lowered.ends_with(suffix))
+        {
+            return Err(SourceError::NotAnExecutableName);
+        }
+        Ok(AppIdentity(lowered))
     }
 
     /// The file name at the end of a full executable path.
@@ -163,7 +184,7 @@ mod tests {
     fn a_name_that_is_still_a_path_is_refused() {
         assert!(matches!(
             AppIdentity::new("C:\\Windows\\notepad.exe"),
-            Err(SourceError::NotAFileName { .. })
+            Err(SourceError::NotAFileName)
         ));
     }
 
@@ -177,11 +198,40 @@ mod tests {
     }
 
     #[test]
+    fn a_window_caption_is_not_an_application_name() {
+        for caption in [
+            "报税 2026.xlsx - Excel",
+            "Re: 合同条款 - 邮件",
+            "soul — private notes — Visual Studio Code",
+            "Excel",
+        ] {
+            assert!(
+                matches!(
+                    AppIdentity::new(caption),
+                    Err(SourceError::NotAnExecutableName | SourceError::NotAFileName)
+                ),
+                "`{caption}` was accepted as an application name",
+            );
+        }
+    }
+
+    #[test]
+    fn an_executable_whose_name_has_a_space_in_it_is_still_an_executable() {
+        // Adobe ships several. Refusing every name with a space would be a
+        // simpler rule and would quietly stop collecting real applications.
+        let app = AppIdentity::new("Adobe Premiere Pro.exe").expect("a real program name");
+        assert_eq!(app.as_str(), "adobe premiere pro.exe");
+    }
+
+    #[test]
     fn blank_and_control_characters_are_refused() {
-        assert!(matches!(AppIdentity::new("   "), Err(SourceError::EmptyName)));
+        assert!(matches!(
+            AppIdentity::new("   "),
+            Err(SourceError::EmptyName)
+        ));
         assert!(matches!(
             AppIdentity::new("note\npad.exe"),
-            Err(SourceError::NotAFileName { .. })
+            Err(SourceError::NotAFileName)
         ));
     }
 }

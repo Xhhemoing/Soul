@@ -165,7 +165,15 @@ impl<F: ForegroundSource, S: CollectSink> Collector<F, S> {
     }
 
     /// End the session in flight and write it. What an orderly stop does.
+    ///
+    /// If consent went away while that session was running it is discarded
+    /// instead, and quietly: a caller stopping a collector the user has already
+    /// switched off has done nothing wrong, and there is nothing left to write.
     pub fn finish(&mut self, now_unix_millis: u64) -> CollectResult<Option<Uuid>> {
+        if self.consent.require_collection().is_err() {
+            self.discard_open();
+            return Ok(None);
+        }
         let Some(open) = self.open.take() else {
             return Ok(None);
         };
@@ -251,11 +259,7 @@ impl<F: ForegroundSource, S: CollectSink> Collector<F, S> {
         Ok(event_id)
     }
 
-    fn append_audit(
-        &mut self,
-        content: AuditContent,
-        at_unix_seconds: i64,
-    ) -> CollectResult<Uuid> {
+    fn append_audit(&mut self, content: AuditContent, at_unix_seconds: i64) -> CollectResult<Uuid> {
         let mut sink = lock(&self.sink);
         Ok(append(&mut *sink, content, at_unix_seconds)?)
     }
