@@ -19,6 +19,8 @@
 | WP08 权限面 | 完成。见下节 |
 | WP03 档案 | 完成。见下节 |
 | WP04 自传记忆 | 完成。见下节 |
+| WP05 人脉图 | 完成。见下节 |
+| WP06 导入 | 完成。见下节 |
 | v0.1 其余 WP | 未开始 |
 
 ## WP01 完成情况
@@ -146,6 +148,68 @@
 4. **`MemoryDraft.subject` 只有 owner / third_party / mixed 三档，占位符按整条记忆走。** 一条 mixed 记忆里哪一句是别人说的，v0.1 不区分，整条带同一个占位符。要做到句级，得在 blob 层加结构，不是这个 crate 能单独决定的。
 5. **`preview_forget` 与 `forget` 之间没有令牌。** 用户看到的数字与实际销毁的数字由「回执必须等于预览」这条断言保证，但两次调用之间若有别的写入，数字会变而没人拦。WP09 接 UI 时若要严格，需要一个把预览钉住的短期令牌。
 
+## WP05 完成情况
+
+`crates/soul-graph` 落地。本机 `cargo test -p soul-graph -p soul-import -p soulcore` 绿，`xtask all` 绿。图是**推导**出来的，不是导入进来的：导入方写互动证据，图这边一遍扫过去得出边。
+
+| 交付 | 证据 |
+|---|---|
+| 节点=人，边=互动强度/关系类型/最近接触/证据 | `model.rs` 的 `TieEdge` 四样齐全，全部由观察推出：`TieStrength` 是计数（往/来/会话数/活跃天数/首末接触），不是评分，`TieType` 只说观察到的形状（direct / group_only / reciprocal / one_sided），不编造「同事」「家人」。`tests/ego_graph.rs::an_edge_carries_strength_type_last_contact_and_evidence` 从库里读回来断言，而不是断言 build 的返回值 |
+| AC-08 三个对话对象 → 节点 ≥3，边有 evidence | `tests/ego_graph.rs::three_conversation_partners_produce_three_evidence_backed_edges`（手写观察）与 `soul-import/tests/import_to_graph.rs::a_four_partner_export_becomes_four_evidence_backed_edges`（从 fixture 文件走完整条链）。两边都对每条边真去 `resolve_evidence` |
+| AC-06 图侧推断可解引用 | `tests/ego_graph.rs::a_tie_inference_dereferences_to_the_observations_behind_it`：每条 tie inference 的 `evidence_ids` 逐个 `get_evidence` 取回，`target.relationship_id` 也真去 `get_relationship`，并断言边与推断引的是同一批证据。`view::resolve_evidence` 取不回来就报错，不返回短一截的列表 |
+| 第三人节点默认 local_only，不进 E1/研究行 | `tests/ego_graph.rs::every_third_party_node_and_edge_is_local_only`：`SoulGraph::third_party_data_is_local_only()` 对整张图成立，库里每条 relationship 的 `egress_scope` 都是 `local_only`，每条互动证据 `exportable_to_research: false`。节点上没有任何字段装名字——`label_ref` 是密封指针，标识符是哈希 |
+| 重建幂等 | `rebuild` 按 (owner, peer) 认边、按 (relationship_id, 语句前缀) 认推断。`tests/ego_graph.rs::rebuilding_updates_the_same_edges_instead_of_duplicating_them`：第二次导入后 id 一模一样，边数与推断数不变，强度与最近接触更新了 |
+| 证据指向已消失的人不静默丢 | 同文件 `evidence_naming_a_contact_that_is_gone_is_counted_rather_than_dropped`：`GraphBuild.peers_unresolved` 计数，不给不存在的人建边 |
+
+落地内容：`crates/soul-graph/{interaction,model,build,view,error}.rs` 与 `tests/ego_graph.rs`；`soulcore/src/commands/graph.rs`；`soul-store-api`/`soul-store` 新增 `list_evidence` 与 `list_relationships`（含一条 conformance 用例）。
+
+### WP05 的取舍与遗留
+
+1. **v0.1 是自我中心网络，每条边都有用户在一端。** Soul 只看见用户参与过的对话，两个第三人之间的边只能靠猜，而 PRODUCT_LOCK 要求推断带证据。真要做人与人之间的边，得先有一个说得出证据的来源。
+2. **强度是计数不是评分。** D22 禁掉了心理模型的数字刻度；同一直觉用在这里，所以对外的概括值是 `SupportedBand`，底下是用户自己数消息就能核对的计数。阈值（`MODERATE_MIN_INTERACTIONS = 3`、`STRONG_MIN_INTERACTIONS = 10` 且活跃天数 ≥3）写成常量摆在 `build.rs` 顶部，不藏在表达式里。
+3. **`relationship.types` 与 `tie_strength` 在契约里是自由 JSON。** 图这边定了自己的读法，读不出来就报 `UnreadableEdge` 而不是编造一个强度。手改过的行或旧版本写的行会走这条路。
+4. **群聊里只给「说过话的人」建边。** 一个五百人的群里潜水的人不该因为用户发了一条消息就长出一条边。代价是真的只潜水的熟人不会出现在图里。
+5. **`GraphBuild.audit` 由调用方落链。** 与 WP08 的做法一致：`soul-graph` 构造内容，握着打开的库的人写进去。`soulcore/src/commands/graph.rs` 就是这么做的。
+
+## WP06 完成情况
+
+`crates/soul-import` 落地：两个 v0.1 导入器加问卷回退。本机 `cargo test -p soul-import -p soul-graph -p soulcore -p soul-testkit` 绿，`xtask all` 绿。
+
+| 交付 | 证据 |
+|---|---|
+| soul-import-v1 逐行校验，合法 fixture 落加密库 | `tests/soul_import_v1.rs`：`valid_basic.jsonl` 解析出 2 个对象 2 个会话，提交后 5 条事件、3 个联系人。重复导入认出已有的人（`contacts_matched` 3，联系人表仍是 3） |
+| AC-04 库文件字节无明文 | 同文件 `a_valid_file_lands_sealed_with_no_plaintext_left_on_disk`：`flush` + `close` 之后扫目录下每个文件（含 `-wal`/`-shm`），fixture 里每一句正文都搜不到，**会话 id 也搜不到**（它是第三人标识符，入库前就哈希了）。反向断言正文仍能从 `open()` 取回，避免「什么都没写」也能过 |
+| AC-05 Telegram 映射与可读失败 | `tests/telegram.rs`：`result_basic.json` 出 3 个参与者 6 条消息 2 个会话，service 消息（通话）跳过，`text` 的分段数组拼回用户看到的那一句。失败侧对 `result_missing_fields.json` 断言 `messages`/`id`/`from_id`/`date_unixtime`/`date` 都被点名，定位串带 `chat_id=` 与 `message_id=`，且**三个会话标题一个都没出现在消息里**——个人会话的标题就是对方的名字 |
+| AC-03 导入侧问卷回退 | `tests/questionnaire.rs`：无文件时 `fallback_needed` 为真，只有 header 的空导出也为真。八题回答产出事件（`source: ui_questionnaire`、`kind: questionnaire_answer`）与证据（`kind: questionnaire`、`method: user_stated`、`subject: self`），证据的 `source_refs` 指回事件与题号。留白的一题不落任何行 |
+| 注入行只进数据通道 | `tests/injection_is_data.rs`：`injection_lines.jsonl` 五行全是合法数据，正常提交、正文能读回来，同时留下 `injection.blocked` 审计（`items: 5`，无正文）。对每一行、对 `ActionKind::ALL` 的每一个动作，以 `RequestOrigin::ExternalContent` 请求全部被拒且理由是 `external_content_not_authority`；语料里的 URL 逐个过 `NetGuard::closed()` 全部拒绝；形如 tool call 的那行解析成 JSON 之后仍然只是 JSON |
+| 错误信息可读且不含原文 | `tests/soul_import_v1.rs::a_refusal_reads_like_a_sentence_and_repeats_none_of_the_file`：每条 defect 有位置、有句子，`field` 只能是契约定义的名字；把所有 reason 拼起来，fixture 里每一句正文的任意 12 个 scalar 的窗口都搜不到。另一条测试把整段散文塞进 JSON 的**键**里，断言它不会被回显 |
+
+落地内容：`crates/soul-import/{model,soul_import_v1,telegram,commit,questionnaire,defect,redact,instant}.rs` 与五个测试文件；`fixtures/import/soul-import-v1/three_partners.jsonl`、`fixtures/import/questionnaire/answers_basic.json`；`soulcore/src/commands/import.rs`。
+
+### WP06 与 WP03 的接缝
+
+问卷答案在这一侧只落成**事件 + `user_stated` 证据**，不碰档案。交接点是 `questionnaire::UserStatedSink`：
+
+```rust
+pub trait UserStatedSink {
+    fn accept(&mut self, answer: &RecordedAnswer) -> Result<(), SinkError>;
+}
+```
+
+`RecordedAnswer` 只带 `event_id`、`evidence_id`、`method`（恒 `user_stated`）与 `question`（借自 `QUESTIONS`，所以题号一定是这套构建认得的）。哪一条答案动哪一根轴，由实现方决定——`soul-import` 不知道档案是什么，也不该知道。`CollectingSink` 是给 WP03 落地之前和测试用的。
+
+WP03 已经落地了自己的问卷入档路径（`soul-profile::questionnaire`），两条路并存且**题号不同**：`soul-import::questionnaire::QUESTIONS` 是八题，键形如 `voice.directness`；`soul-profile` 是七题，键形如 `q.axis.curiosity`。两者目前互不引用，写的证据也互不覆盖，但 v0.1 收尾前应该并成一套题号，否则用户会被问两遍。并的时候 `UserStatedSink` 就是那个接口——`soul-profile` 实现它即可，`soul-import` 一行不用改。
+
+### WP06 的取舍与遗留
+
+1. **契约顶层是 `oneOf`，所以字段级的报错是这个 crate 自己说的。** 校验器对一条坏消息行只能说「两个分支都不匹配」。转发 serde 的报错更糟：它的文本会把噎住它的那个值原样抬出来，而这正是拒绝信不能做的事。于是 `soul_import_v1::shape_defects` 把同一套要求写第二遍，句子从那里来，**能不能通过仍由 schema 说了算**。契约改了要同时改这里；`the_malformed_import_corpus_is_rejected_line_by_line` 与本 crate 的测试会一起红。
+2. **内容护栏有两道尺度。** 从文件里抬出来的**片段**（契约没定义的字段名）echo 4 个 scalar 就丢掉；本 crate 自己拼的**句子**要重复 12 个 scalar 才算引用。一开始两者都用 4，结果一个正文里恰好写了 `RFC 3339` 的文件，会把「你的时间戳不是 RFC 3339」这句解释本身消音——护栏惩罚了读信的人。
+3. **Telegram 的 `contacts.list` 不导入。** 电话簿条目有名字有号码但没有 user id，聊天消息有 user id 没有号码，没有连接键。硬并会造出重复的人或者错的人；只有在聊天里出现过的人才成为联系人。
+4. **时间取 `date_unixtime`，缺了就拒。** 旁边的 `date` 是本地墙钟没有偏移量，单靠它只能猜时区。fixture 里这两个字段本来就对不上，测试反过来利用了这一点来证明用的是哪一个。
+5. **标识符按来源加盐。** 一个 Telegram 导出里的 user `42` 和一个 `soul-import-v1` 文件里的 user `42` 是两个人，直到有东西把他们连起来。两个节点是用户看得见、能合并的错；一个节点装两个人是看起来对的错图。`import_to_graph.rs::identifiers_are_scoped_to_the_export_they_came_from` 把这个语义连同「两个 self 联系人时图会拒绝构建」一起钉住了。
+6. **同一个文件导入两次会写两遍事件。** v0.1 没有外部 id 索引可以去重，造一个就意味着要有一列存平台的消息 id。联系人是去重的（按标识符摘要），事件不是。要不要去重由调用方决定。
+7. **提交不是一个事务。** `commit` 逐条写联系人、密封、事件、证据；中途失败会留下写了一半的导入。WP02 的遗忘是单事务的，导入不是——`soul-store-api` 上没有可以让调用方开事务的入口，加一个是存储边界的改动，超出本工作单。重跑同一个文件是安全的（联系人会认回来），只是事件会多一份。
+
 ## 下一步
 
-批 3 的档案与记忆（WP03+WP04）已完成，人脉图与导入（WP05+WP06）见对应小节。不要启动 Goal 2。文件写入仍是 v0.1.1。
+批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成。不要启动 Goal 2。文件写入仍是 v0.1.1。
