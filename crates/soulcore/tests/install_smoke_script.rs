@@ -104,14 +104,42 @@ fn the_step_lines_the_script_prints_are_fields_of_a_step() {
 
 /// Silent, in both directions. A packaging smoke that pops a dialog is a
 /// packaging smoke nobody can run unattended.
+///
+/// `tauri.conf.json` builds NSIS, so `/S` is the switch that matters; the
+/// msiexec branch is there for a WiX target that does not exist yet, and is
+/// checked so it cannot rot into something interactive if it ever runs.
 #[test]
 fn the_install_and_the_uninstall_are_both_silent() {
+    assert!(SCRIPT.contains("@('/S')"), "the NSIS install is not silent");
+    assert!(
+        SCRIPT.contains("@('/S', \"_?=$directory\")"),
+        "the NSIS uninstall is not silent, or does not wait for itself",
+    );
     assert!(SCRIPT.contains("'/qn'"), "msiexec is not run quietly");
-    assert!(SCRIPT.contains("@('/i', $Installer)"));
-    assert!(SCRIPT.contains("@('/x', $Installer)"));
+    assert!(SCRIPT.contains("'/i', $Path"));
+    assert!(SCRIPT.contains("'/x', $InstallerPath"));
     assert!(
         SCRIPT.contains("finally {"),
         "the uninstall has to run even when a check above it failed",
+    );
+}
+
+/// AC-01 is that nothing asks for elevation. The script proves it by being
+/// unelevated itself while the installer runs: a bundle that wanted
+/// administrator would raise the prompt the criterion forbids.
+#[test]
+fn the_install_phase_refuses_to_run_as_administrator() {
+    assert!(
+        SCRIPT.contains("WindowsBuiltInRole]::Administrator"),
+        "the script never asks whether it is elevated",
+    );
+    assert!(
+        SCRIPT.contains("-Condition (-not (Test-RunningElevated))"),
+        "the elevation question is asked but not asserted on",
+    );
+    assert!(
+        SCRIPT.contains("$entry.Hive.StartsWith('HKCU:')"),
+        "a machine-wide install would satisfy every other check in the script",
     );
 }
 
@@ -160,5 +188,9 @@ fn the_script_looks_for_the_binaries_this_build_makes() {
     assert!(
         SCRIPT.contains(&format!("'{headless}.exe'")),
         "the script does not look for {headless}.exe",
+    );
+    assert!(
+        SCRIPT.contains("-ArgumentList @('smoke')"),
+        "the script does not ask for the main flow by name",
     );
 }
