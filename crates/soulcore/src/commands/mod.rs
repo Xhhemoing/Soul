@@ -26,9 +26,12 @@
 //! leave the audit to the crate underneath, which already writes it as part of
 //! the same call. `shell.rs` reaches neither the network nor the disk: it answers
 //! questions about this build's defaults, which is all a WebView is allowed to
-//! ask in WP09.
+//! ask in WP09. `fileplan.rs` reads the disk and never writes to it; it hands
+//! its audit entries back the way `policy.rs` does, and it has no `execute`,
+//! because the write half is v0.1.1.
 
 pub mod collect;
+pub mod fileplan;
 pub mod graph;
 pub mod import;
 pub mod memory;

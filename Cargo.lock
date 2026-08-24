@@ -1685,6 +1685,7 @@ dependencies = [
  "serde_json",
  "soul-collect",
  "soul-egress",
+ "soul-fileplan",
  "soul-graph",
  "soul-import",
  "soul-memory",
