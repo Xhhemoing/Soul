@@ -9,4 +9,4 @@
 
 过程稿在 `.agent_workspace/`。Goal 1 采纳方式：用本 crate 的 `score` 替换 `soul-graph` 的 `Tally::band`，不要把 SQLCipher 拉进算法 crate。
 
-落地前挡住项目的项见 `docs/BLOCKERS.md`（合入拓扑、Windows CI、T4D/A0 接线、灵魂层纠正）。
+落地前挡住项目的项见 `docs/BLOCKERS.md`（`BLOCKERS_FROZEN`）。
