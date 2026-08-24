@@ -427,6 +427,111 @@ fn the_approval_argument_is_required_and_must_carry_both_halves() {
     }
 }
 
+/// ------------------------------------------------------------ endpoint ---
+///
+/// The address the user types, over the real handler. `soulcore`'s
+/// `tests/session_e1.rs` holds a `Session` directly, so it proves the guard and
+/// the file; what only this side can show is that the two commands are
+/// registered, spelled the way `core.ts` spells them, and answer with a JSON
+/// object the 设置 page can read — one that says whether there is an endpoint
+/// and never what it is.
+#[test]
+fn an_endpoint_can_be_set_and_cleared_over_the_ipc() {
+    let shell = Shell::on(scratch());
+    let address = "http://127.0.0.1:11434/v1";
+
+    let configured = shell
+        .invoke("set_user_endpoint", json!({ "url": address }))
+        .expect("a loopback address is an address");
+    assert_eq!(configured["llm_endpoint_configured"], json!(true));
+    assert_eq!(configured["fully_closed"], json!(false));
+    assert_eq!(configured["open_capabilities"], json!(["llm_endpoint"]));
+    assert_eq!(
+        configured["llm_endpoint_notice"],
+        json!(soulcore::commands::shell::LLM_ENDPOINT_SESSION_ONLY_NOTICE),
+    );
+    assert!(
+        !configured.to_string().contains("11434"),
+        "the snapshot carried the address back to the WebView: {configured}",
+    );
+
+    let cleared = shell
+        .invoke("clear_user_endpoint", json!({}))
+        .expect("taking it back always works");
+    assert_eq!(cleared["llm_endpoint_configured"], json!(false));
+    assert_eq!(cleared["fully_closed"], json!(true));
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
+/// `url` is what `core.ts` sends, and something that is not an address comes
+/// back as a refusal the screen can render rather than as a saved endpoint.
+#[test]
+fn the_endpoint_argument_is_required_and_an_address_that_is_not_one_is_refused() {
+    let shell = Shell::on(scratch());
+    assert!(
+        shell.invoke("set_user_endpoint", json!({})).is_err(),
+        "a command that configures from a missing argument would hide a renamed one",
+    );
+
+    let refusal = shell
+        .invoke("set_user_endpoint", json!({ "url": "user:hunter2@nowhere" }))
+        .expect_err("that is not an address");
+    assert_eq!(refusal["reason_code"], json!("EGRESS_TARGET_UNPARSABLE"));
+    assert!(
+        !refusal.to_string().contains("hunter2"),
+        "the refusal read the address back at the screen: {refusal}",
+    );
+    assert_eq!(
+        shell
+            .invoke("config_snapshot", json!({}))
+            .expect("a snapshot")["llm_endpoint_configured"],
+        json!(false),
+    );
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
+/// AC-02 over the IPC: the address does not come back with the application,
+/// and the file beside the store never learned it.
+#[test]
+fn a_restart_finds_the_endpoint_unconfigured_again() {
+    let shell = Shell::on(scratch());
+    shell
+        .invoke("complete_wizard", json!({ "answers": { "acknowledged_defaults_are_off": true } }))
+        .expect("the wizard finishes");
+    assert_eq!(
+        shell
+            .invoke("set_user_endpoint", json!({ "url": "http://127.0.0.1:11434/v1" }))
+            .expect("the address is taken")["llm_endpoint_configured"],
+        json!(true),
+    );
+
+    let next_launch = shell.restart();
+    assert_eq!(
+        next_launch
+            .invoke("config_snapshot", json!({}))
+            .expect("a snapshot")["llm_endpoint_configured"],
+        json!(false),
+        "an endpoint came back across a restart",
+    );
+
+    let config = std::fs::read_to_string(
+        next_launch
+            .directory
+            .join(soulcore::commands::session::CONFIG_FILE_NAME),
+    )
+    .unwrap_or_default();
+    for word in ["llm", "endpoint", "http", "11434"] {
+        assert!(
+            !config.contains(word),
+            "`{word}` reached config.json: {config}",
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&next_launch.directory);
+}
+
 /// WP11 over the IPC. A directory nobody authorized is not scannable, and the
 /// view the shell starts from says so with the core's own sentence.
 #[test]

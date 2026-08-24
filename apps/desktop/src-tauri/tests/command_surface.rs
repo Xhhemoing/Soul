@@ -106,6 +106,27 @@ fn the_shell_never_hands_the_collector_a_source_of_its_own() {
     }
 }
 
+/// The address the user types is parsed in one place, and it is not here.
+///
+/// `soul-policy`'s `Origin::parse` is what the whole egress promise rests on:
+/// it decides what counts as the configured endpoint, and the redirect check
+/// inside `soul-egress` has to mean the same thing by it. A shell that
+/// normalized, defaulted or pre-validated an address before forwarding it would
+/// be a second parser, and the two would agree right up until they did not —
+/// at which point the origin the user approved and the origin that is contacted
+/// would be different strings.
+#[test]
+fn the_shell_never_reads_an_endpoint_address_itself() {
+    for (name, source) in [("commands.rs", COMMANDS_RS), ("lib.rs", LIB_RS)] {
+        for parser in ["Origin", "EgressConfig", "NetGuard", "with_user_endpoint"] {
+            assert!(
+                !source.contains(parser),
+                "{name} names {parser}; deciding what an address means is the core's business",
+            );
+        }
+    }
+}
+
 /// WP09's brief: the shell forwards, it does not decide. A command body long
 /// enough to hold a decision is the signal that something moved into the UI
 /// layer that belongs in `soulcore`.
