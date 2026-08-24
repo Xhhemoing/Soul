@@ -34,13 +34,24 @@
 //! comes back as [`DraftCommandError::Generation`] with
 //! [`ReasonCode::E1CrossOriginRedirect`] on it, not as a template draft that
 //! quietly pretends nothing happened.
+//!
+//! [`draft_view`] and [`DraftView`] are the same path with a screen at the end
+//! of it. Nothing about the policy changes: the view calls [`draft_reply`] and
+//! appends no audit entry of its own. What it adds is the shape a WebView may
+//! receive — counts, four sentences this module owns, and the drafted text —
+//! and the two facts that are true by construction rather than by field:
+//! `never_sent`, because there is no code path in this product that sends one,
+//! and an exemption that is always absent, because forwarding one message's
+//! original prose needs a per-turn consent screen this round does not have.
 
+use serde::Serialize;
 use uuid::Uuid;
 
 use soul_policy::audit::{append_or_store_error, AuditContent};
 use soul_policy::hitl::{
     ActionKind, ActionRequest, CapabilityScope, HitlDenial, PlanHash, RequestOrigin,
 };
+use soul_policy::injection::UntrustedText;
 use soul_policy::net_guard::OriginError;
 use soul_policy::redactor::{KnownIdentifiers, OneShotExemption, Turn};
 use soul_policy::ReasonCode;
@@ -52,6 +63,8 @@ use soul_store_api::{BlobStore, GraphStore};
 use crate::commands::graph as graph_commands;
 use crate::commands::policy::{e1_plan, E1Refusal, PolicySession, TokenRefused};
 use crate::commands::profile as profile_commands;
+use crate::commands::shell::{self, Session, ViewRefused, ENDPOINT_UNUSABLE_EXPLANATION};
+use crate::commands::store::StoreSlot;
 use crate::Config;
 
 /// The WP10 types a caller names, re-exported so a host does not have to add
@@ -382,4 +395,142 @@ fn finish(
         (Ok(_), Some(error)) => Err(DraftCommandError::Store(error)),
         (Err(error), _) => Err(error),
     }
+}
+
+// --------------------------------------------------------------- the view
+
+/// The model name the view path asks for.
+///
+/// It reaches nothing in this build. A view draft runs under the session
+/// [`session_for`] returns for a configuration with no endpoint, which is
+/// every configuration the shell can produce — there is no way to write
+/// `Config::llm_endpoint` from the desktop — so the route is always
+/// [`DraftRoute::Template`] and the E1 branch that would use this name is
+/// unreachable. It is a constant rather than a caller's argument so that
+/// remains a fact about the code instead of a habit of the shell.
+pub const VIEW_MODEL: &str = "local-model";
+
+/// What the draft page says under the result, whatever the result is.
+///
+/// The claim is structural, not aspirational: `soul-draft` has no transport,
+/// this crate's only outbound path is `PolicySession::e1_generate`, and
+/// nothing anywhere takes a finished draft as an argument. The last clause is
+/// there because the honest version of "we will not send it" also has to say
+/// who decides.
+pub const DRAFT_NEVER_SENT_EXPLANATION: &str =
+    "这是一份草稿。本产品没有把它发出去的代码路径：要不要用、发给谁、什么时候发，都由你自己决定。";
+
+/// How the template route describes itself, in one line under the draft.
+pub const TEMPLATE_ROUTE_LABEL: &str = "本机模板写成，没有任何字节出网。";
+
+/// How the E1 route would describe itself. No shipped configuration reaches
+/// it; the line exists so the label is visibly chosen per route rather than
+/// being a constant that happens to be true today.
+pub const E1_ROUTE_LABEL: &str = "由你自己配置的模型端点写成，只发出了那一次请求。";
+
+/// What the draft page says when the paste box was empty.
+pub const EMPTY_PASTE_EXPLANATION: &str = "粘贴框是空的。先把要回复的那段话贴进来，再让它起草。";
+
+/// One draft, in the shape a WebView may hold.
+///
+/// Private fields and one constructor, which is what makes `never_sent`
+/// worth reading: there is no second way to build this value and no setter, so
+/// the field cannot be written `false` by any caller — the way
+/// `FilePlanPreview::written_to_disk` is structurally false in
+/// `soul-fileplan`.
+///
+/// `Serialize` and not `Deserialize`, for the same reason: a value that could
+/// be parsed back could be parsed out of anything, and then "this draft was
+/// never sent" would be a claim about a JSON document rather than about this
+/// build.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DraftView {
+    text: String,
+    /// `"template"` or `"e1"`, from [`DraftRoute::as_str`].
+    route: String,
+    /// The same route as a sentence the shell renders verbatim.
+    route_label: String,
+    turns: usize,
+    third_party_turns: usize,
+    placeheld_turns: usize,
+    /// Always false on this path: the view never mints an exemption.
+    carries_exempted_original: bool,
+    /// Always true; see the type note.
+    never_sent: bool,
+    notice: String,
+}
+
+impl DraftView {
+    pub fn of(outcome: &DraftOutcome) -> DraftView {
+        let stats = outcome.stats();
+        DraftView {
+            text: outcome.text().to_owned(),
+            route: outcome.route().as_str().to_owned(),
+            route_label: route_label(outcome.route()).to_owned(),
+            turns: stats.turns(),
+            third_party_turns: stats.third_party_turns(),
+            placeheld_turns: stats.placeheld_turns(),
+            carries_exempted_original: stats.carries_exempted_original(),
+            never_sent: true,
+            notice: DRAFT_NEVER_SENT_EXPLANATION.to_owned(),
+        }
+    }
+}
+
+const fn route_label(route: DraftRoute) -> &'static str {
+    match route {
+        DraftRoute::Template => TEMPLATE_ROUTE_LABEL,
+        DraftRoute::E1 => E1_ROUTE_LABEL,
+    }
+}
+
+/// Draft a reply from what the user pasted, for the draft page.
+///
+/// The order is the policy and it is fixed. The store is looked for first,
+/// because everything after it records something; the paste is checked next,
+/// so an empty box costs no audit entry; and only then does anything happen
+/// that the chain has to remember.
+///
+/// Every pasted item becomes a [`PastedTurn::unattributed`] turn. The page has
+/// no "who said this" control and inventing one here would be worse than not
+/// having it: `Mixed` is counted as somebody else's by the redactor, so an
+/// unattributed line is placeheld rather than quoted, and a mistaken `Owner`
+/// would put a third party's prose in front of a model.
+pub fn draft_view(
+    slot: &StoreSlot,
+    session: &Session,
+    pasted: Vec<String>,
+) -> Result<DraftView, ViewRefused> {
+    let Some(mut store) = slot.lock() else {
+        return Err(ViewRefused::no_store_opened());
+    };
+
+    let turns: Vec<PastedTurn> = pasted
+        .iter()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .map(|line| PastedTurn::unattributed(UntrustedText::new(line.to_owned())))
+        .collect();
+    if turns.is_empty() {
+        return Err(ViewRefused::empty_paste(EMPTY_PASTE_EXPLANATION));
+    }
+
+    let config = session.config();
+    let identifiers =
+        known_identifiers(&store).map_err(|error| ViewRefused::refused(None, error.to_string()))?;
+    let mut policy = session_for(&config, identifiers)
+        .map_err(|_| ViewRefused::refused(None, ENDPOINT_UNUSABLE_EXPLANATION))?;
+
+    let (now_ms, at_unix_seconds) = shell::wall_clock();
+    let request = DraftRequest::new(
+        session.draft_profile_id(),
+        turns,
+        VIEW_MODEL,
+        now_ms,
+        at_unix_seconds,
+    );
+
+    let outcome = draft_reply(&mut store, &mut policy, request)
+        .map_err(|error| ViewRefused::refused(error.reason_code(), error.to_string()))?;
+    Ok(DraftView::of(&outcome))
 }

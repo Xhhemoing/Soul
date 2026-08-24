@@ -6,9 +6,14 @@
 //! something to bind to that is not a database handle. There is no UI, no
 //! policy, and no formatting: WP08 owns the audit and permission decisions that
 //! will wrap these calls, and each of them is a separate work package.
+//!
+//! [`StoreSlot`] arrived with the WP09 views and is the exception that proves
+//! the rule: a host manages one before it has opened anything, so a build that
+//! never opens a database — the mock runtime every desktop test runs under —
+//! answers "no store" instead of panicking on state that was never inserted.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use soul_store_api::forget::{ForgetImpact, ForgetOps, ForgetReceipt, ForgetUnit};
 use soul_store_api::research::{ResearchPreview, ResearchPreviewReport, ResearchPreviewRequest};
@@ -101,6 +106,50 @@ impl SessionStore {
     /// Where the key came from, as observed at open time.
     pub fn key_protection(&self) -> KeyProtection {
         self.key_protection
+    }
+}
+
+/// Where a host puts the one store handle, and what it holds before that.
+///
+/// Empty is a state, not a failure: a process that has not opened a database
+/// yet is the ordinary condition of the mock runtime, and a view that asks for
+/// one gets a sentence rather than a panic. The alternative — managing the
+/// handle itself — makes "the database is not open" unrepresentable, so every
+/// caller in a runtime without one crashes instead of refusing.
+///
+/// A [`OnceLock`] rather than a `Mutex<Option<…>>` for two reasons. It makes
+/// the "filled exactly once" rule the type's own, so [`StoreSlot::install`]
+/// cannot be talked into replacing a live handle with a second connection to
+/// the same file; and it lets [`StoreSlot::lock`] hand back a guard borrowed
+/// from the slot, which a value behind an outer lock could not do.
+#[derive(Debug, Default)]
+pub struct StoreSlot {
+    handle: OnceLock<Arc<Mutex<SqlCipherStore>>>,
+}
+
+impl StoreSlot {
+    /// Fill the slot. True the first time and false afterwards.
+    ///
+    /// The second call is refused rather than ignored: two handles means two
+    /// write-ahead logs against one database, and a host that thinks it has
+    /// re-opened the store should hear so at the call site.
+    #[must_use]
+    pub fn install(&self, handle: Arc<Mutex<SqlCipherStore>>) -> bool {
+        self.handle.set(handle).is_ok()
+    }
+
+    /// The open store, if this process has one.
+    ///
+    /// A poisoned lock recovers the way [`crate::commands::shell::Session`]
+    /// does: what is behind it is a database connection, and a thread that
+    /// panicked while holding it has not made the rows unreadable.
+    pub fn lock(&self) -> Option<MutexGuard<'_, SqlCipherStore>> {
+        Some(
+            self.handle
+                .get()?
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+        )
     }
 }
 

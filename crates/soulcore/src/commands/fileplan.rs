@@ -18,10 +18,19 @@
 //!   either: `soul-fileplan` names a directory with a digest of its path,
 //!   which is not a path but would still let a reader of the chain confirm a
 //!   guess about one, so the chain gets the scan's own UUID instead.
+//!
+//! [`fileplan_view`] and [`FilePlanView`] put the same two calls behind one
+//! screen. The third care is theirs: a refusal is the refusal's own words. An
+//! unauthorized path comes back as `FilePlanError`'s `Display`, which names
+//! the roots the user did authorize and never the path they asked about —
+//! repeating it would turn every refusal into an answer about what exists.
 
 use std::path::Path;
 
-use soul_fileplan::{AuthorizedRoots, FilePlanError, FilePlanPreview, ScanReport};
+use serde::Serialize;
+use soul_fileplan::{
+    AuthorizedRoots, FilePlanError, FilePlanPreview, PlanAction, PlanEntry, ScanReport,
+};
 use soul_policy::audit::{append_or_store_error, AuditContent};
 use soul_policy::hitl::{ActionKind, ActionRequest, HitlDenial, PlanHash, RequestOrigin};
 use soul_policy::ReasonCode;
@@ -30,7 +39,10 @@ use soul_store::SqlCipherStore;
 use soul_store_api::types::StoreError;
 use uuid::Uuid;
 
+use crate::commands::draft::{known_identifiers, session_for};
 use crate::commands::policy::PolicySession;
+use crate::commands::shell::{self, Session, ViewRefused, ENDPOINT_UNUSABLE_EXPLANATION};
+use crate::commands::store::StoreSlot;
 
 /// Read one authorized directory and record that it happened.
 ///
@@ -151,4 +163,180 @@ fn counted(items: usize) -> AuditCounts {
         items: Some(items as u64),
         bytes: None,
     }
+}
+
+// --------------------------------------------------------------- the view
+
+/// What the file page says under the suggestions, whatever they are.
+///
+/// True by construction rather than by intent: this crate has no call that
+/// moves, renames or removes a file, `soul-fileplan` has no `execute`, and the
+/// one capability that would authorise a write is refused on issue. Carrying
+/// a plan out is v0.1.1, and the sentence says so rather than leaving the user
+/// to wonder whether the button is missing or the feature is.
+pub const PLAN_PREVIEW_ONLY_EXPLANATION: &str =
+    "以下只是建议。本版本没有执行它的代码路径：一个文件都不会被移动、改名或删除，\
+     磁盘上的东西保持原样。真正动手整理是 v0.1.1 的事。";
+
+/// The three suggestions, in the words the page shows.
+///
+/// Chinese here rather than in the WebView for the reason every other notice
+/// in this crate is: the words are part of what the product promises — 归类
+/// and 移动 are suggestions, not actions taken — and a translation table in
+/// TypeScript is one `cargo test` cannot read.
+pub const GROUP_ACTION_LABEL: &str = "归类";
+pub const MOVE_ACTION_LABEL: &str = "移动";
+pub const RENAME_ACTION_LABEL: &str = "重命名";
+
+/// One suggestion, in the shape a WebView may hold.
+///
+/// Relative paths, because that is what the plan is about and it is the user's
+/// own disk. The audit chain gets neither; see the module note.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FilePlanEntryView {
+    source_rel: String,
+    /// `"group"`, `"move"` or `"rename"`, from [`PlanAction::as_str`].
+    action: String,
+    /// The same action in the word the page shows.
+    action_label: String,
+    target_rel: Option<String>,
+}
+
+impl FilePlanEntryView {
+    fn of(entry: &PlanEntry) -> FilePlanEntryView {
+        FilePlanEntryView {
+            source_rel: encode(entry.source_rel()),
+            action: entry.action().as_str().to_owned(),
+            action_label: action_label(entry.action()).to_owned(),
+            target_rel: entry.target_rel().map(encode),
+        }
+    }
+}
+
+/// One scan and the plan it produced, in the shape a WebView may hold.
+///
+/// Private fields and one constructor, so `written_to_disk` is the same kind
+/// of claim as `FilePlanPreview::written_to_disk`: not a field a caller sets,
+/// therefore not a field a later caller can be persuaded to set. `Serialize`
+/// and not `Deserialize`, so the value cannot be parsed back out of a document
+/// that says something else.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FilePlanView {
+    scan_id: String,
+    file_count: usize,
+    dir_count: usize,
+    skipped_escaping_links: usize,
+    entry_count: usize,
+    group_count: usize,
+    move_count: usize,
+    rename_count: usize,
+    entries: Vec<FilePlanEntryView>,
+    /// Always false; see the type note.
+    written_to_disk: bool,
+    notice: String,
+}
+
+impl FilePlanView {
+    pub fn of(report: &ScanReport, preview: &FilePlanPreview) -> FilePlanView {
+        FilePlanView {
+            scan_id: preview.scan_id().to_string(),
+            file_count: report.file_count(),
+            dir_count: report.dir_count(),
+            skipped_escaping_links: report.skipped_escaping_links(),
+            entry_count: preview.len(),
+            group_count: preview.count_of(PlanAction::Group),
+            move_count: preview.count_of(PlanAction::Move),
+            rename_count: preview.count_of(PlanAction::Rename),
+            entries: preview
+                .entries()
+                .iter()
+                .map(FilePlanEntryView::of)
+                .collect(),
+            written_to_disk: false,
+            notice: PLAN_PREVIEW_ONLY_EXPLANATION.to_owned(),
+        }
+    }
+}
+
+const fn action_label(action: PlanAction) -> &'static str {
+    match action {
+        PlanAction::Group => GROUP_ACTION_LABEL,
+        PlanAction::Move => MOVE_ACTION_LABEL,
+        PlanAction::Rename => RENAME_ACTION_LABEL,
+    }
+}
+
+/// A relative path as one string, components joined with `/`.
+///
+/// The same encoding `FilePlanPreview::to_plan_json` uses, so what the page
+/// shows and what an approval would be taken over spell a path the same way on
+/// every host. `Path::display` would not: it keeps the separator the platform
+/// happens to use.
+fn encode(rel_path: &Path) -> String {
+    rel_path
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<String>>()
+        .join("/")
+}
+
+/// Scan one directory and show what tidying it would look like.
+///
+/// The order is fixed. The store comes first, because both calls below record
+/// what they did. The roots are re-resolved from the session's configuration
+/// rather than taken from the caller: the WebView asks about a directory, and
+/// which directories may be asked about is a decision this crate keeps.
+///
+/// `approved` is `None` on this path. The user is being shown the plan for the
+/// first time, so there is no earlier hash to hold it to — and there is no
+/// second call that would carry it out anyway.
+pub fn fileplan_view(
+    slot: &StoreSlot,
+    session: &Session,
+    target: String,
+) -> Result<FilePlanView, ViewRefused> {
+    let Some(mut store) = slot.lock() else {
+        return Err(ViewRefused::no_store_opened());
+    };
+
+    let config = session.config();
+    let roots = AuthorizedRoots::canonicalized(&config.authorized_roots)
+        .map_err(|error| as_refused(&FilePlanRefusal::Path(error)))?;
+    let identifiers =
+        known_identifiers(&store).map_err(|error| ViewRefused::refused(None, error.to_string()))?;
+    let mut policy = session_for(&config, identifiers)
+        .map_err(|_| ViewRefused::refused(None, ENDPOINT_UNUSABLE_EXPLANATION))?;
+
+    let (now_ms, at_unix_seconds) = shell::wall_clock();
+    let report = scan_directory(
+        &mut policy,
+        &mut store,
+        &roots,
+        Path::new(&target),
+        RequestOrigin::User,
+        now_ms,
+        at_unix_seconds,
+    )
+    .map_err(|refusal| as_refused(&refusal))?;
+    let preview = plan_files(
+        &mut policy,
+        &mut store,
+        &report,
+        None,
+        RequestOrigin::User,
+        now_ms,
+        at_unix_seconds,
+    )
+    .map_err(|refusal| as_refused(&refusal))?;
+
+    Ok(FilePlanView::of(&report, &preview))
+}
+
+/// A refusal in its own words, with the code the chain recorded beside it.
+///
+/// `to_string` and not a sentence assembled here: `FilePlanError` is written
+/// so that the refusal names the authorized roots and not the path that was
+/// asked about, and anything this layer composed would have to re-earn that.
+fn as_refused(refusal: &FilePlanRefusal) -> ViewRefused {
+    ViewRefused::refused(Some(refusal.reason_code()), refusal.to_string())
 }

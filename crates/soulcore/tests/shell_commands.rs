@@ -8,10 +8,10 @@
 use std::path::PathBuf;
 
 use soulcore::commands::shell::{
-    authorize_root, authorized_roots, cloud_toggle, complete_wizard, config_snapshot, CloudNotice,
-    ConfigSnapshot, KeyProtection, RootRefusedReason, Session, WizardAnswers, WizardRefused,
-    CLOUD_NOT_YET_AVAILABLE_LABEL, DESKTOP_BINARY_NAME, KEY_FILE_NOT_PROTECTED_EXPLANATION,
-    NO_STORE_OPENED_EXPLANATION,
+    authorize_root, authorized_roots, cloud_toggle, complete_wizard, config_snapshot, wall_clock,
+    CloudNotice, ConfigSnapshot, KeyProtection, RootRefusedReason, Session, WizardAnswers,
+    WizardRefused, CLOUD_NOT_YET_AVAILABLE_LABEL, DESKTOP_BINARY_NAME,
+    KEY_FILE_NOT_PROTECTED_EXPLANATION, NO_STORE_OPENED_EXPLANATION,
 };
 use soulcore::commands::store::{
     open_store_choosing_keys, open_store_for_session, KeyError, KeyProvider, KeyResult, SecretKey,
@@ -544,4 +544,69 @@ fn the_wizard_has_no_way_to_authorise_anything() {
 fn the_authorised_list_is_empty_until_someone_authorises_something() {
     assert!(authorized_roots(&Config::default()).is_empty());
     assert_eq!(config_snapshot().authorized_root_count, 0);
+}
+
+// ------------------------------------------------------ what the views read
+
+/// The views need the configuration itself, not the snapshot: WP11 compares
+/// against resolved paths, and a count of them is not something to compare.
+#[test]
+fn the_session_hands_the_views_the_directory_it_just_authorised() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let session = Session::new();
+    assert!(session.config().authorized_roots.is_empty());
+
+    session
+        .authorize_root(dir.path().to_str().expect("a utf-8 temporary path"))
+        .expect("the path is a real directory");
+
+    let canonical = dir.path().canonicalize().expect("canonical form");
+    assert_eq!(session.config().authorized_roots, vec![canonical]);
+    assert!(
+        session.config().llm_endpoint.is_none(),
+        "nothing in the shell can write an endpoint, so the views never see one",
+    );
+}
+
+/// The profile the draft view writes in the voice of is minted once and kept.
+///
+/// Both halves matter. Stable within a session is what makes a voice the user
+/// sets apply to the next draft; different between sessions is what keeps it
+/// from being a constant somebody wrote down, which would make every
+/// installation draft as the same person.
+#[test]
+fn a_session_drafts_under_one_profile_and_the_next_one_under_another() {
+    let session = Session::new();
+    assert_eq!(session.draft_profile_id(), session.draft_profile_id());
+
+    let another = Session::new();
+    assert_ne!(session.draft_profile_id(), another.draft_profile_id());
+
+    // Finishing the wizard replaces the configuration, not the identity: a
+    // draft after the wizard has to read the same voice as one before it.
+    let before = session.draft_profile_id();
+    session
+        .complete_wizard(&WizardAnswers {
+            acknowledged_defaults_are_off: true,
+        })
+        .expect("the wizard finishes");
+    assert_eq!(session.draft_profile_id(), before);
+}
+
+/// One reading, two units. The audit entry and the action check have to be
+/// describing the same moment, so they come from the same call.
+#[test]
+fn the_wall_clock_answers_in_both_units_at_once() {
+    let (now_ms, at_unix_seconds) = wall_clock();
+
+    // 2020-01-01, which every machine that can run the test suite is past.
+    assert!(
+        at_unix_seconds > 1_577_836_800,
+        "the clock reads {at_unix_seconds}"
+    );
+    assert_eq!(
+        now_ms / 1_000,
+        u64::try_from(at_unix_seconds).expect("a time after the epoch"),
+        "the two units came from two readings",
+    );
 }

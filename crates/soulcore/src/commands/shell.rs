@@ -23,11 +23,22 @@
 //! carries where the database key actually came from, because "your key is
 //! protected" is a claim about the operating system and `docs/SECURITY.md`
 //! forbids making it before DPAPI exists.
+//!
+//! The two views WP09 grew later — drafting and the file plan — refuse in this
+//! module's vocabulary rather than each inventing their own. [`ViewRefused`]
+//! is the shape [`RootRefused`] already established, and [`wall_clock`] is
+//! here so a host function reads the clock inside this crate: the command
+//! layer above is one line per command by construction, and a line that reads
+//! a clock is a line that decides what "now" means.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use soul_policy::ReasonCode;
 
 use crate::config::{CloudState, Config};
 
@@ -362,6 +373,103 @@ impl RootRefused {
     }
 }
 
+/// What a view says when this process has no database open.
+///
+/// Every clause is checkable. Both host functions write to the audit chain
+/// through the crate underneath them, and the chain lives in the store, so
+/// there is nowhere to record the request and therefore nothing honest to do
+/// but refuse. A real installation opens the database while it starts up; the
+/// mock runtime the desktop tests use opens nothing at all, which is what
+/// makes this the sentence those tests see.
+pub const NO_STORE_FOR_VIEW_EXPLANATION: &str =
+    "本次会话没有打开本机数据库。起草和文件计划都要把这次请求写进审计链，没有库就没有地方写，\
+     所以这里只能拒绝。真机在启动时打开它；测试用的模拟运行时不开库，看到的就是这句话。";
+
+/// What a view says when the configured endpoint cannot be parsed.
+///
+/// A fixed sentence rather than the parse error's own text: `OriginError`
+/// repeats the URL it was handed, and the endpoint the user typed has no
+/// business in a value that crosses the IPC boundary. Unreachable from the
+/// desktop, which has no way to write one; it is here because the branch that
+/// would need it must not be the branch that invents a sentence.
+pub const ENDPOINT_UNUSABLE_EXPLANATION: &str =
+    "配置里的模型端点解析不出来，所以这次没有继续。请到设置页把它改成一个完整的地址。";
+
+/// Why a view has nothing to show.
+///
+/// Same shape as [`RootRefused`], for the same reason: the WebView renders
+/// `message` and does not compose one. `code` is the audit chain's own reason
+/// code where the refusal had one — `PATH_NOT_AUTHORIZED` and the rest — so a
+/// caller can branch on the decision without parsing a sentence, and `None`
+/// where the failure was not a policy decision at all.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, thiserror::Error)]
+#[error("{message}")]
+pub struct ViewRefused {
+    pub reason: ViewRefusedReason,
+    pub code: Option<String>,
+    pub message: String,
+}
+
+impl ViewRefused {
+    /// No database is open in this process; see [`NO_STORE_FOR_VIEW_EXPLANATION`].
+    pub(crate) fn no_store_opened() -> ViewRefused {
+        ViewRefused {
+            reason: ViewRefusedReason::NoStoreOpened,
+            code: None,
+            message: NO_STORE_FOR_VIEW_EXPLANATION.to_owned(),
+        }
+    }
+
+    /// The user pressed the button with nothing in the box.
+    pub(crate) fn empty_paste(message: impl Into<String>) -> ViewRefused {
+        ViewRefused {
+            reason: ViewRefusedReason::EmptyPaste,
+            code: None,
+            message: message.into(),
+        }
+    }
+
+    /// The core was asked and said no. `message` is the refusal's own `Display`
+    /// text, never a sentence this layer assembled: the errors underneath are
+    /// written to name what the user can act on and to leave out what they
+    /// asked about, and re-wording one here would lose both properties.
+    pub(crate) fn refused(code: Option<ReasonCode>, message: impl Into<String>) -> ViewRefused {
+        ViewRefused {
+            reason: ViewRefusedReason::Refused,
+            code: code.map(|code| code.as_str().to_owned()),
+            message: message.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ViewRefusedReason {
+    /// Nothing is open, so nothing can be recorded. Not the user's doing.
+    NoStoreOpened,
+    /// The paste box was empty, or held only whitespace.
+    EmptyPaste,
+    /// A gate said no: policy, authorization, or the store itself.
+    Refused,
+}
+
+/// Now, in the two units the command surface counts in.
+///
+/// Milliseconds for the token and action clocks, whole seconds for the audit
+/// entry. Both come from one reading so the record and the decision cannot
+/// describe two different moments. A clock before the epoch yields zero rather
+/// than a panic: an unset system clock is a reason to record a wrong time, not
+/// a reason to refuse a draft the user is waiting for.
+pub fn wall_clock() -> (u64, i64) {
+    let since_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    (
+        u64::try_from(since_epoch.as_millis()).unwrap_or(u64::MAX),
+        i64::try_from(since_epoch.as_secs()).unwrap_or(i64::MAX),
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RootRefusedReason {
@@ -388,10 +496,29 @@ pub struct Session {
     state: Mutex<SessionState>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct SessionState {
     config: Config,
     keys: KeyProtection,
+    draft_profile_id: Uuid,
+}
+
+/// Written out rather than derived because of the third field.
+///
+/// The draft view needs a profile to read a voice from, and `soul-profile`
+/// answers for an unknown identifier with a blank profile — five unknown axes
+/// and a neutral voice — so one minted here is enough to draft with and needs
+/// no questionnaire behind it. Minting it once per session is what makes two
+/// drafts in one run read the same voice; minting it per draft would silently
+/// discard anything the user had set.
+impl Default for SessionState {
+    fn default() -> SessionState {
+        SessionState {
+            config: Config::default(),
+            keys: KeyProtection::default(),
+            draft_profile_id: Uuid::now_v7(),
+        }
+    }
 }
 
 impl Session {
@@ -408,6 +535,25 @@ impl Session {
 
     pub fn key_protection(&self) -> KeyProtection {
         self.lock().keys
+    }
+
+    /// The configuration itself, for the host functions that need more of it
+    /// than a [`ConfigSnapshot`] carries — the authorised roots as paths, and
+    /// whether an endpoint is configured.
+    ///
+    /// A clone taken under the one lock, so what a caller works from is one
+    /// moment rather than a borrow it holds while the user changes something.
+    /// It stays inside Rust: `llm_endpoint` is in here, and no DTO in this
+    /// crate has a field it could reach.
+    pub fn config(&self) -> Config {
+        self.lock().config.clone()
+    }
+
+    /// The profile the views draft in the voice of. Minted once when the
+    /// session is created and stable for as long as it lives, so two drafts in
+    /// one run read the same voice.
+    pub fn draft_profile_id(&self) -> Uuid {
+        self.lock().draft_profile_id
     }
 
     pub fn snapshot(&self) -> ConfigSnapshot {
