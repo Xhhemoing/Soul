@@ -301,7 +301,7 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 6. **托盘装不上时窗口就正常关闭。** 关窗收进托盘只有在真有托盘时才成立；没有通知区域的桌面上，那会变成关不掉又退不出的窗口。`tray::install_or_report` 把这次会话有没有托盘记进 state，关窗处理读它。Windows 11 一定有托盘，这条是给别的环境和调试用的。
 7. **`soulcore/src/commands/shell.rs` 里的 `ConfigSnapshot` 是壳自己的视图，不是 `Config` 的序列化。** 它只带界面要显示的那几个布尔与计数，**不带 LLM 端点字符串**（`the_snapshot_carries_no_endpoint_string` 钉住）：界面没有理由拿到那个地址，而每一个跨进程边界的字符串都是一次泄漏机会。要显示端点内容，得先想清楚为什么。
 8. ~~**壳还没有连真的 store。**~~ **已消除（WP13 第二段）。** `run` 在 `lib.rs` 里造一个 `Session` 并 `manage` 起来，`configure` 把它当参数收，每个命令拿 `State<'_, SessionState>`。「一个进程一个句柄」因此是调用图上的性质，不是习惯：第二次 `configure` 得有人专门再造一个 session 递给它。
-9. ~~**起草 / 文件计划 / 导入 / 记忆 / 人脉这些路由是空的，但不是白屏。**~~ **已消除（WP10 起草、WP13 第二段的 `/files` 与 `/graph`、WP09 第三段的其余四条）。** `router.tsx` 里已经没有 `ownedBy` 了，`components/Pending.tsx` 留着但没有人再引用它——留着是因为下一个空路由该长这样，删掉等于让下一个人自己发明一种空页面。那两条钉住形状的断言一条没删：起草页现在读作「有输入框，没有发送按钮」，文件计划页仍然是「没有任何执行按钮」，两条的后半句一个字没改，这正是它们当初的用途。
+9. ~~**起草 / 文件计划 / 导入 / 记忆 / 人脉这些路由是空的，但不是白屏。**~~ **已消除（WP10 起草、WP13 第二段的 `/files` 与 `/graph`、WP09 第三段的其余四条）。** `router.tsx` 里已经没有 `ownedBy` 了，`components/Pending.tsx` 与 `App.tsx` 里那个 `route.ownedBy === null ? null : ...` 分支都留着，只是走不到——留着是因为下一个空路由该长这样，删掉等于让下一个人自己发明一种空页面。那两条钉住形状的断言一条没删：起草页现在读作「有输入框，没有发送按钮」，文件计划页仍然是「没有任何执行按钮」，两条的后半句一个字没改，这正是它们当初的用途。
 10. **前端没有组件快照。** 断言全是「用户能看见什么」（`getByRole` / 可见文本），不是 DOM 结构。快照测试会在改版式的时候整片变红，却挡不住把云开关文案改掉这种真问题。测试文件从第一段的 4 个长到 11 个，写法一直是这一种。
 
 ## WP10 完成情况
@@ -517,7 +517,7 @@ Goal 1 剩下的三件事里的第一件：向导把十一道题画出来了，`
 | `/memory`：四种写，加两步的遗忘 | `Memory.test.tsx` 10 项。看影响面只是问价：`ForgetPreview.destroys_anything` 在 TypeScript 里是字面量 `false`，看完之后核心那边一次遗忘也没有发生。真要遗忘得把核心发的那个 `preview_id` 原样带回去，带错的会被挡下来且什么都不销毁（`session_screens.rs::a_forget_only_runs_on_the_preview_the_user_read` 在 Rust 那一侧连着查了三次「拒绝之后那条记忆还读得出来」）。已经遗忘的那一条打不开也遗忘不了第二次，它在列表里是墓碑 |
 | AC-20 `/research`：只在屏幕上 | `Research.test.tsx` 7 项。`written_to_disk` 与 `third_party_rows` 在 TypeScript 里的类型是字面量 `false` 与 `0`，想显示成别的值的组件编不过。行是计数与桶，没有一列能放正文或姓名。页面上没有导出按钮，而且不是靠藏：`core.ts` 列全了壳能调的 27 个命令，测试在那张表上搜写文件的动词。`session_screens.rs` 那一侧把数据目录在预览前后各列一遍——AC-20 承诺的是没写，一个不存在的文件比一条不存在的代码路径好查 |
 | `/audit`：链回放，没有正文 | `Audit.test.tsx` 7 项。每一条是序号、时间、动作、结论、理由码、几个编号和几个计数，加前后两个哈希与一个 `follows_previous`，所以链断了看得出断在哪一条，而不是只知道断了。`session_screens.rs` 先往库里写一条带正文的记忆，再把整条链格式化出来搜那段正文 |
-| 一条空路由都没有 | `App.test.tsx::没有一个路由还是空的` 直接遍历 `ROUTES` 断言没有 `ownedBy`，另有五条逐页确认屏幕上有内容。`components/Pending.tsx` 留着但已经没有人引用 |
+| 一条空路由都没有 | `App.test.tsx::没有一个路由还是空的` 直接遍历 `ROUTES` 断言没有 `ownedBy`，另有五条逐页确认屏幕上有内容。渲染 `Pending` 的那个分支还在 `App.tsx` 里，只是没有一条路由能走到它 |
 | 渲染出来的字过 denylist | `src/test/denylist.ts` 是 `Graph.test.tsx` 里那段内联检查提出来的，现在 `/profile`、`/research`、`/audit` 三页也各跑一遍，读的是 `fixtures/denylist/diagnostic_terms.txt`——和 `xtask denylist-audit` 同一个文件。源码那一遍扫的是字面量，这一遍扫的是渲染出来的 DOM：一份读起来像诊断的 fixture 必须在用户读到它的那个面上红 |
 | 两侧的命令名还是同一份 | `core.ts` 的 `COMMANDS` 从 14 个长到 27 个，`command_surface.rs` 照旧比对两侧并要求每个 wrapper 体只有一条语句。`contract.test.ts` 现在还把遗忘、研究、审计与空问卷四句话对着 Rust 常量核一遍，并把向导那份题表逐题对着 `soul_import::questionnaire::QUESTIONS` 核——测试用的那个 double 不能变成一个比真核心更好说话的核心 |
 
