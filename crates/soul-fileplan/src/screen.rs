@@ -13,8 +13,11 @@
 //! or a different one than they appear to:
 //!
 //! * `..` walks out of the authorized root, and `.` is a name that is not one;
-//! * `\\server\share`, `\\?\` and `\\.\` reach network shares, bypass Win32
-//!   path normalization, and open devices respectively;
+//! * `\\server\share`, `\\?\UNC\`, and `\\.\` reach network shares, bypass
+//!   Win32 path normalization, and open devices respectively. `\\?\C:\...` is
+//!   not one of those: it is how Windows spells a local drive after
+//!   `canonicalize`, so it is screened as `C:\...` and the rest of the rules
+//!   still apply;
 //! * `NUL`, `CON`, `COM1` and their relatives are devices no matter which
 //!   directory they appear to be in, and opening one can block forever;
 //! * Windows strips trailing dots and spaces, so `secret.txt.` and `secret.txt`
@@ -145,6 +148,12 @@ pub fn screen(raw: &str) -> Result<ScreenedPath, PathDefect> {
         return Err(PathDefect::ControlCharacter);
     }
 
+    // Windows `canonicalize` returns `\\?\C:\...` for a local directory.
+    // That is the same place as `C:\...`, and refusing it would refuse every
+    // authorized root on the machine this product ships to. UNC and device
+    // prefixes are left intact so the next check still catches them.
+    let raw = as_local_drive_spelling(raw);
+
     let bytes: Vec<char> = raw.chars().collect();
     if is_separator(bytes[0]) && bytes.get(1).copied().is_some_and(is_separator) {
         return Err(PathDefect::UncOrDevicePrefix);
@@ -232,6 +241,23 @@ fn is_separator(c: char) -> bool {
     c == '/' || c == '\\'
 }
 
+/// If `raw` is an extended-length local drive path, return the drive-letter
+/// spelling the rest of the screen already knows how to read.
+///
+/// `\\?\C:\Users\Roy` → `C:\Users\Roy`. Anything else after `\\?\` — UNC,
+/// `GLOBALROOT`, a volume GUID, a device — is returned unchanged so the
+/// two-separator rule refuses it.
+fn as_local_drive_spelling(raw: &str) -> &str {
+    let Some(rest) = raw.strip_prefix(r"\\?\") else {
+        return raw;
+    };
+    let mut chars = rest.chars();
+    match (chars.next(), chars.next()) {
+        (Some(letter), Some(':')) if letter.is_ascii_alphabetic() => rest,
+        _ => raw,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,6 +276,20 @@ mod tests {
         assert_eq!(screened.prefix(), PathPrefix::Drive('C'));
         assert_eq!(screened.segments(), ["Users", "Roy", "Docs"]);
         assert_eq!(screened.display(), r"C:\Users\Roy\Docs");
+    }
+
+    /// Windows `canonicalize` prefixes a local path with `\\?\`. That spelling
+    /// has to name the same directory as the drive-letter form, or every
+    /// authorized root on Windows is refused before a scan can start.
+    #[test]
+    fn an_extended_local_drive_path_is_the_same_directory() {
+        let extended = screen(r"\\?\C:\Users\Roy\Docs").expect("extended local");
+        let ordinary = screen(r"C:\Users\Roy\Docs").expect("drive letter");
+        assert_eq!(extended, ordinary);
+        assert_eq!(
+            screen(r"\\?\c:\Users\Roy\Docs").expect("lowercase drive"),
+            ordinary,
+        );
     }
 
     #[test]
@@ -274,7 +314,9 @@ mod tests {
             (r"C:\Users\..\Windows", PathDefect::ParentSegment),
             ("/home/./roy", PathDefect::CurrentSegment),
             (r"\\server\share\x", PathDefect::UncOrDevicePrefix),
-            (r"\\?\C:\Windows", PathDefect::UncOrDevicePrefix),
+            (r"\\?\UNC\server\share\x", PathDefect::UncOrDevicePrefix),
+            (r"\\?\GLOBALROOT\Device", PathDefect::UncOrDevicePrefix),
+            (r"\\?\HarddiskVolume1\x", PathDefect::UncOrDevicePrefix),
             (r"\\.\PhysicalDrive0", PathDefect::UncOrDevicePrefix),
             ("//server/share/x", PathDefect::UncOrDevicePrefix),
             ("/home//roy", PathDefect::RepeatedSeparator),

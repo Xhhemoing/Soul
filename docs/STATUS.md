@@ -4,7 +4,7 @@
 
 ## 当前里程碑
 
-**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。批 1（WP01）与批 2（WP02 数据面 + WP08 权限面）已完成。Windows CI 在 schema freeze CRLF 修复后全绿。
+**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。批 1（WP01）与批 2（WP02 数据面 + WP08 权限面）已完成。Windows CI 在 schema freeze CRLF 修复后一度全绿；WP11 落地后 `test (windows-latest)` 因 `canonicalize` 的 `\\?\C:\...` 被当成 UNC 而红，筛查已改为只把本地盘的 extended-length 写法剥成盘符路径。
 
 ## 进度
 
@@ -369,6 +369,7 @@ D31 是这份工作单的边界：只读预览留在 Goal 1，写执行是 v0.1.
 11. **整理规则故意很笨。** 只把散在最外层的文件按扩展名分进一层分类文件夹，目录不动、子目录里的不动、认不出的不动、目标已被占用的不动。理由是预览是给人批准的，一个人跟不上的推理不是可以被同意的东西。扩展名是猜测，所以 `kind.rs` 只按名字判断，一个字节都不读——一个仍然会打开每个文件的只读承诺比听上去要小。
 12. **`soul-fileplan` 不依赖 `soul-store`，因此扫描结果不落库。** PRODUCT_LOCK 把目录文件元数据采集和写执行一起推到 v0.1.1；没有存储依赖，「扫描不会悄悄变成采集」就不需要靠自觉。预览活在内存里，唯一比它活得久的是一条只带计数与哈希的审计条目。
 13. **扫描有上限**（深度 8、条目 20000）。撞上限时 `truncated` 为真并出 `SkipReason::DepthLimit` / `EntryLimit`，不是安静地少显示一些。上限值是拍的，等真机上有人对着家目录跑一次再调。
+14. **Windows `canonicalize` 给出 `\\?\C:\...`，那是本地盘，不是 UNC。** `screen` 把 `\\?\` 后紧跟盘符的形式剥成 `C:\...` 再走其余规则；`\\?\UNC\`、`\\.\`、`\\server\share` 仍然拒绝。不剥的话，windows-latest 上临时目录连授权都过不了（`authorized_scan.rs` 在 `authorize Alpha` 红）。未授权语料仍是对着已授权根去 `resolve`，能筛过本地 extended-length 写法不会把 Bravo 放进来。
 
 ## 下一步
 
