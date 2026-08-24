@@ -16,7 +16,14 @@ use std::path::{Path, PathBuf};
 /// `fn send` rather than `send`, because a doc comment is allowed to say the
 /// product does not send anything — that sentence is the promise, not a
 /// breach of it.
-const FORBIDDEN: &[&str] = &["fn send", "smtp", "sendmail", "deliver", "transmit"];
+const FORBIDDEN: &[&str] = &[
+    "fn send",
+    "fn submit",
+    "smtp",
+    "sendmail",
+    "deliver",
+    "transmit",
+];
 
 /// Proof the scanner read this crate and not an empty directory.
 const EXPECTED: &[&str] = &["fn template_draft", "fn summarize", "struct DraftOutcome"];

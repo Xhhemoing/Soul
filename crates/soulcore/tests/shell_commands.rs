@@ -13,7 +13,9 @@ use soulcore::commands::shell::{
     CLOUD_NOT_YET_AVAILABLE_LABEL, DESKTOP_BINARY_NAME, KEY_FILE_NOT_PROTECTED_EXPLANATION,
     NO_STORE_OPENED_EXPLANATION,
 };
-use soulcore::commands::store::open_store_for_session;
+use soulcore::commands::store::{
+    open_store_choosing_keys, open_store_for_session, KeyError, KeyProvider, KeyResult, SecretKey,
+};
 use soulcore::{CloudState, Config};
 
 /// AC-02. The wizard's whole output is a configuration with nothing on.
@@ -265,6 +267,67 @@ fn the_session_store_falls_back_to_a_key_file_and_says_so() {
     drop(session);
     let again = open_store_for_session(dir.path()).expect("the store reopens");
     assert_eq!(again.key_protection(), KeyProtection::UnprotectedKeyFile);
+}
+
+/// A platform error that is not "this platform cannot" must not mint a
+/// plaintext key file beside a database we never opened.
+#[test]
+fn a_platform_key_error_that_is_not_unsupported_does_not_fall_back() {
+    #[derive(Debug)]
+    struct BrokenPlatform(KeyError);
+
+    impl KeyProvider for BrokenPlatform {
+        fn database_key(&self) -> KeyResult<SecretKey> {
+            Err(clone_key_error(&self.0))
+        }
+
+        fn key_encryption_key(&self) -> KeyResult<SecretKey> {
+            Err(clone_key_error(&self.0))
+        }
+
+        fn describe(&self) -> String {
+            "broken".to_owned()
+        }
+    }
+
+    fn clone_key_error(error: &KeyError) -> KeyError {
+        match error {
+            KeyError::Unavailable(text) => KeyError::Unavailable(text.clone()),
+            KeyError::Unsupported(text) => KeyError::Unsupported(text.clone()),
+            KeyError::Io(text) => KeyError::Io(text.clone()),
+            KeyError::Malformed {
+                path,
+                found,
+                expected,
+            } => KeyError::Malformed {
+                path: path.clone(),
+                found: *found,
+                expected: *expected,
+            },
+        }
+    }
+
+    for error in [
+        KeyError::Io("the blob could not be read".to_owned()),
+        KeyError::Unavailable("the vault is locked".to_owned()),
+        KeyError::Malformed {
+            path: "keys.dpapi".to_owned(),
+            found: 3,
+            expected: 32,
+        },
+    ] {
+        let dir = tempfile::tempdir().expect("temp dir");
+        open_store_choosing_keys(dir.path(), &BrokenPlatform(error))
+            .expect_err("a real key error is not a fallback");
+        assert!(
+            !dir.path().join("soul.db").exists(),
+            "a failed open must not leave a database behind",
+        );
+        assert!(
+            !dir.path().join("soul-test-keys.bin").exists(),
+            "a failed open must not mint a plaintext seed",
+        );
+    }
 }
 
 /// `docs/SECURITY.md`: nothing may say the Windows KEK is protected until

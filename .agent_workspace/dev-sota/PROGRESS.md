@@ -11,8 +11,8 @@
 | Plan | 2 fable 拆任务 + 2 opus 接口勘探 + 2 gpt-sol 工装/测试探针 | 完成 |
 | Write 波次1 | ST-00 骨架 + ST-03 壳接库 | 完成（`2920d2f`） |
 | Write 波次2 | ST-01 WP10 + ST-02 WP11（opus-fast 并行） | 完成（本提交） |
-| Optimize | 泄漏检查器假阳性、DPAPI 仅 Unsupported 回退、STATUS/GOAL1_PLAN 收口 | 进行中 |
-| Review | fable 全局 SOTA review | 待 |
+| Optimize | 泄漏检查器假阳性、DPAPI 仅 Unsupported 回退、SOTA must-fix 补测 | 完成 |
+| Review | fable 全局 SOTA review（WP10/WP11 ship-with-must-fix → 已补） | 完成 |
 | PR | #4 `https://github.com/Xhhemoing/Soul/pull/4`；验证后合并进 `main` | 进行中 |
 
 ## 子任务
@@ -23,7 +23,7 @@
 | ST-03 | 壳接真库 + 授权目录 | 完成 |
 | ST-01 | WP10 soul-draft + soulcore 编排 | 完成（见 `reports/ST-01.md`） |
 | ST-02 | WP11 soul-fileplan + soulcore 编排 | 完成（见 `reports/ST-02.md`） |
-| ST-04 | 收口回归 + STATUS/GOAL1_PLAN | 进行中 |
+| ST-04 | 收口回归 + STATUS/GOAL1_PLAN | 完成 |
 
 ## 约束
 

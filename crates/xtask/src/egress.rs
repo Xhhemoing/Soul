@@ -43,6 +43,22 @@ pub const BANNED_HTTP_CLIENTS: &[&str] = &[
     "surf",
 ];
 
+/// Crates that put a message somewhere. Drafting never sends, so none of
+/// these may be reachable from any shipped crate — `soul-egress` included.
+/// HTTP clients stay on [`BANNED_HTTP_CLIENTS`]; this list is the other
+/// half of "never send".
+pub const BANNED_MESSAGING: &[&str] = &[
+    "lettre",
+    "async-smtp",
+    "imap",
+    "async-imap",
+    "teloxide",
+    "grammers-client",
+    "matrix-sdk",
+    "tokio-tungstenite",
+    "tungstenite",
+];
+
 /// Tauri plugins that would create an egress path behind the application's
 /// back: automatic updates and an arbitrary HTTP bridge into the WebView.
 pub const BANNED_TAURI_PLUGINS: &[&str] = &["tauri-plugin-updater", "tauri-plugin-http"];
@@ -248,6 +264,7 @@ pub fn audit_dependencies_from_roots(
     excluded_roots: &[&str],
 ) -> (Vec<BannedDependency>, Vec<String>) {
     let mut banned: BTreeSet<&str> = BANNED_HTTP_CLIENTS.iter().copied().collect();
+    banned.extend(BANNED_MESSAGING.iter().copied());
     banned.extend(BANNED_TAURI_PLUGINS.iter().copied());
 
     let Some(resolve) = metadata.resolve.as_ref() else {

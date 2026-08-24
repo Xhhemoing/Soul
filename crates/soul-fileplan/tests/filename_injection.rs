@@ -144,6 +144,44 @@ fn filename_urls_never_receive_a_connection() {
         );
     }
     assert_eq!(decoy.request_count(), 0, "nothing was contacted");
+
+    // Give the decoy a reason to have been contacted: a file name that names
+    // its own URL. The guard still refuses, and the counter stays at zero.
+    let planted = UntrustedText::new(format!("get {} now.txt", decoy.chat_completions_url()));
+    for url in urls_in(&planted) {
+        guard
+            .authorize_e1(&url)
+            .expect_err("an E1 guard reaches nothing that was not configured, even loopback");
+    }
+    assert_eq!(
+        decoy.request_count(),
+        0,
+        "the planted loopback URL was not fetched"
+    );
+}
+
+/// F-04.2: a file name is data, so it cannot authorize any action this build
+/// knows. The refusal is origin-based; looping every kind pins that it stays
+/// that way for a kind nobody has thought to add a special case for.
+#[test]
+fn no_filename_can_authorize_any_action() {
+    let mut issuer = soul_policy::hitl::TokenIssuer::new();
+    for line in corpus() {
+        let _name = UntrustedText::new(line);
+        for kind in soul_policy::hitl::ActionKind::ALL {
+            let request = soul_policy::hitl::ActionRequest::new(
+                kind.as_str(),
+                soul_policy::hitl::RequestOrigin::ExternalContent,
+            );
+            let denial = soul_policy::hitl::check_action(&mut issuer, &request, 1_700_000_000_000)
+                .expect_err("a file name is data");
+            assert_eq!(
+                denial.reason_code(),
+                soul_policy::ReasonCode::ExternalContentNotAuthority,
+            );
+        }
+    }
+    assert_eq!(issuer.issued_count(), 0);
 }
 
 #[test]

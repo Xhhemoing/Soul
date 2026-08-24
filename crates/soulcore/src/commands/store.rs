@@ -24,7 +24,7 @@ use crate::commands::shell::KeyProtection;
 /// second one would be a second tree outside the reach of `deny.toml` and
 /// `xtask e0-audit`, added by whoever was in a hurry to reach a type.
 pub use soul_store::{
-    DpapiKeyProvider, KeyError, KeyProvider, KeyResult, SqlCipherStore, TestKeyProvider,
+    DpapiKeyProvider, KeyError, KeyProvider, KeyResult, SecretKey, SqlCipherStore, TestKeyProvider,
 };
 
 /// File name of the main database inside whichever directory holds it.
@@ -118,21 +118,33 @@ impl SessionStore {
 pub fn open_store_for_session(directory: impl AsRef<Path>) -> StoreResult<SessionStore> {
     let directory = directory.as_ref();
     let platform = DpapiKeyProvider::new(dpapi_blob_path(directory));
+    open_store_choosing_keys(directory, &platform)
+}
 
+/// Open the store after asking `platform` for a KEK.
+///
+/// A plaintext key file is used only when the platform says it cannot protect
+/// a KEK at all. Any other error is a real failure: treating it as
+/// Unsupported would write a fresh seed beside a database we could not open,
+/// and then claim that was the plan. Tests inject a stub here so that
+/// distinction can go red.
+pub fn open_store_choosing_keys(
+    directory: impl AsRef<Path>,
+    platform: &dyn KeyProvider,
+) -> StoreResult<SessionStore> {
+    let directory = directory.as_ref();
     match platform.key_encryption_key() {
         Ok(_) => Ok(SessionStore {
-            handle: share(open_store(directory, &platform)?),
+            handle: share(open_store(directory, platform)?),
             key_protection: KeyProtection::PlatformKeyStore,
         }),
-        // Only an honest "this platform cannot protect a KEK" falls back to
-        // a key file. An I/O or malformed-blob error is a real failure: treating
-        // it as Unsupported would write a fresh plaintext seed beside a
-        // database we could not open, and then claim that was the plan.
         Err(KeyError::Unsupported(_)) => Ok(SessionStore {
             handle: share(open_store_with_test_file_keys(directory)?),
             key_protection: KeyProtection::UnprotectedKeyFile,
         }),
-        Err(error) => Err(soul_store_api::types::StoreError::Backend(error.to_string())),
+        Err(error) => Err(soul_store_api::types::StoreError::Backend(
+            error.to_string(),
+        )),
     }
 }
 

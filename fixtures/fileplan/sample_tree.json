@@ -13,8 +13,27 @@
       "content_utf8": "# harmless sample with an untidy extension\n"
     },
     {
+      "relative_path": "this-is-a-deliberately-long-ascii-filename-used-to-prove-the-scanner-does-not-drop-names-that-are-awkward-to-display.txt",
+      "kind": "file",
+      "content_utf8": "a long name is still a file\n"
+    },
+    {
       "relative_path": "inbox",
       "kind": "directory"
+    },
+    {
+      "relative_path": "inbox/空文件.txt",
+      "kind": "file",
+      "content_utf8": ""
+    },
+    {
+      "relative_path": "inbox/archive",
+      "kind": "directory"
+    },
+    {
+      "relative_path": "inbox/archive/old-📎.csv",
+      "kind": "file",
+      "content_utf8": "item,amount\nsample,0\n"
     },
     {
       "relative_path": "inbox/meeting-notes.txt",

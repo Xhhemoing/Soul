@@ -56,6 +56,11 @@ const WAYS_TO_WRITE: &[&str] = &[
     "write!",
     "writeln!",
     "tempfile",
+    "use std::fs",
+    "use std::io",
+    "soft_link",
+    "std::net",
+    "process::Command",
 ];
 
 /// Capability machinery. Neither action in WP11 needs a token, so a mention

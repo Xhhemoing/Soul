@@ -171,6 +171,32 @@ fn the_dependency_walker_finds_a_real_http_stack_when_one_is_in_scope() {
     );
 }
 
+/// A messaging crate on the normal graph is the other half of "never send".
+/// The walker already reaches `hyper` from `soul-testkit`; renaming that
+/// package proves the messaging list is consulted, not that a second HTTP
+/// client was invented.
+#[test]
+fn a_messaging_crate_on_the_normal_graph_is_reported() {
+    let mut metadata = workspace_metadata();
+    let mut renamed = 0usize;
+    for package in &mut metadata.packages {
+        if package.name == "hyper" {
+            package.name = "lettre".into();
+            renamed += 1;
+        }
+    }
+    assert!(
+        renamed > 0,
+        "the graph is supposed to contain hyper to rename"
+    );
+
+    let (findings, _) = egress::audit_dependencies_from_roots(&metadata, &[]);
+    assert!(
+        findings.iter().any(|f| f.banned == "lettre"),
+        "expected lettre on the banned list; got {findings:#?}",
+    );
+}
+
 /// The one shipped exception has to be exactly one crate wide, and it has to
 /// still be in use. Both halves matter: a second holder is a hole, and a
 /// gateway that no longer owns an HTTP client is an exemption sheltering

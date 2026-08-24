@@ -310,6 +310,7 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 3. **粘贴不落库。** 要存走记忆入口。
 4. **起草 UI 未做。** `/draft` 仍是 Pending，禁止发送按钮的测试仍在。
 5. 审计链泄漏检查对中文用 4-gram、对 ASCII 用 ≥8，避免哈希假阳性。
+6. **永不发送的依赖图层：** `xtask e0-audit` 现禁消息发送类 crate（`lettre`/`teloxide`/`matrix-sdk` 等），不只是 HTTP client。
 
 ## WP11 完成情况（核心，无文件 UI）
 
@@ -330,6 +331,7 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 2. **计划 JSON 用目录指纹而不是把路径写进审计。** 扫描 id 是 uuid7。
 3. **Windows junction 逃逸** `cfg(windows)` 忽略，进手动清单。
 4. **文件页 UI 未做。** `/files` 仍无执行按钮。
+5. **Windows 手动：** junction 逃逸、canonicalize 的 `\\?\` 前缀回显、NTFS 大小写。
 
 ## 壳接真库与授权目录
 

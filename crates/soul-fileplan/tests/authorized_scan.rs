@@ -47,7 +47,9 @@ fn authorized_root_scans_real_entries() {
     );
 
     // Sizes are read, not assumed: an entry that reported a constant would
-    // disagree with the file it names.
+    // disagree with the file it names, and a blanket "every file is nonempty"
+    // would lock the zero-byte fixture out.
+    let described = common::sample_tree();
     for entry in report.entries() {
         let full = space.authorized.join(entry.rel_path());
         let metadata = std::fs::metadata(&full).expect("the scanned path exists");
@@ -55,7 +57,15 @@ fn authorized_root_scans_real_entries() {
             EntryKind::File => {
                 assert!(metadata.is_file());
                 assert_eq!(entry.bytes(), metadata.len(), "{:?}", entry.rel_path());
-                assert!(entry.bytes() > 0, "the fixture writes real content");
+                let rel = common::encode(entry.rel_path());
+                if let Some(sample) = described
+                    .entries
+                    .iter()
+                    .find(|sample| sample.relative_path == rel)
+                {
+                    let expected = sample.content_utf8.as_deref().unwrap_or_default().len() as u64;
+                    assert_eq!(entry.bytes(), expected, "{rel}");
+                }
             }
             EntryKind::Dir => {
                 assert!(metadata.is_dir());
@@ -78,6 +88,10 @@ fn authorized_root_scans_real_entries() {
 fn scan_and_preview_leave_the_tree_byte_for_byte_unchanged() {
     let space = common::workspace();
     common::build_sample_tree(&space.authorized);
+    common::write_file(
+        &space.authorized.join("large.bin.txt"),
+        &"x".repeat(1 << 20),
+    );
 
     // Everything the setup writes is written before the snapshot is taken;
     // otherwise the test measures its own tail.

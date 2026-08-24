@@ -269,6 +269,7 @@ fn draft_reply_inner(
     let text = match route {
         DraftRoute::Template => soul_draft::template_draft(&voice, &body),
         DraftRoute::E1 => {
+            let exempted = body.exempted_turn();
             let plan_hash = PlanHash::of(&e1_plan(request.model, &body));
             let token =
                 match session.issue_token(CapabilityScope::E1Generate, plan_hash, request.now_ms) {
@@ -283,7 +284,11 @@ fn draft_reply_inner(
                 };
             match session.e1_generate(request.model, body, token.token_id(), request.now_ms) {
                 Ok(outcome) => {
-                    audit.push(outcome.audit());
+                    let mut entry = outcome.audit();
+                    if let Some(turn_id) = exempted {
+                        entry = entry.about(&[turn_id]);
+                    }
+                    audit.push(entry);
                     soul_draft::answer_text(&outcome.body)?.as_str().to_owned()
                 }
                 Err(refusal) => {
