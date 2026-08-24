@@ -18,11 +18,15 @@
 //! filesystem consequence, and must leave an audit entry that carries no prose.
 //! WP08 landed that crate and `policy.rs` is the surface for it; `store.rs`
 //! stays a pass-through, because forgetting and research preview are decided
-//! inside `soul-store` and neither reaches the network. `import.rs` and
-//! `graph.rs` are pass-throughs too, and they append the audit entries their
-//! crates hand back rather than writing any of their own.
+//! inside `soul-store` and neither reaches the network. `import.rs`,
+//! `graph.rs`, `profile.rs` and `memory.rs` are pass-throughs too. The first
+//! appends the audit entries its crate hands back; the other three leave the
+//! audit to the crate underneath, which already writes it as part of the same
+//! call.
 
 pub mod graph;
 pub mod import;
+pub mod memory;
 pub mod policy;
+pub mod profile;
 pub mod store;

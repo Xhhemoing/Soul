@@ -20,6 +20,8 @@ soul-policy = { workspace = true }
 soul-egress = { workspace = true }
 soul-graph = { workspace = true }
 soul-import = { workspace = true }
+soul-profile = { workspace = true }
+soul-memory = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
