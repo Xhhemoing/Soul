@@ -21,13 +21,14 @@
 //! WP08 landed that crate and `policy.rs` is the surface for it; `store.rs`
 //! stays a pass-through, because forgetting and research preview are decided
 //! inside `soul-store` and neither reaches the network. `import.rs`,
-//! `graph.rs`, `profile.rs` and `memory.rs` are pass-throughs too. The first
-//! appends the audit entries its crate hands back; the other three leave the
-//! audit to the crate underneath, which already writes it as part of the same
-//! call. `shell.rs` reaches neither the network nor the disk: it answers
+//! `graph.rs`, `profile.rs`, `memory.rs` and `collect.rs` are pass-throughs
+//! too. The first appends the audit entries its crate hands back; the others
+//! leave the audit to the crate underneath, which already writes it as part of
+//! the same call. `shell.rs` reaches neither the network nor the disk: it answers
 //! questions about this build's defaults, which is all a WebView is allowed to
 //! ask in WP09.
 
+pub mod collect;
 pub mod graph;
 pub mod import;
 pub mod memory;

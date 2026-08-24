@@ -1650,6 +1650,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "soul-collect",
  "soul-egress",
  "soul-graph",
  "soul-import",
