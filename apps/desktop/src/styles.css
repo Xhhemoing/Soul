@@ -224,7 +224,8 @@ button.primary:disabled {
   margin: 10px 0 4px;
 }
 
-.paste-box {
+.paste-box,
+.text-input {
   width: 100%;
   background: #14171d;
   border: 1px solid var(--line);
@@ -235,9 +236,51 @@ button.primary:disabled {
   resize: vertical;
 }
 
-.paste-box:focus-visible {
+.paste-box:focus-visible,
+.text-input:focus-visible {
   border-color: var(--accent);
   outline: none;
+}
+
+button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font: inherit;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* The profile's readings and the audit chain arrive with newlines in them,
+   because the core wrote them as lines rather than as one paragraph. */
+.reading {
+  white-space: pre-wrap;
+  margin: 0 0 10px;
+}
+
+.questions {
+  list-style: decimal;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.question {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.question:last-child {
+  border-bottom: none;
+}
+
+.question p {
+  margin: 0 0 6px;
 }
 
 .refusal {

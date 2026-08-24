@@ -20,10 +20,14 @@ import {
   type ConfigSnapshot,
   type SessionStatus,
 } from "./core";
+import { Audit } from "./routes/Audit";
 import { Draft } from "./routes/Draft";
 import { Files } from "./routes/Files";
 import { Graph } from "./routes/Graph";
 import { Home } from "./routes/Home";
+import { Memory } from "./routes/Memory";
+import { Profile } from "./routes/Profile";
+import { Research } from "./routes/Research";
 import { Settings } from "./routes/Settings";
 import { Wizard } from "./routes/Wizard";
 import { useRoute } from "./router";
@@ -88,9 +92,13 @@ export function App(): React.JSX.Element {
       <main className="content" aria-labelledby="route-title">
         <h1 id="route-title">{route.title}</h1>
         {route.id === "home" ? <Home snapshot={snapshot} status={status} /> : null}
+        {route.id === "profile" ? <Profile /> : null}
         {route.id === "files" ? <Files /> : null}
         {route.id === "graph" ? <Graph /> : null}
+        {route.id === "memory" ? <Memory /> : null}
         {route.id === "draft" ? <Draft /> : null}
+        {route.id === "research" ? <Research /> : null}
+        {route.id === "audit" ? <Audit /> : null}
         {route.id === "settings" ? <Settings snapshot={snapshot} /> : null}
         {route.ownedBy === null ? null : (
           <Pending title={route.title} ownedBy={route.ownedBy} detail={route.pending ?? ""} />

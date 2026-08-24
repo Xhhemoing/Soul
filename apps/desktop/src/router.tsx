@@ -1,11 +1,12 @@
 /**
  * A hash router, hand-rolled because the shell needs about forty lines of one.
  *
- * Some of WP09's routes are still deliberately empty: the views behind them
- * are other work packages, and an empty route that says whose it is beats a
- * placeholder screen that looks like a feature. `ownedBy` goes to null the day
- * the real view lands, which is also the day `App.tsx` stops rendering
- * `Pending` over it.
+ * `ownedBy` names the work package that still has to fill a route in, and it
+ * is null on every route now that the last four have been. The field and the
+ * `Pending` screen behind it are kept rather than deleted: an empty route that
+ * says whose it is beats a placeholder that looks like a feature, and the next
+ * route to be added before its view exists should get the same treatment
+ * rather than a screen someone might wire a button to.
  */
 
 import { useEffect, useState } from "react";
@@ -33,37 +34,13 @@ export interface RouteDefinition {
 
 export const ROUTES: readonly RouteDefinition[] = [
   { id: "home", path: "/", title: "概览", ownedBy: null },
-  {
-    id: "profile",
-    path: "/profile",
-    title: "灵魂档案",
-    ownedBy: "WP09 功能视图",
-    pending: "特质轴、语气与纠正锁定已经在核心里落地，这个视图还没有接上去。",
-  },
+  { id: "profile", path: "/profile", title: "灵魂档案", ownedBy: null },
   { id: "graph", path: "/graph", title: "人脉图", ownedBy: null },
-  {
-    id: "memory",
-    path: "/memory",
-    title: "自传记忆",
-    ownedBy: "WP09 功能视图",
-    pending: "记忆的增删改与遗忘影响面预览还没有接上去。",
-  },
+  { id: "memory", path: "/memory", title: "自传记忆", ownedBy: null },
   { id: "draft", path: "/draft", title: "起草", ownedBy: null },
   { id: "files", path: "/files", title: "文件计划", ownedBy: null },
-  {
-    id: "research",
-    path: "/research",
-    title: "研究预览",
-    ownedBy: "WP09 功能视图",
-    pending: "预览只在屏幕上出现，不落盘；这个视图还没有接上去。",
-  },
-  {
-    id: "audit",
-    path: "/audit",
-    title: "审计",
-    ownedBy: "WP09 功能视图",
-    pending: "审计链只记事实不记正文，这个视图还没有接上去。",
-  },
+  { id: "research", path: "/research", title: "研究预览", ownedBy: null },
+  { id: "audit", path: "/audit", title: "审计", ownedBy: null },
   { id: "settings", path: "/settings", title: "设置", ownedBy: null },
 ];
 

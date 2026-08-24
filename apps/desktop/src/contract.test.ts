@@ -15,10 +15,15 @@ import { describe, expect, it } from "vitest";
 
 import { COMMANDS } from "./core";
 import {
+  AUDIT_CHAIN_NOTICE,
   CLOUD_LABEL,
   E1_PLAN_NOTICE,
+  FORGET_NOTICE,
+  NO_ANSWERS_NOTICE,
   NOT_SENT_NOTICE,
+  QUESTIONS,
   READ_ONLY_NOTICE,
+  RESEARCH_PREVIEW_NOTICE,
   TEMPLATE_NOTICE,
   WORKING_HYPOTHESIS_NOTICE,
 } from "./test/fakeCore";
@@ -30,7 +35,11 @@ const SHELL_RS = join(REPO, "crates", "soulcore", "src", "commands", "shell.rs")
 const DRAFT_RS = join(REPO, "crates", "soul-draft", "src", "draft.rs");
 const CORE_DRAFT_RS = join(REPO, "crates", "soulcore", "src", "commands", "draft.rs");
 const CORE_FILEPLAN_RS = join(REPO, "crates", "soulcore", "src", "commands", "fileplan.rs");
+const CORE_MEMORY_RS = join(REPO, "crates", "soulcore", "src", "commands", "memory.rs");
+const CORE_SESSION_RS = join(REPO, "crates", "soulcore", "src", "commands", "session.rs");
+const CORE_STORE_RS = join(REPO, "crates", "soulcore", "src", "commands", "store.rs");
 const CLINICAL_RS = join(REPO, "crates", "soul-policy", "src", "clinical.rs");
+const QUESTIONNAIRE_RS = join(REPO, "crates", "soul-import", "src", "questionnaire.rs");
 const TAURI_COMMANDS_RS = join(DESKTOP, "src-tauri", "src", "commands.rs");
 
 /**
@@ -129,6 +138,46 @@ describe("壳与核心的边界", () => {
     expect(
       rustConstant(readFileSync(CLINICAL_RS, "utf8"), "WORKING_HYPOTHESIS_NOTICE"),
     ).toBe(WORKING_HYPOTHESIS_NOTICE);
+  });
+
+  /**
+   * The four sentences the last four routes put on screen. Each one is a
+   * promise the Rust tests hold — what a forget destroys, that research never
+   * lands on disk, that the chain holds no content, and that a blank
+   * questionnaire is refused rather than reported as an intake — and each
+   * reaches the user through the double these tests run against.
+   */
+  it("遗忘、研究、审计与空问卷四句话都和核心里的常量一模一样", () => {
+    expect(rustConstant(readFileSync(CORE_MEMORY_RS, "utf8"), "FORGET_NOTICE")).toBe(
+      FORGET_NOTICE,
+    );
+    const store = readFileSync(CORE_STORE_RS, "utf8");
+    expect(rustConstant(store, "RESEARCH_PREVIEW_NOTICE")).toBe(RESEARCH_PREVIEW_NOTICE);
+    expect(rustConstant(store, "AUDIT_CHAIN_NOTICE")).toBe(AUDIT_CHAIN_NOTICE);
+    expect(rustConstant(readFileSync(CORE_SESSION_RS, "utf8"), "NO_ANSWERS_NOTICE")).toBe(
+      NO_ANSWERS_NOTICE,
+    );
+  });
+
+  /**
+   * `soul_import::questionnaire::QUESTIONS` is the canonical list — the
+   * recorder validates against it and `soul-profile` builds its own
+   * questionnaire from it rather than keeping a second one. The wizard draws
+   * whatever the core sends, so what this pins is the double: a twelfth
+   * question, or an id changed on the Rust side, has to fail here rather than
+   * leave the wizard's tests passing against a list nobody asks.
+   */
+  it("向导那份问卷和 soul-import 的正典清单是同一份", () => {
+    const rust = readFileSync(QUESTIONNAIRE_RS, "utf8");
+    const declared = [...rust.matchAll(/key: "(q\.[a-z_.]+)"/g)].map((match) => match[1]);
+
+    expect(declared).toHaveLength(11);
+    expect(QUESTIONS.map((question) => question.question_id)).toEqual(declared);
+    // Three of them are text boxes, and a text box's answer is sealed.
+    expect(QUESTIONS.filter((question) => question.prose)).toHaveLength(3);
+    for (const question of QUESTIONS) {
+      expect(question.options).toHaveLength(question.prose ? 0 : 3);
+    }
   });
 });
 

@@ -12,15 +12,26 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
 
 import type {
+  AuditChain,
   CloudNotice,
   ConfigSnapshot,
   Draft,
   DraftNotices,
   E1DraftPlan,
   FilesView,
+  ForgetPreview,
+  ForgetReceipt,
+  IntakeReceipt,
+  MemoryChange,
+  MemoryDetail,
+  MemoryList,
+  NewMemory,
   PeopleGraph,
   PersonSummary,
   PlanPreview,
+  ProfileScreen,
+  Question,
+  ResearchPreview,
   SessionStatus,
 } from "../core";
 
@@ -215,6 +226,340 @@ export function aTemplateDraft(overrides: Partial<Draft> = {}): Draft {
   };
 }
 
+/** `soulcore::commands::memory::FORGET_NOTICE`, checked by `contract.test.ts`. */
+export const FORGET_NOTICE =
+  "遗忘销毁的是这条记忆的内容密钥：正文从此打不开，行会留成一块墓碑，引用过它的推断会被标成失去依据。这一步不可撤销，也不写任何文件。";
+
+/** `soulcore::commands::store::RESEARCH_PREVIEW_NOTICE`. */
+export const RESEARCH_PREVIEW_NOTICE =
+  "研究预览只在这块屏幕上存在：它不落盘、不出网，关掉这一页它就没有了。行是按事件类型与小时桶聚合出来的计数，别人的数据在查询里就被排除掉了。";
+
+/** `soulcore::commands::store::AUDIT_CHAIN_NOTICE`. */
+export const AUDIT_CHAIN_NOTICE =
+  "审计链只记「发生过什么」，不记内容：一条记录里能有的只有动作、结论、理由码、涉及到的编号和计数。每一条都带着上一条的哈希，所以中间被人改过或者抽掉一条，回放的时候就对不上。";
+
+/** `soulcore::commands::session::NO_ANSWERS_NOTICE`. */
+export const NO_ANSWERS_NOTICE =
+  "这份问卷一道题都没有答，所以没有东西可以写进档案。随便答一道都行，没答的那些会留成「还看不出方向」，不会被猜。";
+
+/**
+ * The eleven questions, shaped the way `profile::question_views` shapes them.
+ *
+ * Kept short of the real prompts on purpose — `contract.test.ts` checks the
+ * count and the ids against the canonical Rust list, so a question added there
+ * fails here rather than being silently undrawn.
+ */
+export const QUESTIONS: readonly Question[] = [
+  ...["curiosity", "orderliness", "social_energy", "accommodation", "emotional_steadiness"].map(
+    (axis) => ({
+      question_id: `q.axis.${axis}`,
+      prompt: `关于「${axis}」这条轴，你更偏哪一边？`,
+      moves: "axis" as const,
+      options: [
+        { value: "leans_low", reading: "偏这一端" },
+        { value: "mixed", reading: "两端都有，看场合" },
+        { value: "leans_high", reading: "偏那一端" },
+      ],
+      prose: false,
+    }),
+  ),
+  {
+    question_id: "q.voice.register",
+    prompt: "给不太熟的人写消息时，你的语气偏正式还是偏随意？",
+    moves: "voice",
+    options: [
+      { value: "casual", reading: "随意" },
+      { value: "plain", reading: "平实" },
+      { value: "formal", reading: "正式" },
+    ],
+    prose: false,
+  },
+  {
+    question_id: "q.voice.directness",
+    prompt: "写消息时，你更常直说，还是先铺垫？",
+    moves: "voice",
+    options: [
+      { value: "reserved", reading: "含蓄" },
+      { value: "balanced", reading: "适中" },
+      { value: "direct", reading: "直接" },
+    ],
+    prose: false,
+  },
+  {
+    question_id: "q.voice.emoji_use",
+    prompt: "你平时用表情符号多吗？",
+    moves: "voice",
+    options: [
+      { value: "never", reading: "不用表情" },
+      { value: "sparing", reading: "偶尔用表情" },
+      { value: "frequent", reading: "经常用表情" },
+    ],
+    prose: false,
+  },
+  {
+    question_id: "q.boundary.topics",
+    prompt: "有哪些话题，你不希望 Soul 替你起草或分析？",
+    moves: "boundary",
+    options: [],
+    prose: true,
+  },
+  {
+    question_id: "q.boundary.availability",
+    prompt: "什么时间段你基本不回消息？",
+    moves: "boundary",
+    options: [],
+    prose: true,
+  },
+  {
+    question_id: "q.value.what_matters",
+    prompt: "有没有一件事，是你希望 Soul 无论如何都替你守住的？",
+    moves: "value",
+    options: [],
+    prose: true,
+  },
+];
+
+/** What one recorded answer leaves behind. AC-03 is `profile_is_empty`. */
+export function anIntakeReceipt(overrides: Partial<IntakeReceipt> = {}): IntakeReceipt {
+  return {
+    answered: 1,
+    axes_known: 1,
+    axes_unknown: 4,
+    voice_fields_user_set: 0,
+    stated_entries: 0,
+    profile_is_empty: false,
+    evidence_ids: ["0192f000-0000-7000-8000-0000000000d1"],
+    ...overrides,
+  };
+}
+
+const AXIS_ID = "0192b0c0-5001-7a01-8b01-000000000001";
+
+/** A profile with one axis answered and four left alone. */
+export function aProfileScreen(overrides: Partial<ProfileScreen> = {}): ProfileScreen {
+  return {
+    profile_id: "0192b0c0-5001-7c01-8c01-000000000001",
+    axes: [
+      {
+        axis_id: AXIS_ID,
+        label: "好奇与开放",
+        position: "leans_high",
+        reading: "好奇与开放：偏向尝试新的做法",
+        evidence_band: "moderate",
+        evidence_count: 1,
+        locked_by_user: false,
+        choices: [
+          { position: "leans_low", reading: "偏向熟悉稳妥的做法" },
+          { position: "mixed", reading: "两端都有，看场合" },
+          { position: "leans_high", reading: "偏向尝试新的做法" },
+        ],
+        inferences: [],
+      },
+      {
+        axis_id: "0192b0c0-5001-7a02-8b02-000000000002",
+        label: "条理与执行",
+        position: "unknown",
+        reading: "条理与执行：还看不出方向",
+        evidence_band: "none",
+        evidence_count: 0,
+        locked_by_user: false,
+        choices: [
+          { position: "leans_low", reading: "偏向随性推进" },
+          { position: "mixed", reading: "两端都有，看场合" },
+          { position: "leans_high", reading: "偏向先规划再动手" },
+        ],
+        inferences: [
+          {
+            inference_id: "0192f000-0000-7000-8000-0000000000c1",
+            position: "leans_low",
+            band: "weak",
+            evidence_count: 1,
+            state: "live",
+            falsifier: null,
+          },
+        ],
+      },
+    ],
+    voice: {
+      fields: [
+        {
+          field: "register",
+          label: "语域",
+          value: "plain",
+          locked_by_user: false,
+          options: [
+            { value: "casual", reading: "随意" },
+            { value: "plain", reading: "平实" },
+            { value: "formal", reading: "正式" },
+          ],
+          question_id: "q.voice.register",
+        },
+      ],
+      reading: "平实、适中、平和、偶尔用表情",
+    },
+    stated: [
+      {
+        field: "boundary",
+        question_id: "q.boundary.topics",
+        prompt: "有哪些话题，你不希望 Soul 替你起草或分析？",
+        event_id: "0192f000-0000-7000-8000-0000000000b1",
+        evidence_id: "0192f000-0000-7000-8000-0000000000b2",
+      },
+    ],
+    reading: "语气：平实、适中、平和、偶尔用表情\n好奇与开放：偏向尝试新的做法｜证据中，1条\n工作假设，非临床结论",
+    positions: ["leans_low", "mixed", "leans_high"],
+    notice: WORKING_HYPOTHESIS_NOTICE,
+    ...overrides,
+  };
+}
+
+export const NO_MEMORIES: MemoryList = {
+  memories: [],
+  memory_types: ["episodic", "semantic", "procedural", "preference", "commitment"],
+  forget_notice: FORGET_NOTICE,
+};
+
+const MEMORY_ID = "0192f000-0000-7000-8000-0000000000a1";
+
+export function aMemoryList(overrides: Partial<MemoryList> = {}): MemoryList {
+  return {
+    ...NO_MEMORIES,
+    memories: [
+      {
+        memory_id: MEMORY_ID,
+        memory_type: "episodic",
+        forget_state: "active",
+        third_party_content_present: false,
+        title_chars: 6,
+        summary_chars: 24,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+export function aMemoryDetail(overrides: Partial<MemoryDetail> = {}): MemoryDetail {
+  return {
+    memory_id: MEMORY_ID,
+    memory_type: "episodic",
+    title: "搬家那天",
+    summary: "下午三点交的钥匙，晚上在新厨房煮了面。",
+    third_party_content_present: false,
+    content_key_id: "0192f000-0000-7000-8000-0000000000k1",
+    ...overrides,
+  };
+}
+
+export const PREVIEW_ID = "0192f000-0000-7000-8000-0000000000p1";
+
+export function aForgetPreview(overrides: Partial<ForgetPreview> = {}): ForgetPreview {
+  return {
+    preview_id: PREVIEW_ID,
+    memory_id: MEMORY_ID,
+    content_key_count: 1,
+    memories_affected: 1,
+    contacts_affected: 0,
+    sealed_blobs_destroyed: 2,
+    inferences_orphaned: 1,
+    audit_entries_retained: 3,
+    destroys_anything: false,
+    notice: FORGET_NOTICE,
+    ...overrides,
+  };
+}
+
+export function aForgetReceipt(overrides: Partial<ForgetReceipt> = {}): ForgetReceipt {
+  return {
+    memory_id: MEMORY_ID,
+    content_keys_destroyed: 1,
+    sealed_blobs_destroyed: 2,
+    inferences_orphaned: 1,
+    matched_preview: true,
+    ...overrides,
+  };
+}
+
+/**
+ * A preview of what research would see: counts and buckets.
+ *
+ * `written_to_disk` and `third_party_rows` are the literals the Rust types
+ * pin, so a double that softened either of them would not compile.
+ */
+export function aResearchPreview(overrides: Partial<ResearchPreview> = {}): ResearchPreview {
+  return {
+    manifest_id: "0192f000-0000-7000-8000-0000000000m1",
+    export_kind: "research_preview",
+    written_to_disk: false,
+    third_party_rows: 0,
+    candidate_rows_total: 4,
+    third_party_rows_excluded: 2,
+    fields: ["event_kind", "time_bucket_utc", "aggregate_count"],
+    rows: [
+      {
+        event_kind: "app_usage",
+        time_bucket_utc: "2026-08-20T09:00:00Z",
+        duration_bucket: null,
+        self_trait_axis: null,
+        self_trait_band: null,
+        aggregate_count: 2,
+      },
+    ],
+    third_party_body: "excluded",
+    notice: RESEARCH_PREVIEW_NOTICE,
+    ...overrides,
+  };
+}
+
+export const EMPTY_CHAIN: AuditChain = {
+  entries: [],
+  verified: true,
+  verification_problem: null,
+  notice: AUDIT_CHAIN_NOTICE,
+};
+
+export function anAuditChain(overrides: Partial<AuditChain> = {}): AuditChain {
+  return {
+    ...EMPTY_CHAIN,
+    entries: [
+      {
+        seq: 1,
+        entry_id: "0192f000-0000-7000-8000-0000000000e9",
+        ts: "2026-08-20T09:00:00Z",
+        action: "memory.write",
+        decision: "allowed",
+        reason_code: null,
+        subject_refs: [MEMORY_ID],
+        items: 1,
+        bytes: null,
+        plan_hash: null,
+        capability_token_id: null,
+        egress_class: "none",
+        prev_hash: "00".repeat(32),
+        entry_hash: "11".repeat(32),
+        follows_previous: true,
+      },
+      {
+        seq: 2,
+        entry_id: "0192f000-0000-7000-8000-0000000000ea",
+        ts: "2026-08-20T09:05:00Z",
+        action: "file.plan",
+        decision: "allowed",
+        reason_code: null,
+        subject_refs: [],
+        items: 3,
+        bytes: 20,
+        plan_hash: "b3".repeat(32),
+        capability_token_id: "0192f000-0000-7000-8000-0000000000t1",
+        egress_class: "none",
+        prev_hash: "11".repeat(32),
+        entry_hash: "22".repeat(32),
+        follows_previous: true,
+      },
+    ],
+    ...overrides,
+  };
+}
+
 export const CLOSED_CLOUD: CloudNotice = {
   state: "not_yet_available",
   label: CLOUD_LABEL,
@@ -271,6 +616,25 @@ export interface FakeCoreOptions {
   readonly summarizing?: (contactId: string) => PersonSummary;
   readonly preparing?: (pasted: string) => E1DraftPlan;
   readonly generating?: (approval: { preparation_id: string; plan_hash: string }) => Draft;
+  readonly questions?: readonly Question[];
+  /** Able to throw, because a questionnaire with nothing in it is refused. */
+  readonly recording?: (answers: readonly { question_id: string; given: string }[]) =>
+    | IntakeReceipt
+    | never;
+  readonly profile?: () => ProfileScreen;
+  readonly correcting?: (axisId: string, position: string) => ProfileScreen;
+  readonly voicing?: (field: string, option: string) => ProfileScreen;
+  readonly memories?: () => MemoryList;
+  readonly opening?: (memoryId: string) => MemoryDetail;
+  readonly writing?: (memory: NewMemory) => MemoryDetail;
+  readonly editing?: (memoryId: string, change: MemoryChange) => MemoryDetail;
+  readonly pricing?: (memoryId: string) => ForgetPreview;
+  readonly forgetting?: (confirmation: {
+    preview_id: string;
+    memory_id: string;
+  }) => ForgetReceipt;
+  readonly research?: () => ResearchPreview;
+  readonly audit?: () => AuditChain;
 }
 
 export function installFakeCore(
@@ -329,6 +693,89 @@ export function installFakeCore(
         );
       case "discard_draft":
         return true;
+      case "questionnaire":
+        return options.questions ?? QUESTIONS;
+      case "answer_questionnaire": {
+        const answers =
+          (payload as { answers?: readonly { question_id: string; given: string }[] }).answers ??
+          [];
+        if (options.recording !== undefined) return options.recording(answers);
+        const kept = answers.filter((answer) => answer.given.trim() !== "");
+        // The core refuses a questionnaire with nothing in it rather than
+        // reporting an intake that wrote no rows. The double has to as well,
+        // or the wizard's handling of that refusal is never exercised.
+        if (kept.length === 0) throw { reason_code: "ROUTINE", explanation: NO_ANSWERS_NOTICE };
+        return anIntakeReceipt({ answered: kept.length });
+      }
+      case "profile_screen":
+        return (options.profile ?? (() => aProfileScreen()))();
+      case "correct_axis": {
+        const asked = payload as { axisId?: string; position?: string };
+        return (options.correcting ?? ((_axis: string, position: string) => aProfileScreen({
+          axes: aProfileScreen().axes.map((axis, index) =>
+            index === 0 ? { ...axis, position, locked_by_user: true } : axis,
+          ),
+        })))(asked.axisId ?? "", asked.position ?? "");
+      }
+      case "set_voice": {
+        const asked = payload as { field?: string; option?: string };
+        return (options.voicing ?? ((_field: string, option: string) => aProfileScreen({
+          voice: {
+            ...aProfileScreen().voice,
+            fields: aProfileScreen().voice.fields.map((field) => ({
+              ...field,
+              value: option,
+              locked_by_user: true,
+            })),
+          },
+        })))(asked.field ?? "", asked.option ?? "");
+      }
+      case "memory_list":
+        return (options.memories ?? (() => NO_MEMORIES))();
+      case "memory_detail":
+        return (options.opening ?? (() => aMemoryDetail()))(
+          (payload as { memoryId?: string }).memoryId ?? "",
+        );
+      case "create_memory":
+        return (options.writing ??
+          ((memory: NewMemory) => aMemoryDetail({ ...memory })))(
+          (payload as { memory: NewMemory }).memory,
+        );
+      case "update_memory": {
+        const asked = payload as { memoryId?: string; change: MemoryChange };
+        const changed = (id: string, change: MemoryChange): MemoryDetail => {
+          const before = aMemoryDetail({ memory_id: id });
+          return {
+            ...before,
+            memory_type: change.memory_type ?? before.memory_type,
+            title: change.title ?? before.title,
+            summary: change.summary ?? before.summary,
+          };
+        };
+        return (options.editing ?? changed)(asked.memoryId ?? "", asked.change);
+      }
+      case "preview_forget":
+        return (options.pricing ?? (() => aForgetPreview()))(
+          (payload as { memoryId?: string }).memoryId ?? "",
+        );
+      case "forget_memory": {
+        const confirmation = (payload as {
+          confirmation: { preview_id: string; memory_id: string };
+        }).confirmation;
+        if (options.forgetting !== undefined) return options.forgetting(confirmation);
+        // The core holds the preview it issued and refuses anything else.
+        if (confirmation.preview_id !== PREVIEW_ID) {
+          throw {
+            reason_code: "PLAN_HASH_MISMATCH",
+            explanation: "这次遗忘对不上你刚才看过的那份影响面预览。什么都没有销毁。",
+          };
+        }
+        return aForgetReceipt({ memory_id: confirmation.memory_id });
+      }
+      case "research_preview":
+        return (options.research ?? (() => aResearchPreview()))();
+      case "audit_chain":
+        return (options.audit ?? (() => EMPTY_CHAIN))();
       default:
         throw `the shell called a command the core does not have: ${cmd}`;
     }

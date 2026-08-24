@@ -23,14 +23,7 @@ import {
   type PlanPreview,
   type Refusal,
 } from "../core";
-
-/** A refusal that did not arrive as one — the core is not answering at all. */
-function asRefusal(error: unknown): Refusal {
-  const shaped = error as Partial<Refusal> | null;
-  return typeof shaped?.reason_code === "string" && typeof shaped.explanation === "string"
-    ? { reason_code: shaped.reason_code, explanation: shaped.explanation }
-    : { reason_code: "unavailable", explanation: String(error) };
-}
+import { asRefusal, Refused } from "../refusal";
 
 export function Files(): React.JSX.Element {
   const [view, setView] = useState<FilesView | null>(null);
@@ -117,11 +110,7 @@ export function Files(): React.JSX.Element {
       </section>
 
       {refusal === null ? null : (
-        <section className="panel refusal" role="alert" aria-labelledby="files-refused-heading">
-          <h2 id="files-refused-heading">这一次没有读成</h2>
-          <p data-testid="files-refusal-code">{refusal.reason_code}</p>
-          <p>{refusal.explanation}</p>
-        </section>
+        <Refused title="这一次没有读成" refusal={refusal} testId="files-refusal-code" />
       )}
 
       <section className="panel" aria-labelledby="roots-heading">

@@ -8,6 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { App } from "./App";
+import { ROUTES } from "./router";
 import {
   CLOUD_LABEL,
   forbidNetwork,
@@ -43,7 +44,9 @@ describe("桌面壳", () => {
 
     await screen.findByRole("heading", { name: "欢迎使用 Soul" });
     await user.click(screen.getByRole("checkbox"));
-    await user.click(screen.getByRole("button", { name: "开始使用" }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await screen.findByTestId("wizard-questions");
+    await user.click(screen.getByRole("button", { name: "一题都不答，直接开始" }));
 
     expect(await screen.findByTestId("closed-state")).toHaveTextContent("全部能力默认关闭");
     expect(screen.getByRole("navigation", { name: "主导航" })).toBeVisible();
@@ -98,6 +101,50 @@ describe("桌面壳", () => {
     expect(screen.queryByTestId("pending-owner")).toBeNull();
     expect(await screen.findByTestId("no-people")).toBeVisible();
     expect(screen.getByTestId("graph-notice")).toHaveTextContent("工作假设，非临床结论");
+  });
+
+  it("灵魂档案页有内容了，不再是空路由", async () => {
+    await startAtRoute("#/profile");
+
+    expect(screen.queryByTestId("pending-owner")).toBeNull();
+    expect(await screen.findByTestId("profile-reading")).toBeVisible();
+    expect(screen.getByTestId("profile-notice")).toHaveTextContent("工作假设，非临床结论");
+  });
+
+  it("自传记忆页有内容了，不再是空路由", async () => {
+    await startAtRoute("#/memory");
+
+    expect(screen.queryByTestId("pending-owner")).toBeNull();
+    expect(await screen.findByTestId("no-memories")).toBeVisible();
+    expect(screen.getByTestId("forget-notice")).toHaveTextContent("不写任何文件");
+  });
+
+  it("研究预览页有内容了，不再是空路由", async () => {
+    await startAtRoute("#/research");
+
+    expect(screen.queryByTestId("pending-owner")).toBeNull();
+    expect(await screen.findByTestId("research-on-screen-only")).toHaveTextContent("没有落盘");
+    expect(screen.getByTestId("research-third-party")).toHaveTextContent("别人的数据 0 行");
+  });
+
+  it("审计页有内容了，不再是空路由", async () => {
+    await startAtRoute("#/audit");
+
+    expect(screen.queryByTestId("pending-owner")).toBeNull();
+    expect(await screen.findByTestId("no-audit-entries")).toBeVisible();
+    expect(screen.getByTestId("audit-notice")).toHaveTextContent("不记内容");
+  });
+
+  /**
+   * `router.tsx` has no `ownedBy` left, so `Pending` never renders. It is kept
+   * rather than deleted — the next route added before its view exists should
+   * say whose it is instead of looking like a feature — and this is the check
+   * that no route is quietly relying on it today.
+   */
+  it("没有一个路由还是空的", async () => {
+    for (const route of ROUTES) {
+      expect(route.ownedBy).toBeNull();
+    }
   });
 
   it("设置页里有云端开关，且仍然尚未启用", async () => {

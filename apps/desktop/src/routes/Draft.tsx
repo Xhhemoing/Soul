@@ -36,6 +36,7 @@ import {
   type E1DraftPlan,
   type Refusal,
 } from "../core";
+import { asRefusal, Refused } from "../refusal";
 
 /** What the core said, in the shape the screen renders it. */
 type Outcome =
@@ -43,14 +44,6 @@ type Outcome =
   | { readonly kind: "working" }
   | { readonly kind: "draft"; readonly draft: DraftValue }
   | { readonly kind: "refused"; readonly refusal: Refusal };
-
-/** A refusal that did not arrive as one — the core is not answering at all. */
-function asRefusal(error: unknown): Refusal {
-  const shaped = error as Partial<Refusal> | null;
-  return typeof shaped?.reason_code === "string" && typeof shaped.explanation === "string"
-    ? { reason_code: shaped.reason_code, explanation: shaped.explanation }
-    : { reason_code: "unavailable", explanation: String(error) };
-}
 
 const DEGRADED: Record<string, string> = {
   reply_unreadable: "端点的回复读不出来，这一条是本机模板写的。",
@@ -176,11 +169,7 @@ export function Draft(): React.JSX.Element {
       )}
 
       {outcome.kind === "refused" ? (
-        <section className="panel refusal" role="alert" aria-labelledby="refused-heading">
-          <h2 id="refused-heading">这一次没有写成</h2>
-          <p data-testid="refusal-code">{outcome.refusal.reason_code}</p>
-          <p>{outcome.refusal.explanation}</p>
-        </section>
+        <Refused title="这一次没有写成" refusal={outcome.refusal} testId="refusal-code" />
       ) : null}
 
       {outcome.kind === "draft" ? <Result key={attempt} draft={outcome.draft} /> : null}

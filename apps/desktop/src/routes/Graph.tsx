@@ -21,14 +21,7 @@ import {
   type Refusal,
   type TieEdge,
 } from "../core";
-
-/** A refusal that did not arrive as one — the core is not answering at all. */
-function asRefusal(error: unknown): Refusal {
-  const shaped = error as Partial<Refusal> | null;
-  return typeof shaped?.reason_code === "string" && typeof shaped.explanation === "string"
-    ? { reason_code: shaped.reason_code, explanation: shaped.explanation }
-    : { reason_code: "unavailable", explanation: String(error) };
-}
+import { asRefusal, Refused } from "../refusal";
 
 /**
  * The band, in words. A band is how much was observed, not how much anything
@@ -83,13 +76,7 @@ export function Graph(): React.JSX.Element {
   };
 
   if (refusal !== null) {
-    return (
-      <section className="panel refusal" role="alert" aria-labelledby="graph-refused-heading">
-        <h2 id="graph-refused-heading">这一次没有读成</h2>
-        <p data-testid="graph-refusal-code">{refusal.reason_code}</p>
-        <p>{refusal.explanation}</p>
-      </section>
-    );
+    return <Refused title="这一次没有读成" refusal={refusal} testId="graph-refusal-code" />;
   }
 
   if (graph === null) {
@@ -140,11 +127,11 @@ export function Graph(): React.JSX.Element {
       )}
 
       {summaryRefusal === null ? null : (
-        <section className="panel refusal" role="alert" aria-labelledby="summary-refused-heading">
-          <h2 id="summary-refused-heading">这个人的摘要没有出来</h2>
-          <p data-testid="summary-refusal-code">{summaryRefusal.reason_code}</p>
-          <p>{summaryRefusal.explanation}</p>
-        </section>
+        <Refused
+          title="这个人的摘要没有出来"
+          refusal={summaryRefusal}
+          testId="summary-refusal-code"
+        />
       )}
 
       {summary === null ? null : <Summary summary={summary} />}

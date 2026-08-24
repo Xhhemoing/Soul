@@ -1,0 +1,205 @@
+/**
+ * 自传记忆: writing one, editing one, and the two-step forget.
+ *
+ * The forget is what most of this file is about. It is the one destructive
+ * thing v0.1 does — D15's definition of deleting, which is destroying the
+ * content key — so the tests below care that reading the price is not paying
+ * it, that paying it echoes the core's own answer back unchanged, and that a
+ * confirmation naming a preview the core is not holding destroys nothing.
+ */
+
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+
+import { Memory } from "./Memory";
+import {
+  aForgetPreview,
+  aMemoryDetail,
+  aMemoryList,
+  forbidNetwork,
+  installFakeCore,
+  PREVIEW_ID,
+  type FakeCoreOptions,
+} from "../test/fakeCore";
+
+const MEMORY_ID = "0192f000-0000-7000-8000-0000000000a1";
+
+async function open(options: FakeCoreOptions = {}) {
+  const core = installFakeCore(options);
+  render(<Memory />);
+  await screen.findByRole("heading", { name: "记一条" });
+  return core;
+}
+
+describe("自传记忆页", () => {
+  it("库里没有记忆的时候，说清楚为什么是空的", async () => {
+    await open();
+
+    expect(screen.getByTestId("no-memories")).toHaveTextContent("还没有写过记忆");
+    expect(screen.getByTestId("forget-notice")).toHaveTextContent("不可撤销");
+  });
+
+  it("写一条会把用户填的原样交给核心", async () => {
+    const core = await open();
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText("一句话说清是什么"), "搬家那天");
+    await user.type(screen.getByLabelText("再多写几句"), "下午三点交的钥匙。");
+    await user.click(screen.getByRole("button", { name: "存下来" }));
+
+    expect(core.callsTo("create_memory")[0]?.payload).toEqual({
+      memory: {
+        memory_type: "episodic",
+        title: "搬家那天",
+        summary: "下午三点交的钥匙。",
+      },
+    });
+  });
+
+  /**
+   * A list view is handed digests, not bodies. What is on screen is the kind,
+   * two character counts and where the memory is on the way to being
+   * forgotten; opening it is a separate command.
+   */
+  it("列表只显示字数和状态，正文要另外打开", async () => {
+    const core = await open({ memories: () => aMemoryList() });
+    const user = userEvent.setup();
+
+    const row = screen.getByTestId(`memory-${MEMORY_ID}`);
+    expect(row).toHaveTextContent("标题 6 字，正文 24 字");
+    expect(row.textContent ?? "").not.toContain("搬家那天");
+
+    await user.click(within(row).getByRole("button", { name: "打开" }));
+
+    expect(core.callsTo("memory_detail")[0]?.payload).toEqual({ memoryId: MEMORY_ID });
+    expect(await screen.findByDisplayValue("搬家那天")).toBeVisible();
+  });
+
+  it("改一条之后仍然是同一个遗忘单位", async () => {
+    const core = await open({ memories: () => aMemoryList() });
+    const user = userEvent.setup();
+
+    await user.click(within(screen.getByTestId(`memory-${MEMORY_ID}`)).getByRole("button", {
+      name: "打开",
+    }));
+    const title = await screen.findByDisplayValue("搬家那天");
+    await user.clear(title);
+    await user.type(title, "交钥匙那天");
+    await user.click(screen.getByRole("button", { name: "改好了" }));
+
+    expect(core.callsTo("update_memory")[0]?.payload).toEqual({
+      memoryId: MEMORY_ID,
+      change: {
+        memory_type: "episodic",
+        title: "交钥匙那天",
+        summary: "下午三点交的钥匙，晚上在新厨房煮了面。",
+      },
+    });
+    expect(screen.getByTestId("edit-key")).toHaveTextContent("同一把内容密钥");
+  });
+
+  /**
+   * The heart of it: asking what a forget costs must not be the forget. The
+   * assertion is on the commands, because a screen that looked right while
+   * sending `forget_memory` would still have destroyed something.
+   */
+  it("看影响面不等于遗忘：只问价，什么都没销毁", async () => {
+    const core = await open({ memories: () => aMemoryList() });
+    const user = userEvent.setup();
+
+    await user.click(within(screen.getByTestId(`memory-${MEMORY_ID}`)).getByRole("button", {
+      name: "看遗忘会影响什么",
+    }));
+
+    expect(await screen.findByTestId("forget-preview")).toHaveTextContent("要销毁 1 把内容密钥");
+    expect(screen.getByTestId("preview-destroys-nothing")).toHaveTextContent("没有销毁任何东西");
+    expect(core.callsTo("preview_forget")).toHaveLength(1);
+    expect(core.callsTo("forget_memory")).toHaveLength(0);
+  });
+
+  it("先留着就是不做，核心那边一次遗忘也没有发生", async () => {
+    const core = await open({ memories: () => aMemoryList() });
+    const user = userEvent.setup();
+
+    await user.click(within(screen.getByTestId(`memory-${MEMORY_ID}`)).getByRole("button", {
+      name: "看遗忘会影响什么",
+    }));
+    await screen.findByTestId("forget-preview");
+    await user.click(screen.getByRole("button", { name: "先留着" }));
+
+    expect(screen.queryByTestId("forget-preview")).toBeNull();
+    expect(core.callsTo("forget_memory")).toHaveLength(0);
+  });
+
+  /** Forgetting is allowed. What it sends back is the core's own preview id. */
+  it("确认之后才遗忘，交回去的是核心发的那份预览编号", async () => {
+    const core = await open({ memories: () => aMemoryList() });
+    const user = userEvent.setup();
+
+    await user.click(within(screen.getByTestId(`memory-${MEMORY_ID}`)).getByRole("button", {
+      name: "看遗忘会影响什么",
+    }));
+    await screen.findByTestId("forget-preview");
+    await user.click(screen.getByRole("button", { name: "就按上面这些，遗忘它" }));
+
+    expect(core.callsTo("forget_memory")[0]?.payload).toEqual({
+      confirmation: { preview_id: PREVIEW_ID, memory_id: MEMORY_ID },
+    });
+    expect(await screen.findByTestId("forget-receipt")).toHaveTextContent("销毁了 1 把内容密钥");
+    expect(screen.getByTestId("receipt-matched")).toHaveTextContent("和你看过的那份预览一致");
+  });
+
+  /**
+   * The core holds one preview and refuses anything else, so a confirmation
+   * built out of stale numbers destroys nothing. The screen shows the refusal
+   * rather than a receipt.
+   */
+  it("对不上预览的确认会被核心挡下来，屏幕上照实说", async () => {
+    await open({
+      memories: () => aMemoryList(),
+      pricing: () => aForgetPreview({ preview_id: "0192f000-0000-7000-8000-0000000000ff" }),
+    });
+    const user = userEvent.setup();
+
+    await user.click(within(screen.getByTestId(`memory-${MEMORY_ID}`)).getByRole("button", {
+      name: "看遗忘会影响什么",
+    }));
+    await screen.findByTestId("forget-preview");
+    await user.click(screen.getByRole("button", { name: "就按上面这些，遗忘它" }));
+
+    expect(await screen.findByTestId("memory-refusal-code")).toHaveTextContent(
+      "PLAN_HASH_MISMATCH",
+    );
+    expect(screen.queryByTestId("forget-receipt")).toBeNull();
+  });
+
+  /** A tombstone can be read about and not reopened. */
+  it("已经遗忘的那一条不能再打开，也不能再遗忘一次", async () => {
+    await open({
+      memories: () =>
+        aMemoryList({
+          memories: aMemoryList().memories.map((row) => ({ ...row, forget_state: "forgotten" })),
+        }),
+    });
+
+    const row = screen.getByTestId(`memory-${MEMORY_ID}`);
+    expect(row).toHaveTextContent("已遗忘，只剩墓碑");
+    expect(within(row).getByRole("button", { name: "打开" })).toBeDisabled();
+    expect(within(row).getByRole("button", { name: "看遗忘会影响什么" })).toBeDisabled();
+  });
+
+  /**
+   * Forgetting destroys a key; it does not touch a file, and AC-27 is about
+   * the other kind of act. Nothing on this page offers to write one.
+   */
+  it("这一页上没有一个按钮是发送或写文件", async () => {
+    const attempts = forbidNetwork();
+    await open({ memories: () => aMemoryList(), opening: () => aMemoryDetail() });
+
+    for (const button of screen.queryAllByRole("button")) {
+      expect(button.textContent ?? "").not.toMatch(/发送|发出|导出|保存到|写入文件|移动|重命名/);
+    }
+    expect(attempts).toEqual([]);
+  });
+});

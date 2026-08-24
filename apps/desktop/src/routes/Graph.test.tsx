@@ -10,12 +10,10 @@
 
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { Graph } from "./Graph";
+import { denylistHits, diagnosticTerms, renderedText } from "../test/denylist";
 import {
   aPeopleGraph,
   aPersonSummary,
@@ -24,8 +22,6 @@ import {
   WORKING_HYPOTHESIS_NOTICE,
   type FakeCoreOptions,
 } from "../test/fakeCore";
-
-const REPO = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 
 async function open(options: FakeCoreOptions = {}) {
   const core = installFakeCore(options);
@@ -94,11 +90,7 @@ describe("人脉图页", () => {
    * this is the surface a user reads it on.
    */
   it("渲染出来的摘要里没有一个诊断词或量表词", async () => {
-    const terms = readFileSync(join(REPO, "fixtures", "denylist", "diagnostic_terms.txt"), "utf8")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line !== "" && !line.startsWith("#"))
-      .map((line) => line.toLowerCase());
+    const terms = diagnosticTerms();
     expect(terms.length).toBeGreaterThan(50);
 
     await open({
@@ -109,16 +101,7 @@ describe("人脉图页", () => {
     await user.click(screen.getAllByRole("button", { name: "看这个人的摘要" })[0]!);
     await screen.findByTestId("summary-text");
 
-    const rendered = (document.body.textContent ?? "").toLowerCase();
-    const hits = terms.filter((term) => {
-      const ascii = /^[\x20-\x7e]+$/.test(term);
-      return ascii
-        ? new RegExp(
-            `(^|[^a-z0-9_])${term.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")}($|[^a-z0-9_])`,
-          ).test(rendered)
-        : rendered.includes(term);
-    });
-    expect(hits).toEqual([]);
+    expect(denylistHits(renderedText(), terms)).toEqual([]);
   });
 
   /**
