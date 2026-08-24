@@ -1,11 +1,32 @@
 name: CI
 
 on:
-  # Keep push on feature branches: a pull_request-only trigger left HEAD
+  # Keep push on the Goal 1 branch: a pull_request-only trigger left HEAD
   # with no run at all. Push+PR still share one concurrency group so the
   # second event cancels the first instead of paying for ten jobs.
+  #
+  # Automatic runs are otherwise narrowed on purpose. Hosted AC-26 on this
+  # private repo has been failing in ~3s with 0 steps and an empty
+  # `runnerName` — the account-wide Actions minutes are gone, and Windows
+  # jobs count double. Other open PRs were retriggering the same five jobs
+  # with empty-commit pushes, and docs-only STATUS updates on this branch
+  # did the same. Once minutes restore, spend them on Goal 1 HEAD, not on
+  # retriggers. `workflow_dispatch` still runs from any ref.
   push:
+    branches:
+      - main
+      - cursor/soul-goal1-7b1c
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - "scripts/*.md"
   pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - "scripts/*.md"
   workflow_dispatch:
 
 env:
@@ -21,6 +42,11 @@ jobs:
   lint:
     name: lint (fmt, clippy, cargo-deny)
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.ref == 'refs/heads/main'
+      || github.ref == 'refs/heads/cursor/soul-goal1-7b1c'
+      || github.head_ref == 'cursor/soul-goal1-7b1c'
     steps:
       - uses: actions/checkout@v4
 
@@ -73,6 +99,11 @@ jobs:
   test-linux:
     name: test (ubuntu, headless)
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.ref == 'refs/heads/main'
+      || github.ref == 'refs/heads/cursor/soul-goal1-7b1c'
+      || github.head_ref == 'cursor/soul-goal1-7b1c'
     steps:
       - uses: actions/checkout@v4
 
@@ -105,6 +136,11 @@ jobs:
   test-windows:
     name: test (windows-latest)
     runs-on: windows-latest
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.ref == 'refs/heads/main'
+      || github.ref == 'refs/heads/cursor/soul-goal1-7b1c'
+      || github.head_ref == 'cursor/soul-goal1-7b1c'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -172,6 +208,11 @@ jobs:
   sbom:
     name: sbom (cyclonedx)
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.ref == 'refs/heads/main'
+      || github.ref == 'refs/heads/cursor/soul-goal1-7b1c'
+      || github.head_ref == 'cursor/soul-goal1-7b1c'
     steps:
       - uses: actions/checkout@v4
 
@@ -201,6 +242,11 @@ jobs:
   package:
     name: package (as far as CI can honestly go)
     runs-on: windows-latest
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.ref == 'refs/heads/main'
+      || github.ref == 'refs/heads/cursor/soul-goal1-7b1c'
+      || github.head_ref == 'cursor/soul-goal1-7b1c'
     steps:
       - uses: actions/checkout@v4
 
