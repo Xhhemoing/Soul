@@ -17,6 +17,8 @@
 | WP01 骨架 | 完成。见下节 |
 | WP02 数据面 | 完成。见下节 |
 | WP08 权限面 | 完成。见下节 |
+| WP03 档案 | 完成。见下节 |
+| WP04 自传记忆 | 完成。见下节 |
 | v0.1 其余 WP | 未开始 |
 
 ## WP01 完成情况
@@ -97,6 +99,53 @@
 2. **写文件能力令牌在 v0.1 不签发也不消费。** HITL 测试断言没有 known action 要这个 scope。
 3. **审计链字段仍由存储覆盖**（WP02 取舍 2）。WP08 只构造无正文内容。
 
+## WP03 完成情况
+
+`crates/soul-profile` 落地。本机 `cargo test -p soul-profile -p soulcore` 绿，`xtask all`（e0-audit / denylist-audit / schema-freeze --check）绿。
+
+| 交付 | 证据 |
+|---|---|
+| 五条方向轴，`axis_id` 是固定 uuid7 常量 | `src/axes.rs` 五个 `AxisDefinition` 常量（好奇 / 条理 / 社交能量 / 随和 / 情绪稳度），各带 `label`、两极描述与问卷题；`tests/axes_and_evidence.rs` 断言五个 UUID 是合法 uuid7、互不相同、`label` 非空。fixture `fixtures/profile/default_axes_profile.json` 把这五个 ID 钉住，改号会红 |
+| 位置只有四种，`clinical_claim` 恒 false | 位置直接用 `profile.schema.json` 的 `AxisPosition`，没有第五种可写；`clinical_claim` 是 `NotAClinicalClaim` 单值类型，不是字段 |
+| 无 evidence 的 inference 不落库 | `service::record_axis_inference` 在碰存储前就返回 `ProfileError::NoEvidence`；真库那一层也拒。两道网，因为档案不能停在「写了一半又被驳回」 |
+| AC-03 问卷完成后非空档案，字段来源 user_stated | `tests/questionnaire_intake.rs`：`fixtures/profile/questionnaire_answers_basic.json` 七个回答产出七条 `SoulEvidence`，`kind: questionnaire`、`method: user_stated`；五条轴全部离开 `unknown` 且各自 cite 到能解引用的那一条。另有 partial fixture（未答的轴留在 `unknown`，不猜）与 rejected fixture（数字位置 / 未知题号 / 题型不符 / 空卷四种，全部落空且不写库） |
+| AC-06 档案侧每条 inference 可解引用 | `view::profile_view` 真去 `get_evidence` 每一个 id，取不回来就报 `DanglingEvidence` 而不是给空列表。`tests/axes_and_evidence.rs` 正反都测：正常情况全部解得开，人为写一条指向不存在证据的 inference 会被拒 |
+| AC-07 档案侧纠正锁定 | `tests/correction_lock.rs`：用户纠正后轴 `locked_by_user`，随后更强的推断返回 `RefusedAxisLocked`，轴不动；被拒的推断**仍然入库**，用户有权看见机器还是不同意。锁一条不影响另外四条。语气侧同理：`set_voice` 之后 `suggest_voice` 返回 `false`，`read_voice` 仍返回用户值——这是 WP10 起草要读的那个值 |
+| 禁数字、过非临床断言 | `numeric::reject_numeric_rating_value` 对序列化后的 JSON 递归查数字，测试往轴里注入一个 `score` 字段证明它真会红（对着 `TraitAxis` 结构体查是空转的，因为没有字段能放数字）。所有可读字符串过 `soul_policy::assert_non_clinical`；`render` 带 `WORKING_HYPOTHESIS_NOTICE` |
+
+落地内容：`crates/soul-profile/{axes,voice,questionnaire,numeric,service,view,error}.rs` 与三个测试文件；`fixtures/profile/` 四份；`soulcore/src/commands/profile.rs`。
+
+### WP03 的取舍与遗留
+
+1. **问卷答案不锁轴，纠正才锁。** 两者都是用户说的，但含义不同：轴是灵魂层持有的工作假设，后来的证据有权修正它；语气是代理层要照办的指令。所以问卷的语气回答**立刻**钉住 `user_set`，问卷的轴回答只置 `locked_by_user = false`。要锁轴得走 `correct_axis`。
+2. **`evidence_ids` 是替换不是累加。** 一条轴上的列表说的是「支持它**现在**这个位置的证据」。被取代的回答仍留在证据表与审计链里，只是不再被当作它已不支持的那个结论的依据。
+3. **denylist 抓到过一次真的。** 语气渲染里「用得少」原本写成「少量表情」，其中「量表」正是 D22 禁的刻度词。改词之后补了一条穷举测试，把 81 种语气组合全部渲染一遍再过断言——这类命中靠人眼复查是抓不住的。
+4. **语气只问两题。** 问卷问直接程度与表情用量，另外两个字段（语域、温度）留在中性默认，等用户在档案页自己改。多问两题的收益不如少问两题的完成率。
+5. **`profile.voice` 是 schema 里的自由 JSON。** `VoiceProfile` 自己序列化进去，包含一份 `user_set` 名单。这意味着语气的锁定信息不在 `additionalProperties: false` 的保护范围内——档案 schema 没有为它定形状。若 WP09/WP10 要在 UI 上展示锁定态，先考虑把它提成正式字段。
+
+## WP04 完成情况
+
+`crates/soul-memory` 落地。本机 `cargo test -p soul-memory -p soulcore` 绿，`xtask all` 绿。两个验收测试都跑真 `SqlCipherStore` 并且**关库重开**后才断言。
+
+| 交付 | 证据 |
+|---|---|
+| 标题/摘要走 sealed blob | `service::create` 只经 `BlobStore::seal`；`SoulMemory` 上存的是 `SealedText` 指针。列表视图 `MemoryDigest` 没有任何字符串字段，「不泄正文」是类型层面的事实 |
+| AC-14 读写一致 | `tests/crud_roundtrip.rs`：三条 fixture 记忆逐字节读回（含全角引号与长中文段），关库重开后再读一遍仍一致——进程内一致证明不了盘上的密文能不能开。编辑后按同一把 CK 重新密封，`content_key_id` 不变 |
+| AC-14 审计无内容 | 同上文件：审计条目只有 id 与计数（`items: 2` 即密封了两个字段），`bytes` 恒空以免成为正文长度的旁路。整条链序列化后过 leakage checker，阈值调到 4 个 scalar，语料是 fixture 里每一句正文 |
+| 遗忘走 ForgetOps，预览数字来自真查询 | `tests/forget_reopen.rs`：第一条记忆 2 个 blob、第二条也是 2 个但 CK 不同，编辑第一条后变成 3 个（被取代的密文仍在同一把 CK 下，会一起死）。任何常量都过不了这三个数。回执与预览逐字段相等 |
+| AC-15 记忆侧 | 同上文件：关库重开后 CK 不在、密文 `ContentKeyDestroyed`、`read` 返回 `Forgotten`（不是 `NotFound`——用户有权知道自己忘掉过东西）、行留作墓碑仍在列表里、依赖该记忆证据的推断 `orphaned`、另一条记忆完好、三条审计仍在且链验证通过、审计 JSON 里搜不到任何一句正文 |
+| 没有重造存储引擎 | `soul-memory` 只依赖 `soul-store-api`，不依赖 `soul-store`（后者只是 dev 依赖，供测试开真库）。加密、CK 生命周期、遗忘事务全在 WP02 那边 |
+
+落地内容：`crates/soul-memory/{draft,service,error}.rs` 与两个测试文件；`fixtures/memory/memories_basic.json`；`soulcore/src/commands/memory.rs`。
+
+### WP04 的取舍与遗留
+
+1. **一条记忆一把 CK，编辑复用。** 这是「一条记忆 = 一个遗忘单元」的前提。编辑若新铸一把，遗忘之后旧标题还读得出来。代价是被取代的密文留在 blob 表里；测试直接断言它跟着同一次遗忘消失，而不是把这一点留作假设。
+2. **遗忘的审计条目写在销毁**之后**。** PRODUCT_LOCK 说审计链绝不能挡住遗忘，所以可能失败的那次写发生在第二步。
+3. **重复遗忘不报错，但也不是幂等的回执。** 第二次的 `content_key_ids` 仍列出那把钥匙（映射是墓碑的一部分），但 `sealed_blobs_destroyed` 变 0——真的没东西可销毁了。崩溃后重试因此是安全的。测试把这个语义写死了。
+4. **`MemoryDraft.subject` 只有 owner / third_party / mixed 三档，占位符按整条记忆走。** 一条 mixed 记忆里哪一句是别人说的，v0.1 不区分，整条带同一个占位符。要做到句级，得在 blob 层加结构，不是这个 crate 能单独决定的。
+5. **`preview_forget` 与 `forget` 之间没有令牌。** 用户看到的数字与实际销毁的数字由「回执必须等于预览」这条断言保证，但两次调用之间若有别的写入，数字会变而没人拦。WP09 接 UI 时若要严格，需要一个把预览钉住的短期令牌。
+
 ## 下一步
 
-批 3：WP03+WP04（档案与记忆）与 WP05+WP06（人脉图与导入）可并行。不要启动 Goal 2。文件写入仍是 v0.1.1。
+批 3 的档案与记忆（WP03+WP04）已完成，人脉图与导入（WP05+WP06）见对应小节。不要启动 Goal 2。文件写入仍是 v0.1.1。
