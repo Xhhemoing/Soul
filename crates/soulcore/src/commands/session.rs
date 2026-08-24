@@ -68,6 +68,9 @@ use crate::commands::fileplan::{
     AuthorizedRootView, FilePlanSession, PlanPreview, READ_ONLY_NOTICE,
 };
 use crate::commands::graph::{self as graph_commands, PeopleGraphView};
+use crate::commands::import::{
+    self as import_commands, ImportPreview, ImportReceiptView, IMPORT_REFUSED_NOTICE,
+};
 use crate::commands::memory::{
     self as memory_commands, ForgetConfirmation, ForgetPreview, ForgetReceiptView, MemoryChange,
     MemoryDetail, MemoryList, NewMemory,
@@ -555,6 +558,71 @@ impl Session {
         self.draft.discard()
     }
 
+    // ------------------------------------------------------- WP06: import ---
+
+    /// What a `soul-import-v1` file contains. Writes nothing.
+    ///
+    /// The store has to be open for a preview as well as for a commit. Parsing
+    /// itself needs nothing — `soul-import` never touches a database — but a
+    /// screen that counted up somebody's export and only then said there is
+    /// nowhere to put it would have read the file for no reason.
+    pub fn preview_soul_import_v1(&self, text: &str) -> Result<ImportPreview, SessionRefusal> {
+        self.opened_store()?;
+        let staged = import_commands::read_soul_import_v1(text)?;
+        Ok(ImportPreview::of(&staged))
+    }
+
+    /// The same for a Telegram Desktop `result.json`. AC-05.
+    ///
+    /// v0.1 does not open archives: the user points at the `result.json` that
+    /// Telegram's own *Export chat history → Machine-readable JSON* produced,
+    /// and this reads the text of that one file.
+    pub fn preview_telegram(&self, text: &str) -> Result<ImportPreview, SessionRefusal> {
+        self.opened_store()?;
+        let staged = import_commands::read_telegram(&telegram_document(text)?)?;
+        Ok(ImportPreview::of(&staged))
+    }
+
+    /// Seal a `soul-import-v1` file into the store. AC-04.
+    pub fn commit_soul_import_v1(
+        &mut self,
+        text: &str,
+    ) -> Result<ImportReceiptView, SessionRefusal> {
+        let staged = import_commands::read_soul_import_v1(text)?;
+        self.commit_import(&staged)
+    }
+
+    /// Seal a Telegram export into the store. AC-05.
+    pub fn commit_telegram(&mut self, text: &str) -> Result<ImportReceiptView, SessionRefusal> {
+        let staged = import_commands::read_telegram(&telegram_document(text)?)?;
+        self.commit_import(&staged)
+    }
+
+    /// Write one parsed import, and derive the graph it implies.
+    ///
+    /// The file is parsed again by whichever `commit_*` got here rather than
+    /// carried over from the preview: a staged import held on the session
+    /// would be a second copy of somebody's export sitting in memory between
+    /// two clicks, and the text the WebView sends back is the same text it
+    /// previewed. What the user approved is a set of counts, and a re-parse of
+    /// the same bytes produces the same ones.
+    ///
+    /// The rebuild runs under the same store guard, which is what makes
+    /// `/graph` show the people this file just added without a second opening
+    /// of anything. `soul-graph::rebuild` is idempotent — a second import
+    /// updates the ties rather than growing a parallel graph.
+    fn commit_import(
+        &mut self,
+        staged: &soul_import::model::StagedImport,
+    ) -> Result<ImportReceiptView, SessionRefusal> {
+        let at = now_unix_seconds();
+        let store = self.opened_store()?;
+        let mut store = hold(&store);
+        let receipt = import_commands::commit(&mut store, staged, at)?;
+        let build = graph_commands::rebuild(&mut store, at)?;
+        Ok(ImportReceiptView::of(&receipt, build.edges_written.len()))
+    }
+
     // ------------------------------------------------------ WP03: profile ---
 
     /// The eleven questions, for a wizard that has to draw them.
@@ -791,6 +859,25 @@ fn hold(store: &Arc<Mutex<SqlCipherStore>>) -> MutexGuard<'_, SqlCipherStore> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// One Telegram export, as JSON, or a refusal that says where the file stops
+/// being readable without quoting what is there.
+///
+/// `serde_json`'s own message is not forwarded. It names the value it choked
+/// on, and that value is somebody's message; a line and a column say the same
+/// thing about where to look and nothing at all about what is written there.
+fn telegram_document(text: &str) -> Result<serde_json::Value, SessionRefusal> {
+    serde_json::from_str(text).map_err(|error| SessionRefusal {
+        reason_code: ReasonCode::Routine.as_str().to_owned(),
+        explanation: format!(
+            "{IMPORT_REFUSED_NOTICE}\n第 {} 行第 {} 列起，这个文件不是一段读得下去的 JSON。\
+             Telegram 的「导出聊天记录」要选 Machine-readable JSON，导出目录里的 result.json \
+             才是这一版认得的形状；压缩包和 HTML 导出都读不了。",
+            error.line(),
+            error.column(),
+        ),
+    })
+}
+
 /// An identifier the interface handed back, or a refusal that names the kind
 /// of thing it was supposed to identify and nothing else.
 fn parse_id(id: &str, kind: &str) -> Result<Uuid, SessionRefusal> {
@@ -867,6 +954,40 @@ impl From<DraftRefusal> for SessionRefusal {
         SessionRefusal {
             reason_code: refusal.reason_code().as_str().to_owned(),
             explanation: refusal.to_string(),
+        }
+    }
+}
+
+/// A file that did not parse, as a sentence the user can act on.
+///
+/// `ImportFailure` already reads like one — a locator, a contract field name
+/// and what is wrong with it, per defect — and it is `soul-import`'s job to
+/// keep the file's own words out of it. What is added here is the line in
+/// front: nothing was written, so there is nothing to undo.
+impl From<soul_import::defect::ImportFailure> for SessionRefusal {
+    fn from(failure: soul_import::defect::ImportFailure) -> SessionRefusal {
+        SessionRefusal {
+            reason_code: ReasonCode::Routine.as_str().to_owned(),
+            explanation: format!("{IMPORT_REFUSED_NOTICE}\n{failure}"),
+        }
+    }
+}
+
+/// A file that parsed and then could not be stored.
+///
+/// Said differently from a parse failure on purpose: a commit is not atomic in
+/// v0.1 — `soul-store-api` has no entry point that lets a caller open a
+/// transaction — so a failure here can leave part of the export behind.
+/// Re-running the same file is safe; the people are matched by identifier
+/// digest and only the events are written a second time.
+impl From<soul_import::commit::ImportError> for SessionRefusal {
+    fn from(error: soul_import::commit::ImportError) -> SessionRefusal {
+        SessionRefusal {
+            reason_code: ReasonCode::Routine.as_str().to_owned(),
+            explanation: format!(
+                "这次导入没有做完：{error}。v0.1 的导入不是一个事务，中途失败可能已经写进去一部分；\
+                 同一个文件再导一次是安全的，人会被认回来，事件会多一份。"
+            ),
         }
     }
 }
