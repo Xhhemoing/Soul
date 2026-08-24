@@ -71,11 +71,39 @@ fixtures-verify:
 deny:
     cargo deny check
 
+# The whole product, once, with this process's sockets watched. AC-21.
+# cargo equivalent: cargo run -p soulcore --bin soul-headless -- smoke
+# The JSON goes to stdout and the readable summary to stderr, so
+# `just headless > report.json` leaves the summary on the terminal.
+headless:
+    cargo run -q -p soulcore --bin soul-headless -- smoke
+
+# A CycloneDX bill of materials per shipped workspace, into target/sbom.
+# cargo equivalent: cargo run -p xtask -- sbom
+# Offline and deterministic: it reads `cargo metadata` and Cargo.lock, and
+# fails on a dependency that states no licence.
+sbom:
+    cargo run -q -p xtask -- sbom
+
+# What can be checked about scripts/install-smoke.ps1 without a Windows box:
+# the report fields it reads exist, it installs and uninstalls silently, and
+# it downloads nothing. `pwsh -File ... -DryRun` on top of that if pwsh is
+# installed here, which on a Linux CI host it usually is not.
+# cargo equivalent: cargo test -p soulcore --test install_smoke_script
+smoke-lint:
+    cargo test -q -p soulcore --test install_smoke_script
+    @if command -v pwsh > /dev/null; then \
+        pwsh -NoProfile -Command '$e=$null; [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path scripts/install-smoke.ps1).Path, [ref]$null, [ref]$e) > $null; if ($e.Count) { $e; exit 1 }; "install-smoke.ps1: parses clean"'; \
+        pwsh -NoProfile -File scripts/install-smoke.ps1 -DryRun -SkipInstall; \
+    else \
+        echo "smoke-lint: no pwsh here, so only the Rust checks ran (see crates/soulcore/tests/install_smoke_script.rs)"; \
+    fi
+
 # Everything the Linux test job runs, in the order it runs it.
 # `deny` is deliberately not chained here: it needs a cargo-deny binary that
 # the workflow installs in the separate lint job. Run `just deny` alongside
 # this locally to reproduce CI in full.
-ci: lint schema e0 denylist fixtures-verify test ui-lint ui-test
+ci: lint schema e0 denylist fixtures-verify test smoke-lint sbom ui-lint ui-test
 
 # Everything CI checks anywhere, including cargo-deny.
 ci-full: ci deny
