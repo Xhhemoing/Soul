@@ -43,7 +43,7 @@ pub use analysis::{
 };
 pub use brief::{AxisReading, ProfileBrief};
 pub use draft::{
-    Degradation, Draft, DraftRequest, DraftSource, Drafter, NeverSent, ReplyGenerator,
+    BodyFacts, Degradation, Draft, DraftRequest, DraftSource, Drafter, NeverSent, ReplyGenerator,
     DEGRADED_NOTICE, ENDPOINT_NOTICE, NOT_SENT_NOTICE, TEMPLATE_NOTICE,
 };
 pub use error::{DraftError, DraftResult, GenerationRefused};

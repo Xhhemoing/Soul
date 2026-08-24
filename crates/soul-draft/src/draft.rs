@@ -251,6 +251,29 @@ impl Draft {
     }
 }
 
+/// What a body that went out was carrying, once the body itself is gone.
+///
+/// Read off a [`RedactedBody`] before it is handed to the network, because
+/// the body is consumed by the call and these three numbers are what the
+/// draft and its audit entry have to report. Counts only: there is no field
+/// here that could hold a word of what was in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BodyFacts {
+    pub third_party_turns: usize,
+    pub placeheld_turns: usize,
+    pub carries_exempted_original: bool,
+}
+
+impl BodyFacts {
+    pub fn of(body: &RedactedBody) -> BodyFacts {
+        BodyFacts {
+            third_party_turns: body.third_party_turns(),
+            placeheld_turns: body.placeheld_turns(),
+            carries_exempted_original: body.carries_exempted_original(),
+        }
+    }
+}
+
 /// Turns a prepared request body into model text.
 ///
 /// The seam between this crate and the network. An implementation may put
@@ -328,9 +351,7 @@ impl Drafter {
             text,
             DraftSource::ToneTemplate,
             None,
-            0,
-            0,
-            false,
+            BodyFacts::default(),
             Vec::new(),
         ))
     }
@@ -349,20 +370,33 @@ impl Drafter {
         generator: &mut G,
     ) -> DraftResult<Draft> {
         let body = self.redact(request, exemption)?;
-        let third_party_turns = body.third_party_turns();
-        let placeheld_turns = body.placeheld_turns();
-        let carries_exempted_original = body.carries_exempted_original();
-
+        let facts = BodyFacts::of(&body);
         let raw = generator.generate(body)?;
-        match reply::read(&raw) {
+        self.finish_reply(request, facts, &raw)
+    }
+
+    /// Read an answer whose request was made elsewhere.
+    ///
+    /// `soulcore` needs this because its E1 path runs through
+    /// `PolicySession::e1_generate`, which is where the capability token is
+    /// spent — the body leaves in one call and the answer arrives from
+    /// another. `facts` is what that body was carrying, taken before it was
+    /// handed over, because the counts a draft reports have to describe the
+    /// bytes that actually went out rather than a body rebuilt afterwards.
+    /// Rebuilding would be wrong twice over: the exemption is gone by then.
+    pub fn finish_reply(
+        &self,
+        request: &DraftRequest,
+        facts: BodyFacts,
+        raw: &str,
+    ) -> DraftResult<Draft> {
+        match reply::read(raw) {
             Ok(answer) => Ok(self.finish(
                 request,
                 answer.text,
                 DraftSource::UserEndpoint,
                 None,
-                third_party_turns,
-                placeheld_turns,
-                carries_exempted_original,
+                facts,
                 answer.signals,
             )),
             Err(defect) => {
@@ -372,25 +406,20 @@ impl Drafter {
                     text,
                     DraftSource::ToneTemplate,
                     Some(Degradation::of(&defect)),
-                    third_party_turns,
-                    placeheld_turns,
-                    carries_exempted_original,
+                    facts,
                     Vec::new(),
                 ))
             }
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn finish(
         &self,
         request: &DraftRequest,
         text: String,
         source: DraftSource,
         degraded: Option<Degradation>,
-        third_party_turns: usize,
-        placeheld_turns: usize,
-        carries_exempted_original: bool,
+        facts: BodyFacts,
         reply_signals: Vec<InjectionSignal>,
     ) -> Draft {
         let mut signals = request.injection_signals();
@@ -408,9 +437,9 @@ impl Drafter {
             text,
             source,
             delivery: NeverSent,
-            third_party_turns,
-            placeheld_turns,
-            carries_exempted_original,
+            third_party_turns: facts.third_party_turns,
+            placeheld_turns: facts.placeheld_turns,
+            carries_exempted_original: facts.carries_exempted_original,
             degraded,
             injection_signals: signals
                 .into_iter()

@@ -111,7 +111,10 @@ fn the_prompt_carries_the_users_value_and_not_the_inferred_one() {
     let (brief, _, _) = brief_after_a_correction_and_a_disagreement();
     let rendered = brief.render().expect("the brief renders");
 
-    assert!(rendered.contains("直接"), "the user's value is in the prompt");
+    assert!(
+        rendered.contains("直接"),
+        "the user's value is in the prompt"
+    );
     assert!(
         !rendered.contains("含蓄"),
         "the refused inference must not appear anywhere in the prompt: {rendered}",
@@ -165,7 +168,10 @@ fn with_no_endpoint_the_draft_is_a_template_and_nothing_is_contacted() {
 
     assert_eq!(draft.source, DraftSource::ToneTemplate);
     assert_eq!(draft.degraded, None);
-    assert!(draft.text.contains(BODY_SLOT), "the slot is left for the user");
+    assert!(
+        draft.text.contains(BODY_SLOT),
+        "the slot is left for the user"
+    );
     assert_eq!(draft.not_sent_notice, NOT_SENT_NOTICE);
     assert_eq!(draft.source_notice, TEMPLATE_NOTICE);
     assert_eq!(
@@ -280,7 +286,10 @@ fn an_axis_with_no_evidence_stays_out_of_the_prompt() {
 
     let brief = ProfileBrief::from_view(&view).expect("the brief builds");
     assert!(brief.readings().is_empty());
-    assert!(brief.render().expect("renders").contains("暂无有证据支持的要点"));
+    assert!(brief
+        .render()
+        .expect("renders")
+        .contains("暂无有证据支持的要点"));
 }
 
 fn render_with(voice: &VoiceProfile) -> String {
