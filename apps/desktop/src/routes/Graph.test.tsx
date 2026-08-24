@@ -77,11 +77,36 @@ describe("人脉图页", () => {
     await user.click(screen.getAllByRole("button", { name: "看这个人的摘要" })[0]!);
 
     expect(await screen.findByTestId("summary-text")).toHaveTextContent("一共 6 次往来");
+    expect(screen.getByTestId("summary-source")).toHaveTextContent("本机根据往来次数写的统计");
     expect(screen.getByTestId("summary-points")).toHaveTextContent("依据 2 条证据");
     expect(screen.getByTestId("summary-notice")).toHaveTextContent(WORKING_HYPOTHESIS_NOTICE);
     expect(core.callsTo("person_summary")[0]?.payload).toEqual({
       contactId: "0192f000-0000-7000-8000-000000000002",
     });
+  });
+
+  /**
+   * AC-16's other half: when the core says the endpoint rewrote the counts,
+   * the screen has to say so. Draft already renders `source_notice` for the
+   * same reason — a degradation the user cannot see is not a degradation, it
+   * is the only path there is.
+   */
+  it("端点改写过的摘要，屏幕上写明是端点改写的", async () => {
+    await open({
+      graph: aPeopleGraph(),
+      summarizing: () =>
+        aPersonSummary({
+          source: "user_endpoint",
+          text: "你们最近往来比较稳定，多数时候是一对一说话。",
+        }),
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getAllByRole("button", { name: "看这个人的摘要" })[0]!);
+
+    expect(await screen.findByTestId("summary-source")).toHaveTextContent(
+      "你自己的端点根据本机统计改写",
+    );
+    expect(screen.getByTestId("summary-text")).toHaveTextContent("往来比较稳定");
   });
 
   /**

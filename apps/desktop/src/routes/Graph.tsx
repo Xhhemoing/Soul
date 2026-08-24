@@ -5,9 +5,11 @@
  * person's label is sealed text in the store and nothing on this path opens
  * the seal, so people are told apart by the leading characters of an
  * identifier digest. And it says nothing about what anybody is like — the
- * summary underneath is counts and the evidence rows behind them, it carries
- * 工作假设，非临床结论 from the core, and every sentence in it was built on
- * the other side of the IPC where `soul-policy`'s denylist could see it.
+ * summary underneath is the core's sentences and the evidence rows behind
+ * them, it carries 工作假设，非临床结论 from the core, and every sentence in
+ * it was built on the other side of the IPC where `soul-policy`'s denylist
+ * could see it. Where those sentences came from is on screen: counts, or a
+ * rephrasing the user's own endpoint produced from those counts.
  */
 
 import { useEffect, useState } from "react";
@@ -39,6 +41,12 @@ const TIE_TYPE: Record<string, string> = {
   group_only: "只在多人会话里出现",
   reciprocal: "两边都发过",
   one_sided: "只有一边发过",
+};
+
+/** Where the summary text came from. The codes are `PersonSummaryView.source`. */
+const SUMMARY_SOURCE: Record<string, string> = {
+  counts: "这一份是本机根据往来次数写的统计。",
+  user_endpoint: "这一份是你自己的端点根据本机统计改写的。",
 };
 
 function words(source: Record<string, string>, key: string): string {
@@ -205,6 +213,9 @@ function Summary({ summary }: SummaryProps): React.JSX.Element {
   return (
     <section className="panel" aria-labelledby="summary-heading">
       <h2 id="summary-heading">这个人的摘要</h2>
+      <p className="muted" data-testid="summary-source">
+        {words(SUMMARY_SOURCE, summary.source)}
+      </p>
       <p data-testid="summary-text">{summary.text}</p>
       <ul className="facts" data-testid="summary-points">
         {summary.points.map((point) => (

@@ -58,6 +58,7 @@ use soul_policy::audit::{append_or_store_error, AuditContent};
 use soul_policy::clock::{now_unix_millis, now_unix_seconds, rfc3339_utc};
 use soul_policy::hitl::{RequestOrigin, TokenIssuer};
 use soul_policy::ReasonCode;
+use soul_schema::audit::AuditAction;
 use soul_store::SqlCipherStore;
 use soul_store_api::forget::ForgetImpact;
 
@@ -1089,21 +1090,23 @@ impl Session {
     /// Forgetting is allowed — it is what D15 means by deleting — and it is
     /// not a file write; what is not allowed is doing it because a second
     /// click landed on a screen nobody read.
+    ///
+    /// The refusal owes the chain a line, for the reason drafting's does: a
+    /// confirmation that did not echo the preview is a stop the product made
+    /// on the user's behalf, and until it was written down `/audit` heard
+    /// about forgets that ran and nothing at all about the ones that were
+    /// turned away.
     pub fn forget_memory(
         &mut self,
         confirmation: &ForgetConfirmation,
     ) -> Result<ForgetReceiptView, SessionRefusal> {
-        let held = self
-            .held_forget
-            .take()
-            .filter(|held| {
-                held.preview_id.to_string() == confirmation.preview_id
-                    && held.memory_id.to_string() == confirmation.memory_id
-            })
-            .ok_or_else(|| SessionRefusal {
-                reason_code: ReasonCode::PlanHashMismatch.as_str().to_owned(),
-                explanation: FORGET_NOT_PREVIEWED_NOTICE.to_owned(),
-            })?;
+        let matched = self.held_forget.take().filter(|held| {
+            held.preview_id.to_string() == confirmation.preview_id
+                && held.memory_id.to_string() == confirmation.memory_id
+        });
+        let Some(held) = matched else {
+            return Err(self.refuse_forget());
+        };
 
         let at = now_unix_seconds();
         let store = self.opened_store()?;
@@ -1114,6 +1117,30 @@ impl Session {
             &receipt,
             &held.impact,
         ))
+    }
+
+    /// Record the denial a forget that was not previewed owes the chain, and
+    /// hand back what the user reads.
+    ///
+    /// `hitl.deny` is the action `audit.schema.json` already has for a
+    /// confirmation the guard turned away, and the entry carries the code and
+    /// nothing else: which memory was named would put a title in the chain.
+    /// As in [`Session::refuse_draft`], a store that is open and will not
+    /// record the denial is reported instead of the refusal — it is the more
+    /// serious of the two problems, and returning the refusal would leave
+    /// nobody looking at it.
+    fn refuse_forget(&self) -> SessionRefusal {
+        let entries = [AuditContent::denied(
+            AuditAction::HitlDeny,
+            ReasonCode::PlanHashMismatch,
+        )];
+        match self.append_audit(&entries) {
+            Ok(()) => SessionRefusal {
+                reason_code: ReasonCode::PlanHashMismatch.as_str().to_owned(),
+                explanation: FORGET_NOT_PREVIEWED_NOTICE.to_owned(),
+            },
+            Err(problem) => problem,
+        }
     }
 
     // ------------------------------------------------------- WP07: collect ---

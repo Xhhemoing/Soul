@@ -744,9 +744,33 @@ fn an_export_crosses_the_ipc_as_counts_and_becomes_people() {
     let graph = shell.invoke("people_graph", json!({})).expect("a graph");
     assert_eq!(graph["people"].as_array().map(Vec::len), Some(5));
 
+    let someone = graph["people"]
+        .as_array()
+        .expect("people")
+        .iter()
+        .filter(|person| person["is_you"] != json!(true) && person["tie_count"].as_u64().unwrap_or(0) > 0)
+        .max_by_key(|person| person["interaction_count"].as_u64().unwrap_or(0))
+        .expect("the export has somebody in it");
+    let contact_id = someone["contact_id"]
+        .as_str()
+        .expect("a contact id")
+        .to_owned();
+    let summary = shell
+        .invoke("person_summary", json!({ "contactId": contact_id }))
+        .expect("a summary");
+    assert_eq!(summary["source"], json!("counts"));
+    assert_eq!(summary["clinical_claim"], json!(false));
+    assert_eq!(summary["contact_id"], json!(contact_id));
+    assert!(
+        summary["points"]
+            .as_array()
+            .is_some_and(|points| !points.is_empty()),
+        "a summary with no points reached the WebView: {summary}",
+    );
+
     // Nothing anybody wrote in that file came back across the IPC, on any of
-    // the three answers the screen renders.
-    let answered = format!("{preview}{receipt}{graph}");
+    // the four answers the screen renders.
+    let answered = format!("{preview}{receipt}{graph}{summary}");
     for line in text.lines().filter(|line| line.contains("\"text\"")) {
         let said = line
             .rsplit_once("\"text\":\"")

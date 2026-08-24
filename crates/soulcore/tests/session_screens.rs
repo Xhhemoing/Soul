@@ -354,6 +354,7 @@ fn a_forget_only_runs_on_the_preview_the_user_read() {
 
     // A forget nobody previewed is refused, and nothing is destroyed by the
     // refusal — the memory is still readable afterwards.
+    let before = session.audit().expect("the chain").entries.len();
     let refusal = session
         .forget_memory(&ForgetConfirmation {
             preview_id: uuid::Uuid::now_v7().to_string(),
@@ -362,6 +363,25 @@ fn a_forget_only_runs_on_the_preview_the_user_read() {
         .expect_err("no preview was issued");
     assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
     assert!(session.memory(&memory_id).is_ok());
+
+    // AC-23: the refusal is a thing that happened to the user, so the chain
+    // holds it — under the action the contract already has for a confirmation
+    // the guard turned away, and with no word of which memory was named.
+    let chain = session.audit().expect("the chain");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    assert_eq!(chain.entries.len(), before + 1);
+    let entry = chain.entries.last().expect("the denial just written");
+    assert_eq!(entry.action, "hitl.deny");
+    assert_eq!(entry.decision, "denied");
+    assert_eq!(entry.reason_code.as_deref(), Some("PLAN_HASH_MISMATCH"));
+    assert!(entry.follows_previous);
+
+    let played = serde_json::to_string(&chain).expect("serialize the chain");
+    let debugged = format!("{chain:?}");
+    for prose in ["搬家那天", "交钥匙那天", "下午三点交的钥匙。"] {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
+        assert!(!debugged.contains(prose), "the chain carries `{prose}`");
+    }
 
     let preview = session.preview_forget(&memory_id).expect("the price");
     assert!(!preview.destroys_anything);
@@ -376,6 +396,7 @@ fn a_forget_only_runs_on_the_preview_the_user_read() {
     // stopped reading is no longer the one that would run.
     let second = session.preview_forget(&memory_id).expect("asked again");
     assert_ne!(second.preview_id, preview.preview_id);
+    let before = session.audit().expect("the chain").entries.len();
     let refusal = session
         .forget_memory(&ForgetConfirmation {
             preview_id: preview.preview_id.clone(),
@@ -383,6 +404,16 @@ fn a_forget_only_runs_on_the_preview_the_user_read() {
         })
         .expect_err("that preview is not the one on screen any more");
     assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+
+    // A stale preview id is the same refusal, and it is recorded too.
+    let chain = session.audit().expect("the chain");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    assert_eq!(chain.entries.len(), before + 1);
+    let entry = chain.entries.last().expect("the second denial");
+    assert_eq!(entry.action, "hitl.deny");
+    assert_eq!(entry.decision, "denied");
+    assert_eq!(entry.reason_code.as_deref(), Some("PLAN_HASH_MISMATCH"));
+    assert!(entry.follows_previous);
 
     let preview = session.preview_forget(&memory_id).expect("the price again");
     let receipt = session
