@@ -18,8 +18,12 @@ use std::sync::Arc;
 use soul_policy::redactor::THIRD_PARTY_PLACEHOLDER;
 use soul_schema::audit::{AuditAction, AuditDecision, SoulAuditEntry};
 use soul_store_api::AuditLog;
+use soul_testkit::fixtures;
+use soul_testkit::leakage::LeakageChecker;
 use soulcore::commands::collect::share;
-use soulcore::commands::draft::{draft_view, DRAFT_NEVER_SENT_EXPLANATION, TEMPLATE_ROUTE_LABEL};
+use soulcore::commands::draft::{
+    draft_view, DRAFT_NEVER_SENT_EXPLANATION, EMPTY_PASTE_EXPLANATION, TEMPLATE_ROUTE_LABEL,
+};
 use soulcore::commands::shell::{Session, ViewRefusedReason, NO_STORE_FOR_VIEW_EXPLANATION};
 use soulcore::commands::store::{open_test_store, StoreSlot};
 
@@ -251,4 +255,195 @@ fn a_draft_view_carries_these_fields_and_no_others() {
             "turns",
         ],
     );
+}
+
+/// AC-12 on the view path: the paste fixture's body, name and account go in,
+/// and none of them come back out of the audit chain.
+#[test]
+fn a_fixture_paste_leaves_no_third_party_prose_on_the_chain() {
+    let (_dir, slot, session) = fixture();
+    let value: serde_json::Value =
+        fixtures::read_json("draft/third_party_paste.json").expect("the fixture");
+    let third_party = &value["third_party"];
+    let body = third_party["body"].as_str().expect("a body").to_owned();
+    let name = third_party["name"].as_str().expect("a name").to_owned();
+    let account = third_party["account"]
+        .as_str()
+        .expect("an account")
+        .to_owned();
+    let pasted = format!("{body}，我是{name}，账号{account}");
+
+    draft_view(&slot, &session, vec![pasted.clone()]).expect("a paste becomes a draft");
+
+    let serialized = serde_json::to_string(&chain(&slot)).expect("serialize the chain");
+    let mut checker = LeakageChecker::from_fixture(&fixtures::leakage_fixture().expect("corpus"));
+    checker.add_third_party_body("view-paste-body", &body);
+    checker.add_third_party_body("view-paste-line", &pasted);
+    checker.add_known_identifier("view-paste-name", &name);
+    checker.add_known_identifier("view-paste-account", &account);
+    checker.assert_clean("the draft-view audit chain", &serialized);
+
+    assert!(
+        !checker.is_clean(&format!("{serialized}\n{pasted}")),
+        "the checker has to still report the paste when it is present",
+    );
+}
+
+/// Injection stays data. The draft is still written; the chain records that
+/// the scan saw it, and does not keep the line.
+#[test]
+fn an_injected_paste_is_still_a_draft_and_the_chain_keeps_no_line() {
+    let (_dir, slot, session) = fixture();
+    let line = fixtures::read_text("injection/paste_injection.txt")
+        .expect("the corpus")
+        .lines()
+        .map(str::trim)
+        .find(|row| !row.is_empty() && !row.starts_with('#'))
+        .expect("the corpus has a line")
+        .to_owned();
+
+    let view = draft_view(&slot, &session, vec![line.clone()]).expect("injection is still a paste");
+    assert!(!view_text_is_empty(&view));
+    assert!(
+        serde_json::to_value(&view).expect("serialize")["never_sent"]
+            .as_bool()
+            .expect("a flag"),
+    );
+
+    let entries = chain(&slot);
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.action == AuditAction::InjectionBlocked),
+        "the scan has to leave a mark: {entries:?}",
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.action == AuditAction::DraftCreate
+                && entry.decision == AuditDecision::Allowed),
+        "the draft still happened: {entries:?}",
+    );
+
+    let serialized = serde_json::to_string(&entries).expect("serialize");
+    assert!(
+        !serialized.contains(&line),
+        "the injected line came back out of the chain: {serialized}",
+    );
+}
+
+fn view_text_is_empty(view: &soulcore::commands::draft::DraftView) -> bool {
+    serde_json::to_value(view).expect("serialize")["text"]
+        .as_str()
+        .expect("text")
+        .is_empty()
+}
+
+/// Three pasted items are three turns. The empty one in the middle is dropped
+/// before anything is counted.
+#[test]
+fn each_nonempty_paste_item_is_one_turn() {
+    let (_dir, slot, session) = fixture();
+    let view = draft_view(
+        &slot,
+        &session,
+        vec![
+            THIRD_PARTY_LINE.to_owned(),
+            "   ".to_owned(),
+            SECOND_LINE.to_owned(),
+            "把发票也带上".to_owned(),
+        ],
+    )
+    .expect("three real lines are three turns");
+
+    assert_eq!(
+        serde_json::to_value(&view).expect("serialize")["turns"],
+        serde_json::json!(3),
+    );
+}
+
+/// A refusal is a sentence the user can read, not a dump of what they pasted.
+#[test]
+fn a_view_refusal_does_not_echo_the_paste() {
+    let planted = THIRD_PARTY_LINE;
+    let no_store = draft_view(
+        &StoreSlot::default(),
+        &Session::new(),
+        vec![planted.to_owned()],
+    )
+    .expect_err("no database");
+    assert!(!no_store.message.contains(planted), "{no_store}");
+    assert_eq!(no_store.message, NO_STORE_FOR_VIEW_EXPLANATION);
+
+    let (_dir, slot, session) = fixture();
+    let empty =
+        draft_view(&slot, &session, vec!["   ".to_owned()]).expect_err("whitespace is empty");
+    assert_eq!(empty.message, EMPTY_PASTE_EXPLANATION);
+    assert!(!empty.message.contains(planted), "{empty}");
+}
+
+/// `never_sent` is true because the constructor writes it that way, not
+/// because a caller remembered to. The synthetic document proves the scan
+/// would go red if that stopped being true.
+#[test]
+fn never_sent_is_true_by_construction() {
+    let source = include_str!("../src/commands/draft.rs");
+    let type_at = source
+        .find("pub struct DraftView")
+        .expect("DraftView is in this file");
+    let header = &source[..type_at];
+    let derive = header
+        .rsplit("#[derive(")
+        .next()
+        .expect("a derive")
+        .split(')')
+        .next()
+        .expect("the derive closes");
+    assert!(
+        derive.contains("Serialize"),
+        "the WebView has to receive this value: {derive}"
+    );
+    assert!(
+        !derive.contains("Deserialize"),
+        "a DraftView that could be parsed back would make never_sent a claim about a document: \
+         {derive}"
+    );
+
+    let code_lines: Vec<&str> = source
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            !line.starts_with("//") && !line.starts_with("///") && !line.starts_with("*")
+        })
+        .collect();
+    let assignments: Vec<&&str> = code_lines
+        .iter()
+        .filter(|line| line.contains("never_sent:"))
+        .collect();
+    assert!(
+        assignments
+            .iter()
+            .any(|line| line.contains("never_sent: true")),
+        "the only constructor has to write true: {assignments:?}"
+    );
+    assert!(
+        assignments
+            .iter()
+            .all(|line| !line.contains("never_sent: false")),
+        "never_sent was written false: {assignments:?}"
+    );
+    assert!(
+        !source.contains("pub never_sent"),
+        "a public field can be written from outside"
+    );
+    assert!(
+        !source.contains("fn set_never_sent") && !source.contains("never_sent ="),
+        "a setter or a later assignment would make the constructor's true a default"
+    );
+
+    let synthetic = "#[derive(Debug, Serialize, Deserialize)]\npub struct DraftView { pub never_sent: bool }\nnever_sent: false\nfn set_never_sent() { self.never_sent = false; }";
+    assert!(synthetic.contains("Deserialize"));
+    assert!(synthetic.contains("pub never_sent"));
+    assert!(synthetic.contains("never_sent: false"));
+    assert!(synthetic.contains("never_sent ="));
 }

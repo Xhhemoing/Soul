@@ -47,6 +47,16 @@ export function Draft(): React.JSX.Element {
         >
           生成草稿
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            setPaste("");
+            setView(null);
+            setRefusal(null);
+          }}
+        >
+          清空
+        </button>
       </div>
       {refusal === null ? null : (
         <p className="refusal" role="alert">
