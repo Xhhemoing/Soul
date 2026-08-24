@@ -99,7 +99,8 @@ export function Graph(): React.JSX.Element {
         </p>
         {others.length === 0 ? (
           <p className="muted" data-testid="no-people">
-            还没有可以显示的人。导入还没有接到界面上，所以库里现在没有往来记录可以推出关系。
+            还没有可以显示的人。库里还没有往来记录可以推出关系：到「导入」页读一份你自己导出的聊天记录，
+            人和关系会从那里面推出来。
           </p>
         ) : (
           <ul className="facts" data-testid="people-list">
