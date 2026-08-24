@@ -466,6 +466,7 @@ CI 到此为止。下面每一条都要在 Windows 11 x64 真机上由作者过�
 5. **`Home` 上的「已授权目录」计数在这次会话里可能过期。** 那个数来自启动时读的一次 `config_snapshot`，授权一个新目录之后 `/files` 会更新，概览不会。`/files` 才是那份名单的现场视图。
 6. **`ipc_roundtrip` 的每个用例都新起一个应用。** Tauri 的 mock runtime 便宜，但这意味着「重启」和「同一个 session 上的两步」得分开表达——`Shell` 这个小结构体就是那条分界，`Shell::restart` 是前者，同一个 `Shell` 上调两次是后者。
 7. **`soul-headless` 没有接 `Session`。** 它照旧用 `open_test_store` 走临时库，因为它证明的是 AC-21 的主流程，不是安装后的那个目录。两条路都只经过 `store::open_store`，但它们不是同一个句柄，也不该是。
+8. **`one_store` 进了 windows-latest 那份点名清单，`ipc_roundtrip` 没有。** 后者链 WebView2 的 mock runtime，在 runner 上一条断言都跑不到（见 WP13 第一段遗留 7），只 `--no-run` 编译。`one_store` 不碰 mock runtime，而且它的运行时那一半正好是 Windows 的情况——DPAPI 拒绝，没有句柄可比，session 必须直说而不是蒙混过去。
 
 ## 下一步
 

@@ -143,12 +143,17 @@ jobs:
       # export what the mock IPC runtime imports. AC-02 and AC-22 stay covered
       # by soulcore + vitest. Do not use --all-targets here: that still
       # *loads* ipc_roundtrip.exe.
+      # one_store is named here rather than skipped: it does not touch the mock
+      # runtime, and its runtime half is the Windows case — DPAPI refuses, so
+      # there is no handle to compare and the session has to say so instead of
+      # passing by accident.
       - name: cargo test (desktop shell)
         run: >
           cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
           --lib --bins
           --test command_surface
           --test no_egress_path
+          --test one_store
           --test shell_is_local_only
 
       # ipc_roundtrip is still compiled, and a compile error in it still fails
