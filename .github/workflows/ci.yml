@@ -51,6 +51,23 @@ jobs:
       - name: cargo deny
         run: cargo deny check
 
+      # The licence graph, from the tool that already computed it. This is the
+      # second half of the bill of materials: `xtask sbom` says what ships and
+      # under which SPDX expression, and this says the same thing in
+      # cargo-deny's own words, so a disagreement between them is visible.
+      - name: cargo deny list
+        run: |
+          set -euo pipefail
+          mkdir -p target/sbom
+          cargo deny list --layout crate --format json > target/sbom/licences.json
+          cargo deny list --layout license --format tsv > target/sbom/licences.tsv
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: licence-graph
+          path: target/sbom/licences.*
+          if-no-files-found: error
+
   test-linux:
     name: test (ubuntu, headless)
     runs-on: ubuntu-latest
@@ -133,3 +150,115 @@ jobs:
           --test command_surface
           --test no_egress_path
           --test shell_is_local_only
+
+      # ipc_roundtrip is still compiled, and a compile error in it still fails
+      # the build; what is skipped is loading the harness that cannot start.
+      # Without this the file could rot into something that does not build and
+      # nobody would find out until the author ran it locally.
+      - name: cargo test --no-run (ipc_roundtrip)
+        run: >
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+          --test ipc_roundtrip --no-run
+
+  sbom:
+    name: sbom (cyclonedx)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.83
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: sbom
+
+      # `xtask sbom` reads `cargo metadata` and Cargo.lock and writes CycloneDX
+      # by hand. Not `cargo cyclonedx`: that is another binary to install, and
+      # the point of the document is to describe a dependency graph with no
+      # HTTP client in it. It fails on a crate that states no licence, which is
+      # the one case `deny.toml`'s SPDX allowlist cannot judge.
+      #
+      # Two documents, because apps/desktop/src-tauri is its own workspace and
+      # is most of what a Windows installer actually contains.
+      - name: xtask sbom
+        run: cargo run -p xtask -- sbom
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: target/sbom/*.cdx.json
+          if-no-files-found: error
+
+  package:
+    name: package (as far as CI can honestly go)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.83
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: package
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: install
+        run: pnpm install --frozen-lockfile
+
+      # What `tauri build` would embed, built the same way.
+      - name: frontend bundle
+        run: pnpm --filter @soul/desktop build
+
+      # And then it stops. `tauri build` fetches the NSIS toolchain the first
+      # time it bundles, and a CI job that downloads a third-party installer to
+      # prove the installer is trustworthy has argued itself in a circle. So
+      # the bundle step is author-manual — see scripts/author-manual-checklist.md,
+      # section 0 — and what is checked here is everything up to it: that the
+      # release binaries build with the frontend embedded, that soul.exe is
+      # called soul.exe, and that the manifest inside the artifact really says
+      # asInvoker rather than tauri.conf.json merely asking for it.
+      - name: release binaries
+        run: |
+          cargo build --release --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol
+          cargo build --release -p soulcore --bin soul-headless
+
+      - name: the manifest in the binary, not in the config
+        shell: pwsh
+        run: |
+          $exe = 'apps/desktop/src-tauri/target/release/soul.exe'
+          if (-not (Test-Path $exe)) { throw "the release build produced no $exe" }
+          $text = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes($exe))
+          $start = $text.IndexOf('<assembly')
+          if ($start -lt 0) { throw 'soul.exe embeds no application manifest' }
+          $manifest = $text.Substring($start, $text.IndexOf('</assembly>', $start) - $start)
+          if ($manifest -notmatch 'level\s*=\s*"asInvoker"') { throw 'AC-01: soul.exe does not run as the invoker' }
+          if ($manifest -match 'requireAdministrator|highestAvailable') { throw 'AC-01: soul.exe asks for elevation' }
+          Write-Host 'soul.exe: asInvoker, no elevation requested'
+
+      # The AC-21 flow, on the platform it ships on, against a release build.
+      # `just ci` runs the same thing on Linux through the test suite; this is
+      # the Windows reading, and the one the install smoke would take if a
+      # runner could install a package.
+      - name: headless smoke (release, windows)
+        shell: pwsh
+        run: >
+          ./scripts/install-smoke.ps1 -SkipInstall
+          -Headless ./target/release/soul-headless.exe
+          -AppExecutable ./apps/desktop/src-tauri/target/release/soul.exe
+
+      # The two binaries the author needs in order to run
+      # scripts/install-smoke.ps1 for real, so that the manual step is
+      # "download these and bundle them" rather than "build the world".
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-binaries
+          path: |
+            apps/desktop/src-tauri/target/release/soul.exe
+            target/release/soul-headless.exe
+          if-no-files-found: error
