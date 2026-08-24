@@ -19,7 +19,9 @@ use uuid::Uuid;
 use soul_egress::{send, EgressError};
 use soul_policy::e1::{E1RequestPlan, DRAFTING_INSTRUCTION, QUOTE_CLOSE, QUOTE_OPEN};
 use soul_policy::net_guard::{EgressClass, EgressConfig, NetGuard};
-use soul_policy::redactor::{KnownIdentifiers, RedactedBody, Redactor, Turn, THIRD_PARTY_PLACEHOLDER};
+use soul_policy::redactor::{
+    KnownIdentifiers, RedactedBody, Redactor, Turn, THIRD_PARTY_PLACEHOLDER,
+};
 use soul_policy::ReasonCode;
 use soul_schema::common::SealedSubject;
 use soul_testkit::leakage::LeakageChecker;
@@ -35,11 +37,7 @@ fn guard_for(mock: &MockLlm) -> NetGuard {
 }
 
 fn redactor() -> Redactor {
-    Redactor::new(
-        KnownIdentifiers::new()
-            .with_name(NAME)
-            .with_account(PHONE),
-    )
+    Redactor::new(KnownIdentifiers::new().with_name(NAME).with_account(PHONE))
 }
 
 /// A draft against one third-party message and one of the user's own.
@@ -117,7 +115,10 @@ fn the_body_on_the_wire_carries_no_third_party_prose() {
         .body
         .find(&instruction_prefix)
         .expect("the system instruction is present");
-    let quote_at = recorded.body.find(QUOTE_OPEN).expect("the fence is present");
+    let quote_at = recorded
+        .body
+        .find(QUOTE_OPEN)
+        .expect("the fence is present");
     assert!(
         instruction_at < quote_at,
         "the instruction must not come from the quoted material",

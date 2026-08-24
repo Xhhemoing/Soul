@@ -4,6 +4,8 @@
 //!
 //! * `store.rs`       WP02  opening the encrypted store, forgetting, research
 //!                          preview
+//! * `policy.rs`      WP08  action checks, capability tokens, redaction, and
+//!                          the one E1 request path
 //! * `import.rs`      WP06  soul-import-v1 and Telegram `result.json`
 //! * `profile.rs`     WP03  trait axes, corrections, correction locking
 //! * `memory.rs`      WP04  autobiographical memory and forgetting
@@ -14,7 +16,9 @@
 //!
 //! Each command must go through `soul-policy` for anything with an egress or
 //! filesystem consequence, and must leave an audit entry that carries no prose.
-//! `soul-policy` is WP08; until it exists, `store.rs` is a pass-through and
-//! says so.
+//! WP08 landed that crate and `policy.rs` is the surface for it; `store.rs`
+//! stays a pass-through, because forgetting and research preview are decided
+//! inside `soul-store` and neither reaches the network.
 
+pub mod policy;
 pub mod store;

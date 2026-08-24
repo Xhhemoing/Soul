@@ -1470,8 +1470,10 @@ dependencies = [
  "serde",
  "serde_json",
  "soul-policy",
+ "soul-schema",
  "soul-testkit",
  "thiserror 2.0.20",
+ "uuid",
 ]
 
 [[package]]
@@ -1562,11 +1564,14 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "soul-egress",
+ "soul-policy",
  "soul-schema",
  "soul-store",
  "soul-store-api",
  "soul-testkit",
  "tempfile",
+ "thiserror 2.0.20",
  "uuid",
 ]
 

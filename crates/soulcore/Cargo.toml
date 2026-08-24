@@ -7,18 +7,25 @@ license.workspace = true
 publish = false
 description = "Soul orchestration core. WP01 ships configuration defaults and a headless entry point only."
 
-# Normal dependencies stay narrow on purpose: no HTTP stack, no test kit.
+# `soul-egress` is here because this crate owns the one E1 path, and it is the
+# only way an HTTP client enters soulcore's graph — `xtask e0-audit` and
+# `deny.toml` both check that it stays the only way. Everything that decides
+# whether a request may be made is in `soul-policy`, which has no HTTP client
+# of its own.
 [dependencies]
 soul-schema = { workspace = true }
 soul-store-api = { workspace = true }
 soul-store = { workspace = true }
+soul-policy = { workspace = true }
+soul-egress = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 soul-testkit = { workspace = true }
 tempfile = { workspace = true }
-uuid = { workspace = true }
 
 [[bin]]
 name = "soul-headless"

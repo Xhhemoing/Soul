@@ -183,10 +183,10 @@ fn a_second_crate_holding_an_http_client_is_reported() {
 
     let findings = egress::audit_gateway(&tampered);
     assert!(
-        findings
-            .iter()
-            .any(|f| matches!(f, egress::GatewayFinding::SecondHolder { crate_name, .. }
-                if crate_name == "soul-policy")),
+        findings.iter().any(
+            |f| matches!(f, egress::GatewayFinding::SecondHolder { crate_name, .. }
+                if crate_name == "soul-policy")
+        ),
         "expected soul-policy to be reported; got {findings:#?}",
     );
 }
