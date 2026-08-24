@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]
 
+pub mod collect_probe;
 pub mod commands;
 pub mod config;
 pub mod headless;

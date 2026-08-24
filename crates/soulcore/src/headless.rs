@@ -185,21 +185,31 @@ fn require(step: &'static str, holds: bool, detail: impl Into<String>) -> Flow<(
 /// on a user's machine should not leave an encrypted database in their temp
 /// folder for somebody to wonder about later.
 pub fn run() -> Flow<MainFlowReport> {
-    let scratch = scratch_dir()?;
+    let scratch = scratch_dir_named("soul-headless")?;
     let outcome = run_in(&scratch);
     let _ = std::fs::remove_dir_all(&scratch);
     outcome
 }
 
 /// A directory under the platform temp root, named for this process.
-fn scratch_dir() -> Flow<PathBuf> {
+pub(crate) fn scratch_dir_named(prefix: &str) -> Flow<PathBuf> {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|since| since.as_nanos())
         .unwrap_or_default();
-    let path = std::env::temp_dir().join(format!("soul-headless-{}-{stamp}", std::process::id()));
+    let path = std::env::temp_dir().join(format!("{prefix}-{}-{stamp}", std::process::id()));
     at("scratch", std::fs::create_dir_all(&path))?;
     Ok(path)
+}
+
+/// Wall clock seconds, for the audit entries a run outside the fixed-clock
+/// flow has to write. The main flow uses [`AT_UNIX_SECONDS`] instead, so that
+/// two runs of it produce the same chain.
+pub(crate) fn now_unix_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_secs() as i64)
+        .unwrap_or(AT_UNIX_SECONDS)
 }
 
 /// The flow itself, against a directory the caller owns.
@@ -726,7 +736,7 @@ fn flow(scratch: &Path) -> Flow<FlowOutcome> {
 }
 
 /// AC-21's own step: what the guard refuses, and what the kernel saw.
-fn egress_findings(observed: WatchReport) -> Flow<EgressFindings> {
+pub(crate) fn egress_findings(observed: WatchReport) -> Flow<EgressFindings> {
     let guard = NetGuard::closed();
     let mut refused = Vec::new();
     for authority in UNREACHABLE_AUTHORITIES {

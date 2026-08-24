@@ -1,6 +1,6 @@
 //! Soul with no desktop attached.
 //!
-//! Two jobs, and the exit code is the whole interface for both:
+//! Three jobs, and the exit code is the whole interface for all of them:
 //!
 //! * `soul-headless` (no arguments) runs the AC-21 main flow — the entire
 //!   product against a scratch store, with this process's sockets watched from
@@ -12,8 +12,15 @@
 //! * `soul-headless config` prints the shipped defaults, after checking that
 //!   they really are all off. Exiting 0 with a capability switched on would
 //!   turn AC-02 into a formality, so the check is here and not only in a test.
+//! * `soul-headless collect-probe` is the one command that needs a person: it
+//!   measures AC-09 and AC-10 against the desktop the operator is switching
+//!   between, which no runner can do. It collects only because the caller
+//!   passed `--i-consent`, into a scratch store it then deletes. See
+//!   [`soulcore::collect_probe`] and `scripts/author-manual-checklist.md`.
 
-use soulcore::{headless, Config};
+use std::time::Duration;
+
+use soulcore::{collect_probe, headless, Config};
 
 const USAGE: &str = "\
 soul-headless — Soul without a desktop
@@ -26,6 +33,13 @@ COMMANDS:
               found, including this process's non-loopback connections.
               The default when no command is given.
     config    Print the shipped configuration defaults.
+
+    collect-probe --i-consent [--seconds N]
+              Windows, and a person at the keyboard. Two timed phases, one
+              with foreground collection off and one with it on, to check
+              AC-09 and AC-10 against a real desktop. Collects application
+              names into a temporary store for the duration and deletes it
+              afterwards; --i-consent is how you say that is what you want.
 ";
 
 fn main() -> std::process::ExitCode {
@@ -33,6 +47,7 @@ fn main() -> std::process::ExitCode {
     match args.first().map(String::as_str) {
         None | Some("smoke") => smoke(),
         Some("config") => print_config(),
+        Some("collect-probe") => probe(&args[1..]),
         Some("--help") | Some("-h") => {
             print!("{USAGE}");
             std::process::ExitCode::SUCCESS
@@ -74,6 +89,64 @@ fn smoke() -> std::process::ExitCode {
             Some(note) => format!("; sockets not observed here: {note}"),
             None => String::new(),
         },
+    );
+    std::process::ExitCode::SUCCESS
+}
+
+/// The manual probe. Refuses without `--i-consent`, because it is the one
+/// command in this binary that samples what the operator is doing.
+fn probe(args: &[String]) -> std::process::ExitCode {
+    let mut consented = false;
+    let mut phase = collect_probe::DEFAULT_PHASE;
+    let mut rest = args.iter();
+    while let Some(argument) = rest.next() {
+        match argument.as_str() {
+            "--i-consent" => consented = true,
+            "--seconds" => match rest.next().and_then(|value| value.parse::<u64>().ok()) {
+                Some(seconds) if seconds > 0 => phase = Duration::from_secs(seconds),
+                _ => {
+                    eprintln!("soul-headless: --seconds wants a positive whole number");
+                    return std::process::ExitCode::FAILURE;
+                }
+            },
+            other => {
+                eprint!("{USAGE}");
+                eprintln!("soul-headless: collect-probe does not take `{other}`");
+                return std::process::ExitCode::FAILURE;
+            }
+        }
+    }
+
+    if !consented {
+        eprintln!(
+            "soul-headless: collect-probe samples which application is in the \
+             foreground. Pass --i-consent to say that is what you want.",
+        );
+        return std::process::ExitCode::FAILURE;
+    }
+
+    let report = match collect_probe::run(phase) {
+        Ok(report) => report,
+        Err(error) => {
+            eprintln!("soul-headless: the collection probe failed at {error}");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+
+    match serde_json::to_string_pretty(&report) {
+        Ok(json) => println!("{json}"),
+        Err(error) => {
+            eprintln!("soul-headless: could not serialize the report: {error}");
+            return std::process::ExitCode::FAILURE;
+        }
+    }
+
+    for phase in &report.phases {
+        eprintln!("  {:<12} {}", phase.name, phase.verdict);
+    }
+    eprintln!(
+        "  {:<12} {} non-loopback connection(s) over {} sample(s)",
+        "egress", report.egress.non_loopback_connections, report.egress.samples,
     );
     std::process::ExitCode::SUCCESS
 }
