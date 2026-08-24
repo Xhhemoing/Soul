@@ -17,10 +17,10 @@
 | WP01 骨架 | 完成。见下节 |
 | WP02 数据面 | 完成。见下节 |
 | WP08 权限面 | 完成。见下节 |
-| WP03 档案 | 完成。见下节 |
+| WP03 档案 | 完成。见下节。与 WP06 的两套问卷已并成一套（见「WP06 与 WP03 的接缝」） |
 | WP04 自传记忆 | 完成。见下节 |
 | WP05 人脉图 | 完成。见下节 |
-| WP06 导入 | 完成。见下节 |
+| WP06 导入 | 完成。见下节。问卷回退与 WP03 的入档路径已合并，`soul-profile` 实现 `UserStatedSink` |
 | WP07 前台采集 | 完成。见下节 |
 | WP09 桌面壳 | 第一段（壳）完成。见下节。起草路由已由 WP10 接上 |
 | WP10 起草与人事摘要 | 完成。见下节。`/draft` 已接本机路径；端点路径的确认屏留给 WP13 |
@@ -108,27 +108,29 @@
 
 ## WP03 完成情况
 
-`crates/soul-profile` 落地。本机 `cargo test -p soul-profile -p soulcore` 绿，`xtask all`（e0-audit / denylist-audit / schema-freeze --check）绿。
+`crates/soul-profile` 落地。本机 `cargo test -p soul-profile -p soulcore` 绿，`xtask all`（e0-audit / denylist-audit / schema-freeze --check）绿。问卷合并之后重跑 `cargo test -p soul-profile -p soul-import -p soulcore -p soul-testkit`，绿。
 
 | 交付 | 证据 |
 |---|---|
-| 五条方向轴，`axis_id` 是固定 uuid7 常量 | `src/axes.rs` 五个 `AxisDefinition` 常量（好奇 / 条理 / 社交能量 / 随和 / 情绪稳度），各带 `label`、两极描述与问卷题；`tests/axes_and_evidence.rs` 断言五个 UUID 是合法 uuid7、互不相同、`label` 非空。fixture `fixtures/profile/default_axes_profile.json` 把这五个 ID 钉住，改号会红 |
+| 五条方向轴，`axis_id` 是固定 uuid7 常量 | `src/axes.rs` 五个 `AxisDefinition` 常量（好奇 / 条理 / 社交能量 / 随和 / 情绪稳度），各带 `label`、两极描述与问卷题号（题面在合并后的那一份题表里，见 WP03/WP06 接缝）；`tests/axes_and_evidence.rs` 断言五个 UUID 是合法 uuid7、互不相同、`label` 非空。fixture `fixtures/profile/default_axes_profile.json` 把这五个 ID 钉住，改号会红 |
 | 位置只有四种，`clinical_claim` 恒 false | 位置直接用 `profile.schema.json` 的 `AxisPosition`，没有第五种可写；`clinical_claim` 是 `NotAClinicalClaim` 单值类型，不是字段 |
 | 无 evidence 的 inference 不落库 | `service::record_axis_inference` 在碰存储前就返回 `ProfileError::NoEvidence`；真库那一层也拒。两道网，因为档案不能停在「写了一半又被驳回」 |
-| AC-03 问卷完成后非空档案，字段来源 user_stated | `tests/questionnaire_intake.rs`：`fixtures/profile/questionnaire_answers_basic.json` 七个回答产出七条 `SoulEvidence`，`kind: questionnaire`、`method: user_stated`；五条轴全部离开 `unknown` 且各自 cite 到能解引用的那一条。另有 partial fixture（未答的轴留在 `unknown`，不猜）与 rejected fixture（数字位置 / 未知题号 / 题型不符 / 空卷四种，全部落空且不写库） |
+| AC-03 问卷完成后非空档案，字段来源 user_stated | `tests/questionnaire_intake.rs`：`fixtures/questionnaire/answers_basic.json` 十一题答了十题（留白那题不落任何行），产出十条 `SoulEvidence`，`kind: questionnaire`、`method: user_stated`；五条轴全部离开 `unknown` 且各自 cite 到能解引用的那一条，语气三项钉住 `user_set`，两道散文题落成 `boundaries` / `values` 里的指针。同一批回答同时是十条 `ui_questionnaire` 事件，正文密封、一次运行一把 CK。另有 partial fixture（未答的轴留在 `unknown`，不猜；未答的散文题不留占位）与 rejected fixture（数字位置 / 未知题号 / 题型不符 / 拿散文答选择题 / 空卷五种，全部落空，库里连证据都不留） |
 | AC-06 档案侧每条 inference 可解引用 | `view::profile_view` 真去 `get_evidence` 每一个 id，取不回来就报 `DanglingEvidence` 而不是给空列表。`tests/axes_and_evidence.rs` 正反都测：正常情况全部解得开，人为写一条指向不存在证据的 inference 会被拒 |
 | AC-07 档案侧纠正锁定 | `tests/correction_lock.rs`：用户纠正后轴 `locked_by_user`，随后更强的推断返回 `RefusedAxisLocked`，轴不动；被拒的推断**仍然入库**，用户有权看见机器还是不同意。锁一条不影响另外四条。语气侧同理：`set_voice` 之后 `suggest_voice` 返回 `false`，`read_voice` 仍返回用户值——这是 WP10 起草要读的那个值 |
 | 禁数字、过非临床断言 | `numeric::reject_numeric_rating_value` 对序列化后的 JSON 递归查数字，测试往轴里注入一个 `score` 字段证明它真会红（对着 `TraitAxis` 结构体查是空转的，因为没有字段能放数字）。所有可读字符串过 `soul_policy::assert_non_clinical`；`render` 带 `WORKING_HYPOTHESIS_NOTICE` |
 
-落地内容：`crates/soul-profile/{axes,voice,questionnaire,numeric,service,view,error}.rs` 与三个测试文件；`fixtures/profile/` 四份；`soulcore/src/commands/profile.rs`。
+落地内容：`crates/soul-profile/{axes,voice,questionnaire,sink,numeric,service,view,error}.rs` 与五个测试文件；`fixtures/profile/default_axes_profile.json` 与 `fixtures/questionnaire/` 四份；`soulcore/src/commands/profile.rs`。
 
 ### WP03 的取舍与遗留
 
 1. **问卷答案不锁轴，纠正才锁。** 两者都是用户说的，但含义不同：轴是灵魂层持有的工作假设，后来的证据有权修正它；语气是代理层要照办的指令。所以问卷的语气回答**立刻**钉住 `user_set`，问卷的轴回答只置 `locked_by_user = false`。要锁轴得走 `correct_axis`。
 2. **`evidence_ids` 是替换不是累加。** 一条轴上的列表说的是「支持它**现在**这个位置的证据」。被取代的回答仍留在证据表与审计链里，只是不再被当作它已不支持的那个结论的依据。
 3. **denylist 抓到过一次真的。** 语气渲染里「用得少」原本写成「少量表情」，其中「量表」正是 D22 禁的刻度词。改词之后补了一条穷举测试，把 81 种语气组合全部渲染一遍再过断言——这类命中靠人眼复查是抓不住的。
-4. **语气只问两题。** 问卷问直接程度与表情用量，另外两个字段（语域、温度）留在中性默认，等用户在档案页自己改。多问两题的收益不如少问两题的完成率。
+4. **语气问三题，不是两题也不是四题。** 原本只问直接程度与表情用量，理由是完成率。合并之后语域（`q.voice.register`）也进来了——WP06 那一侧本来就在问它，只是落成了一段没人读的散文；同一个问题问一遍并且让它真的钉住字段，比问一遍然后丢掉划算。温度（warmth）仍然不问，留在中性默认等用户在档案页自己改，`voice_question_id(Warmth)` 返回 `None` 而不是指向一道不存在的题。
 5. **`profile.voice` 是 schema 里的自由 JSON。** `VoiceProfile` 自己序列化进去，包含一份 `user_set` 名单。这意味着语气的锁定信息不在 `additionalProperties: false` 的保护范围内——档案 schema 没有为它定形状。若 WP09/WP10 要在 UI 上展示锁定态，先考虑把它提成正式字段。
+6. **散文题落进 `boundaries` / `values` 的是指针，不是话。** 契约里这两个字段是自由数组，正因为如此往里放什么要自己守规矩：落的是 `{origin, question_id, event_id, evidence_id}`，用户写的那句话留在录制方密封的那条事件里。SECURITY.md 把散文限定在 `sealedText`，`profiles` 表不是那个地方。代价是要读回这句话得开一次 blob，档案视图目前不做这件事——UI 要展示「你说过的边界」时才需要接。
+7. **同一道题再答一次是替换，不是叠加。** 与轴上的 `evidence_ids` 同一个规矩：`boundaries` 里一道题只留一条指针，旧的那条事件与证据仍在库里、仍在链上，只是不再被当作现在这条边界的依据。
 
 ## WP04 完成情况
 
@@ -178,32 +180,43 @@
 
 ## WP06 完成情况
 
-`crates/soul-import` 落地：两个 v0.1 导入器加问卷回退。本机 `cargo test -p soul-import -p soul-graph -p soulcore -p soul-testkit` 绿，`xtask all` 绿。
+`crates/soul-import` 落地：两个 v0.1 导入器加问卷回退。本机 `cargo test -p soul-import -p soul-graph -p soulcore -p soul-testkit` 绿，`xtask all` 绿。问卷回退此后与 WP03 合并成一套题（见下面的接缝一节），合并后同一组命令重跑仍绿。
 
 | 交付 | 证据 |
 |---|---|
 | soul-import-v1 逐行校验，合法 fixture 落加密库 | `tests/soul_import_v1.rs`：`valid_basic.jsonl` 解析出 2 个对象 2 个会话，提交后 5 条事件、3 个联系人。重复导入认出已有的人（`contacts_matched` 3，联系人表仍是 3） |
 | AC-04 库文件字节无明文 | 同文件 `a_valid_file_lands_sealed_with_no_plaintext_left_on_disk`：`flush` + `close` 之后扫目录下每个文件（含 `-wal`/`-shm`），fixture 里每一句正文都搜不到，**会话 id 也搜不到**（它是第三人标识符，入库前就哈希了）。反向断言正文仍能从 `open()` 取回，避免「什么都没写」也能过 |
 | AC-05 Telegram 映射与可读失败 | `tests/telegram.rs`：`result_basic.json` 出 3 个参与者 6 条消息 2 个会话，service 消息（通话）跳过，`text` 的分段数组拼回用户看到的那一句。失败侧对 `result_missing_fields.json` 断言 `messages`/`id`/`from_id`/`date_unixtime`/`date` 都被点名，定位串带 `chat_id=` 与 `message_id=`，且**三个会话标题一个都没出现在消息里**——个人会话的标题就是对方的名字 |
-| AC-03 导入侧问卷回退 | `tests/questionnaire.rs`：无文件时 `fallback_needed` 为真，只有 header 的空导出也为真。八题回答产出事件（`source: ui_questionnaire`、`kind: questionnaire_answer`）与证据（`kind: questionnaire`、`method: user_stated`、`subject: self`），证据的 `source_refs` 指回事件与题号。留白的一题不落任何行 |
+| AC-03 导入侧问卷回退 | `tests/questionnaire.rs`：无文件时 `fallback_needed` 为真，只有 header 的空导出也为真。回答产出事件（`source: ui_questionnaire`、`kind: questionnaire_answer`）与证据（`kind: questionnaire`、`method: user_stated`、`subject: self`），证据的 `source_refs` 指回事件、题号，选择题还带 `option_key`。留白的一题不落任何行；不在选项里的答案当场拒，且拒绝信不复述它。同一个文件把 `QUESTIONS` 逐题对着 `fixtures/questionnaire/v0_1.json` 核一遍——题号、题型、选项 |
 | 注入行只进数据通道 | `tests/injection_is_data.rs`：`injection_lines.jsonl` 五行全是合法数据，正常提交、正文能读回来，同时留下 `injection.blocked` 审计（`items: 5`，无正文）。对每一行、对 `ActionKind::ALL` 的每一个动作，以 `RequestOrigin::ExternalContent` 请求全部被拒且理由是 `external_content_not_authority`；语料里的 URL 逐个过 `NetGuard::closed()` 全部拒绝；形如 tool call 的那行解析成 JSON 之后仍然只是 JSON |
 | 错误信息可读且不含原文 | `tests/soul_import_v1.rs::a_refusal_reads_like_a_sentence_and_repeats_none_of_the_file`：每条 defect 有位置、有句子，`field` 只能是契约定义的名字；把所有 reason 拼起来，fixture 里每一句正文的任意 12 个 scalar 的窗口都搜不到。另一条测试把整段散文塞进 JSON 的**键**里，断言它不会被回显 |
 
-落地内容：`crates/soul-import/{model,soul_import_v1,telegram,commit,questionnaire,defect,redact,instant}.rs` 与五个测试文件；`fixtures/import/soul-import-v1/three_partners.jsonl`、`fixtures/import/questionnaire/answers_basic.json`；`soulcore/src/commands/import.rs`。
+落地内容：`crates/soul-import/{model,soul_import_v1,telegram,commit,questionnaire,defect,redact,instant}.rs` 与五个测试文件；`fixtures/import/soul-import-v1/three_partners.jsonl`、`fixtures/questionnaire/`（与 WP03 共用）；`soulcore/src/commands/import.rs`。
 
-### WP06 与 WP03 的接缝
+### WP06 与 WP03 的接缝（已合并）
 
-问卷答案在这一侧只落成**事件 + `user_stated` 证据**，不碰档案。交接点是 `questionnaire::UserStatedSink`：
+原先这里写着一条遗留：两侧各有一套问卷，`soul-import::questionnaire::QUESTIONS` 八题、键形如 `voice.directness`，`soul-profile` 七题、键形如 `q.axis.curiosity`；两者互不引用，写的证据也互不覆盖。互不覆盖正是它能一直活着的原因——用户不会看到冲突，只会被问两遍，而其中八题的答案永远进不了档案。现在并成了一套。
 
-```rust
-pub trait UserStatedSink {
-    fn accept(&mut self, answer: &RecordedAnswer) -> Result<(), SinkError>;
-}
-```
+**一份题表，问一遍。** 题表在 `soul-import::questionnaire::QUESTIONS`：录制方拥有它，因为拒绝一个没人提供过的选项是录制方的事，而它不知道档案是什么，也不该知道。每道题带一个 `AnswerShape`——`Choice(&[&str])` 或 `Prose`。`soul-profile` 不再自己声明题目，`questionnaire()` 是遍历这张表、逐题问 `target_of()` 拼出来的。
 
-`RecordedAnswer` 只带 `event_id`、`evidence_id`、`method`（恒 `user_stated`）与 `question`（借自 `QUESTIONS`，所以题号一定是这套构建认得的）。哪一条答案动哪一根轴，由实现方决定——`soul-import` 不知道档案是什么，也不该知道。`CollectingSink` 是给 WP03 落地之前和测试用的。
+**十一题，不是十五题。**
 
-WP03 已经落地了自己的问卷入档路径（`soul-profile::questionnaire`），两条路并存且**题号不同**：`soul-import::questionnaire::QUESTIONS` 是八题，键形如 `voice.directness`；`soul-profile` 是七题，键形如 `q.axis.curiosity`。两者目前互不引用，写的证据也互不覆盖，但 v0.1 收尾前应该并成一套题号，否则用户会被问两遍。并的时候 `UserStatedSink` 就是那个接口——`soul-profile` 实现它即可，`soul-import` 一行不用改。
+| 题号 | 形态 | 动什么 |
+|---|---|---|
+| `q.axis.curiosity` / `q.axis.orderliness` / `q.axis.social_energy` / `q.axis.accommodation` / `q.axis.emotional_steadiness` | 三选一（`leans_low` / `mixed` / `leans_high`） | 五条方向轴 |
+| `q.voice.register` / `q.voice.directness` / `q.voice.emoji_use` | 三选一 | 语气三个字段，答了就钉住 |
+| `q.boundary.topics` / `q.boundary.availability` | 文本框 | `profile.boundaries`（指针） |
+| `q.value.what_matters` | 文本框 | `profile.values`（指针） |
+
+WP06 那八题的去向：`voice.directness` 与 `voice.register` 从文本框变成选择题，现在直接钉语气字段；`boundary.topics` / `boundary.availability` / `value.what_matters` 保留为文本框，但接上了档案；`preference.decision_style`（推进 vs 想清楚）问的是 `q.axis.orderliness` 那条轴，合并；`voice.length` 档案里没有对应字段，而消息长短是导入文件一眼能看出来的东西，删；`relationship.close_circle` 删——人脉图是从证据推出来的（WP05 遗留 1），一段「同事、家人」的散文既建不出节点也建不出边，还会把第三人写进一条 `subject: self` 的密文里。
+
+**接口没变，实现方来了。** `UserStatedSink` 还是那个 trait，`soul-profile::sink::ProfileSink` 实现它。`RecordedAnswer` 多了一个字段 `choice: Option<&'static str>`：选择题带上用户选中的那个选项（借自题目自己的列表，所以只可能是提供过的那几个），文本框是 `None`——**用户写的话不过接缝**。sink 只解释不落库：它把 `q.axis.curiosity` + `leans_high` 变成「好奇轴 + leans_high」，把 `formal` 变成 `VoiceSetting::Register(Formal)`，暂存起来；写库是 `soul_profile::intake` 的事，因为录制的时候 store 正被 `record()` 可变借着，一个也要写的 sink 会是别人借用期里的第二个写者。这样安排还有一个好处：sink 拒绝（没有对应字段、选项解不开）发生在档案被碰之前。
+
+**一条回答只有一份记录。** `soul_profile::intake` 现在是问卷的唯一入口：校验 → `soul_import::questionnaire::record`（密封正文、写事件、写一条 `user_stated` 证据）→ 应用 sink 暂存的东西。轴 cite 的就是录制方写的那条证据，不再另铸一条。证据强度两侧统一成 `moderate`（原先导入侧写 `strong`）：凭记忆描述自己是中等支持，看着结论纠正才是强的，这是 WP03 的读法，也是 `correct_axis` 那条 `strong` 的对照。
+
+**钉住题号的是 fixture，不是自觉。** `fixtures/questionnaire/v0_1.json` 列出每道题的题号、题型、选项与它动的档案字段。`soul-import/tests/questionnaire.rs` 核前三样，`soul-profile/tests/one_questionnaire.rs` 核最后一样并断言两侧的题号列表逐项相等。库里的证据 `source_refs` 指着这些题号，改一个就是让已经写下的证据指空，所以这条断言是硬的。
+
+**还没有人画这十一道题。** 桌面向导目前只做「确认默认全关」（WP09 第一段），命令面 `import::questions()` 与 `profile::questions()` 把题目和选项都备好了，`Answer::for_question(question_id, 选中的那个选项)` 是 UI 只需要知道的那一个调用。headless 主流程走的是编进二进制的那份答卷（`fixtures/questionnaire/answers_basic.json`），AC-03 在 CI 里绿的是这条路。真正的向导界面属于 WP09 的下一段。
 
 ### WP06 的取舍与遗留
 
@@ -214,6 +227,8 @@ WP03 已经落地了自己的问卷入档路径（`soul-profile::questionnaire`�
 5. **标识符按来源加盐。** 一个 Telegram 导出里的 user `42` 和一个 `soul-import-v1` 文件里的 user `42` 是两个人，直到有东西把他们连起来。两个节点是用户看得见、能合并的错；一个节点装两个人是看起来对的错图。`import_to_graph.rs::identifiers_are_scoped_to_the_export_they_came_from` 把这个语义连同「两个 self 联系人时图会拒绝构建」一起钉住了。
 6. **同一个文件导入两次会写两遍事件。** v0.1 没有外部 id 索引可以去重，造一个就意味着要有一列存平台的消息 id。联系人是去重的（按标识符摘要），事件不是。要不要去重由调用方决定。
 7. **提交不是一个事务。** `commit` 逐条写联系人、密封、事件、证据；中途失败会留下写了一半的导入。WP02 的遗忘是单事务的，导入不是——`soul-store-api` 上没有可以让调用方开事务的入口，加一个是存储边界的改动，超出本工作单。重跑同一个文件是安全的（联系人会认回来），只是事件会多一份。
+8. **问卷也不是一个事务。** 合并之后 `intake` 是「录制 N 条 → 写档案 → 落审计」，中途失败会留下几条没有档案认领的问卷事件与证据。它们不是坏数据（每条都自洽、都指得回题号），只是没被引用；重跑一遍是安全的，轴上的 `evidence_ids` 是替换语义。要做成原子的，同样得先有一个能让调用方开事务的存储入口。
+9. **`soul-profile` 依赖 `soul-import`，方向是定的。** 合并要有一个 crate 拥有题表，而录制方不能知道档案是什么——反过来接就得让 `soul-import` 认识轴与语气字段。代价是 `soul-profile` 的依赖里多了一个不搞存储也不搞策略的 crate，以及选项那几个 token（`leans_high`、`formal`……）在两边各出现一次：录制方声明它们是为了拒掉没提供过的选项，档案侧解释它们。`one_questionnaire.rs` 把每个 token 拿去 `position_by_key` / `VoiceSetting::from_option` 解一遍，解不开就红。
 
 ## WP07 完成情况
 
@@ -425,4 +440,4 @@ CI 到此为止。下面每一条都要在 Windows 11 x64 真机上由作者过�
 
 ## 下一步
 
-批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集与 WP09 桌面壳第一段也已完成。批 5 的 WP10 起草与人事摘要已完成（`/draft` 接了本机路径），WP11 核心与命令面已完成、视图未接。WP13 的第一段（安装 smoke、CI、SBOM）已完成。下一步有三件，都卡在同一个地方：`/files` 接 `PlanPreview`、`/graph` 接 `PersonSummaryView`、起草的端点路径接 `prepare` / `generate` 的确认屏——后两件都要一个打开的 `SqlCipherStore` 与一份能读的配置，也就是 WP13 剩下的那一段（配置文件住在哪里、谁在进程里开那一个 store 句柄，见 WP07 遗留 8 与 WP11 遗留 8）。另外 `scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍，结果填回上面的「WP13 的 Windows 手动缺口」。不要启动 Goal 2。文件写入仍是 v0.1.1。
+批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集与 WP09 桌面壳第一段也已完成。批 5 的 WP10 起草与人事摘要已完成（`/draft` 接了本机路径），WP11 核心与命令面已完成、视图未接。WP13 的第一段（安装 smoke、CI、SBOM）已完成。下一步有三件，都卡在同一个地方：`/files` 接 `PlanPreview`、`/graph` 接 `PersonSummaryView`、起草的端点路径接 `prepare` / `generate` 的确认屏——后两件都要一个打开的 `SqlCipherStore` 与一份能读的配置，也就是 WP13 剩下的那一段（配置文件住在哪里、谁在进程里开那一个 store 句柄，见 WP07 遗留 8 与 WP11 遗留 8）。另外 `scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍，结果填回上面的「WP13 的 Windows 手动缺口」。WP03/WP06 的双问卷遗留已经消掉——一套题、一个 sink、一份 fixture 钉住题号；剩下的是**没有界面画它**：向导要把 `profile::questions()` 的十一道题画出来，选择题给三个选项、文本框可留白，答完调 `profile::intake`，与 `/files`、`/graph` 一样都在等 WP13 那个打开的 store 句柄。不要启动 Goal 2。文件写入仍是 v0.1.1。
