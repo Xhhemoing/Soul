@@ -1493,6 +1493,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "soul-fileplan"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "soul-policy",
+ "soul-schema",
+ "soul-testkit",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "soul-graph"
 version = "0.1.0"
 dependencies = [
