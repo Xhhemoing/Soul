@@ -21,6 +21,8 @@ import type {
   FilesView,
   ForgetPreview,
   ForgetReceipt,
+  ImportPreview,
+  ImportReceipt,
   IntakeReceipt,
   MemoryChange,
   MemoryDetail,
@@ -237,6 +239,39 @@ export const RESEARCH_PREVIEW_NOTICE =
 /** `soulcore::commands::store::AUDIT_CHAIN_NOTICE`. */
 export const AUDIT_CHAIN_NOTICE =
   "审计链只记「发生过什么」，不记内容：一条记录里能有的只有动作、结论、理由码、涉及到的编号和计数。每一条都带着上一条的哈希，所以中间被人改过或者抽掉一条，回放的时候就对不上。";
+
+/** `soulcore::commands::import::IMPORT_LOCAL_ONLY_NOTICE`. */
+export const IMPORT_LOCAL_ONLY_NOTICE =
+  "导入全程在本机：文件由你自己挑，内容读进来就地加密入库，不上传，也不会被当成指令执行。导入的正文一律当数据看待。";
+
+/** What one export file contains, the way the core counts it. */
+export function anImportPreview(overrides: Partial<ImportPreview> = {}): ImportPreview {
+  return {
+    source: "soul-import-v1",
+    participants: 4,
+    conversations: 2,
+    messages: 16,
+    messages_with_injection_markers: 1,
+    owner_identified: true,
+    writes_anything: false,
+    notice: IMPORT_LOCAL_ONLY_NOTICE,
+    ...overrides,
+  };
+}
+
+export function anImportReceipt(overrides: Partial<ImportReceipt> = {}): ImportReceipt {
+  return {
+    source: "soul-import-v1",
+    contacts_created: 4,
+    contacts_matched: 0,
+    events_written: 16,
+    evidence_written: 16,
+    messages_with_injection_markers: 1,
+    ties_rebuilt: 3,
+    notice: IMPORT_LOCAL_ONLY_NOTICE,
+    ...overrides,
+  };
+}
 
 /** `soulcore::commands::session::NO_ANSWERS_NOTICE`. */
 export const NO_ANSWERS_NOTICE =
@@ -616,6 +651,9 @@ export interface FakeCoreOptions {
   readonly summarizing?: (contactId: string) => PersonSummary;
   readonly preparing?: (pasted: string) => E1DraftPlan;
   readonly generating?: (approval: { preparation_id: string; plan_hash: string }) => Draft;
+  /** Able to throw: a file that does not parse arrives as a refusal value. */
+  readonly readingImport?: (format: string, text: string) => ImportPreview;
+  readonly importing?: (format: string, text: string) => ImportReceipt;
   readonly questions?: readonly Question[];
   /** Able to throw, because a questionnaire with nothing in it is refused. */
   readonly recording?: (answers: readonly { question_id: string; given: string }[]) =>
@@ -693,6 +731,24 @@ export function installFakeCore(
         );
       case "discard_draft":
         return true;
+      case "preview_soul_import_v1":
+      case "preview_telegram": {
+        const format = cmd === "preview_telegram" ? "telegram-desktop" : "soul-import-v1";
+        const text = (payload as { text?: string }).text ?? "";
+        return (options.readingImport ?? ((source: string) => anImportPreview({ source })))(
+          format,
+          text,
+        );
+      }
+      case "commit_soul_import_v1":
+      case "commit_telegram": {
+        const format = cmd === "commit_telegram" ? "telegram-desktop" : "soul-import-v1";
+        const text = (payload as { text?: string }).text ?? "";
+        return (options.importing ?? ((source: string) => anImportReceipt({ source })))(
+          format,
+          text,
+        );
+      }
       case "questionnaire":
         return options.questions ?? QUESTIONS;
       case "answer_questionnaire": {

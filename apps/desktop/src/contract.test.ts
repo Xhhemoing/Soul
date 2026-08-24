@@ -19,6 +19,7 @@ import {
   CLOUD_LABEL,
   E1_PLAN_NOTICE,
   FORGET_NOTICE,
+  IMPORT_LOCAL_ONLY_NOTICE,
   NO_ANSWERS_NOTICE,
   NOT_SENT_NOTICE,
   QUESTIONS,
@@ -35,6 +36,7 @@ const SHELL_RS = join(REPO, "crates", "soulcore", "src", "commands", "shell.rs")
 const DRAFT_RS = join(REPO, "crates", "soul-draft", "src", "draft.rs");
 const CORE_DRAFT_RS = join(REPO, "crates", "soulcore", "src", "commands", "draft.rs");
 const CORE_FILEPLAN_RS = join(REPO, "crates", "soulcore", "src", "commands", "fileplan.rs");
+const CORE_IMPORT_RS = join(REPO, "crates", "soulcore", "src", "commands", "import.rs");
 const CORE_MEMORY_RS = join(REPO, "crates", "soulcore", "src", "commands", "memory.rs");
 const CORE_SESSION_RS = join(REPO, "crates", "soulcore", "src", "commands", "session.rs");
 const CORE_STORE_RS = join(REPO, "crates", "soulcore", "src", "commands", "store.rs");
@@ -157,6 +159,18 @@ describe("壳与核心的边界", () => {
     expect(rustConstant(readFileSync(CORE_SESSION_RS, "utf8"), "NO_ANSWERS_NOTICE")).toBe(
       NO_ANSWERS_NOTICE,
     );
+  });
+
+  /**
+   * The sentence the import screen shows about where a picked file goes. It is
+   * a promise about this build — read locally, sealed locally, never obeyed —
+   * so it is the core's own words rather than something the page composed, and
+   * the double these tests run against has to say the same thing.
+   */
+  it("导入那句话和核心里的常量一模一样", () => {
+    expect(
+      rustConstant(readFileSync(CORE_IMPORT_RS, "utf8"), "IMPORT_LOCAL_ONLY_NOTICE"),
+    ).toBe(IMPORT_LOCAL_ONLY_NOTICE);
   });
 
   /**

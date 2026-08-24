@@ -17,6 +17,7 @@ use std::sync::{Mutex, MutexGuard};
 use soulcore::commands::draft::{Approval, DraftValue, E1DraftPlan, PersonSummaryView};
 use soulcore::commands::fileplan::PlanPreview;
 use soulcore::commands::graph::PeopleGraphView;
+use soulcore::commands::import::{ImportPreview, ImportReceiptView};
 use soulcore::commands::memory::{
     ForgetConfirmation, ForgetPreview, ForgetReceiptView, MemoryChange, MemoryDetail, MemoryList,
     NewMemory,
@@ -148,6 +149,42 @@ pub fn generate_draft(
 #[tauri::command]
 pub fn discard_draft(session: State<'_, SessionState>) -> bool {
     session.held().discard_draft()
+}
+
+/// What a `soul-import-v1` file contains, as counts. Writes nothing.
+#[tauri::command]
+pub fn preview_soul_import_v1(
+    session: State<'_, SessionState>,
+    text: String,
+) -> Result<ImportPreview, SessionRefusal> {
+    session.held().preview_soul_import_v1(&text)
+}
+
+/// The same for a Telegram Desktop `result.json`. Writes nothing.
+#[tauri::command]
+pub fn preview_telegram(
+    session: State<'_, SessionState>,
+    text: String,
+) -> Result<ImportPreview, SessionRefusal> {
+    session.held().preview_telegram(&text)
+}
+
+/// Seal a `soul-import-v1` file into the store. AC-04.
+#[tauri::command]
+pub fn commit_soul_import_v1(
+    session: State<'_, SessionState>,
+    text: String,
+) -> Result<ImportReceiptView, SessionRefusal> {
+    session.held().commit_soul_import_v1(&text)
+}
+
+/// Seal a Telegram Desktop export into the store. AC-05.
+#[tauri::command]
+pub fn commit_telegram(
+    session: State<'_, SessionState>,
+    text: String,
+) -> Result<ImportReceiptView, SessionRefusal> {
+    session.held().commit_telegram(&text)
 }
 
 /// The eleven questions the wizard draws, with their options.
@@ -307,6 +344,10 @@ pub const COMMAND_NAMES: &[&str] = &[
     "prepare_draft",
     "generate_draft",
     "discard_draft",
+    "preview_soul_import_v1",
+    "preview_telegram",
+    "commit_soul_import_v1",
+    "commit_telegram",
     "questionnaire",
     "answer_questionnaire",
     "profile_screen",

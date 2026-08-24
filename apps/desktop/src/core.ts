@@ -246,6 +246,41 @@ export interface DraftNotices {
   readonly can_send: boolean;
 }
 
+/**
+ * What one export file contains, mirroring
+ * `soulcore::commands::import::ImportPreview`.
+ *
+ * Counts, a format name and two booleans. There is no field here that could
+ * hold a message, a display name or an account handle, and that is the whole
+ * of "the preview does not echo the file": the shell cannot render what it was
+ * never sent. `writes_anything` is typed as the literal `false` so a component
+ * that treated reading a file as importing it would not compile.
+ */
+export interface ImportPreview {
+  /** `soul-import-v1` or `telegram-desktop`. */
+  readonly source: string;
+  readonly participants: number;
+  readonly conversations: number;
+  readonly messages: number;
+  /** Lines that tried to give instructions. Counted, stored, obeyed by none. */
+  readonly messages_with_injection_markers: number;
+  readonly owner_identified: boolean;
+  readonly writes_anything: false;
+  readonly notice: string;
+}
+
+/** What one import wrote. Counts, for the same reason the preview is counts. */
+export interface ImportReceipt {
+  readonly source: string;
+  readonly contacts_created: number;
+  readonly contacts_matched: number;
+  readonly events_written: number;
+  readonly evidence_written: number;
+  readonly messages_with_injection_markers: number;
+  readonly ties_rebuilt: number;
+  readonly notice: string;
+}
+
 /** What answering one question moves. */
 export type QuestionMoves = "axis" | "voice" | "boundary" | "value";
 
@@ -526,6 +561,10 @@ export const COMMANDS = {
   prepareDraft: "prepare_draft",
   generateDraft: "generate_draft",
   discardDraft: "discard_draft",
+  previewSoulImportV1: "preview_soul_import_v1",
+  previewTelegram: "preview_telegram",
+  commitSoulImportV1: "commit_soul_import_v1",
+  commitTelegram: "commit_telegram",
   questionnaire: "questionnaire",
   answerQuestionnaire: "answer_questionnaire",
   profileScreen: "profile_screen",
@@ -635,6 +674,37 @@ export function generateDraft(approval: Approval): Promise<Draft> {
 /** The user read the plan and said no. Returns whether there was one. */
 export function discardDraft(): Promise<boolean> {
   return invoke<boolean>(COMMANDS.discardDraft);
+}
+
+/**
+ * Read a `soul-import-v1` JSONL file the user picked. Nothing is written.
+ *
+ * `text` is the file's text, read in the WebView by an `<input type="file">`:
+ * the shell has no file-system permission and the core opens no files, so the
+ * only way a file reaches Soul is the one the user pointed at.
+ */
+export function previewSoulImportV1(text: string): Promise<ImportPreview> {
+  return invoke<ImportPreview>(COMMANDS.previewSoulImportV1, { text });
+}
+
+/** The same for the `result.json` Telegram Desktop's own export produced. */
+export function previewTelegram(text: string): Promise<ImportPreview> {
+  return invoke<ImportPreview>(COMMANDS.previewTelegram, { text });
+}
+
+/**
+ * Seal the file into the store, after the user read the counts.
+ *
+ * The same text goes back: the core re-parses it rather than keeping a staged
+ * copy of somebody's export in memory between two clicks, and the same bytes
+ * produce the same counts.
+ */
+export function commitSoulImportV1(text: string): Promise<ImportReceipt> {
+  return invoke<ImportReceipt>(COMMANDS.commitSoulImportV1, { text });
+}
+
+export function commitTelegram(text: string): Promise<ImportReceipt> {
+  return invoke<ImportReceipt>(COMMANDS.commitTelegram, { text });
 }
 
 /** The eleven questions the wizard draws. Answerable with the store shut. */
