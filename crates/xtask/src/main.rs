@@ -51,8 +51,9 @@ fn run_e0(root: &std::path::Path) -> Result<()> {
     println!("{report}");
     if !report.is_clean() {
         bail!(
-            "e0-audit failed: {} banned dependency path(s), {} url literal(s)",
+            "e0-audit failed: {} banned dependency path(s), {} gateway finding(s), {} url literal(s)",
             report.banned_dependencies.len(),
+            report.gateway_findings.len(),
             report.url_hits.len(),
         );
     }

@@ -11,6 +11,13 @@ use xtask::denylist::{self, HitContext};
 use xtask::egress;
 use xtask::schema_freeze;
 
+fn workspace_metadata() -> cargo_metadata::Metadata {
+    cargo_metadata::MetadataCommand::new()
+        .manifest_path(xtask::repo_root().join("Cargo.toml"))
+        .exec()
+        .expect("cargo metadata")
+}
+
 fn write(root: &Path, relative: &str, contents: &str) -> PathBuf {
     let path = root.join(relative);
     std::fs::create_dir_all(path.parent().expect("a file has a parent")).expect("mkdir");
@@ -114,6 +121,114 @@ fn the_dependency_walker_finds_a_real_http_stack_when_one_is_in_scope() {
             .iter()
             .any(|f| f.root == "soul-testkit" && f.banned == "hyper"),
         "expected the walker to reach hyper from soul-testkit; got {findings:#?}",
+    );
+}
+
+/// The one shipped exception has to be exactly one crate wide, and it has to
+/// still be in use. Both halves matter: a second holder is a hole, and a
+/// gateway that no longer owns an HTTP client is an exemption sheltering
+/// whatever ends up under it next.
+#[test]
+fn the_http_client_exception_covers_soul_egress_and_nothing_else() {
+    let metadata = workspace_metadata();
+    assert!(
+        egress::audit_gateway(&metadata).is_empty(),
+        "{:#?}",
+        egress::audit_gateway(&metadata),
+    );
+
+    // Computed independently of `audit_gateway`, so a bug that made the check
+    // return nothing would not also make this agree.
+    let holders: Vec<&str> = metadata
+        .packages
+        .iter()
+        .filter(|p| metadata.workspace_members.contains(&p.id))
+        .filter(|p| !egress::TEST_TOOLING.contains(&p.name.as_str()))
+        .filter(|p| {
+            p.dependencies.iter().any(|d| {
+                d.kind == cargo_metadata::DependencyKind::Normal
+                    && egress::BANNED_HTTP_CLIENTS.contains(&d.name.as_str())
+            })
+        })
+        .map(|p| p.name.as_str())
+        .collect();
+    assert_eq!(holders, vec![egress::EGRESS_GATEWAY]);
+}
+
+/// The negative control for the exception: give a second crate the same
+/// dependency `soul-egress` has and the audit must object. Without this, a
+/// check that returned an empty list unconditionally would look identical.
+#[test]
+fn a_second_crate_holding_an_http_client_is_reported() {
+    let metadata = workspace_metadata();
+    let mut tampered = metadata.clone();
+
+    let http_client = tampered
+        .packages
+        .iter()
+        .find(|p| p.name == egress::EGRESS_GATEWAY)
+        .expect("the gateway is a workspace member")
+        .dependencies
+        .iter()
+        .find(|d| egress::BANNED_HTTP_CLIENTS.contains(&d.name.as_str()))
+        .expect("the gateway holds an HTTP client")
+        .clone();
+
+    let victim = tampered
+        .packages
+        .iter_mut()
+        .find(|p| p.name == "soul-policy")
+        .expect("soul-policy is a workspace member");
+    victim.dependencies.push(http_client);
+
+    let findings = egress::audit_gateway(&tampered);
+    assert!(
+        findings
+            .iter()
+            .any(|f| matches!(f, egress::GatewayFinding::SecondHolder { crate_name, .. }
+                if crate_name == "soul-policy")),
+        "expected soul-policy to be reported; got {findings:#?}",
+    );
+}
+
+/// And the other half: a gateway that stopped holding an HTTP client.
+#[test]
+fn an_unused_exception_is_reported() {
+    let mut tampered = workspace_metadata();
+    let gateway = tampered
+        .packages
+        .iter_mut()
+        .find(|p| p.name == egress::EGRESS_GATEWAY)
+        .expect("the gateway is a workspace member");
+    gateway
+        .dependencies
+        .retain(|d| !egress::BANNED_HTTP_CLIENTS.contains(&d.name.as_str()));
+
+    assert_eq!(
+        egress::audit_gateway(&tampered),
+        vec![egress::GatewayFinding::ExceptionUnused],
+    );
+}
+
+/// `soul-policy` decides whether a request may leave; it must not be able to
+/// make one. The dependency direction is what keeps the permit meaningful.
+#[test]
+fn the_policy_crate_cannot_reach_an_http_client() {
+    let metadata = workspace_metadata();
+    let (findings, _) = egress::audit_dependencies_from_roots(&metadata, egress::TEST_TOOLING);
+    assert!(findings.is_empty(), "{findings:#?}");
+
+    let policy = metadata
+        .packages
+        .iter()
+        .find(|p| p.name == "soul-policy")
+        .expect("soul-policy is a workspace member");
+    assert!(
+        !policy
+            .dependencies
+            .iter()
+            .any(|d| d.name == egress::EGRESS_GATEWAY),
+        "soul-policy must not depend on the crate it issues permits for",
     );
 }
 

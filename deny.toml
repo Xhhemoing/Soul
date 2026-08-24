@@ -10,9 +10,18 @@
 # endpoint so AC-11 and AC-12 can inspect a real request. It is excluded from
 # the graph below rather than allowlisted crate by crate.
 #
-# WP08 introduces `soul-egress` as the single crate permitted to hold an HTTP
-# client for the user's own E1 endpoint. That work package edits this file to
-# add a narrowly scoped `wrappers` entry; until then the ban is absolute.
+# WP08 adds the second and last exception: `soul-egress`, the one crate that
+# speaks to the endpoint the user configured (E1). It is not excluded from the
+# graph — it ships — so the ban below stays in place and is narrowed with
+# `wrappers`, which permits a crate only when the listed crate is what pulled
+# it in. `reqwest` is readmitted for `soul-egress` alone, and the HTTP crates
+# beneath it only when reqwest's own tree is what asked for them. Adding an
+# HTTP client to any other crate still fails, and so does reaching one by a
+# path that does not run through `soul-egress`.
+#
+# `xtask e0-audit` states the same rule against the resolved graph and checks
+# the other direction too: that `soul-egress` still holds an HTTP client, so an
+# exemption cannot quietly outlive its use.
 
 [graph]
 targets = [
@@ -29,7 +38,16 @@ feature-depth = 1
 
 [advisories]
 version = 2
-ignore = []
+ignore = [
+  # rustls-pemfile is archived; its PEM parsing moved into rustls-pki-types.
+  # reqwest pulls it in for every rustls variant, so the only way out is a
+  # reqwest new enough to have migrated — and those releases pull transitive
+  # crates that require Rust 1.85, while this workspace is pinned to 1.83 (see
+  # rust-toolchain.toml). Nothing in Soul calls it: the E1 client uses the
+  # default root store and never parses a caller-supplied PEM. Revisit when the
+  # toolchain pin moves.
+  "RUSTSEC-2025-0134",
+]
 
 [licenses]
 # Private period, All Rights Reserved. The workspace crates are `publish =
@@ -51,6 +69,11 @@ allow = [
   "CC0-1.0",
   "BSL-1.0",
   "OpenSSL",
+  # webpki-roots, which is Mozilla's CA list rather than code. Choosing the
+  # bundled roots over the platform store keeps TLS verification identical on
+  # Windows and Linux, which is what makes AC-11's origin check mean the same
+  # thing everywhere.
+  "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
 private = { ignore = true }
@@ -64,10 +87,11 @@ wildcards = "deny"
 highlight = "all"
 
 deny = [
-  # HTTP clients. None of these may appear in the shipped graph.
-  { name = "reqwest" },
-  { name = "hyper" },
-  { name = "hyper-util" },
+  # HTTP clients. None of these may appear in the shipped graph except through
+  # `soul-egress`, and the wrappers below are the whole of that exception.
+  { name = "reqwest", wrappers = ["soul-egress"] },
+  { name = "hyper", wrappers = ["reqwest", "hyper-util", "hyper-rustls"] },
+  { name = "hyper-util", wrappers = ["reqwest", "hyper-rustls"] },
   { name = "ureq" },
   { name = "curl" },
   { name = "curl-sys" },

@@ -13,6 +13,17 @@
 //! HTTP stack so AC-11 can watch a real request on the wire, and it may only
 //! ever be reached through a dev edge. That exemption is enforced here too, by
 //! keeping the test tooling out of the set of roots the walk starts from.
+//!
+//! There is exactly one shipped exception: `soul-egress`, the crate that talks
+//! to the endpoint the user configured (E1) and to nothing else. Rule 1 would
+//! otherwise ban it outright, so the walk treats it as a gateway — an HTTP
+//! client reached *through* `soul-egress` is the sanctioned one and is not
+//! reported, while the same crate reached any other way still fails. That
+//! narrowing is only worth anything if it stays narrow, so [`audit_gateway`]
+//! separately checks that `soul-egress` is the only workspace member naming an
+//! HTTP client as a normal dependency, and that it still names one at all: an
+//! exception nobody uses is an exception that should be deleted, not a hole
+//! left open for the next crate to find.
 
 use std::collections::{BTreeSet, VecDeque};
 use std::fmt;
@@ -40,6 +51,13 @@ pub const BANNED_TAURI_PLUGINS: &[&str] = &["tauri-plugin-updater", "tauri-plugi
 /// are not roots of the normal-dependency walk, which is what makes the
 /// dev-dependency exemption concrete.
 pub const TEST_TOOLING: &[&str] = &["soul-testkit", "xtask"];
+
+/// The single shipped crate allowed to own an HTTP client.
+///
+/// `deny.toml` states the same rule for `cargo deny` with a `wrappers` entry.
+/// Both have to agree, which is deliberate: one of them is about the licence
+/// and advisory graph, the other about what can reach the network at runtime.
+pub const EGRESS_GATEWAY: &str = "soul-egress";
 
 /// URL prefixes a source file may contain.
 ///
@@ -95,9 +113,41 @@ impl fmt::Display for BannedDependency {
     }
 }
 
+/// A way the one HTTP-client exception has stopped being one exception.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GatewayFinding {
+    /// A workspace member other than the gateway names an HTTP client.
+    SecondHolder { crate_name: String, banned: String },
+    /// The gateway no longer holds an HTTP client, so the exception carved out
+    /// for it now only shelters whatever else is under it.
+    ExceptionUnused,
+    /// The gateway is not in the workspace at all.
+    GatewayMissing,
+}
+
+impl fmt::Display for GatewayFinding {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            GatewayFinding::SecondHolder { crate_name, banned } => write!(
+                f,
+                "{crate_name} depends on {banned}; only {EGRESS_GATEWAY} may hold an HTTP client",
+            ),
+            GatewayFinding::ExceptionUnused => write!(
+                f,
+                "{EGRESS_GATEWAY} no longer depends on an HTTP client, \
+                 so its exemption should be removed rather than left open",
+            ),
+            GatewayFinding::GatewayMissing => {
+                write!(f, "{EGRESS_GATEWAY} is not a workspace member")
+            }
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct EgressReport {
     pub banned_dependencies: Vec<BannedDependency>,
+    pub gateway_findings: Vec<GatewayFinding>,
     pub url_hits: Vec<UrlHit>,
     /// Roots the dependency walk started from, for the CI log.
     pub roots: Vec<String>,
@@ -106,7 +156,9 @@ pub struct EgressReport {
 
 impl EgressReport {
     pub fn is_clean(&self) -> bool {
-        self.banned_dependencies.is_empty() && self.url_hits.is_empty()
+        self.banned_dependencies.is_empty()
+            && self.gateway_findings.is_empty()
+            && self.url_hits.is_empty()
     }
 }
 
@@ -120,6 +172,9 @@ impl fmt::Display for EgressReport {
         )?;
         for hit in &self.banned_dependencies {
             writeln!(f, "  E0 dependency: {hit}")?;
+        }
+        for hit in &self.gateway_findings {
+            writeln!(f, "  egress gateway: {hit}")?;
         }
         for hit in &self.url_hits {
             writeln!(f, "  E0 url literal: {hit}")?;
@@ -139,6 +194,7 @@ pub fn audit(repo_root: &Path) -> Result<EgressReport> {
         .context("running cargo metadata")?;
 
     let (banned_dependencies, roots) = audit_dependencies(&metadata);
+    let gateway_findings = audit_gateway(&metadata);
 
     let mut url_hits = Vec::new();
     let mut files_scanned = 0usize;
@@ -154,6 +210,7 @@ pub fn audit(repo_root: &Path) -> Result<EgressReport> {
 
     Ok(EgressReport {
         banned_dependencies,
+        gateway_findings,
         url_hits,
         roots,
         files_scanned,
@@ -203,12 +260,17 @@ pub fn audit_dependencies_from_roots(
         let root_name = name_of(root);
         roots.push(root_name.clone());
 
-        let mut seen: BTreeSet<&PackageId> = BTreeSet::new();
-        let mut queue: VecDeque<(&PackageId, Vec<String>)> = VecDeque::new();
-        queue.push_back((root, vec![root_name.clone()]));
-        seen.insert(root);
+        // `via_gateway` is part of the visited key, not just the state: a crate
+        // reachable both through `soul-egress` and around it must still be
+        // reported for the second path, and keeping one bit per node would let
+        // whichever path BFS happened to reach first silence the other.
+        let mut seen: BTreeSet<(&PackageId, bool)> = BTreeSet::new();
+        let mut queue: VecDeque<(&PackageId, Vec<String>, bool)> = VecDeque::new();
+        let root_is_gateway = root_name == EGRESS_GATEWAY;
+        queue.push_back((root, vec![root_name.clone()], root_is_gateway));
+        seen.insert((root, root_is_gateway));
 
-        while let Some((current, path)) = queue.pop_front() {
+        while let Some((current, path, via_gateway)) = queue.pop_front() {
             let Some(node) = resolve.nodes.iter().find(|n| &n.id == current) else {
                 continue;
             };
@@ -220,27 +282,89 @@ pub fn audit_dependencies_from_roots(
                         .dep_kinds
                         .iter()
                         .any(|k| matches!(k.kind, DependencyKind::Normal | DependencyKind::Build));
-                if !ships || !seen.insert(&dep.pkg) {
+                if !ships {
                     continue;
                 }
                 let dep_name = name_of(&dep.pkg);
+                let dep_via_gateway = via_gateway || dep_name == EGRESS_GATEWAY;
+                if !seen.insert((&dep.pkg, dep_via_gateway)) {
+                    continue;
+                }
                 let mut next_path = path.clone();
                 next_path.push(dep_name.clone());
 
                 if banned.contains(dep_name.as_str()) {
-                    findings.push(BannedDependency {
-                        root: root_name.clone(),
-                        banned: dep_name,
-                        path: next_path,
-                    });
+                    // The gateway's own HTTP client is the sanctioned E1 path.
+                    // A Tauri plugin under it is not: those are banned for
+                    // opening an egress path behind the application's back,
+                    // which the permit check cannot see.
+                    let sanctioned = dep_via_gateway
+                        && BANNED_HTTP_CLIENTS.contains(&dep_name.as_str())
+                        && !BANNED_TAURI_PLUGINS.contains(&dep_name.as_str());
+                    if !sanctioned {
+                        findings.push(BannedDependency {
+                            root: root_name.clone(),
+                            banned: dep_name,
+                            path: next_path,
+                        });
+                    }
                     continue;
                 }
-                queue.push_back((&dep.pkg, next_path));
+                queue.push_back((&dep.pkg, next_path, dep_via_gateway));
             }
         }
     }
 
     (findings, roots)
+}
+
+/// Check that the HTTP-client exception is still exactly one crate wide.
+///
+/// The dependency walk stops objecting to an HTTP client once the path runs
+/// through `soul-egress`, which is only safe while `soul-egress` is the only
+/// crate that names one. This reads the manifests rather than the resolved
+/// graph: what matters is which crate *asked* for the dependency, and that is
+/// the thing a reviewer sees in a diff.
+pub fn audit_gateway(metadata: &Metadata) -> Vec<GatewayFinding> {
+    let members: Vec<&cargo_metadata::Package> = metadata
+        .packages
+        .iter()
+        .filter(|p| metadata.workspace_members.contains(&p.id))
+        .collect();
+
+    if !members.iter().any(|p| p.name == EGRESS_GATEWAY) {
+        return vec![GatewayFinding::GatewayMissing];
+    }
+
+    let mut findings = Vec::new();
+    let mut gateway_holds_one = false;
+
+    for package in members {
+        let is_gateway = package.name == EGRESS_GATEWAY;
+        // Test instruments are allowed an HTTP stack because they can only be
+        // reached through a dev edge, which the walk already refuses to follow.
+        let exempt = TEST_TOOLING.contains(&package.name.as_str());
+        for dependency in &package.dependencies {
+            if dependency.kind != DependencyKind::Normal
+                || !BANNED_HTTP_CLIENTS.contains(&dependency.name.as_str())
+            {
+                continue;
+            }
+            if is_gateway {
+                gateway_holds_one = true;
+            } else if !exempt {
+                findings.push(GatewayFinding::SecondHolder {
+                    crate_name: package.name.clone(),
+                    banned: dependency.name.clone(),
+                });
+            }
+        }
+    }
+
+    if !gateway_holds_one {
+        findings.push(GatewayFinding::ExceptionUnused);
+    }
+    findings
 }
 
 #[derive(Debug, Default)]
