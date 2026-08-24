@@ -1,0 +1,31 @@
+{
+  "note": "AC-14 的三条记忆。第三条的 subject 是 mixed：里面有别人的话，所以带占位符，third_party_content_present 为 true。标题与摘要在这里是明文，因为 fixture 就是「用户刚打完字」那一刻；进库时两者都走 sealed blob。",
+  "memories": [
+    {
+      "id": "first_train_north",
+      "memory_type": "episodic",
+      "subject": "self",
+      "title": "第一次一个人坐夜车去北方",
+      "summary": "凌晨四点在站台上等车，风把票吹到轨道边，捡回来的时候手是麻的。到站以后先找了碗热汤面。"
+    },
+    {
+      "id": "keeps_promises_to_self",
+      "memory_type": "semantic",
+      "subject": "self",
+      "title": "我对自己许的承诺一般会兑现",
+      "summary": "答应别人的事会拖，答应自己的事反而记得牢，尤其是写下来那种。"
+    },
+    {
+      "id": "kitchen_argument",
+      "memory_type": "episodic",
+      "subject": "mixed",
+      "title": "厨房里那次没吵起来的争执",
+      "summary": "对方说「你从来不提前讲」，我当时想反驳，后来只说了句知道了。第二天两个人都当没发生过。"
+    }
+  ],
+  "edit": {
+    "target": "kitchen_argument",
+    "title": "厨房里那次没吵起来的争执（后来聊开了）",
+    "summary": "隔了一周把这件事讲清楚了，起因是我把时间记错了。"
+  }
+}

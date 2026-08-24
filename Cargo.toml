@@ -12,6 +12,7 @@ members = [
   "crates/xtask",
   "crates/soulcore",
   "crates/soul-profile",
+  "crates/soul-memory",
 ]
 
 [workspace.package]
@@ -65,6 +66,7 @@ soul-graph = { path = "crates/soul-graph", version = "0.1.0" }
 soul-import = { path = "crates/soul-import", version = "0.1.0" }
 soul-testkit = { path = "crates/soul-testkit", version = "0.1.0" }
 soul-profile = { path = "crates/soul-profile", version = "0.1.0" }
+soul-memory = { path = "crates/soul-memory", version = "0.1.0" }
 
 [profile.test]
 opt-level = 1
