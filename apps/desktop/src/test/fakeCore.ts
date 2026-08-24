@@ -36,6 +36,7 @@ import type {
   Question,
   ResearchPreview,
   SessionStatus,
+  StatedRow,
 } from "../core";
 
 export const CLOUD_LABEL = "尚未启用";
@@ -449,6 +450,86 @@ export function aProfileScreen(overrides: Partial<ProfileScreen> = {}): ProfileS
   };
 }
 
+/**
+ * Which axis in `aProfileScreen` each axis question moves.
+ *
+ * The core reads the pairing off `soul_import::questionnaire`; the double has
+ * to be told, because the question fixture and the profile fixture are written
+ * apart. `aProfileScreen` carries two of the five axes, so the other three
+ * axis questions are recorded and move nothing this fixture can show — which
+ * is the same thing the real core does when it is asked for a screen: it shows
+ * the rows it has.
+ */
+const AXIS_OF_QUESTION: Record<string, string> = {
+  "q.axis.curiosity": AXIS_ID,
+  "q.axis.orderliness": "0192b0c0-5001-7a02-8b02-000000000002",
+};
+
+/**
+ * The profile after a questionnaire, moved the way the core moves one.
+ *
+ * An axis the user answered for takes that position and the axis's own words
+ * for it; a voice field whose question was answered takes the value and locks;
+ * a prose answer leaves a `StatedRow`, which is a pointer and holds none of
+ * what was typed. A blank moves nothing — it is a skip, not an erasure — and
+ * answering the same question twice replaces rather than appends.
+ *
+ * What this does not do is recompose `reading`. That prose is built in Rust
+ * where the denylist can see it, so the double leaves the sentence it was
+ * given rather than inventing a new one on this side.
+ */
+function profileAfter(
+  current: ProfileScreen,
+  answers: readonly { question_id: string; given: string }[],
+  questions: readonly Question[],
+): ProfileScreen {
+  let moved = current;
+  for (const answer of answers) {
+    const given = answer.given.trim();
+    if (given === "") continue;
+    const question = questions.find((one) => one.question_id === answer.question_id);
+    const axisId = AXIS_OF_QUESTION[answer.question_id];
+    let stated = moved.stated;
+    if (question !== undefined && (question.moves === "boundary" || question.moves === "value")) {
+      const at = questions.indexOf(question);
+      const row: StatedRow = {
+        field: question.moves,
+        question_id: question.question_id,
+        prompt: question.prompt,
+        event_id: `0192f000-0000-7000-8000-${(0xb00 + at * 2).toString(16).padStart(12, "0")}`,
+        evidence_id: `0192f000-0000-7000-8000-${(0xb01 + at * 2).toString(16).padStart(12, "0")}`,
+      };
+      stated = [...stated.filter((one) => one.question_id !== row.question_id), row];
+    }
+    moved = {
+      ...moved,
+      axes: moved.axes.map((axis) =>
+        axis.axis_id !== axisId
+          ? axis
+          : {
+              ...axis,
+              position: given,
+              reading: `${axis.label}：${
+                axis.choices.find((choice) => choice.position === given)?.reading ?? given
+              }`,
+              evidence_band: "weak",
+              evidence_count: axis.evidence_count + 1,
+            },
+      ),
+      voice: {
+        ...moved.voice,
+        fields: moved.voice.fields.map((field) =>
+          field.question_id === answer.question_id
+            ? { ...field, value: given, locked_by_user: true }
+            : field,
+        ),
+      },
+      stated,
+    };
+  }
+  return moved;
+}
+
 export const NO_MEMORIES: MemoryList = {
   memories: [],
   memory_types: ["episodic", "semantic", "procedural", "preference", "commitment"],
@@ -823,11 +904,20 @@ export function installFakeCore(
   const status = options.status ?? OPEN_SESSION;
   const drafting = options.drafting ?? (() => aTemplateDraft());
   const files = options.files ?? NO_ROOTS;
+  const questions = options.questions ?? QUESTIONS;
   const calls: RecordedCall[] = [];
-  /** The two pieces of state the double keeps, because the core keeps them
-   *  too: a consent ledger, and an endpoint that lives for one run. */
+  /** The three pieces of state the double keeps, because the core keeps them
+   *  too: a consent ledger, an endpoint that lives for one run, and a profile
+   *  that a questionnaire or a correction writes to and the next read sees. */
   let collect = options.collect ?? COLLECT_OFF;
   let configuration = snapshot;
+  let profile: ProfileScreen | null = null;
+
+  /** Read on demand, so a `profile` option that refuses still refuses. */
+  const profileNow = (): ProfileScreen => {
+    profile ??= (options.profile ?? (() => aProfileScreen()))();
+    return profile;
+  };
 
   mockIPC((cmd, payload) => {
     calls.push({ cmd, payload });
@@ -907,32 +997,39 @@ export function installFakeCore(
         );
       }
       case "questionnaire":
-        return options.questions ?? QUESTIONS;
+        return questions;
       case "answer_questionnaire": {
         const answers =
           (payload as { answers?: readonly { question_id: string; given: string }[] }).answers ??
           [];
-        if (options.recording !== undefined) return options.recording(answers);
+        if (options.recording !== undefined) {
+          // May throw, which is how a refusal arrives; nothing moves then.
+          const written = options.recording(answers);
+          profile = profileAfter(profileNow(), answers, questions);
+          return written;
+        }
         const kept = answers.filter((answer) => answer.given.trim() !== "");
         // The core refuses a questionnaire with nothing in it rather than
         // reporting an intake that wrote no rows. The double has to as well,
         // or the wizard's handling of that refusal is never exercised.
         if (kept.length === 0) throw { reason_code: "ROUTINE", explanation: NO_ANSWERS_NOTICE };
+        profile = profileAfter(profileNow(), answers, questions);
         return anIntakeReceipt({ answered: kept.length });
       }
       case "profile_screen":
-        return (options.profile ?? (() => aProfileScreen()))();
+        return profileNow();
       case "correct_axis": {
         const asked = payload as { axisId?: string; position?: string };
-        return (options.correcting ?? ((_axis: string, position: string) => aProfileScreen({
+        profile = (options.correcting ?? ((_axis: string, position: string) => aProfileScreen({
           axes: aProfileScreen().axes.map((axis, index) =>
             index === 0 ? { ...axis, position, locked_by_user: true } : axis,
           ),
         })))(asked.axisId ?? "", asked.position ?? "");
+        return profile;
       }
       case "set_voice": {
         const asked = payload as { field?: string; option?: string };
-        return (options.voicing ?? ((_field: string, option: string) => aProfileScreen({
+        profile = (options.voicing ?? ((_field: string, option: string) => aProfileScreen({
           voice: {
             ...aProfileScreen().voice,
             fields: aProfileScreen().voice.fields.map((field) => ({
@@ -942,6 +1039,7 @@ export function installFakeCore(
             })),
           },
         })))(asked.field ?? "", asked.option ?? "");
+        return profile;
       }
       case "memory_list":
         return (options.memories ?? (() => NO_MEMORIES))();

@@ -18,7 +18,9 @@
  * `profile::questions()` pairs each entry with the option tokens the recorder
  * will accept and the words for them, so this file decides layout and nothing
  * else. A question nobody added here would be a question the wizard does not
- * draw; a question added here would not be recordable at all.
+ * draw; a question added here would not be recordable at all. Drawing one is
+ * `../questions`, shared with 灵魂档案, which asks the same eleven again
+ * afterwards.
  *
  * Skipping is a real answer. A blank leaves no row, and the axis it would have
  * moved stays 还看不出方向 rather than being filled in from the answers that
@@ -42,6 +44,7 @@ import {
   type Question,
   type Refusal,
 } from "../core";
+import { Ask } from "../questions";
 import { asRefusal } from "../refusal";
 
 export interface WizardProps {
@@ -236,7 +239,7 @@ export function Wizard({ snapshot, onComplete }: WizardProps): React.JSX.Element
             </button>
           </div>
           <p className="muted">
-            直接开始也可以，档案会是空的；这些题在档案页上随时可以再答。
+            直接开始也可以，档案会是空的；这些题在档案页的「再答几题」里随时可以再答。
           </p>
         </section>
       ) : null}
@@ -256,53 +259,5 @@ export function Wizard({ snapshot, onComplete }: WizardProps): React.JSX.Element
         </section>
       )}
     </main>
-  );
-}
-
-interface AskProps {
-  readonly question: Question;
-  readonly given: string;
-  readonly busy: boolean;
-  readonly onGive: (given: string) => void;
-}
-
-/**
- * One question: three buttons, or a text box.
- *
- * A chosen option can be un-chosen by pressing it again, because "I answered
- * this and then thought better of it" has to be reachable without restarting
- * the wizard — and an answer withdrawn is a blank, which is a skip.
- */
-function Ask({ question, given, busy, onGive }: AskProps): React.JSX.Element {
-  const label = `question-${question.question_id}`;
-  return (
-    <li className="question">
-      <p id={label}>{question.prompt}</p>
-      {question.prose ? (
-        <textarea
-          className="paste-box"
-          aria-labelledby={label}
-          rows={2}
-          value={given}
-          disabled={busy}
-          onChange={(event) => onGive(event.target.value)}
-        />
-      ) : (
-        <div className="switch-row" role="group" aria-labelledby={label}>
-          {question.options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              disabled={busy}
-              aria-pressed={given === option.value}
-              className={given === option.value ? "primary" : undefined}
-              onClick={() => onGive(given === option.value ? "" : option.value)}
-            >
-              {option.reading}
-            </button>
-          ))}
-        </div>
-      )}
-    </li>
   );
 }

@@ -16,20 +16,37 @@
  * afterwards rather than being patched here: the lock, the band and the
  * summary all move, and a screen that updated one of them itself would be
  * guessing at the other two.
+ *
+ * ## 再答几题
+ *
+ * The wizard is a first run and nothing else: `wizard_completed` is written
+ * once and the screen never comes back. So the eleven questions live here too,
+ * because otherwise a user who pressed 一题都不答，直接开始 would have no way
+ * left to state a boundary or a value at all — the three text boxes are the
+ * only path into `boundaries` and `values`, and an axis this page can correct
+ * is an axis the questionnaire could have answered outright. Same command,
+ * same list, same option tokens; `../questions` draws them so the wizard and
+ * this page cannot drift apart. Answering again replaces rather than appends,
+ * which the core does, and a blank stays a skip.
  */
 
 import { useEffect, useState } from "react";
 
 import {
+  answerQuestionnaire,
   correctAxis,
   profileScreen,
+  questionnaire,
   setVoice,
   type AxisRow,
+  type IntakeReceipt,
   type ProfileScreen,
+  type Question,
   type Refusal,
   type StatedRow,
   type VoiceFieldRow,
 } from "../core";
+import { Ask } from "../questions";
 import { asRefusal, Refused } from "../refusal";
 
 /** How much was observed, not how much anything is worth. */
@@ -163,7 +180,8 @@ export function Profile(): React.JSX.Element {
         <h2 id="stated-heading">你自己写过的（{screen.stated.length}）</h2>
         {screen.stated.length === 0 ? (
           <p className="muted" data-testid="no-stated">
-            向导里那三道填空题你都跳过了。跳过就是跳过，这里不会替你写点什么。
+            向导里那三道填空题你都跳过了。跳过就是跳过，这里不会替你写点什么；
+            想说的时候，下面的「再答几题」里那三道题还在。
           </p>
         ) : (
           <ul className="facts" data-testid="stated-list">
@@ -176,7 +194,172 @@ export function Profile(): React.JSX.Element {
           你写的原话密封在库里，这个页面不去打开它，只留着指回去的编号。
         </p>
       </section>
+
+      <AskAgain busy={busy} onRecorded={() => write(profileScreen())} />
     </>
+  );
+}
+
+interface AskAgainProps {
+  readonly busy: boolean;
+  /** The questionnaire wrote something, so the screen above it is stale. */
+  readonly onRecorded: () => void;
+}
+
+/**
+ * The eleven questions again, after the wizard is behind us.
+ *
+ * The list and the option words come from `questionnaire()`, the same command
+ * the wizard calls, so this is the wizard's questionnaire rather than a
+ * shorter one somebody assembled for this page. Handing in a questionnaire
+ * where every box is blank is refused by the core, and the button is grey
+ * until one of them is not, so the refusal is a thing the user is kept out of
+ * rather than shown after the fact.
+ *
+ * Nothing that was answered comes back into the boxes. The three prose answers
+ * are sealed and `ProfileScreen` has nowhere to put them, and pre-filling a
+ * choice question with a position that inference moved would be this page
+ * putting words in the user's mouth. So the boxes start empty every time, and
+ * what is on screen above says what the core currently holds.
+ */
+function AskAgain({ busy, onRecorded }: AskAgainProps): React.JSX.Element {
+  const [questions, setQuestions] = useState<readonly Question[]>([]);
+  /** False until the user asks for them; the profile is what this page is. */
+  const [asking, setAsking] = useState(false);
+  const [given, setGiven] = useState<Record<string, string>>({});
+  const [receipt, setReceipt] = useState<IntakeReceipt | null>(null);
+  const [refusal, setRefusal] = useState<Refusal | null>(null);
+  const [writing, setWriting] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    questionnaire().then(
+      (value) => {
+        if (live) setQuestions(value);
+      },
+      (error: unknown) => {
+        if (live) setRefusal(asRefusal(error));
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const answered = questions.filter(
+    (question) => (given[question.question_id] ?? "").trim() !== "",
+  ).length;
+  /** Counted rather than written down: which questions are text boxes is the
+   *  core's list to change, and 边界 has no other way in. */
+  const prose = questions.filter((question) => question.prose).length;
+  const stopped = busy || writing;
+
+  /**
+   * Hand in what was typed, then ask for the profile again.
+   *
+   * Every question goes back, including the blank ones, exactly as the wizard
+   * hands them in: a blank is a skip the core drops, not an instruction to
+   * erase what an earlier run recorded.
+   */
+  const record = (): void => {
+    setWriting(true);
+    setRefusal(null);
+    setReceipt(null);
+    const answers = questions.map((question) => ({
+      question_id: question.question_id,
+      given: given[question.question_id] ?? "",
+    }));
+    answerQuestionnaire(answers).then(
+      (written) => {
+        setReceipt(written);
+        setGiven({});
+        setWriting(false);
+        onRecorded();
+      },
+      (error: unknown) => {
+        setRefusal(asRefusal(error));
+        setWriting(false);
+      },
+    );
+  };
+
+  return (
+    <section className="panel" aria-labelledby="ask-again-heading">
+      <h2 id="ask-again-heading">再答几题</h2>
+      <p className="muted">
+        向导里那 {questions.length} 道题在这里随时可以再答，答过的也可以改口，以你最后说的为准；
+        留空的还是留空，不会被猜。其中 {prose} 道填空题是边界和在乎的事唯一的入口，
+        写进去之后原话一样密封，这一页只拿得到问题和编号。
+      </p>
+
+      {asking ? null : (
+        <button
+          type="button"
+          disabled={stopped || questions.length === 0}
+          onClick={() => setAsking(true)}
+        >
+          打开题目
+        </button>
+      )}
+
+      {asking ? (
+        <>
+          <ol className="questions" data-testid="profile-questions">
+            {questions.map((question) => (
+              <Ask
+                key={question.question_id}
+                question={question}
+                given={given[question.question_id] ?? ""}
+                busy={stopped}
+                idPrefix="profile-question"
+                onGive={(value) =>
+                  setGiven((previous) => ({ ...previous, [question.question_id]: value }))
+                }
+              />
+            ))}
+          </ol>
+          <p className="muted" data-testid="profile-answered">
+            这一次答了 {answered} 题，留空 {questions.length - answered} 题。
+          </p>
+          <div className="switch-row">
+            <button
+              type="button"
+              className="primary"
+              disabled={stopped || answered === 0}
+              onClick={record}
+            >
+              写进档案
+            </button>
+            <button
+              type="button"
+              disabled={stopped}
+              onClick={() => {
+                setAsking(false);
+                setGiven({});
+              }}
+            >
+              先收起来
+            </button>
+          </div>
+          {answered === 0 ? (
+            <p className="muted" data-testid="profile-nothing-answered">
+              一道都没答的时候没有东西可以写进去，所以上面那个按钮是灰的。
+            </p>
+          ) : null}
+        </>
+      ) : null}
+
+      {receipt === null ? null : (
+        <p className="muted" data-testid="profile-receipt">
+          记下了 {receipt.answered} 条，都是「你自己说的」。
+          {receipt.axes_known} 条轴有了方向，{receipt.axes_unknown} 条留成还看不出方向。
+        </p>
+      )}
+
+      {refusal === null ? null : (
+        <Refused title="这几题没有过去" refusal={refusal} testId="profile-ask-refusal-code" />
+      )}
+    </section>
   );
 }
 
