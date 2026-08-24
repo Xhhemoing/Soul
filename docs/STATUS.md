@@ -258,7 +258,7 @@ WP03 已经落地了自己的问卷入档路径（`soul-profile::questionnaire`�
 | AC-22 云开关可见、写「尚未启用」、点了不出网 | `src/components/CloudToggle.test.tsx` 4 项：开关可见且文案是「尚未启用」；连点五次，五次之后仍然是「尚未启用」；说明文字与 `soulcore` 的 `CLOUD_NOT_YET_AVAILABLE_EXPLANATION` 逐字相等（`src/contract.test.ts` 另有一条跨语言比对，界面自己编一句会红）；整个测试期间 `fetch` / `XMLHttpRequest` / `WebSocket` / `EventSource` / `navigator.sendBeacon` 五个全部被替换成「一被调用就让测试失败」的桩，`forbidNetwork` 在 `src/test/fakeCore.ts`。jsdom 本来就没有真 socket，所以这一条查的是意图不是报文：它拦的是某次改版顺手加上去的一个 `fetch`。Rust 侧 `cloud_toggle` 无视 `requested_on` 返回同一个 `CloudNotice`，`no_configuration_can_claim_the_cloud_is_available` 遍历配置空间断言没有哪一种能让它说可用 |
 | UI 无业务：只调 soulcore commands | 三道锁。① `eslint.config.js` 的 `no-restricted-imports` 只放行 `src/core.ts` 引用 `@tauri-apps/api`；② `src/contract.test.ts::只有 core.ts 直接引用 Tauri 的 API` 直接读每个源文件再查一遍（lint 规则被人改宽了它还在）；③ `src-tauri/tests/command_surface.rs::the_command_layer_stays_thin` 读 `src/commands.rs`，断言每个 wrapper 的函数体最多一条语句——放不下分支，也放不下循环，只够转调 `soulcore::commands::shell`。判断全在 Rust：`ConfigSnapshot.fully_closed` 与 `open_capabilities` 由核心算好送过来，界面只渲染 |
 | 两侧的命令名是同一套 | `src/contract.test.ts::界面用的命令名和 src-tauri 注册的一模一样` 与 `src-tauri/tests/command_surface.rs` 3 项对着咬：TS 的 `COMMANDS`、Rust 的 `COMMAND_NAMES`、`#[tauri::command]` 的实际注册，三者集合相等。少写一个或多写一个都会红 |
-| IPC 真的走通了 | `src-tauri/tests/ipc_roundtrip.rs` 7 项用 `tauri::mock_builder()` 加 **`generate_context!()`**（不是空 context）跑真 `RuntimeAuthority`——ACL 来自真的 `tauri.conf.json` 与 capabilities。三个命令都从 WebView 那一侧发请求、收 JSON：快照过去是 `fully_closed`、向导没勾选回来是错误不是默认值、云开关按哪一下都返回同一个 notice。另有反例两条：未注册的命令被拒、伪造 origin 的调用被拒；还有一条钉住参数在 WebView 侧的拼法（改 `requestedOn` 的 serde 命名会红） |
+| IPC 真的走通了 | `src-tauri/tests/ipc_roundtrip.rs` 用 `tauri::mock_builder()` 加 **`generate_context!()`**（不是空 context）跑真 `RuntimeAuthority`——ACL 来自真的 `tauri.conf.json` 与 capabilities。命令从 WebView 那一侧发请求、收 JSON。Windows CI 因 runner 的 WebView2Loader 对不上 mock 运行时，对该文件 `--no-run`（见下手动缺口 9）；Linux 本机与有匹配运行时的机器跑完整套 |
 | 托盘入口 | `src-tauri/src/tray.rs`：两项菜单「打开 Soul」「退出 Soul」，每个平台都编译。关窗默认收进托盘，所以「退出」必须在托盘里够得着 |
 | 界面不出现诊断词与量表词 | `src/contract.test.ts::不出现诊断词与量表词` 把 `fixtures/denylist/diagnostic_terms.txt` 读进来扫每个 `.ts`/`.tsx`/`.css`/`.html`。写这条的时候故意往组件里塞过一个禁用词验证它会红 |
 
@@ -276,6 +276,7 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 6. **中文在 WebView 里的字体与 DPI。** 缩放 150% 下向导那段长说明会不会截断，只能看。
 7. **点云开关时系统层面没有流量（AC-22）。** 测试证明的是代码里没有这条路径、JS 侧五个出网 API 一次都没被调、依赖图里走不到任何 HTTP client。用资源监视器看一眼进程的网络列是空的，是作者手动那一栏。
 8. **起草页与文件计划页在真窗口里。** CI 证明 IPC、文案与禁按钮；「生成草稿」之后中文草稿是否可读、授权目录扫描在 Windows 路径下是否出表，要看真机。
+9. **`ipc_roundtrip` 在 windows-latest 上只编译、不加载。** mock IPC 运行时链接 WebView2；runner 自带的 `WebView2Loader.dll` 缺导出，进程以 `STATUS_ENTRYPOINT_NOT_FOUND`（0xc0000139）在第一条断言前退出。Windows job 对它 `--no-run`，其余桌面测试照跑。有匹配运行时的机器仍跑完整套。
 
 ### WP09 的取舍与遗留
 
