@@ -190,6 +190,12 @@ describe("桌面壳", () => {
     expect(within(fact).getByRole("link", { name: "采集" })).toHaveAttribute("href", "#/collect");
   });
 
+  it("概览关着的时候和采集页用同一句话", async () => {
+    await startAtRoute("#/");
+
+    expect(await screen.findByTestId("collect-fact")).toHaveTextContent("没有在采集");
+  });
+
   it("审计页有内容了，不再是空路由", async () => {
     await startAtRoute("#/audit");
 

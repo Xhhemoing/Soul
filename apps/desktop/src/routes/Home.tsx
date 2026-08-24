@@ -24,7 +24,9 @@ export interface HomeProps {
 function collectReading(collect: CollectStatus | null): string {
   if (collect === null) return "读取中…";
   if (collect.collector_running) return "正在采集";
-  return collect.consent_granted ? "已同意，但没有在采" : "关";
+  // Same three phrases as `/collect`, so the overview line and that page
+  // cannot disagree about what the ledger is doing.
+  return collect.consent_granted ? "已经同意，但没有在采" : "没有在采集";
 }
 
 export function Home({ snapshot, status }: HomeProps): React.JSX.Element {
