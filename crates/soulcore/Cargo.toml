@@ -11,11 +11,14 @@ description = "Soul orchestration core. WP01 ships configuration defaults and a 
 [dependencies]
 soul-schema = { workspace = true }
 soul-store-api = { workspace = true }
+soul-store = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
 soul-testkit = { workspace = true }
+tempfile = { workspace = true }
+uuid = { workspace = true }
 
 [[bin]]
 name = "soul-headless"

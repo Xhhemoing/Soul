@@ -175,9 +175,10 @@ fn without_an_armed_fail_point_the_same_child_writes_everything() {
     let path = dir.path().join("event-control.db");
     let path_text = path.to_string_lossy().into_owned();
 
-    let outcome =
-        run_crashing_subprocess(&CrashScenario::new(EVENT_CHILD, "").with_env(DB_PATH_ENV, &path_text))
-            .expect("re-execute the test binary");
+    let outcome = run_crashing_subprocess(
+        &CrashScenario::new(EVENT_CHILD, "").with_env(DB_PATH_ENV, &path_text),
+    )
+    .expect("re-execute the test binary");
     assert!(
         !outcome.died(),
         "the control run measures the injection, not a broken child\n--- stderr ---\n{}",

@@ -100,8 +100,8 @@ fn a_different_key_cannot_open_the_database() {
 #[test]
 fn event_filters_are_answered_by_the_database() {
     use soul_schema::common::{
-        ActorSubject, Derivation, EgressPolicy, Privacy, Purpose, Retention, SchemaVersion, Subject,
-        Timestamp,
+        ActorSubject, Derivation, EgressPolicy, Privacy, Purpose, Retention, SchemaVersion,
+        Subject, Timestamp,
     };
     use soul_schema::event::{EventKind, EventSource, SoulEvent};
 

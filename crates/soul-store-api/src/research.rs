@@ -141,7 +141,9 @@ mod tests {
     #[test]
     fn a_preview_manifest_never_claims_to_have_been_written() {
         let manifest = preview_manifest(
-            "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4001".parse().expect("uuid"),
+            "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4001"
+                .parse()
+                .expect("uuid"),
             vec![ExportField::EventKind],
             vec![ExportRow {
                 event_kind: Some("app.foreground".into()),

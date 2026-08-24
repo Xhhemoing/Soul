@@ -268,7 +268,10 @@ fn after_a_forget_and_a_restart_the_prose_is_unreadable_and_the_audit_chain_stil
     );
 
     assert_eq!(
-        store.get_memory(id(MEMORY_TRIP)).expect("row remains").forget_state,
+        store
+            .get_memory(id(MEMORY_TRIP))
+            .expect("row remains")
+            .forget_state,
         ForgetState::Forgotten,
         "the row stays as a tombstone so the user can see the memory existed",
     );
@@ -325,7 +328,12 @@ fn forgetting_a_contact_orphans_what_the_edge_supported() {
         let mut store = SqlCipherStore::open(&path, &keys).expect("open");
 
         let label = store
-            .seal(third_party_seal(id("63"), id("40"), "display_label_ref", "李雷"))
+            .seal(third_party_seal(
+                id("63"),
+                id("40"),
+                "display_label_ref",
+                "李雷",
+            ))
             .expect("seal the label");
         let mut them = contact(id("40"), ContactClass::ThirdParty);
         them.display_label_ref = Some(label.clone());

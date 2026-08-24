@@ -1298,8 +1298,11 @@ dependencies = [
  "serde",
  "serde_json",
  "soul-schema",
+ "soul-store",
  "soul-store-api",
  "soul-testkit",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]

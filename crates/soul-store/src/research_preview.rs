@@ -178,7 +178,10 @@ impl ResearchPreview for SqlCipherStore {
             .filter(|candidate| candidate.subject == SubjectClass::ThirdParty)
             .count() as u64;
 
-        let rows: Vec<ExportRow> = kept.into_iter().map(|candidate| candidate.row.clone()).collect();
+        let rows: Vec<ExportRow> = kept
+            .into_iter()
+            .map(|candidate| candidate.row.clone())
+            .collect();
         let fields = fields_present(&rows);
         let manifest = preview_manifest(
             request.manifest_id.unwrap_or_else(Uuid::now_v7),

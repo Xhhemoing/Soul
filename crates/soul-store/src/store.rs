@@ -604,11 +604,9 @@ impl ProfileStore for SqlCipherStore {
             .optional()
             .map_err(backend)?;
         match state {
-            Some(state) => {
-                serde_json::from_value(Value::String(state.clone())).map_err(|_| {
-                    StoreError::Backend(format!("unknown inference state {state} in the database"))
-                })
-            }
+            Some(state) => serde_json::from_value(Value::String(state.clone())).map_err(|_| {
+                StoreError::Backend(format!("unknown inference state {state} in the database"))
+            }),
             None => Err(StoreError::not_found("inference", inference_id)),
         }
     }
@@ -937,8 +935,9 @@ impl BlobStore for SqlCipherStore {
 impl AuditLog for SqlCipherStore {
     fn append_audit(&mut self, entry: SoulAuditEntry) -> StoreResult<Uuid> {
         let (seq, prev_hash) = self.audit_tip()?;
-        let linked = audit::link(entry, seq, &prev_hash)
-            .map_err(|message| StoreError::Backend(format!("hashing the audit entry: {message}")))?;
+        let linked = audit::link(entry, seq, &prev_hash).map_err(|message| {
+            StoreError::Backend(format!("hashing the audit entry: {message}"))
+        })?;
         self.check(SchemaId::Audit, &linked.entry)?;
 
         let id = linked.entry.entry_id;

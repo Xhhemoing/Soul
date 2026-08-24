@@ -194,7 +194,10 @@ mod tests {
     fn removing_a_link_is_detected() {
         let mut links = chain_of(3);
         links.remove(1);
-        assert!(matches!(verify(&links), Err(ChainError::SeqOutOfOrder { .. })));
+        assert!(matches!(
+            verify(&links),
+            Err(ChainError::SeqOutOfOrder { .. })
+        ));
     }
 
     #[test]
