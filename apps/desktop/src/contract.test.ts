@@ -13,12 +13,14 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { COMMANDS } from "./core";
 import { CLOUD_LABEL } from "./test/fakeCore";
 
 const SRC = dirname(fileURLToPath(import.meta.url));
 const DESKTOP = join(SRC, "..");
 const REPO = join(DESKTOP, "..", "..");
 const SHELL_RS = join(REPO, "crates", "soulcore", "src", "commands", "shell.rs");
+const TAURI_COMMANDS_RS = join(DESKTOP, "src-tauri", "src", "commands.rs");
 
 function sourceFiles(root: string, extensions: readonly string[]): string[] {
   const found: string[] = [];
@@ -50,6 +52,14 @@ describe("壳与核心的边界", () => {
       .map((path) => relative(DESKTOP, path));
 
     expect(offenders).toEqual([]);
+  });
+
+  it("界面用的命令名和 src-tauri 注册的一模一样", () => {
+    const registered = readFileSync(TAURI_COMMANDS_RS, "utf8");
+    const declared = [...registered.matchAll(/#\[tauri::command\]\s*pub fn (\w+)\s*\(/g)].map(
+      (match) => match[1],
+    );
+    expect(declared.sort()).toEqual([...Object.values(COMMANDS)].sort());
   });
 
   /**

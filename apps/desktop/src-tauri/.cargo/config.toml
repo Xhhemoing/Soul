@@ -1,0 +1,16 @@
+# The workspace is pinned to Rust 1.83 (see ../../../rust-toolchain.toml), and
+# most of the Tauri dependency tree has moved past it. This tells cargo to
+# resolve to the newest version of each crate that still declares a compatible
+# `rust-version`, which is what produced the committed Cargo.lock.
+#
+# The setting needs cargo 1.84 or newer to take effect, so the lock file is
+# generated with a current stable toolchain and then built with the pinned one:
+#
+#   cargo +stable generate-lockfile
+#   cargo +1.83 check --locked --all-targets
+#
+# `just desktop-check` runs the second line. Regenerating the lock on 1.83
+# alone will fail on a dependency that needs edition 2024 — that is the
+# resolver picking versions this toolchain cannot read, not a broken manifest.
+[resolver]
+incompatible-rust-versions = "fallback"
