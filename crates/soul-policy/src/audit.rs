@@ -110,7 +110,7 @@ pub enum ReasonCode {
 
     // ---- generic ----
     /// Nothing unusual; recorded so a decision always has a reason.
-    Ok,
+    Routine,
 }
 
 impl ReasonCode {
@@ -136,7 +136,7 @@ impl ReasonCode {
             ReasonCode::ConsentGranted => "CONSENT_GRANTED",
             ReasonCode::ConsentRevoked => "CONSENT_REVOKED",
             ReasonCode::ConsentMissing => "CONSENT_MISSING",
-            ReasonCode::Ok => "OK",
+            ReasonCode::Routine => "ROUTINE",
         }
     }
 
@@ -163,7 +163,7 @@ impl ReasonCode {
         ReasonCode::ConsentGranted,
         ReasonCode::ConsentRevoked,
         ReasonCode::ConsentMissing,
-        ReasonCode::Ok,
+        ReasonCode::Routine,
     ];
 }
 

@@ -53,6 +53,14 @@ pub mod failpoints {
     /// Inside [`soul_store_api::ForgetOps::execute_forget`], between destroying
     /// one content key and the next.
     pub const FORGET_CK_DELETE_MID: &str = "soul::forget::content_key::delete_mid";
+
+    /// Inside [`soul_store_api::AuditLog::append_audit`], after the linked
+    /// entry has been written and before its transaction commits.
+    pub const AUDIT_APPEND_PRE_COMMIT: &str = "soul::audit::append::pre_commit";
+
+    /// Inside [`soul_store_api::AuditLog::append_audit`], after the commit and
+    /// before the caller is told the entry landed.
+    pub const AUDIT_APPEND_POST_WRITE: &str = "soul::audit::append::post_write";
 }
 
 impl SoulStore for SqlCipherStore {

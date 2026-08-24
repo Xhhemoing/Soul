@@ -965,7 +965,19 @@ impl AuditLog for SqlCipherStore {
             )
             .map_err(backend)?;
         }
+
+        // AC-24, audit side. The row and its subject links are written but the
+        // transaction is open: a power loss here must lose the whole entry
+        // rather than leave a link the next `prev_hash` cannot reach.
+        fail::fail_point!(crate::failpoints::AUDIT_APPEND_PRE_COMMIT);
+
         tx.commit().map_err(backend)?;
+
+        // The other side of the same question: the entry is durable but the
+        // caller never learned its id. Reopening must find a chain that still
+        // verifies, one entry longer than the caller believes.
+        fail::fail_point!(crate::failpoints::AUDIT_APPEND_POST_WRITE);
+
         Ok(id)
     }
 
