@@ -21,6 +21,7 @@
 | WP04 自传记忆 | 完成。见下节 |
 | WP05 人脉图 | 完成。见下节 |
 | WP06 导入 | 完成。见下节 |
+| WP07 前台采集 | 完成。见下节 |
 | v0.1 其余 WP | 未开始 |
 
 ## WP01 完成情况
@@ -210,6 +211,36 @@ WP03 已经落地了自己的问卷入档路径（`soul-profile::questionnaire`�
 6. **同一个文件导入两次会写两遍事件。** v0.1 没有外部 id 索引可以去重，造一个就意味着要有一列存平台的消息 id。联系人是去重的（按标识符摘要），事件不是。要不要去重由调用方决定。
 7. **提交不是一个事务。** `commit` 逐条写联系人、密封、事件、证据；中途失败会留下写了一半的导入。WP02 的遗忘是单事务的，导入不是——`soul-store-api` 上没有可以让调用方开事务的入口，加一个是存储边界的改动，超出本工作单。重跑同一个文件是安全的（联系人会认回来），只是事件会多一份。
 
+## WP07 完成情况
+
+`crates/soul-collect` 落地。本机 `cargo test --workspace --all-targets` 绿；`xtask all`（e0-audit / denylist-audit / schema-freeze --check）在**干净检出**上绿。链路是 `ForegroundSource → 同意门 → EventStore`，CI 只替换最前面那一段，后面全是 Windows 机器上跑的同一份代码。
+
+| 交付 | 证据 |
+|---|---|
+| `ForegroundSource` 是唯一入口 | `src/source.rs` 定义 trait 与 `AppIdentity`；`src/windows.rs` 用 `GetForegroundWindow` → `GetWindowThreadProcessId` → `QueryFullProcessImageNameW` 三个调用实现它（`cfg(windows)`，`cargo check`/`clippy --target x86_64-pc-windows-msvc` 过，真机未跑）；`src/fake.rs` 是 CI 那一侧。`platform_source()` 在非 Windows 上返回 `Unsupported` 而不是一个永远报告「无前台」的源——后者会让用户以为采集在工作 |
+| AC-09 采集关时事件=0 | `tests/consent_gate.rs`：同意门关着切 10 次应用，`list_events` 无论按 `source` 过滤还是全表都是 0，`Collector` 的 `consent_refusals` 是 10，而 `FakeForegroundSource::samples_taken()` 是 **0**——门在源前面，关着的时候连前台都不看。第二条测试证明 `runner::start` 本身就拒绝启动。第四条是对照：同样 10 次切换、同意打开，写出 10 条事件，所以上面的 0 是门挡下来的，不是管道从来没通过 |
+| AC-10 开启期间 ≥1 条、关闭后 1s 内无新事件 | `tests/collection_lifecycle.rs`：真起后台线程、真 `SqlCipherStore`，切应用直到库里出现事件（超时 10s 判失败）；`stop()` 耗时断言 ≤ `STOP_BUDGET`（1s）；停完再切 20 次应用并等满 1 秒，事件数一条不变。撤销同意是第二条路径，也在 1 秒内自停且此后无新事件 |
+| 停采集 ≤1s 与轮询无关 | `stopping_does_not_wait_for_the_poll_interval`：用默认 1 秒轮询间隔起停，耗时断言 < 0.5 秒。等待是 `Condvar::wait_timeout`，不是 `sleep`，所以「停得快」不是「轮询得快」的副产品。另有一条：句柄被 drop 时线程也停，不会留下没人能关的采集 |
+| 只采时长，不采窗口标题 | `tests/window_titles_are_not_collected.rs` 三层：① 把本 crate 每个 `src/*.rs` 读回来，搜 10 个取标题的 Win32 调用与 7 个键鼠/截屏/剪贴板调用，一个都不能出现（这条测试在写的时候真的红过一次——`windows.rs` 的文档注释里提到了 `GetWindowText`）；② `AppIdentity` 要求可执行映像名，四种真实形状的窗口标题全部被拒；③ 密封体的键恰好是 `["app","duration_ms"]`，关库后扫目录里每个文件都搜不到 `excel.exe` / `outlook.exe` |
+| 事件形状 | `source = collector.foreground_app`、`kind = app.foreground`、`actor_subject = self`、`privacy.subject = self`、`egress` 全 deny。应用名与时长在 `body_ref` 指向的密封体里，`content_key_id` 是本次运行的那把 |
+| 审计无正文 | `tests/window_titles_are_not_collected.rs::the_audit_chain_records_the_run_and_none_of_what_was_collected`：整条链只有 `collect.start` 与 `collect.stop`，后者带 `items` 计数与 `content_key_id`；把四个应用名当语料、阈值调到 4 个 scalar 过 `LeakageChecker` |
+| 测试没有手工 insert 冒充采集 | `tests/the_tests_do_not_fake_collection.rs`：扫本目录每个测试文件，`append_event` / `put_*` / `seal` / `append_audit` / `execute_forget` 一律不许出现（读接口不限）。另有一条控制用例，证明这个扫描器认得出真的写调用 |
+
+落地内容：`crates/soul-collect/{source,fake,session,collector,runner,consent,lock,error,windows}.rs` 与四个测试文件加 `tests/common/mod.rs`；`soulcore/src/commands/collect.rs`。根 `Cargo.toml` 追加了 member 与 `soul-collect` 的 workspace 依赖项，`soulcore/Cargo.toml` 追加一行依赖，`soulcore/src/commands/mod.rs` 追加 `pub mod collect;` 与目录注释里的一句。没有新 fixture，没有动 schema。
+
+### WP07 的取舍与遗留
+
+1. **一次运行一把内容密钥，所以遗忘单元是「这次采集」而不是「这一天」。** `ForgetUnit::ContentKey(id)`，id 由 `CollectorHandle::content_key_id()` 交出，`soulcore::commands::collect::forget_unit` 把它包成遗忘单元。按天分钥对用户更自然（「忘掉昨天」），但那需要重启后还能找回昨天那把钥匙，也就是存储侧要能按天查内容密钥——那是 `soul-store-api` 的改动，超出本工作单。
+2. **时长在密封体里，不在事件字段上。** `event.schema.json` 是 `additionalProperties: false`，唯一能装东西的地方是 `body_ref`，而它是密封指针。于是 `{app, duration_ms}` 一起密封，事件的 `ts` 是**会话开始**的那一秒。好处是应用名跟着内容密钥走，遗忘能够到；代价是研究预览目前只能按 `kind` 与小时桶聚合，看不到时长——`export-manifest` 里那个 `duration_bucket` 字段要等有人把密封体解出来聚合，那是研究轨道的活。
+3. **`consent_id` 恒为 `None`。** `ConsentLedger` 记的是状态与变更时间，没有 id 可引用。契约要求这里是 uuid7，编一个出来只会让审计指向不存在的行。要填它得先让同意记录有身份。
+4. **关闭有两种语义，故意不一样。** `stop()` 是有序收尾，会把用户此刻还在用的那个应用的时长写完；撤销同意则把在飞会话**丢掉**。理由是后者是用户收回授权，「再写一条」不是收回授权的一部分。两条路都在 1 秒内不再产生新事件，测试分别验。
+5. **`AppIdentity` 要求可执行后缀（`.exe` / `.com` / `.scr`）。** 这是把「不采标题」从习惯变成规则的那一条：窗口标题几乎不会以 `.exe` 结尾。代价是没有这类后缀的前台进程会被拒（计入 `source_errors`，不写事件）。v0.3 的 Android 是包名不是映像名，要另加构造器，**不要**靠放松这条来支持它。
+6. **打不开的进程记为「前台无内容」。** 提权或受保护的进程 `OpenProcess` 会失败，这时返回 `Ok(None)`，那段时长就丢了。反过来从窗口去猜名字，等于放弃「只采应用」的承诺。
+7. **时长用墙钟，不是单调钟。** 事件的 `ts` 必须是墙钟，两头用同一个时钟才不会自相矛盾；NTP 回拨时 `duration_ms` 走 `saturating_sub` 记 0，`session.rs` 有测试钉住。
+8. **采集线程与调用方共享 `Arc<Mutex<SqlCipherStore>>`。** `soulcore::commands::collect::share` 是那个包装。WP09 接 UI 时整个进程只能有一个 store 句柄，否则两个连接会各写各的 WAL。
+9. **`e0-audit` 在本机会被 `apps/desktop/dist/` 命中。** 那是 WP09 的构建产物，`.gitignore` 里有它，但 `xtask` 的 `EXEMPT_DIRS` 没有 `dist`，所以本机跑会报 20 条 URL。干净检出（我在 `/tmp` 克隆 HEAD 验过）三项全绿，CI 也是干净检出。要不要给 `EXEMPT_DIRS` 加 `dist` 由 WP09 或 WP13 决定，本工作单不动 `xtask`。
+10. **没有加 `soulcore/tests/collect_commands.rs`。** 工作单允许的 soulcore 面只有 `src/commands/collect.rs`，验收测试因此全部放在 `crates/soul-collect/tests/`，它们本来也需要真库与后台线程。
+
 ## 下一步
 
-批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成。不要启动 Goal 2。文件写入仍是 v0.1.1。
+批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集也已完成。不要启动 Goal 2。文件写入仍是 v0.1.1。
