@@ -1,24 +1,27 @@
 # 算法验证优化 — 进度
 
 - 分支：`cursor/algo-verify-opt-a073`
-- 基线：`origin/main`（ea6f62f）。计划权威在 `origin/cursor/soul-product-lock-7b1c`；实现快照在 `origin/cursor/soul-goal1-7b1c`。
-- 循环：Round 1–3 递进 + Round X 交叉验证统一（额外一轮）。
+- PR：https://github.com/Xhhemoing/Soul/pull/5
+- 基线：`origin/main`。计划权威 `origin/cursor/soul-product-lock-7b1c`；实现快照 `origin/cursor/soul-goal1-7b1c`。
+- 循环：Round 1–3 递进 + Round X 交叉验证统一。
 - 每轮编制：2×fable (`claude-fable-5-thinking-xhigh`) + 2×opus-fast (`claude-opus-5-thinking-high-fast`) + 2×gpt-sol (`gpt-5.6-sol-xhigh-fast`)。
 
-## Round 1 — 进行中
+## Round 1 — 完成
 
-目标：盘点计划算法、对照现实现、落地可跑基线与对照候选、建立基准/边界探针。
+见 `.agent_workspace/R1-SYNTHESIS.md`。杀 T2 / A3 / T1 单体 / T0 原样。人脉侧 T3 vs T3R vs T4 待消融。A0 补锁；A2 改为纯消费者。
+
+## Round 2 — 进行中
+
+目标：实现 T3/T3R/T4 并做 C8 消融；A0 锁补丁；A2 去阈值；写墓碑。
 
 | 槽 | 模型 | 专属目录 | 主攻 |
 |---|---|---|---|
-| fable-a | claude-fable-5-thinking-xhigh | `.agent_workspace/round1/fable-a/` | 全局规划、SOTA 标准、评价矩阵 |
-| fable-b | claude-fable-5-thinking-xhigh | `.agent_workspace/round1/fable-b/` | 现实现多维审计、产品锁契合 |
-| opus-a | claude-opus-5-thinking-high-fast | `.agent_workspace/round1/opus-a/` | Tie-strength 族参考实现 |
-| opus-b | claude-opus-5-thinking-high-fast | `.agent_workspace/round1/opus-b/` | Trait/人事分析族参考实现 |
-| gpt-sol-a | gpt-5.6-sol-xhigh-fast | `.agent_workspace/round1/gpt-sol-a/` | 基准脚本、确定性夹具 |
-| gpt-sol-b | gpt-5.6-sol-xhigh-fast | `.agent_workspace/round1/gpt-sol-b/` | 边界/对抗探针 |
-
-## Round 2 — 未开始
+| fable-a | claude-fable-5-thinking-xhigh | `.agent_workspace/round2/fable-a/` | C8 消融标准、中文话术冻结、SOTA 复审 |
+| fable-b | claude-fable-5-thinking-xhigh | `.agent_workspace/round2/fable-b/` | P0 管道债规格、图纠正接口、验收差距 |
+| opus-a | claude-opus-5-thinking-high-fast | `.agent_workspace/round2/opus-a/` | T3 / T3R / T4 实现与消融测试 |
+| opus-b | claude-opus-5-thinking-high-fast | `.agent_workspace/round2/opus-b/` | A0 锁 + A1 + A2 纯渲染 |
+| gpt-sol-a | gpt-5.6-sol-xhigh-fast | `.agent_workspace/round2/gpt-sol-a/` | 独立消融基准 |
+| gpt-sol-b | gpt-5.6-sol-xhigh-fast | `.agent_workspace/round2/gpt-sol-b/` | 对抗探针必须在 T3R/T4 上转绿 |
 
 ## Round 3 — 未开始
 
@@ -26,5 +29,5 @@
 
 ## 保留决策（未冻结）
 
-- 候选池：T0/T1/T2/T3 × A0/A1/A2/A3
-- 拟保留：待 Round 3 + Round X 仲裁
+- 已杀：T2、A3、T1 单体、T0 原样
+- 竞争：T3 / T3R / T4 ；A0（基底）/ A1（插件）/ A2（渲染）

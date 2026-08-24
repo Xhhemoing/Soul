@@ -1,0 +1,14 @@
+[package]
+name = "soul-t0-benchkit"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83"
+publish = false
+
+[lib]
+name = "soul_t0_benchkit"
+path = "src/lib.rs"
+
+[[bin]]
+name = "benchkit"
+path = "src/main.rs"
