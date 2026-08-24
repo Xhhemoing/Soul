@@ -22,7 +22,8 @@
 | WP05 人脉图 | 完成。见下节 |
 | WP06 导入 | 完成。见下节 |
 | WP07 前台采集 | 完成。见下节 |
-| WP09 桌面壳 | 第一段（壳）完成。见下节。起草 UI 全文属 WP10，未开始 |
+| WP09 桌面壳 | 第一段（壳）完成。见下节。起草路由已由 WP10 接上 |
+| WP10 起草与人事摘要 | 完成。见下节。`/draft` 已接本机路径；端点路径的确认屏留给 WP13 |
 | WP11 文件计划 | 核心与命令面完成。见下节。UI 视图未接，`/files` 仍是空路由 |
 | v0.1 其余 WP | 未开始 |
 
@@ -283,8 +284,52 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 6. **托盘装不上时窗口就正常关闭。** 关窗收进托盘只有在真有托盘时才成立；没有通知区域的桌面上，那会变成关不掉又退不出的窗口。`tray::install_or_report` 把这次会话有没有托盘记进 state，关窗处理读它。Windows 11 一定有托盘，这条是给别的环境和调试用的。
 7. **`soulcore/src/commands/shell.rs` 里的 `ConfigSnapshot` 是壳自己的视图，不是 `Config` 的序列化。** 它只带界面要显示的那几个布尔与计数，**不带 LLM 端点字符串**（`the_snapshot_carries_no_endpoint_string` 钉住）：界面没有理由拿到那个地址，而每一个跨进程边界的字符串都是一次泄漏机会。要显示端点内容，得先想清楚为什么。
 8. **壳还没有连真的 store。** `SessionConfig` 目前握的是内存里的 `soulcore::Config`，没有打开 `SqlCipherStore`。WP07 遗留 8 说整个进程只能有一个 store 句柄；接线的时候在 `lib.rs` 的 setup 里开一次、`manage` 起来，不要在每个命令里开。
-9. **起草 / 文件计划 / 导入 / 记忆 / 人脉这些路由是空的，但不是白屏。** `components/Pending.tsx` 写明这一页归哪个 WP。`App.test.tsx` 里两条断言钉住空路由的形状：起草页没有输入框也没有发送按钮，文件计划页没有任何执行按钮——工作单禁止假实现，测试就是这条禁令的执行者。要在这些页面上加控件的人会先撞到它们。
-10. **前端只有 4 个测试文件，没有组件快照。** 断言全是「用户能看见什么」（`getByRole` / 可见文本），不是 DOM 结构。快照测试会在 WP10 改版式的时候整片变红，却挡不住把云开关文案改掉这种真问题。
+9. **起草 / 文件计划 / 导入 / 记忆 / 人脉这些路由是空的，但不是白屏。** `components/Pending.tsx` 写明这一页归哪个 WP。`App.test.tsx` 里两条断言钉住空路由的形状：起草页没有输入框也没有发送按钮，文件计划页没有任何执行按钮——工作单禁止假实现，测试就是这条禁令的执行者。要在这些页面上加控件的人会先撞到它们。（WP10 已接起草页：那条断言现在读作「有输入框，没有发送按钮」，后半句一个字没改，这正是它当初的用途。）
+10. **前端只有 4 个测试文件，没有组件快照。** 断言全是「用户能看见什么」（`getByRole` / 可见文本），不是 DOM 结构。快照测试会在 WP10 改版式的时候整片变红，却挡不住把云开关文案改掉这种真问题。（WP10 加了第 5 个，同样的写法。）
+
+## WP10 完成情况
+
+`crates/soul-draft` 落地：语气简报、无 key 的确定性模板、端点起草、回复解读、人事摘要。`soulcore/src/commands/draft.rs` 是命令面，`apps/desktop` 的 `/draft` 从空路由接上了其中的本机那一半。本机 `just ci` 全绿（`lint / schema / e0 / denylist / fixtures-verify / test / ui-lint / ui-test`；workspace 75 个测试目标 417 项，vitest 5 个文件 31 项），`just desktop-test` 绿（25 项）。
+
+PRODUCT_LOCK 的「出站消息 v0.1 只起草，不发送」是这份工作单的形状，不是它的一条检查项：这个 crate 里没有收件人、没有通讯录、没有一个意思是「送达」的动词。唯一能上 socket 的东西是一次生成请求，去的是 `EgressPermit` 点名的那个 origin。
+
+| 交付 | 证据 |
+|---|---|
+| AC-17 无 key 时确定性模板 | `tests/voice_and_template.rs`：`with_no_endpoint_the_draft_is_a_template_and_nothing_is_contacted` 让一个真的 `MockLlm` 在旁边听着，`request_count()` 是 0；`the_template_is_a_function_of_its_inputs_and_nothing_else` 用每轮新造的 `Drafter` 跑同一输入 32 遍，全部相等；`changing_any_one_voice_field_changes_the_draft` 证明它不是一句写死的话。走这条路时**根本不构造请求体**——不是构造完了不发，所以没有东西可漏 |
+| AC-17 模板说的话产品能说 | `every_voice_combination_renders_something_this_product_may_say`：81 种语气组合 × 两种上下文全部过 `assert_non_clinical` |
+| AC-07 推断不覆盖用户锁定 | `a_pinned_voice_field_survives_an_inference_that_disagrees_with_it` 与 `the_prompt_carries_the_users_value_and_not_the_inferred_one`：用户设过的字段，再来一条相反的推断，**送进 prompt 的那份文本**里是用户的值。断言落在渲染出来的简报上而不是内存里的结构体上，因为模型读到的是前者 |
+| AC-07 简报只带有证据的轴 | `an_axis_with_no_evidence_stays_out_of_the_prompt`：`SupportedBand::None` 的轴不进简报 |
+| AC-12 第三人正文默认占位 | `tests/wire.rs::the_third_partys_words_do_not_reach_the_wire`：断言的对象是 `MockLlm` 实际收到的字节，不是本进程里的中间值。`LeakageChecker` 同时找第三人正文、姓名和手机号 |
+| AC-13 单次豁免下次回到占位 | `one_exemption_covers_one_request_and_the_next_is_placeheld_again`：同一个 `Drafter` 连发两次，第一次带原文，第二次自己回到占位。豁免是按值传进去然后就地丢掉的，`ReplyGenerator::generate` 也按值收 `RedactedBody`——「不会被记住」是签名而不是分支。`an_exempted_body_still_placeholds_the_name_and_the_number`：整条豁免只放开这一条正文，姓名与账号仍然占位 |
+| AC-11 精确 origin，跨 origin 拒绝 | `a_redirect_off_the_configured_origin_is_refused_and_the_target_never_hears_from_us`：重定向目标是另一个真的 `MockLlm`，它的 `request_count()` 是 0。`a_different_port_on_the_same_host_is_a_different_origin` |
+| AC-16 每条摘要都有证据 | `tests/people_summary.rs`：图由 `soul_graph::rebuild` 从证据推导而不是手写。`a_point_with_no_evidence_is_not_a_value_that_can_exist`——`SummaryPoint::new` 收空的证据列表会失败，所以「有证据」是类型层面的；`an_edge_whose_evidence_does_not_resolve_produces_no_summary`——引了一行取不回来的证据就整份拒绝，不是悄悄少给一条 |
+| AC-16 过 denylist | `the_summary_says_nothing_a_medical_product_would_say`、`a_point_that_reads_like_a_diagnosis_fails_to_build`、`a_rephrasing_that_reads_like_a_diagnosis_is_dropped_and_the_points_stand`——端点改写回来的叙述过不了就整段丢掉，回到本机计数版，点条目一条不动 |
+| AC-16 摘要不点名 | `the_summary_names_nobody`：文本里没有姓名也没有 uuid，只有「这个人」 |
+| AC-25 注入不进指令位 | `tests/injection.rs::nothing_from_a_paste_reaches_the_instruction_slot`：对整个语料，`system` 消息逐字节等于 `soul_policy::e1::DRAFTING_INSTRUCTION`。这条能成立是因为**没有任何运行时的值到得了那个位置**，语气简报也走引用材料槽 |
+| AC-25 注入不外连 | `no_url_in_the_corpus_is_reachable` 与 `a_server_at_the_address_an_injection_names_never_hears_from_us`：注入点名的地址上真起一个服务器，它一个请求都收不到 |
+| AC-25 注入被记下但不被听 | `a_detected_injection_is_written_down_and_the_draft_is_still_produced`、`an_injection_that_comes_back_from_the_endpoint_is_recorded_and_not_obeyed`、`nothing_derived_from_a_paste_can_authorize_an_action` |
+| 声明是工作假设不是临床结论 | `PersonSummary::notice` 是 `工作假设，非临床结论`，`PersonSummaryView.clinical_claim` 恒为 false 且没有代码路径设它 |
+| 结构上不发送 | `tests/never_sends.rs`：`Draft` 的 `delivery` 是 `NeverSent`，只序列化成 `false` 且没有别的值；`no_field_on_a_draft_could_name_somewhere_to_send_it` 拿 `DRAFT_FIELDS` 逐个比。`soulcore/tests/draft_commands.rs::this_command_surface_offers_no_way_to_send_a_message` 搜命令面的源码 |
+| 命令面：批准的就是发出去的 | `soulcore/tests/draft_commands.rs` 17 项：`prepare` 描述、`generate` 执行，中间隔着一个人。`a_prepared_body_can_be_sent_once_and_not_twice`、`approving_a_shape_that_is_not_the_prepared_one_sends_nothing`、`an_approval_for_one_message_does_not_send_a_different_one_of_the_same_shape` |
+| 桌面壳没有发送按钮 | `apps/desktop/src/routes/Draft.test.tsx::不管有没有草稿，页面上都没有发送的按钮`（有草稿之后再查一遍，那才是有人会加按钮的时刻）；`src-tauri/tests/ipc_roundtrip.rs::there_is_no_command_that_sends_a_draft_to_anybody`；`contract.test.ts::界面能调用的命令里没有一个是发送` |
+| 界面上的话是核心的话 | `contract.test.ts::不发送与本机模板两句话和 soul-draft 里的常量一模一样`：直接读 `crates/soul-draft/src/draft.rs` 的常量，防止测试替身变成一个比真核心更友好的核心 |
+
+落地内容：`crates/soul-draft/{brief,template,draft,reply,analysis,error,lib}.rs`（1368 行）与五个测试文件；`soulcore/src/commands/draft.rs` 与 `soulcore/tests/draft_commands.rs`；`apps/desktop` 的 `src/routes/Draft.{tsx,test.tsx}`、`core.ts` 两个命令、`src-tauri/src/commands.rs` 两个转发、`router.tsx` 一行、`styles.css` 两个类。根 `Cargo.toml` 追加 member 与依赖项，`soulcore/Cargo.toml` 追加一行。没有动 schema，没有动产品定义，没有动 `soul-policy`，没有动 `xtask`。
+
+### WP10 的取舍与遗留
+
+1. **语气简报走「引用材料」槽，不走指令槽。** `soul_policy::e1` 把请求定死成两格：一个常量指令，一个被指令告知「不得当作命令」的引用材料。WP10 没有把它撑开。代价是模型看到的语气说明和第三人正文在同一个信任级别里；换来的是 AC-25 的强形式——注入进不了指令位，不是因为有过滤器认得出它，而是因为**没有任何运行时的值到得了那个位置**。要把语气放进 system 消息的人得改 `soul-policy::e1`，那是权限面的改动，评审注意力本来就该落在那里。简报本身只描述不命令，所以被标成材料没有损失什么。
+2. **`prepare` / `generate` 是两步，中间的东西是一个人。** 一次调用会去哈希一份没人看过的计划。请求体在两步之间被**留着**而不是重建：一次性豁免在构造时就消费掉了，重建出来的是另一份体（该带原文的地方成了占位），用户批准的计数就不再描述真的发出去的东西。留着也顺带把爆炸半径钉死——只有一个位置，第二次 `prepare` 顶掉第一次，`generate` 按值取走。
+3. **批准要对上两样东西，不只是 `plan_hash`。** 计划里只有计数没有正文（这是故意的），所以两条各含一个第三人 turn 的粘贴哈希一模一样。光靠哈希，用户对 A 的批准能把 B 发出去。`Pending` 因此带一个 `preparation_id`，`Approval` 两样都要echo回来。这条是写测试的时候撞出来的，不是设计时想到的。
+4. **`summarize_person` 不写审计。** `docs/schemas/audit.schema.json` 是冻结的，里面没有一个属于人事摘要的动作。它读图和图已经引用的证据行，什么都不改；在这里现编一个动作等于让审计条目声称一件契约没说过的事。要不要加是改 schema 的事。
+5. **端点回复不能用时降级，不报错。** 读不出来、空的、或者带了这个产品不说的词，都退回本机模板并在 `Draft::degraded` 里说清楚是哪一种。那是内容问题不是权限问题，用户还是该拿到一份草稿。跨 origin 被拒这类**是**权限问题，照样往上抛——AC-11 要的是它可见，不是被兜住。
+6. **桌面壳只接了本机那一半。** `draft_reply` 走的是不构造请求体的那条路，所以「这个壳到不了任何端点」比「按钮藏起来了」是更强的一句话。端点路径要一屏给人看计数并按确认，那需要壳先能读到配置——是 WP13 的问题。`E1_PLAN_NOTICE` 和 `E1DraftPlan` 已经就绪，接上去只差那一屏。
+7. **壳里的 `KnownIdentifiers` 是空的。** 填它要通讯录，通讯录要一个打开的 store，那还是 WP13。按形状的清洗照常抓地址、handle 和长数字串，第三人 turn 无论里面是谁都整条占位，所以空名单降低的是精度不是底线。`closed_session()` 把两个 session 一起造出来，就是为了不会有人给它们两份不一样的名单。
+8. **人事摘要的视图没有接到界面上。** `soulcore::commands::draft::summarize_person` 与 `PersonSummaryView` 就绪且有测试（含走真 `SqlCipherStore` 的那条），但 `/graph` 仍是 WP09 功能视图的空路由，而且摘要要一个打开的 store。接上去的人要一起处理 store 句柄，见 WP07 遗留第 8 条。
+9. **`Draft.test.tsx` 里的注入地址没有写 scheme。** `xtask e0-audit` 扫这棵树的 URL 字面量，豁免的是 `tests/` 目录，而 TypeScript 的测试是贴着源文件放的 `.test.tsx`，不在豁免里。带真 scheme 的语料在 `crates/soul-draft/tests/injection.rs`（那里是 `tests/` 目录）。本工作单不动 `xtask`；要不要给 `.test.ts(x)` 也豁免，由拿到 `xtask` 的工作单决定。
+10. **`ReasonCode` 借了 `PLAN_HASH_MISMATCH`。** `NothingPrepared` 和 `NotThePreparedRequest` 在冻结的词表里没有自己的词，而这两种情况说的都是同一句话：你批准的那份东西不是现在要发的这份。和 WP11 借 `CONSENT_MISSING` 是同一个取舍。
+11. **人事摘要的档位来自交互计数，不是判断。** `soul-graph` 的 `MODERATE_MIN_INTERACTIONS` / `STRONG_MIN_INTERACTIONS` 是它的全部内容，每条点条目都把自己的计数写在句子里。这很笨，但一份人跟不上的推理不是可以被同意的东西——和 WP11 整理规则故意很笨是同一条理由。
+12. **草稿框是可以改的，改完不回传。** 那是用户自己的文字了。`Result` 组件按次数 key，所以第二版草稿到的时候上一版的编辑不会跟着活下来。
 
 ## WP11 完成情况
 
@@ -327,4 +372,4 @@ D31 是这份工作单的边界：只读预览留在 Goal 1，写执行是 v0.1.
 
 ## 下一步
 
-批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集与 WP09 桌面壳第一段也已完成。批 5 的 WP11 核心与命令面已完成，视图未接。下一步是 WP09 功能视图（把起草与文件计划两个空路由接上核心，两边的视图类型都已就绪）与把壳接上真的 `SqlCipherStore`。不要启动 Goal 2。文件写入仍是 v0.1.1。
+批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集与 WP09 桌面壳第一段也已完成。批 5 的 WP10 起草与人事摘要已完成（`/draft` 接了本机路径），WP11 核心与命令面已完成、视图未接。下一步有三件，都卡在同一个地方：`/files` 接 `PlanPreview`、`/graph` 接 `PersonSummaryView`、起草的端点路径接 `prepare` / `generate` 的确认屏——后两件都要一个打开的 `SqlCipherStore` 与一份能读的配置，也就是 WP13。不要启动 Goal 2。文件写入仍是 v0.1.1。
