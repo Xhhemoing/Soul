@@ -1,12 +1,11 @@
 name: CI
 
 on:
-  # Feature branches run once, as the pull_request. Push+PR used to start
-  # ten jobs per commit; windows-latest minutes count 2× on a private repo,
-  # and that is how this account ran out of runners for HEAD.
-  pull_request:
+  # Keep push on feature branches: a pull_request-only trigger left HEAD
+  # with no run at all. Push+PR still share one concurrency group so the
+  # second event cancels the first instead of paying for ten jobs.
   push:
-    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 env:
@@ -15,7 +14,7 @@ env:
   CARGO_NET_RETRY: 3
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
