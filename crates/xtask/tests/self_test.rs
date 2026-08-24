@@ -71,6 +71,25 @@ fn the_url_scanner_accepts_the_allowlist() {
     assert_eq!(scan.files_scanned, 1);
 }
 
+/// Packaging scripts are scanned too: fetching a bundler or a runtime is one
+/// line of PowerShell, and it would otherwise be the one line in the
+/// repository nothing looks at.
+#[test]
+fn the_url_scanner_reads_packaging_scripts() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    write(
+        dir.path(),
+        "scripts/fetch.ps1",
+        "Invoke-WebRequest -Uri \"https://wix.example/wix.exe\" -OutFile wix.exe\n",
+    );
+    write(dir.path(), "scripts/clean.sh", "msiexec /i soul.msi /qn\n");
+
+    let scan = egress::scan_tree_for_urls(dir.path()).expect("scan");
+    assert_eq!(scan.files_scanned, 2);
+    assert_eq!(scan.hits.len(), 1, "{:#?}", scan.hits);
+    assert_eq!(scan.hits[0].url, "https://wix.example/wix.exe");
+}
+
 #[test]
 fn the_url_scanner_skips_fixtures_and_tests() {
     let dir = tempfile::tempdir().expect("temp dir");

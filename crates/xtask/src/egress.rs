@@ -214,7 +214,11 @@ pub fn audit(repo_root: &Path) -> Result<EgressReport> {
 
     let mut url_hits = Vec::new();
     let mut files_scanned = 0usize;
-    for tree in ["crates", "apps"] {
+    // `scripts` joined the list in WP13. Packaging is where vendor traffic
+    // usually comes back — a bundler that fetches WiX, a bootstrapper that
+    // fetches a runtime — and a shell script is the one place in this
+    // repository where fetching something is a single line.
+    for tree in ["crates", "apps", "scripts"] {
         let dir = repo_root.join(tree);
         if !dir.is_dir() {
             continue;
@@ -449,7 +453,22 @@ fn is_exempt_dir(path: &Path, is_dir: bool) -> bool {
 fn is_scannable(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()),
-        Some("rs" | "ts" | "tsx" | "js" | "jsx" | "json" | "html" | "css" | "toml" | "conf")
+        Some(
+            "rs" | "ts"
+                | "tsx"
+                | "js"
+                | "jsx"
+                | "json"
+                | "html"
+                | "css"
+                | "toml"
+                | "conf"
+                | "ps1"
+                | "psm1"
+                | "sh"
+                | "cmd"
+                | "bat"
+        )
     )
 }
 
