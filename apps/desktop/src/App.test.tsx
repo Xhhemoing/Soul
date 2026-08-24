@@ -39,12 +39,14 @@ describe("桌面壳", () => {
     expect(screen.getByRole("navigation", { name: "主导航" })).toBeVisible();
   });
 
-  it("起草页是空路由，没有输入框也没有发送按钮", async () => {
+  it("起草页有输入框，没有发送按钮", async () => {
     await startAtRoute("#/draft");
 
-    expect(screen.getByTestId("pending-owner")).toHaveTextContent("WP10 未落地");
-    expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.queryByRole("button", { name: /发送/ })).toBeNull();
+    expect(await screen.findByLabelText("原文")).toBeVisible();
+    expect(screen.queryByTestId("pending-owner")).toBeNull();
+    for (const button of screen.queryAllByRole("button")) {
+      expect(button.textContent ?? "").not.toMatch(/发送|发出|发给|回复对方/);
+    }
   });
 
   /**

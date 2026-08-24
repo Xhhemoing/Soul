@@ -131,10 +131,88 @@ fn the_webview_spelling_of_the_argument_is_the_one_that_arrives() {
     );
 }
 
+/// WP10 over the IPC: a paste goes in, a draft comes back, and the JSON the
+/// WebView receives has no field on it that could name a person.
+#[test]
+fn a_paste_comes_back_as_a_draft_with_nowhere_to_send_it() {
+    let draft = invoke(
+        "draft_reply",
+        json!({ "pasted": "周五的场地我已经订好了，你直接过来就行" }),
+    )
+    .expect("drafting works with nothing configured");
+
+    assert_eq!(draft["source"], json!("tone_template"));
+    assert_eq!(draft["delivery"], json!(false));
+    assert!(
+        draft["text"].as_str().is_some_and(|text| !text.is_empty()),
+        "a draft with no text is not a draft",
+    );
+    assert_eq!(
+        draft["not_sent_notice"],
+        json!(soulcore::commands::draft::NOT_SENT_NOTICE),
+    );
+
+    // The value the WebView holds is the one `soul-draft` pins, and there is
+    // nothing on it a screen could read a recipient out of.
+    let fields: Vec<&str> = draft
+        .as_object()
+        .expect("a record")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    for field in &fields {
+        for forbidden in ["recipient", "to", "address", "contact", "send", "channel"] {
+            assert_ne!(*field, forbidden, "the draft carries a `{forbidden}`");
+        }
+    }
+}
+
+/// `pasted` is what `core.ts` sends. It is a single word, so Tauri's camelCase
+/// conversion leaves it alone — which is exactly the kind of thing that is
+/// true until somebody renames the argument, so it is asserted.
+#[test]
+fn the_paste_argument_is_required_and_spelled_the_way_the_webview_spells_it() {
+    invoke("draft_reply", json!({ "pasted": "一句话" })).expect("core.ts sends `pasted`");
+    assert!(
+        invoke("draft_reply", json!({})).is_err(),
+        "a command that drafts from a missing argument would hide a renamed one",
+    );
+}
+
+/// The screen's empty state is the core's sentence, and its answer about
+/// sending is fixed.
+#[test]
+fn the_notices_the_screen_starts_from_come_from_the_core() {
+    let notices = invoke("draft_notices", json!({})).expect("an answer");
+
+    assert_eq!(
+        notices["not_sent"],
+        json!(soulcore::commands::draft::NOT_SENT_NOTICE),
+    );
+    assert_eq!(notices["can_send"], json!(false));
+}
+
 /// A command the shell does not have must not resolve to something.
 #[test]
 fn an_unknown_command_is_refused() {
     assert!(invoke("execute_file_plan", json!({})).is_err());
+}
+
+/// The names a send button would have to be bound to. None of them exist.
+#[test]
+fn there_is_no_command_that_sends_a_draft_to_anybody() {
+    for name in [
+        "send_draft",
+        "send_reply",
+        "send_message",
+        "deliver_draft",
+        "post_draft",
+    ] {
+        assert!(
+            invoke(name, json!({})).is_err(),
+            "`{name}` resolved to something",
+        );
+    }
 }
 
 /// Nothing but the application's own page may reach the commands. The WebView

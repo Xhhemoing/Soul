@@ -14,13 +14,22 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { COMMANDS } from "./core";
-import { CLOUD_LABEL } from "./test/fakeCore";
+import { CLOUD_LABEL, NOT_SENT_NOTICE, TEMPLATE_NOTICE } from "./test/fakeCore";
 
 const SRC = dirname(fileURLToPath(import.meta.url));
 const DESKTOP = join(SRC, "..");
 const REPO = join(DESKTOP, "..", "..");
 const SHELL_RS = join(REPO, "crates", "soulcore", "src", "commands", "shell.rs");
+const DRAFT_RS = join(REPO, "crates", "soul-draft", "src", "draft.rs");
 const TAURI_COMMANDS_RS = join(DESKTOP, "src-tauri", "src", "commands.rs");
+
+/** A `pub const NAME: &str = "…";`, including one broken across lines. */
+function rustConstant(source: string, name: string): string {
+  const pattern = new RegExp(`${name}: &str =\\s*((?:"[^"]*"\\s*\\\\?\\s*)+);`);
+  const match = pattern.exec(source);
+  expect(match, `${name} is not declared the way this test reads constants`).not.toBeNull();
+  return [...(match?.[1] ?? "").matchAll(/"([^"]*)"/g)].map((part) => part[1]).join("");
+}
 
 function sourceFiles(root: string, extensions: readonly string[]): string[] {
   const found: string[] = [];
@@ -71,6 +80,50 @@ describe("壳与核心的边界", () => {
     const rust = readFileSync(SHELL_RS, "utf8");
     const match = /CLOUD_NOT_YET_AVAILABLE_LABEL: &str = "([^"]+)"/.exec(rust);
     expect(match?.[1]).toBe(CLOUD_LABEL);
+  });
+
+  /**
+   * 不会替你发送 is the promise WP10 exists to keep. The screen renders it out
+   * of the value the core returns, so the only thing that could drift is the
+   * double these tests run against — which would let the UI tests pass while
+   * agreeing with nobody. Reading the constant off `soul-draft` closes that.
+   */
+  it("不发送与本机模板两句话和 soul-draft 里的常量一模一样", () => {
+    const rust = readFileSync(DRAFT_RS, "utf8");
+    expect(rustConstant(rust, "NOT_SENT_NOTICE")).toBe(NOT_SENT_NOTICE);
+    expect(rustConstant(rust, "TEMPLATE_NOTICE")).toBe(TEMPLATE_NOTICE);
+  });
+});
+
+describe("起草只写不发", () => {
+  /**
+   * The shell can only do what it has a command for, and `core.ts` is the one
+   * place a command is named. So the check for "there is no send button" is a
+   * check on that list: nothing on it is a verb that delivers anything, and
+   * `src-tauri/tests/command_surface.rs` holds the Rust side to the same list.
+   */
+  it("界面能调用的命令里没有一个是发送", () => {
+    for (const command of Object.values(COMMANDS)) {
+      expect(command).not.toMatch(/send|deliver|dispatch|post_|reply_to|message_/);
+    }
+  });
+
+  /**
+   * The words themselves, across the tree the user actually sees. A button
+   * that offered to send would have to say so somewhere, and this is where.
+   */
+  it("界面上不出现替用户发送的说法", () => {
+    const hits: string[] = [];
+    for (const path of sourceFiles(SRC, [".ts", ".tsx"])) {
+      if (isTestSupport(path)) continue;
+      for (const [index, line] of readFileSync(path, "utf8").split("\n").entries()) {
+        // The core's own notice says 不会替你发送, and quoting it is the point.
+        if (/替你发送|替我发送|直接发送|发送给|发出去给/.test(line) && !line.includes("不会")) {
+          hits.push(`${relative(DESKTOP, path)}:${index + 1}`);
+        }
+      }
+    }
+    expect(hits).toEqual([]);
   });
 });
 

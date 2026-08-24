@@ -217,6 +217,29 @@ button.primary:disabled {
   cursor: not-allowed;
 }
 
+.field {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  margin: 10px 0 4px;
+}
+
+.paste-box {
+  width: 100%;
+  background: #14171d;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font: inherit;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.paste-box:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
 .refusal {
   color: var(--warn);
 }

@@ -52,13 +52,7 @@ export const ROUTES: readonly RouteDefinition[] = [
     ownedBy: "WP09 功能视图",
     pending: "记忆的增删改与遗忘影响面预览还没有接上去。",
   },
-  {
-    id: "draft",
-    path: "/draft",
-    title: "起草",
-    ownedBy: "WP10",
-    pending: "起草只写不发，本工作包不实现。这里现在没有输入框，也没有发送按钮。",
-  },
+  { id: "draft", path: "/draft", title: "起草", ownedBy: null },
   {
     id: "files",
     path: "/files",

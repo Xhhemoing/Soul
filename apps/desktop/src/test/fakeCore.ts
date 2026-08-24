@@ -11,9 +11,42 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
 
-import type { CloudNotice, ConfigSnapshot } from "../core";
+import type { CloudNotice, ConfigSnapshot, Draft, DraftNotices } from "../core";
 
 export const CLOUD_LABEL = "尚未启用";
+
+/** `soul_draft::draft::NOT_SENT_NOTICE`, checked by `contract.test.ts`. */
+export const NOT_SENT_NOTICE = "这是草稿。Soul 不会替你发送，检查和修改之后由你自己发出去。";
+
+/** `soul_draft::draft::TEMPLATE_NOTICE`. */
+export const TEMPLATE_NOTICE = "本次没有用模型：草稿由本机确定性语气模板生成，没有任何内容离开本机。";
+
+export const DRAFT_NOTICES: DraftNotices = {
+  not_sent: NOT_SENT_NOTICE,
+  can_send: false,
+};
+
+/**
+ * A draft the way the local path produces one.
+ *
+ * The counts are zero because that path builds no request body at all, which
+ * is `soul-draft`'s `BodyFacts::default` and not a rounding of something.
+ */
+export function aTemplateDraft(overrides: Partial<Draft> = {}): Draft {
+  return {
+    text: "收到，我看一下，晚点回你。\n（这里写你要说的内容）",
+    source: "tone_template",
+    delivery: false,
+    third_party_turns: 0,
+    placeheld_turns: 0,
+    carries_exempted_original: false,
+    degraded: null,
+    injection_signals: [],
+    not_sent_notice: NOT_SENT_NOTICE,
+    source_notice: TEMPLATE_NOTICE,
+    ...overrides,
+  };
+}
 
 export const CLOSED_CLOUD: CloudNotice = {
   state: "not_yet_available",
@@ -51,7 +84,25 @@ export interface FakeCore {
  * because the UI has to handle the refusal; everything else is a constant,
  * because everything else in this work package is.
  */
-export function installFakeCore(snapshot: ConfigSnapshot = CLOSED_SNAPSHOT): FakeCore {
+/**
+ * How the double answers the commands whose answer a test cares about.
+ *
+ * `drafting` is a function of the paste rather than a constant so a test can
+ * assert on what the shell actually sent, and can throw to make the core
+ * refuse the way a real refusal arrives — as a value, not an exception type.
+ */
+export interface FakeCoreOptions {
+  readonly snapshot?: ConfigSnapshot;
+  readonly drafting?: (pasted: string) => Draft;
+}
+
+export function installFakeCore(
+  snapshotOrOptions: ConfigSnapshot | FakeCoreOptions = CLOSED_SNAPSHOT,
+): FakeCore {
+  const options: FakeCoreOptions =
+    "collect_enabled" in snapshotOrOptions ? { snapshot: snapshotOrOptions } : snapshotOrOptions;
+  const snapshot = options.snapshot ?? CLOSED_SNAPSHOT;
+  const drafting = options.drafting ?? (() => aTemplateDraft());
   const calls: RecordedCall[] = [];
 
   mockIPC((cmd, payload) => {
@@ -71,6 +122,10 @@ export function installFakeCore(snapshot: ConfigSnapshot = CLOSED_SNAPSHOT): Fak
         // Whatever was requested, the answer is the notice. This is the whole
         // of AC-22 on the core side, and the shell must not improve on it.
         return snapshot.cloud;
+      case "draft_notices":
+        return DRAFT_NOTICES;
+      case "draft_reply":
+        return drafting((payload as { pasted?: string }).pasted ?? "");
       default:
         throw `the shell called a command the core does not have: ${cmd}`;
     }

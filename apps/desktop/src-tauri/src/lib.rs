@@ -30,10 +30,13 @@ pub mod tray;
 pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder
         .manage(commands::SessionConfig::default())
+        .manage(commands::DraftingState::default())
         .invoke_handler(tauri::generate_handler![
             commands::config_snapshot,
             commands::complete_wizard,
-            commands::cloud_toggle
+            commands::cloud_toggle,
+            commands::draft_reply,
+            commands::draft_notices
         ])
 }
 
