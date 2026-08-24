@@ -1,15 +1,28 @@
-//! The fallback for when there is no file to import.
+//! The fallback for when there is no file to import, and the one question set
+//! v0.1 asks.
 //!
 //! AC-03: with nothing imported, finishing the questionnaire has to leave a
 //! profile that is not empty and whose fields say they came from the user.
-//! This module owns the import-side half of that — turning answers into
-//! events and `user_stated` evidence — and stops there. What a profile is, and
-//! which axis an answer moves, belongs to WP03; the seam between the two is
-//! [`UserStatedSink`], which hands over ids and nothing else.
+//! This module owns the recording half of that — turning answers into events
+//! and `user_stated` evidence — and stops there. What a profile is, and which
+//! field an answer moves, belongs to WP03; the seam between the two is
+//! [`UserStatedSink`], which hands over ids and a chosen option, never prose.
 //!
-//! The answers are the user's own words about themselves, so they are sealed
-//! like any other prose but carry `subject: self`: they are not third-party
-//! data and the redactor has no reason to placehold them.
+//! [`QUESTIONS`] is the canonical list, and it is canonical in the strong
+//! sense: `soul-profile` builds its own questionnaire from this table rather
+//! than keeping a second one, and `fixtures/questionnaire/v0_1.json` pins the
+//! ids so neither side can move one without the other's tests going red. There
+//! used to be two lists — eight questions here, seven over there — which meant
+//! a user who took both paths was asked about their own voice twice.
+//!
+//! An option key such as `leans_high` or `formal` is an opaque token to this
+//! crate. It is declared here because the recorder has to be able to refuse an
+//! answer that is not one of the offered options; what the token *means* is
+//! decided by whatever implements [`UserStatedSink`].
+//!
+//! The prose answers are the user's own words about themselves, so they are
+//! sealed like any other prose but carry `subject: self`: they are not
+//! third-party data and the redactor has no reason to placehold them.
 
 use uuid::Uuid;
 
@@ -31,6 +44,34 @@ use crate::model::StagedImport;
 /// without matching on field names.
 pub const QUESTIONNAIRE_REF_KIND: &str = "questionnaire_answer";
 
+/// What a questionnaire answer is worth as evidence.
+///
+/// Moderate, not strong: the user is describing themselves from memory, which
+/// is better than a guess and weaker than a correction made while looking at
+/// what the profile actually says. WP03 grades a correction `strong` for
+/// exactly that reason, and the two have to agree now that one questionnaire
+/// feeds both.
+pub const QUESTIONNAIRE_STRENGTH: SupportedBand = SupportedBand::Moderate;
+
+/// How the wizard collects an answer, and therefore what the recorder can
+/// check an answer against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnswerShape {
+    /// A fixed set of options; the answer is one of these keys and nothing
+    /// else. The keys are tokens here, not meanings.
+    Choice(&'static [&'static str]),
+    /// A text box. The answer is prose and is sealed.
+    Prose,
+}
+
+/// The three directions a trait-axis question offers. `unknown` is not among
+/// them: not answering is how a user says they do not know, and it leaves no
+/// row rather than writing one that says nothing.
+const LEANING: &[&str] = &["leans_low", "mixed", "leans_high"];
+const REGISTER: &[&str] = &["casual", "plain", "formal"];
+const DIRECTNESS: &[&str] = &["reserved", "balanced", "direct"];
+const EMOJI_USE: &[&str] = &["never", "sparing", "frequent"];
+
 /// One thing the wizard asks.
 ///
 /// Deliberately about voice, boundaries and preferences — the things the
@@ -42,41 +83,91 @@ pub struct Question {
     /// shipped, because stored evidence points at it.
     pub key: &'static str,
     pub prompt: &'static str,
+    pub shape: AnswerShape,
 }
 
-/// The v0.1 questionnaire.
+impl Question {
+    /// The options this question offers, or an empty slice for a prose
+    /// question.
+    pub fn options(&self) -> &'static [&'static str] {
+        match self.shape {
+            AnswerShape::Choice(options) => options,
+            AnswerShape::Prose => &[],
+        }
+    }
+
+    pub fn is_prose(&self) -> bool {
+        matches!(self.shape, AnswerShape::Prose)
+    }
+
+    /// The option key equal to `given`, borrowed from this question's own
+    /// list, so a recorded answer can only ever carry an option that exists.
+    fn option(&self, given: &str) -> Option<&'static str> {
+        self.options().iter().copied().find(|key| *key == given)
+    }
+}
+
+/// The v0.1 questionnaire. Eleven questions, asked once.
+///
+/// Eight of them are one tap and land on a profile field directly; three are
+/// text boxes and may be left blank. See `fixtures/questionnaire/v0_1.json`
+/// for the same list with what each one moves, and for the three WP06
+/// questions this merge dropped.
 pub const QUESTIONS: &[Question] = &[
     Question {
-        key: "voice.directness",
-        prompt: "你平时说话是直接了当，还是喜欢先铺垫？举个你最近的例子。",
+        key: "q.axis.curiosity",
+        prompt: "遇到没做过的事，你更想试试，还是先按熟悉的来？",
+        shape: AnswerShape::Choice(LEANING),
     },
     Question {
-        key: "voice.register",
+        key: "q.axis.orderliness",
+        prompt: "开始一件事之前，你更常先列计划，还是先动手？",
+        shape: AnswerShape::Choice(LEANING),
+    },
+    Question {
+        key: "q.axis.social_energy",
+        prompt: "一天下来，和人待着让你更有劲，还是独处更有劲？",
+        shape: AnswerShape::Choice(LEANING),
+    },
+    Question {
+        key: "q.axis.accommodation",
+        prompt: "有分歧时，你更常直说，还是先照顾对方的感受？",
+        shape: AnswerShape::Choice(LEANING),
+    },
+    Question {
+        key: "q.axis.emotional_steadiness",
+        prompt: "最近这段时间，你的情绪起伏算平缓还是明显？",
+        shape: AnswerShape::Choice(LEANING),
+    },
+    Question {
+        key: "q.voice.register",
         prompt: "给不太熟的人写消息时，你的语气偏正式还是偏随意？",
+        shape: AnswerShape::Choice(REGISTER),
     },
     Question {
-        key: "voice.length",
-        prompt: "你更习惯发一长段，还是拆成几条短消息？",
+        key: "q.voice.directness",
+        prompt: "写消息时，你更常直说，还是先铺垫？",
+        shape: AnswerShape::Choice(DIRECTNESS),
     },
     Question {
-        key: "boundary.topics",
+        key: "q.voice.emoji_use",
+        prompt: "你平时用表情符号多吗？",
+        shape: AnswerShape::Choice(EMOJI_USE),
+    },
+    Question {
+        key: "q.boundary.topics",
         prompt: "有哪些话题，你不希望 Soul 替你起草或分析？",
+        shape: AnswerShape::Prose,
     },
     Question {
-        key: "boundary.availability",
+        key: "q.boundary.availability",
         prompt: "什么时间段你基本不回消息？",
+        shape: AnswerShape::Prose,
     },
     Question {
-        key: "preference.decision_style",
-        prompt: "做决定时，你更看重把事情推进，还是先把细节想清楚？",
-    },
-    Question {
-        key: "relationship.close_circle",
-        prompt: "你最常联系的人大致是哪几类（同事、家人、老朋友……）？不用写名字。",
-    },
-    Question {
-        key: "value.what_matters",
+        key: "q.value.what_matters",
         prompt: "有没有一件事，是你希望 Soul 无论如何都替你守住的？",
+        shape: AnswerShape::Prose,
     },
 ];
 
@@ -84,7 +175,10 @@ pub fn question(key: &str) -> Option<&'static Question> {
     QUESTIONS.iter().find(|question| question.key == key)
 }
 
-/// What the user typed, against one question.
+/// What the user gave, against one question.
+///
+/// `text` is the option key for a choice question and the user's own words for
+/// a prose one. Blank means the question was skipped.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Answer {
     pub question_key: String,
@@ -111,6 +205,10 @@ pub struct RecordedAnswer {
     /// Which question. Borrowed from [`QUESTIONS`], so it is always a key WP03
     /// knows.
     pub question: &'static Question,
+    /// Which option, for a choice question, borrowed from the question's own
+    /// list. `None` for a prose answer: an option key is a token from a closed
+    /// set and may cross the seam, and what the user typed may not.
+    pub choice: Option<&'static str>,
 }
 
 /// The seam with WP03.
@@ -130,8 +228,8 @@ pub struct SinkError {
     pub reason: String,
 }
 
-/// A sink that keeps what it is given. Useful before WP03 exists, and in
-/// tests that need to prove the seam is actually driven.
+/// A sink that keeps what it is given, for tests that need to prove the seam
+/// is actually driven without pulling a profile in.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct CollectingSink {
     pub accepted: Vec<RecordedAnswer>,
@@ -176,6 +274,14 @@ pub enum QuestionnaireError {
     /// reference the moment WP03 tried to read it.
     #[error("`{key}` is not one of the questions this build asks")]
     UnknownQuestion { key: String },
+
+    /// An answer to a choice question that is not one of the options. The
+    /// offending value is not repeated: a wizard that sent prose to a choice
+    /// question sent the user's prose, and a refusal does not echo it.
+    #[error(
+        "`{key}` is answered by choosing one of {offered} options, and this is not one of them"
+    )]
+    UnknownOption { key: String, offered: usize },
 }
 
 /// Record the answers, then push them across the seam.
@@ -203,9 +309,19 @@ where
             question(&answer.question_key).ok_or(QuestionnaireError::UnknownQuestion {
                 key: answer.question_key.clone(),
             })?;
-        if answer.text.trim().is_empty() {
+        let given = answer.text.trim();
+        if given.is_empty() {
             continue;
         }
+        let choice = match question.shape {
+            AnswerShape::Prose => None,
+            AnswerShape::Choice(options) => Some(question.option(given).ok_or(
+                QuestionnaireError::UnknownOption {
+                    key: question.key.to_owned(),
+                    offered: options.len(),
+                },
+            )?),
+        };
 
         let event_id = Uuid::now_v7();
         let body_ref = store
@@ -239,14 +355,8 @@ where
                 evidence_id,
                 kind: EvidenceKind::Questionnaire,
                 subject: Subject::Owner,
-                source_refs: vec![serde_json::json!({
-                    "ref_kind": QUESTIONNAIRE_REF_KIND,
-                    "event_id": event_id.to_string(),
-                    "question_key": question.key,
-                })],
-                // The user said it about themselves. Nothing Soul infers later
-                // outranks that; PRODUCT_LOCK makes a correction final.
-                strength: SupportedBand::Strong,
+                source_refs: vec![source_ref(event_id, question, choice)],
+                strength: QUESTIONNAIRE_STRENGTH,
                 method: Some(EvidenceMethod::UserStated),
                 exportable_to_research: Some(false),
                 privacy: Some(answer_privacy()),
@@ -258,6 +368,7 @@ where
             evidence_id,
             method: EvidenceMethod::UserStated,
             question,
+            choice,
         };
         sink.accept(&recorded)?;
         receipt.answers.push(recorded);
@@ -274,6 +385,25 @@ where
         );
     }
     Ok(receipt)
+}
+
+/// Where an answer came from: the event, the question, and — when the question
+/// was a choice — which of its options. All three are ids or closed tokens, so
+/// the evidence row explains itself without opening the sealed body.
+fn source_ref(
+    event_id: Uuid,
+    question: &Question,
+    choice: Option<&'static str>,
+) -> serde_json::Value {
+    let mut reference = serde_json::json!({
+        "ref_kind": QUESTIONNAIRE_REF_KIND,
+        "event_id": event_id.to_string(),
+        "question_key": question.key,
+    });
+    if let (Some(option), Some(object)) = (choice, reference.as_object_mut()) {
+        object.insert("option_key".to_owned(), serde_json::json!(option));
+    }
+    reference
 }
 
 fn answer_privacy() -> Privacy {

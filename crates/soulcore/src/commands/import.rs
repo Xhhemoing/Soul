@@ -17,11 +17,7 @@ use serde_json::Value;
 use soul_import::commit::{ImportError, ImportReceipt};
 use soul_import::defect::ImportFailure;
 use soul_import::model::StagedImport;
-use soul_import::questionnaire::{
-    Answer, QuestionnaireError, QuestionnaireReceipt, UserStatedSink,
-};
 use soul_policy::audit::append_or_store_error;
-use soul_schema::common::Timestamp;
 use soul_store::SqlCipherStore;
 
 /// Parse a `soul-import-v1` JSONL file. Writes nothing.
@@ -60,26 +56,13 @@ pub fn questionnaire_needed(staged: Option<&StagedImport>) -> bool {
     soul_import::questionnaire::fallback_needed(staged)
 }
 
-/// The questions this build asks.
+/// The questions this build asks, for a UI that has to draw them.
+///
+/// The same list [`crate::commands::profile::questions`] returns, paired there
+/// with what each one moves. There is one questionnaire in v0.1 and it is
+/// asked once: whichever path the user came down, the answers go in through
+/// [`crate::commands::profile::intake`], which records them and builds the
+/// profile in one call.
 pub fn questions() -> &'static [soul_import::questionnaire::Question] {
     soul_import::questionnaire::QUESTIONS
-}
-
-/// Record questionnaire answers as events and `user_stated` evidence.
-///
-/// `sink` is the seam with WP03: this call produces the evidence and hands
-/// over ids, and whatever builds the profile decides which field an answer
-/// belongs to.
-pub fn record_questionnaire(
-    store: &mut SqlCipherStore,
-    answers: &[Answer],
-    answered_at: &Timestamp,
-    sink: &mut dyn UserStatedSink,
-    at_unix_seconds: i64,
-) -> Result<QuestionnaireReceipt, QuestionnaireError> {
-    let receipt = soul_import::questionnaire::record(store, answers, answered_at, sink)?;
-    for content in receipt.audit.clone() {
-        append_or_store_error(store, content, at_unix_seconds).map_err(ImportError::from)?;
-    }
-    Ok(receipt)
 }

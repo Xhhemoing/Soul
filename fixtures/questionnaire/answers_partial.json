@@ -1,5 +1,5 @@
 {
-  "note": "问卷可以只答一部分。没答到的轴留在 unknown、证据档 none，而不是被猜一个方向。",
+  "note": "问卷可以只答一部分。没答到的轴留在 unknown、证据档 none，而不是被猜一个方向；没答到的散文题不在档案的 boundaries / values 里留占位。",
   "answered_at": "2026-08-24T09:20:00Z",
   "answers": [
     { "kind": "axis", "question_id": "q.axis.curiosity", "position": "mixed" },

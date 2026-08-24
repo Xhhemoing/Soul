@@ -7,6 +7,13 @@
 //! ([`service`]), and the read model that traces every claim back to evidence
 //! ([`view`]).
 //!
+//! The questionnaire is asked once. `soul-import` owns the list of questions
+//! and the recording of an answer as an event plus `user_stated` evidence;
+//! this crate says what each question moves and applies it, through
+//! [`sink::ProfileSink`], which is `soul-import`'s `UserStatedSink`. The two
+//! crates used to ask overlapping question sets into two sets of evidence that
+//! never met.
+//!
 //! Four things this crate refuses to do, each one a line in
 //! `docs/PRODUCT_LOCK.md`:
 //!
@@ -29,23 +36,26 @@ pub mod error;
 pub mod numeric;
 pub mod questionnaire;
 pub mod service;
+pub mod sink;
 pub mod view;
 pub mod voice;
 
 pub use axes::{
-    axis_by_id, axis_by_key, blank_axes, AxisDefinition, ACCOMMODATION, CURIOSITY, DEFAULT_AXES,
-    EMOTIONAL_STEADINESS, ORDERLINESS, SOCIAL_ENERGY,
+    axis_by_id, axis_by_key, blank_axes, position_by_key, AxisDefinition, ACCOMMODATION, CURIOSITY,
+    DEFAULT_AXES, EMOTIONAL_STEADINESS, ORDERLINESS, SOCIAL_ENERGY,
 };
 pub use error::{ProfileError, ProfileResult};
 pub use numeric::{reject_numeric_rating, reject_numeric_rating_value, NumericRating};
 pub use questionnaire::{
-    questionnaire, Answer, CheckedAnswer, Question, QuestionTarget, QuestionnaireResponse,
+    questionnaire, target_of, Answer, CheckedAnswer, Question, QuestionTarget,
+    QuestionnaireResponse, StatedField,
 };
 pub use service::{
     axis_is_locked, blank_profile, correct_axis, intake, read_profile, read_voice,
     record_axis_inference, set_voice, suggest_voice, AxisProposal, AxisUpdate, InferenceOutcome,
     IntakeOutcome,
 };
+pub use sink::{ProfileSink, StagedAnswer, StagedValue};
 pub use view::{profile_view, render, render_voice, AxisView, InferenceView, ProfileView};
 pub use voice::{
     EmojiUse, VoiceDirectness, VoiceField, VoiceProfile, VoiceRegister, VoiceSetting, VoiceWarmth,

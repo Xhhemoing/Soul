@@ -48,4 +48,6 @@ pub mod telegram;
 pub use commit::{commit, ImportError, ImportReceipt};
 pub use defect::{Defect, ImportFailure, Locator};
 pub use model::{ImportSource, ParticipantHandle, StagedImport, StagedMessage, StagedParticipant};
-pub use questionnaire::{Answer, Question, QuestionnaireReceipt, RecordedAnswer, UserStatedSink};
+pub use questionnaire::{
+    Answer, AnswerShape, Question, QuestionnaireReceipt, RecordedAnswer, UserStatedSink,
+};

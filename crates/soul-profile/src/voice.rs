@@ -98,6 +98,57 @@ impl VoiceSetting {
             VoiceSetting::EmojiUse(_) => VoiceField::EmojiUse,
         }
     }
+
+    /// Every value a field can take, in the order the questionnaire offers
+    /// them. `soul_import::questionnaire` declares the same tokens because the
+    /// recorder has to refuse an option nobody offered; the test in
+    /// `tests/one_questionnaire.rs` holds the two spellings together.
+    pub fn all_of(field: VoiceField) -> Vec<VoiceSetting> {
+        match field {
+            VoiceField::Register => vec![
+                VoiceSetting::Register(VoiceRegister::Casual),
+                VoiceSetting::Register(VoiceRegister::Plain),
+                VoiceSetting::Register(VoiceRegister::Formal),
+            ],
+            VoiceField::Directness => vec![
+                VoiceSetting::Directness(VoiceDirectness::Reserved),
+                VoiceSetting::Directness(VoiceDirectness::Balanced),
+                VoiceSetting::Directness(VoiceDirectness::Direct),
+            ],
+            VoiceField::Warmth => vec![
+                VoiceSetting::Warmth(VoiceWarmth::Cool),
+                VoiceSetting::Warmth(VoiceWarmth::Even),
+                VoiceSetting::Warmth(VoiceWarmth::Warm),
+            ],
+            VoiceField::EmojiUse => vec![
+                VoiceSetting::EmojiUse(EmojiUse::Never),
+                VoiceSetting::EmojiUse(EmojiUse::Sparing),
+                VoiceSetting::EmojiUse(EmojiUse::Frequent),
+            ],
+        }
+    }
+
+    /// The wire spelling of the value, which is also the questionnaire's
+    /// option key. Taken from serde rather than written out a second time.
+    pub fn option_key(self) -> String {
+        let value = match self {
+            VoiceSetting::Register(value) => serde_json::to_value(value),
+            VoiceSetting::Directness(value) => serde_json::to_value(value),
+            VoiceSetting::Warmth(value) => serde_json::to_value(value),
+            VoiceSetting::EmojiUse(value) => serde_json::to_value(value),
+        };
+        value
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .expect("a closed enum serializes to its name")
+    }
+
+    /// The setting an option key names, for one field.
+    pub fn from_option(field: VoiceField, key: &str) -> Option<VoiceSetting> {
+        VoiceSetting::all_of(field)
+            .into_iter()
+            .find(|setting| setting.option_key() == key)
+    }
 }
 
 /// The `voice` object inside `SoulProfile`.

@@ -22,33 +22,38 @@
 //! SQLCipher. Nothing here reads the clock: `now_unix_seconds` is a parameter
 //! so a replay and a test both produce the same audit entries.
 
-use serde_json::json;
+use serde_json::{json, Value};
 use uuid::Uuid;
 
+use soul_import::questionnaire as recorder;
 use soul_policy::audit::{append_or_store_error, AuditContent, ReasonCode};
 use soul_policy::clinical::assert_non_clinical;
-use soul_schema::audit::{AuditAction, AuditCounts, AuditDecision};
+use soul_schema::audit::{AuditAction, AuditDecision};
 use soul_schema::common::{
     EvidenceBand, NotAClinicalClaim, Privacy, Purpose, SchemaVersion, Subject, SupportedBand,
+    Timestamp,
 };
 use soul_schema::evidence::{EvidenceKind, EvidenceMethod, SoulEvidence};
 use soul_schema::inference::{InferenceMethod, SoulInference, UserVerdict};
 use soul_schema::profile::{AxisPosition, SoulProfile, TraitAxis};
 use soul_store_api::types::StoreError;
-use soul_store_api::{AuditLog, ProfileStore};
+use soul_store_api::{AuditLog, BlobStore, EventStore, ProfileStore};
 
 use crate::axes::{self, blank_axes, AxisDefinition};
 use crate::error::{ProfileError, ProfileResult};
 use crate::numeric::reject_numeric_rating;
-use crate::questionnaire::{self, CheckedAnswer, QuestionnaireResponse};
+use crate::questionnaire::{self, QuestionTarget, QuestionnaireResponse, StatedField};
+use crate::sink::{ProfileSink, StagedAnswer, StagedValue};
 use crate::voice::{VoiceProfile, VoiceSetting};
 
 /// What a questionnaire answer is worth as evidence.
 ///
 /// Moderate, not strong: the user is describing themselves from memory, which
 /// is better than a guess and weaker than a correction made while looking at
-/// what the profile actually says.
-pub const QUESTIONNAIRE_STRENGTH: SupportedBand = SupportedBand::Moderate;
+/// what the profile actually says. The recorder writes the evidence now, so
+/// the constant lives there and is re-exported here under the name WP03 gave
+/// it — one grade, not two.
+pub const QUESTIONNAIRE_STRENGTH: SupportedBand = recorder::QUESTIONNAIRE_STRENGTH;
 
 /// What a correction is worth. The user is looking at the claim and rejecting
 /// it, which is the strongest signal this product can get.
@@ -61,6 +66,9 @@ pub struct IntakeOutcome {
     /// One row per answer, in the order they were answered. Every axis the
     /// questionnaire moved cites one of these.
     pub evidence_ids: Vec<Uuid>,
+    /// The event each answer was recorded as, same order. A prose answer's
+    /// words are in the sealed body of one of these and nowhere else.
+    pub event_ids: Vec<Uuid>,
 }
 
 /// Whether an inference reached the profile, and if not, why not.
@@ -154,12 +162,20 @@ pub fn blank_profile(profile_id: Uuid) -> SoulProfile {
 
 /// Turn a completed questionnaire into a profile backed by evidence.
 ///
-/// Each answer becomes its own [`SoulEvidence`] row first, so the axis it moves
-/// can point at it. Voice answers are treated as the user speaking and pin the
-/// field; axis answers are not locked, because an axis is a working hypothesis
-/// that later evidence is allowed to refine. Locking an axis is what
-/// [`correct_axis`] is for, and the difference is deliberate: voice is an
-/// instruction the agent layer obeys, an axis is a belief the soul layer holds.
+/// This is the whole of the v0.1 questionnaire, both paths: the user who
+/// imported nothing and the user who imported a file with nothing in it end up
+/// here, answering the same eleven questions once.
+/// [`soul_import::questionnaire::record`] writes each answer as an event with
+/// the words sealed and a `user_stated` evidence row, hands the ids to
+/// [`ProfileSink`], and this function applies what the sink made of them. The
+/// axes cite the recorder's evidence rather than a second copy of it, which is
+/// what stops the two crates from holding two accounts of the same answer.
+///
+/// Voice answers are treated as the user speaking and pin the field; axis
+/// answers are not locked, because an axis is a working hypothesis that later
+/// evidence is allowed to refine. Locking an axis is what [`correct_axis`] is
+/// for, and the difference is deliberate: voice is an instruction the agent
+/// layer obeys, an axis is a belief the soul layer holds.
 pub fn intake<S>(
     store: &mut S,
     profile_id: Uuid,
@@ -167,30 +183,53 @@ pub fn intake<S>(
     now_unix_seconds: i64,
 ) -> ProfileResult<IntakeOutcome>
 where
-    S: ProfileStore + AuditLog,
+    S: ProfileStore + AuditLog + EventStore + BlobStore,
 {
     let answers = questionnaire::check(response)?;
+    let to_record: Vec<recorder::Answer> = answers.iter().map(|a| a.to_recorded()).collect();
+
+    let mut sink = ProfileSink::new();
+    let receipt = recorder::record(
+        store,
+        &to_record,
+        &Timestamp::new(&response.answered_at),
+        &mut sink,
+    )?;
+
+    // Every question left blank. Nothing was written, so there is nothing to
+    // apply and nothing to audit — and a profile of five `unknown` axes is not
+    // a completed questionnaire.
+    if sink.is_empty() {
+        return Err(ProfileError::EmptyQuestionnaire);
+    }
 
     let mut profile = read_profile(store, profile_id)?;
     let mut voice = VoiceProfile::from_value(&profile.voice);
-    let mut evidence_ids = Vec::with_capacity(answers.len());
+    let mut evidence_ids = Vec::with_capacity(sink.accepted().len());
+    let mut event_ids = Vec::with_capacity(sink.accepted().len());
 
-    for answer in &answers {
-        let evidence_id = put_answer_evidence(store, answer, &response.answered_at)?;
-        evidence_ids.push(evidence_id);
+    for staged in sink.accepted() {
+        evidence_ids.push(staged.evidence_id);
+        event_ids.push(staged.event_id);
 
-        match answer {
-            CheckedAnswer::Axis { axis, position, .. } => {
-                place_axis(
-                    &mut profile,
-                    axis,
-                    *position,
-                    band_of(QUESTIONNAIRE_STRENGTH),
-                    vec![evidence_id],
-                    None,
-                );
+        match (staged.target, staged.value) {
+            (QuestionTarget::Axis(axis), StagedValue::Position(position)) => place_axis(
+                &mut profile,
+                &axis,
+                position,
+                band_of(QUESTIONNAIRE_STRENGTH),
+                vec![staged.evidence_id],
+                None,
+            ),
+            (QuestionTarget::Voice(_), StagedValue::Voice(setting)) => voice.set_by_user(setting),
+            (QuestionTarget::Stated(field), StagedValue::Stated) => {
+                place_stated(&mut profile, field, staged)
             }
-            CheckedAnswer::Voice { setting, .. } => voice.set_by_user(*setting),
+            // The sink builds these pairs and refuses the ones that do not
+            // match, so this arm is unreachable by construction. Skipping is
+            // the safe reading of an impossible answer: it leaves the field
+            // alone rather than putting a guess in the profile.
+            _ => continue,
         }
     }
 
@@ -198,23 +237,18 @@ where
     let profile = write_profile(store, profile)?;
 
     // The questionnaire is the no-file branch of the same intake the importer
-    // takes, so it records under the same action. `counts.items` is the number
-    // of answers, which is a count and not a word of what was answered.
-    append_or_store_error(
-        store,
-        AuditContent::new(AuditAction::ImportCommit, AuditDecision::Allowed)
-            .because(ReasonCode::Routine)
-            .about(&[profile_id])
-            .counting(AuditCounts {
-                items: Some(answers.len() as u64),
-                bytes: None,
-            }),
-        now_unix_seconds,
-    )?;
+    // takes, so it records under the same action, and the entry the recorder
+    // built is the one that lands — with the profile named on it, because this
+    // is the run that made a profile out of the answers. `counts.items` is the
+    // number of answers, which is a count and not a word of what was answered.
+    for content in receipt.audit {
+        append_or_store_error(store, content.about(&[profile_id]), now_unix_seconds)?;
+    }
 
     Ok(IntakeOutcome {
         profile,
         evidence_ids,
+        event_ids,
     })
 }
 
@@ -423,49 +457,38 @@ fn band_of(band: SupportedBand) -> EvidenceBand {
     }
 }
 
-fn put_answer_evidence<S: ProfileStore>(
-    store: &mut S,
-    answer: &CheckedAnswer,
-    answered_at: &str,
-) -> ProfileResult<Uuid> {
-    let evidence_id = Uuid::now_v7();
-    // Ids and a timestamp. The prompt text is product copy and the answer is a
-    // closed enum, so there is nothing here a person wrote.
-    let source_ref = match answer {
-        CheckedAnswer::Axis {
-            question_id,
-            axis,
-            position,
-        } => json!({
-            "origin": "questionnaire",
-            "question_id": question_id,
-            "axis_id": axis.axis_id,
-            "position": axes::position_key(*position),
-            "answered_at": answered_at,
-        }),
-        CheckedAnswer::Voice {
-            question_id,
-            setting,
-        } => json!({
-            "origin": "questionnaire",
-            "question_id": question_id,
-            "voice_field": setting.field().as_str(),
-            "answered_at": answered_at,
-        }),
-    };
+/// Record that the user stated a boundary or a value, as a pointer.
+///
+/// `profile.values` and `profile.boundaries` are free-form arrays in
+/// `profile.schema.json`, which is exactly why nothing readable goes in them:
+/// the words are sealed in the event the recorder wrote, and what lands here
+/// is the question, the event and the evidence. One entry per question —
+/// answering the same question again replaces the old pointer rather than
+/// stacking a second one, the same rule the axes follow.
+fn place_stated(profile: &mut SoulProfile, field: StatedField, staged: &StagedAnswer) {
+    let entry = json!({
+        "origin": "questionnaire",
+        "question_id": staged.question_id,
+        "event_id": staged.event_id,
+        "evidence_id": staged.evidence_id,
+    });
 
-    store.put_evidence(SoulEvidence {
-        schema_version: SchemaVersion,
-        evidence_id,
-        kind: EvidenceKind::Questionnaire,
-        subject: Subject::Owner,
-        source_refs: vec![source_ref],
-        strength: QUESTIONNAIRE_STRENGTH,
-        method: Some(EvidenceMethod::UserStated),
-        exportable_to_research: Some(false),
-        privacy: Some(owner_privacy()),
-    })?;
-    Ok(evidence_id)
+    let held = match field {
+        StatedField::Boundary => &mut profile.boundaries,
+        StatedField::Value => &mut profile.values,
+    };
+    let entries = held.get_or_insert_with(Vec::new);
+    match entries
+        .iter_mut()
+        .find(|held| names_question(held, staged.question_id))
+    {
+        Some(existing) => *existing = entry,
+        None => entries.push(entry),
+    }
+}
+
+fn names_question(entry: &Value, question_id: &str) -> bool {
+    entry.get("question_id").and_then(Value::as_str) == Some(question_id)
 }
 
 /// Move one axis, leaving the others alone.

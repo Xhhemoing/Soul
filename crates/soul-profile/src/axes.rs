@@ -33,9 +33,10 @@ pub struct AxisDefinition {
     pub leans_low: &'static str,
     pub leans_high: &'static str,
     /// Id of the questionnaire question that asks about this axis. It lives
-    /// here so a question and its axis cannot drift apart.
+    /// here so a question and its axis cannot drift apart. The wording lives
+    /// in `soul_import::questionnaire::QUESTIONS`, which is the one list both
+    /// crates ask from; [`crate::questionnaire::questionnaire`] pairs the two.
     pub question_id: &'static str,
-    pub question: &'static str,
 }
 
 impl AxisDefinition {
@@ -78,7 +79,6 @@ pub const CURIOSITY: AxisDefinition = AxisDefinition {
     leans_low: "偏向熟悉稳妥的做法",
     leans_high: "偏向尝试新的做法",
     question_id: "q.axis.curiosity",
-    question: "遇到没做过的事，你更想试试，还是先按熟悉的来？",
 };
 
 /// Conscientiousness-like axis: plan first, or start and adjust.
@@ -89,7 +89,6 @@ pub const ORDERLINESS: AxisDefinition = AxisDefinition {
     leans_low: "偏向随性推进",
     leans_high: "偏向先规划再动手",
     question_id: "q.axis.orderliness",
-    question: "开始一件事之前，你更常先列计划，还是先动手？",
 };
 
 /// Extraversion-like axis: where the energy comes back from.
@@ -100,7 +99,6 @@ pub const SOCIAL_ENERGY: AxisDefinition = AxisDefinition {
     leans_low: "偏向独处时回血",
     leans_high: "偏向人群里回血",
     question_id: "q.axis.social_energy",
-    question: "一天下来，和人待着让你更有劲，还是独处更有劲？",
 };
 
 /// Agreeableness-like axis: hold the line, or make room.
@@ -111,7 +109,6 @@ pub const ACCOMMODATION: AxisDefinition = AxisDefinition {
     leans_low: "偏向直说与坚持己见",
     leans_high: "偏向迁就与照顾对方",
     question_id: "q.axis.accommodation",
-    question: "有分歧时，你更常直说，还是先照顾对方的感受？",
 };
 
 /// Emotional-steadiness axis. Deliberately framed as day-to-day variability
@@ -124,7 +121,6 @@ pub const EMOTIONAL_STEADINESS: AxisDefinition = AxisDefinition {
     leans_low: "日常起伏比较平缓",
     leans_high: "日常起伏比较明显",
     question_id: "q.axis.emotional_steadiness",
-    question: "最近这段时间，你的情绪起伏算平缓还是明显？",
 };
 
 /// The five axes a profile starts with, in the order the questionnaire asks
@@ -158,4 +154,21 @@ pub fn position_key(position: AxisPosition) -> &'static str {
         AxisPosition::LeansHigh => "leans_high",
         AxisPosition::Unknown => "unknown",
     }
+}
+
+/// The position a questionnaire option key names.
+///
+/// This is the other half of [`position_key`], and it is what turns the
+/// opaque option token an answer crosses the seam with back into a position.
+/// `unknown` is not offered by the questionnaire, but it round-trips here so
+/// the two functions stay inverses of each other.
+pub fn position_by_key(key: &str) -> Option<AxisPosition> {
+    [
+        AxisPosition::LeansLow,
+        AxisPosition::Mixed,
+        AxisPosition::LeansHigh,
+        AxisPosition::Unknown,
+    ]
+    .into_iter()
+    .find(|position| position_key(*position) == key)
 }

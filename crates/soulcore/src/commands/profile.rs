@@ -23,12 +23,19 @@ use soul_profile::{
 use soul_schema::profile::{AxisPosition, SoulProfile};
 use soul_store::SqlCipherStore;
 
-/// The fixed questionnaire, for a UI that has to draw it.
+/// The fixed questionnaire, for a UI that has to draw it: every question with
+/// the profile field it moves and the options to offer.
 pub fn questions() -> Vec<soul_profile::Question> {
     soul_profile::questionnaire()
 }
 
 /// Turn a completed questionnaire into a profile. AC-03.
+///
+/// This is the whole questionnaire, both ways in. A user who imported nothing
+/// is asked the same questions as a user whose export turned out to be empty,
+/// and each answer is written once — an event with the words sealed, a
+/// `user_stated` evidence row, and the profile field it moves — because
+/// `soul-profile` is the sink `soul-import`'s recorder hands answers to.
 pub fn intake(
     store: &mut SqlCipherStore,
     profile_id: Uuid,

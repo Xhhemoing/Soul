@@ -6,12 +6,19 @@
 //! back, so that a caller who goes through the command surface cannot end up
 //! with an import the chain never heard about.
 
-use soul_import::questionnaire::{Answer, CollectingSink};
+use uuid::Uuid;
+
+use soul_import::questionnaire::AnswerShape;
+use soul_profile::questionnaire::{Answer, QuestionnaireResponse};
 use soul_schema::audit::AuditAction;
-use soul_schema::common::Timestamp;
-use soul_store_api::{AuditLog, GraphStore};
+use soul_schema::event::EventSource;
+use soul_schema::profile::AxisPosition;
+use soul_store_api::types::EventFilter;
+use soul_store_api::{AuditLog, EventStore, GraphStore};
 use soul_testkit::fixtures;
-use soulcore::commands::{graph as graph_commands, import as import_commands};
+use soulcore::commands::{
+    graph as graph_commands, import as import_commands, profile as profile_commands,
+};
 
 const SEED: &str = "soulcore import and graph commands";
 const AT: i64 = 1_787_500_000;
@@ -74,32 +81,71 @@ fn reading_a_broken_file_writes_nothing() {
 }
 
 /// The AC-03 path through the command surface: no file, so the questionnaire.
+///
+/// The point of this test after WP13 is that there is no separate import-side
+/// questionnaire to take. The fallback the import surface decides on is
+/// answered through the profile surface, question for question, and what comes
+/// out is a profile — not a second set of answers sitting beside one.
 #[test]
-fn the_questionnaire_path_records_answers_and_audits_them() {
+fn the_fallback_questionnaire_is_the_profile_s_own_and_leaves_a_profile_behind() {
     let dir = tempfile::tempdir().expect("temp dir");
     let mut store = soulcore::commands::store::open_test_store(dir.path(), SEED).expect("open");
+    let profile_id = Uuid::now_v7();
 
     assert!(import_commands::questionnaire_needed(None));
-    let asked = import_commands::questions();
-    assert!(!asked.is_empty());
 
-    let answers: Vec<Answer> = asked
+    // The two surfaces draw the same list; the profile one adds what each
+    // question moves.
+    let asked = import_commands::questions();
+    let placed = profile_commands::questions();
+    assert_eq!(asked.len(), placed.len());
+    for (question, placeable) in asked.iter().zip(&placed) {
+        assert_eq!(question.key, placeable.question_id);
+    }
+
+    // A wizard answers by handing back the option it drew, or what was typed.
+    let given = |question: &soul_import::questionnaire::Question| match question.shape {
+        AnswerShape::Choice(options) => options[options.len() - 1],
+        AnswerShape::Prose => "晚上十一点以后基本不回。",
+    };
+    let answers = asked
         .iter()
-        .take(3)
-        .map(|question| Answer::new(question.key, "先推进，细节边做边补。"))
+        .map(|question| {
+            Answer::for_question(question.key, given(question)).expect("the option that was drawn")
+        })
         .collect();
-    let mut sink = CollectingSink::default();
-    let receipt = import_commands::record_questionnaire(
+
+    let outcome = profile_commands::intake(
         &mut store,
-        &answers,
-        &Timestamp::new("2026-08-24T09:30:00Z"),
-        &mut sink,
+        profile_id,
+        &QuestionnaireResponse::new("2026-08-24T09:30:00Z", answers),
         AT,
     )
-    .expect("record");
+    .expect("intake");
 
-    assert_eq!(receipt.answers.len(), 3);
-    assert_eq!(sink.accepted.len(), 3);
+    assert_eq!(outcome.evidence_ids.len(), asked.len());
+    assert_eq!(
+        outcome
+            .profile
+            .trait_axes
+            .iter()
+            .filter(|axis| axis.position != AxisPosition::Unknown)
+            .count(),
+        5,
+        "AC-03: answering leaves a profile that is not empty",
+    );
+
+    let events = store
+        .list_events(&EventFilter::all())
+        .expect("events")
+        .into_iter()
+        .filter(|event| event.source == EventSource::UiQuestionnaire)
+        .count();
+    assert_eq!(
+        events,
+        asked.len(),
+        "the answers are events on the import side and a profile on the other, once each",
+    );
     assert_eq!(store.list_audit().expect("chain").len(), 1);
 }
 

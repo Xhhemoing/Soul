@@ -3,13 +3,15 @@
 //!
 //! What a profile *is* belongs to WP03. These tests hold the seam: the answers
 //! become events and `user_stated` evidence, and the ids cross to whatever
-//! builds the profile through [`UserStatedSink`].
+//! builds the profile through [`UserStatedSink`]. They also hold the half of
+//! the merge this crate is responsible for — [`QUESTIONS`] is the one list, and
+//! `fixtures/questionnaire/v0_1.json` says so from outside the source.
 
-use serde::Deserialize;
+use serde_json::Value;
 
 use soul_import::questionnaire::{
-    self, Answer, CollectingSink, QuestionnaireError, UserStatedSink, QUESTIONNAIRE_REF_KIND,
-    QUESTIONS,
+    self, Answer, AnswerShape, CollectingSink, QuestionnaireError, UserStatedSink,
+    QUESTIONNAIRE_REF_KIND, QUESTIONS,
 };
 use soul_schema::common::{Subject, Timestamp};
 use soul_schema::event::{EventKind, EventSource};
@@ -20,28 +22,31 @@ use soul_testkit::fixtures;
 
 const SEED: &str = "wp06 questionnaire";
 
-#[derive(Debug, Deserialize)]
-struct AnswerFixture {
-    answered_at: String,
-    answers: Vec<FixtureAnswer>,
-}
+/// The answers fixture is written in the profile's typed form, because there
+/// is one questionnaire and one set of answers to it. Flattening it here is
+/// what this crate would receive from a wizard: a question key and either an
+/// option token or what the user typed.
+fn fixture() -> (String, Vec<Answer>) {
+    let response: Value = fixtures::read_json("questionnaire/answers_basic.json").expect("fixture");
+    let answered_at = response["answered_at"].as_str().expect("a time").to_owned();
 
-#[derive(Debug, Deserialize)]
-struct FixtureAnswer {
-    question_key: String,
-    text: String,
-}
-
-fn fixture() -> AnswerFixture {
-    fixtures::read_json("import/questionnaire/answers_basic.json").expect("fixture")
-}
-
-fn answers(fixture: &AnswerFixture) -> Vec<Answer> {
-    fixture
-        .answers
+    let answers = response["answers"]
+        .as_array()
+        .expect("answers")
         .iter()
-        .map(|answer| Answer::new(&answer.question_key, &answer.text))
-        .collect()
+        .map(|answer| {
+            let key = answer["question_id"].as_str().expect("a question id");
+            let given = match answer["kind"].as_str().expect("a kind") {
+                "axis" => answer["position"].as_str().expect("a position"),
+                "voice" => answer["setting"]["value"].as_str().expect("a setting"),
+                "prose" => answer["text"].as_str().expect("text"),
+                other => panic!("the fixture has a `{other}` answer this crate cannot flatten"),
+            };
+            Answer::new(key, given)
+        })
+        .collect();
+
+    (answered_at, answers)
 }
 
 fn open(dir: &std::path::Path) -> SqlCipherStore {
@@ -66,25 +71,57 @@ fn the_questionnaire_is_the_path_when_there_is_no_file_and_when_the_file_is_empt
     assert!(!questionnaire::fallback_needed(Some(&real)));
 }
 
+/// The merge, from this side. One list, and the fixture both crates read is
+/// what says which one it is.
+#[test]
+fn the_questions_this_build_asks_are_the_ones_the_fixture_pins() {
+    let defined: Value = fixtures::read_json("questionnaire/v0_1.json").expect("the question set");
+    let defined = defined["questions"].as_array().expect("questions");
+
+    assert_eq!(QUESTIONS.len(), defined.len());
+    for (question, pinned) in QUESTIONS.iter().zip(defined) {
+        assert_eq!(question.key, pinned["id"].as_str().expect("an id"));
+
+        let (shape, options) = match question.shape {
+            AnswerShape::Choice(options) => ("choice", options),
+            AnswerShape::Prose => ("prose", &[] as &[&str]),
+        };
+        assert_eq!(shape, pinned["shape"].as_str().expect("a shape"));
+
+        let pinned_options: Vec<&str> = pinned["options"]
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .map(|o| o.as_str().expect("an option"))
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert_eq!(options, pinned_options.as_slice(), "{}", question.key);
+    }
+
+    let unique: std::collections::BTreeSet<&str> = QUESTIONS.iter().map(|q| q.key).collect();
+    assert_eq!(unique.len(), QUESTIONS.len(), "a key is asked once");
+}
+
 /// AC-03. Answers become rows, and every row says where it came from.
 #[test]
 fn finishing_the_questionnaire_leaves_user_stated_events_and_evidence() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let fixture = fixture();
+    let (answered_at, answers) = fixture();
     let mut store = open(dir.path());
     let mut sink = CollectingSink::default();
 
     let receipt = questionnaire::record(
         &mut store,
-        &answers(&fixture),
-        &Timestamp::new(&fixture.answered_at),
+        &answers,
+        &Timestamp::new(&answered_at),
         &mut sink,
     )
     .expect("record");
 
     // The fixture leaves one question blank on purpose: a question the user
     // skipped must leave no row at all.
-    assert_eq!(receipt.answers.len(), fixture.answers.len() - 1);
+    assert_eq!(receipt.answers.len(), answers.len() - 1);
     assert_eq!(sink.accepted.len(), receipt.answers.len());
     assert!(receipt.content_key_id.is_some());
 
@@ -95,7 +132,7 @@ fn finishing_the_questionnaire_leaves_user_stated_events_and_evidence() {
         assert_eq!(event.source, EventSource::UiQuestionnaire);
         assert_eq!(event.kind, EventKind::QuestionnaireAnswer);
         assert_eq!(event.privacy.subject, Subject::Owner);
-        assert_eq!(event.ts.as_str(), fixture.answered_at);
+        assert_eq!(event.ts.as_str(), answered_at);
         assert!(
             event.body_ref.is_some(),
             "what the user typed is prose and is sealed like any other",
@@ -115,6 +152,20 @@ fn finishing_the_questionnaire_leaves_user_stated_events_and_evidence() {
             recorded.event_id.to_string(),
             "the evidence points at the event it came from",
         );
+
+        match recorded.choice {
+            Some(option) => {
+                assert!(recorded.question.options().contains(&option));
+                assert_eq!(
+                    source_ref["option_key"], option,
+                    "a chosen answer is explainable without opening the sealed body",
+                );
+            }
+            None => {
+                assert!(recorded.question.is_prose());
+                assert!(source_ref.get("option_key").is_none());
+            }
+        }
     }
 }
 
@@ -124,14 +175,14 @@ fn finishing_the_questionnaire_leaves_user_stated_events_and_evidence() {
 #[test]
 fn the_answers_are_sealed_under_a_single_key_for_the_run() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let fixture = fixture();
+    let (answered_at, answers) = fixture();
     let mut store = open(dir.path());
     let mut sink = CollectingSink::default();
 
     let receipt = questionnaire::record(
         &mut store,
-        &answers(&fixture),
-        &Timestamp::new(&fixture.answered_at),
+        &answers,
+        &Timestamp::new(&answered_at),
         &mut sink,
     )
     .expect("record");
@@ -173,6 +224,39 @@ fn an_answer_to_a_question_this_build_does_not_ask_is_refused() {
     assert!(sink.accepted.is_empty());
 }
 
+/// A choice question takes one of its options and nothing else. The old
+/// question set was eight text boxes, so this is the mistake a wizard written
+/// against it would make, and the refusal must not carry the mistake back.
+#[test]
+fn an_answer_that_is_not_one_of_the_offered_options_is_refused_without_being_quoted() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = open(dir.path());
+    let mut sink = CollectingSink::default();
+    let typed = "看情况吧，跟熟的人就直说";
+
+    let error = questionnaire::record(
+        &mut store,
+        &[Answer::new("q.voice.directness", typed)],
+        &Timestamp::new("2026-08-24T09:30:00Z"),
+        &mut sink,
+    )
+    .expect_err("prose is not one of the three options");
+
+    assert!(matches!(
+        error,
+        QuestionnaireError::UnknownOption { ref key, offered: 3 } if key == "q.voice.directness",
+    ));
+    assert!(
+        !error.to_string().contains(typed),
+        "a refusal does not repeat what the user wrote: {error}",
+    );
+    assert!(sink.accepted.is_empty());
+    assert!(
+        store.list_evidence().expect("evidence").is_empty(),
+        "and nothing lands",
+    );
+}
+
 /// The seam is driven, not just offered. A sink that refuses an answer stops
 /// the run rather than being ignored.
 #[test]
@@ -196,14 +280,14 @@ fn a_sink_that_refuses_an_answer_stops_the_run() {
     }
 
     let dir = tempfile::tempdir().expect("temp dir");
-    let fixture = fixture();
+    let (answered_at, answers) = fixture();
     let mut store = open(dir.path());
     let mut sink = RefusingSink::default();
 
     let error = questionnaire::record(
         &mut store,
-        &answers(&fixture),
-        &Timestamp::new(&fixture.answered_at),
+        &answers,
+        &Timestamp::new(&answered_at),
         &mut sink,
     )
     .expect_err("the sink refused");
@@ -228,4 +312,8 @@ fn no_question_reaches_for_diagnostic_vocabulary() {
         }
     }
     assert!(QUESTIONS.len() >= 6, "a questionnaire of one is not one");
+    assert!(
+        QUESTIONS.len() <= 12,
+        "a wizard nobody finishes fills in no profile at all",
+    );
 }

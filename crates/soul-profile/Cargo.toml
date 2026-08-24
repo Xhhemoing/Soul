@@ -12,10 +12,17 @@ description = "Soul's soul profile: five direction axes with evidence bands, a v
 # and against SQLCipher in `soulcore`. `soul-policy` is here for one reason:
 # every human-readable string this crate emits has to pass the non-clinical
 # check before a caller can see it.
+#
+# `soul-import` is here because v0.1 asks one questionnaire, and that crate
+# owns it: the question list, and turning an answer into an event and a
+# `user_stated` evidence row. This crate implements its `UserStatedSink` and
+# decides what an answer moves. The dependency runs this way and not the other
+# because `soul-import` must not learn what a profile is.
 [dependencies]
 soul-schema = { workspace = true }
 soul-store-api = { workspace = true }
 soul-policy = { workspace = true }
+soul-import = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

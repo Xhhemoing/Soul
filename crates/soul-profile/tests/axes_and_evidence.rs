@@ -107,7 +107,7 @@ fn nothing_an_axis_says_is_clinical_and_nothing_it_carries_is_numeric() {
     );
 
     for axis in axes::DEFAULT_AXES {
-        for text in [axis.label, axis.leans_low, axis.leans_high, axis.question] {
+        for text in [axis.label, axis.leans_low, axis.leans_high] {
             assert_non_clinical(text).unwrap_or_else(|e| panic!("{text}: {e}"));
         }
         for position in [
@@ -124,6 +124,14 @@ fn nothing_an_axis_says_is_clinical_and_nothing_it_carries_is_numeric() {
             );
             assert_non_clinical(&axis.describe(position)).expect("reading");
         }
+    }
+
+    // The wording of the questions lives in the one canonical list now, so
+    // that is where it gets checked. `no_question_reaches_for_diagnostic_
+    // vocabulary` in `soul-import` covers the same ground from the other side.
+    for question in soul_profile::questionnaire() {
+        assert_non_clinical(question.prompt)
+            .unwrap_or_else(|e| panic!("{}: {e}", question.question_id));
     }
 
     reject_numeric_rating(&axes::blank_axes()).expect("a blank profile is number-free");

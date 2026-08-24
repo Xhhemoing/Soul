@@ -1,9 +1,9 @@
 {
-  "note": "三种进不了库的答卷。numeric_position 用来证明 D22：位置字段连一个数字都反序列化不进去，不需要等到写库才拒。",
+  "note": "五种进不了库的答卷。numeric_position 用来证明 D22：位置字段连一个数字都反序列化不进去，不需要等到写库才拒。",
   "cases": [
     {
       "id": "numeric_position",
-      "why": "把方向轴当成 1-5 分打分",
+      "why": "把方向轴当成 1-5 分打勾",
       "response": {
         "answered_at": "2026-08-24T09:25:00Z",
         "answers": [{ "kind": "axis", "question_id": "q.axis.curiosity", "position": 4 }]
@@ -29,6 +29,20 @@
             "kind": "voice",
             "question_id": "q.axis.curiosity",
             "setting": { "field": "directness", "value": "direct" }
+          }
+        ]
+      }
+    },
+    {
+      "id": "prose_for_a_choice",
+      "why": "拿一段散文去答一道只能选的题——合并之后这是最容易犯的错，因为 WP06 那一侧原本每道题都是文本框",
+      "response": {
+        "answered_at": "2026-08-24T09:25:00Z",
+        "answers": [
+          {
+            "kind": "prose",
+            "question_id": "q.voice.directness",
+            "text": "看人吧，熟的直说，不熟的绕两句。"
           }
         ]
       }

@@ -66,8 +66,7 @@ const IMPORT_CORPUS: &str =
     include_str!("../../../fixtures/import/soul-import-v1/three_partners.jsonl");
 
 /// A completed questionnaire, compiled in for the same reason.
-const QUESTIONNAIRE: &str =
-    include_str!("../../../fixtures/profile/questionnaire_answers_basic.json");
+const QUESTIONNAIRE: &str = include_str!("../../../fixtures/questionnaire/answers_basic.json");
 
 /// Key material for the scratch store. Named for what it is: this flow never
 /// opens the user's database, so it never needs the platform key provider.
