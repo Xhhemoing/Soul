@@ -1,0 +1,163 @@
+MODEL_SLUG: claude-opus-5-thinking-high-fast
+Round 1 slot opus-a — soul-algo-tie test transcript
+date (UTC): 2026-08-24T14:30:52Z
+
+$ rustc --version
+rustc 1.83.0 (90b35a623 2024-11-26)
+$ cargo --version
+cargo 1.83.0 (5ffbef321 2024-10-29)
+
+$ cargo tree
+soul-algo-tie v0.1.0 (/workspace/.agent_workspace/round1/opus-a/soul-algo-tie)
+
+$ cargo fmt --check ; echo exit=$?
+exit=0
+
+$ cargo clippy --all-targets -- -D warnings ; echo exit=$?
+    Checking soul-algo-tie v0.1.0 (/workspace/.agent_workspace/round1/opus-a/soul-algo-tie)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.31s
+exit=0
+
+$ cargo test
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running unittests src/lib.rs (target/debug/deps/soul_algo_tie-3baf6ba7836b83bc)
+
+running 28 tests
+test t0::tests::venue_is_ignored ... ok
+test t1::tests::evidence_from_the_future_is_not_worth_more_than_today ... ok
+test t0::tests::thresholds_match_goal_one_constants ... ok
+test t0::tests::now_is_ignored ... ok
+test t0::tests::ten_over_three_days_is_the_exact_strong_boundary ... ok
+test t1::tests::one_half_life_halves_the_weight ... ok
+test t1::tests::group_venue_is_worth_less ... ok
+test t1::tests::raw_counts_stay_unweighted ... ok
+test t2::tests::axes_compensate_for_each_other ... ok
+test t1::tests::recent_reciprocal_traffic_is_strong_but_the_same_traffic_years_later_is_not ... ok
+test t2::tests::recency_boundaries_are_whole_days ... ok
+test t2::tests::one_sided_never_leaves_weak_however_high_the_rungs ... ok
+test t2::tests::two_messages_today_already_reach_moderate ... ok
+test t3::tests::a_single_direct_exchange_is_moderate_not_weak ... ok
+test t3::tests::eight_over_three_days_is_the_strong_boundary ... ok
+test t3::tests::one_direct_message_lifts_an_otherwise_group_tie ... ok
+test t3::tests::thin_group_traffic_stays_weak ... ok
+test t3::tests::the_strict_reading_of_the_brief_is_one_constant_away ... ok
+test t3::tests::group_only_never_reaches_strong_however_much_traffic ... ok
+test tests::ego_network_scoring_matches_per_peer_scoring ... ok
+test tests::unknown_peers_score_as_nothing_observed ... ok
+test types::tests::ages_never_go_negative ... ok
+test tests::enum_dispatch_agrees_with_the_trait ... ok
+test tests::score_all_tags_each_result_with_its_own_rule ... ok
+test types::tests::bands_cap_downwards_only ... ok
+test types::tests::civil_dates_round_trip_known_instants ... ok
+test types::tests::epoch_day_floors_below_the_epoch ... ok
+test types::tests::tally_ignores_other_peers ... ok
+
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/comparison.rs (target/debug/deps/comparison-19e5317b36181a7c)
+
+running 14 tests
+test active_days_are_utc_and_do_not_follow_the_machine_clock ... ok
+test a_tie_that_stopped_in_2019_separates_the_recency_aware_rules ... ok
+test evidence_from_before_1970_does_not_collapse_into_one_day ... ok
+test fifty_group_messages_separate_the_venue_aware_rule_from_the_rest ... ok
+test a_hundred_unanswered_messages_stay_weak_everywhere ... ok
+test forgetting_the_evidence_can_only_lower_a_band ... ok
+test input_order_does_not_change_any_score ... ok
+test nothing_observed_is_weak_everywhere ... ok
+test every_rule_agrees_about_the_counts_whatever_it_decides_about_the_band ... ok
+test one_unanswered_message_is_weak_everywhere ... ok
+test the_goal_one_fixture_is_strong_under_every_candidate ... ok
+test other_peers_in_the_log_are_ignored ... ok
+test twenty_messages_in_one_afternoon_are_never_strong ... ok
+test a_thousand_messages_in_one_day_do_not_buy_a_strong_band ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/explain_zh.rs (target/debug/deps/explain_zh-7153bdd830fc597a)
+
+running 9 tests
+test an_empty_tie_says_so_plainly ... ok
+test a_one_sided_tie_is_told_which_side_is_missing ... ok
+test every_explanation_is_written_in_chinese ... ok
+test t3_can_name_the_venue_when_it_is_given_the_venue ... ok
+test the_dormant_tie_is_explained_differently_by_the_rules_that_disagree ... ok
+test the_strong_fixture_reads_as_a_reason_not_as_a_verdict ... ok
+test every_explanation_repeats_the_counts_the_user_can_check ... ok
+test no_explanation_makes_a_clinical_or_quantitative_claim ... ok
+test no_explanation_leaks_english_jargon ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/goal1_fidelity.rs (target/debug/deps/goal1_fidelity-c475666eacc7ad17)
+
+running 4 tests
+test the_counts_t0_reports_are_the_counts_goal_one_reports ... ok
+test the_two_spellings_of_a_utc_date_agree ... ok
+test t0_matches_the_shipped_rule_across_the_epoch ... ok
+test t0_matches_the_shipped_rule_on_every_generated_tie ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+   Doc-tests soul_algo_tie
+
+running 1 test
+test src/lib.rs - (line 9) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+exit=0
+
+$ cargo run --example matrix
+| fixture | 次数 | 天数 | 互惠 | 私聊 | T0 | T1 | T2 | T3 |
+|---|---:|---:|---|---|---|---|---|---|
+| `empty` | 0 | 0 | 否 | 否 | weak | weak | weak | weak |
+| `single_inbound` | 1 | 1 | 否 | 是 | weak | weak | weak | weak |
+| `lilei_12_over_6_days` | 12 | 6 | 是 | 是 | strong | strong | strong | strong |
+| `twenty_in_one_afternoon` | 20 | 1 | 是 | 是 | moderate | moderate | moderate | moderate |
+| `group_only_50` | 50 | 50 | 是 | 否 | strong | strong | strong | moderate |
+| `dormant_since_2019` | 20 | 10 | 是 | 是 | strong | weak | moderate | strong |
+| `one_sided_100_outbound` | 100 | 100 | 否 | 是 | weak | weak | weak | weak |
+
+### empty
+- **T0**：还没有看到你们之间的往来记录，所以先按最弱的一档放着。
+- **T1**：还没有看到你们之间的往来记录，所以先按最弱的一档放着。
+- **T2**：还没有看到你们之间的往来记录，所以先按最弱的一档放着。
+- **T3**：还没有看到你们之间的往来记录，所以先按最弱的一档放着。
+
+### single_inbound
+- **T0**：你们一共有 1 次往来（你发出 0 次，对方发来 1 次），分布在 1 天、1 个会话里，最近一次是 2026 年 8 月 23 日。你一次也没有回过，所以这条关系只算弱联系。
+- **T1**：你们一共有 1 次往来（你发出 0 次，对方发来 1 次），分布在 1 天、1 个会话里，最近一次是 2026 年 8 月 23 日。你一次也没有回过，所以这条关系只算弱联系。
+- **T2**：你们一共有 1 次往来（你发出 0 次，对方发来 1 次），分布在 1 天、1 个会话里，最近一次是 2026 年 8 月 23 日。你一次也没有回过，所以这条关系只算弱联系。
+- **T3**：你们一共有 1 次往来（你发出 0 次，对方发来 1 次），分布在 1 天、1 个会话里，最近一次是 2026 年 8 月 23 日。你一次也没有回过，只有一头在说话的关系不会算成紧密联系，所以是弱联系。
+
+### lilei_12_over_6_days
+- **T0**：你们一共有 12 次往来（你发出 6 次，对方发来 6 次），分布在 6 天、1 个会话里，最近一次是 2026 年 8 月 20 日。你们互相都发过消息，往来次数达到 10 次以上，而且分散在 3 天以上，不是一次聊完就没了，所以算强联系。
+- **T1**：你们一共有 12 次往来（你发出 6 次，对方发来 6 次），分布在 6 天、1 个会话里，最近一次是 2026 年 8 月 20 日。你们互相都发过消息，最近这段时间往来一直没断，天数也够分散，所以算强联系。
+- **T2**：你们一共有 12 次往来（你发出 6 次，对方发来 6 次），分布在 6 天、1 个会话里，最近一次是 2026 年 8 月 20 日。最近往来、往来次数、活跃天数这三样都不差，而且双方都在说话，所以算强联系。
+- **T3**：你们一共有 12 次往来（你发出 6 次，对方发来 6 次），分布在 6 天、1 个会话里，最近一次是 2026 年 8 月 20 日。你们私下一对一聊过，双方都在说话，次数和天数也都够，所以算强联系。
+
+### twenty_in_one_afternoon
+- **T0**：你们一共有 20 次往来（你发出 10 次，对方发来 10 次），分布在 1 天、1 个会话里，最近一次是 2026 年 8 月 23 日。你们互相都发过消息，次数已经够多，但都挤在 1 天里，还看不出是长期习惯，所以算中等联系。
+- **T1**：你们一共有 20 次往来（你发出 10 次，对方发来 10 次），分布在 1 天、1 个会话里，最近一次是 2026 年 8 月 23 日。你们互相都发过消息，但往来都挤在 1 天里，还看不出是长期保持的联系，所以算中等联系。
+- **T2**：你们一共有 20 次往来（你发出 10 次，对方发来 10 次），分布在 1 天、1 个会话里，最近一次是 2026 年 8 月 23 日。这三样里——最近有没有往来、一共来往过多少次、一共有多少天在联系——你们只占了一部分，所以算中等联系。
+- **T3**：你们一共有 20 次往来（你发出 10 次，对方发来 10 次），分布在 1 天、1 个会话里，最近一次是 2026 年 8 月 23 日。你们互相都有往来，但还没到最紧密的一档：要么单独聊得不够多，要么往来都发生在群里，所以算中等联系。
+
+### group_only_50
+- **T0**：你们一共有 50 次往来（你发出 25 次，对方发来 25 次），分布在 50 天、1 个会话里，最近一次是 2026 年 8 月 23 日。你们互相都发过消息，往来次数达到 10 次以上，而且分散在 3 天以上，不是一次聊完就没了，所以算强联系。
+- **T1**：你们一共有 50 次往来（你发出 25 次，对方发来 25 次），分布在 50 天、1 个会话里，最近一次是 2026 年 8 月 23 日。你们互相都发过消息，最近这段时间往来一直没断，天数也够分散，所以算强联系。
+- **T2**：你们一共有 50 次往来（你发出 25 次，对方发来 25 次），分布在 50 天、1 个会话里，最近一次是 2026 年 8 月 23 日。最近往来、往来次数、活跃天数这三样都不差，而且双方都在说话，所以算强联系。
+- **T3**：你们一共有 50 次往来（你发出 25 次，对方发来 25 次），分布在 50 天、1 个会话里，最近一次是 2026 年 8 月 23 日。你们互相都有往来，但还没到最紧密的一档：要么单独聊得不够多，要么往来都发生在群里，所以算中等联系。
+
+### dormant_since_2019
+- **T0**：你们一共有 20 次往来（你发出 10 次，对方发来 10 次），分布在 10 天、1 个会话里，最近一次是 2019 年 6 月 10 日。你们互相都发过消息，往来次数达到 10 次以上，而且分散在 3 天以上，不是一次聊完就没了，所以算强联系。
+- **T1**：你们一共有 20 次往来（你发出 10 次，对方发来 10 次），分布在 10 天、1 个会话里，最近一次是 2019 年 6 月 10 日。你们以前互相都发过消息，但最近很久没有新的往来了，所以现在只算弱联系。要是你们又聊起来，这一档会自己涨回去。
+- **T2**：你们一共有 20 次往来（你发出 10 次，对方发来 10 次），分布在 10 天、1 个会话里，最近一次是 2019 年 6 月 10 日。这三样里——最近有没有往来、一共来往过多少次、一共有多少天在联系——你们只占了一部分，所以算中等联系。
+- **T3**：你们一共有 20 次往来（你发出 10 次，对方发来 10 次），分布在 10 天、1 个会话里，最近一次是 2019 年 6 月 10 日。你们私下一对一聊过，双方都在说话，次数和天数也都够，所以算强联系。
+
+### one_sided_100_outbound
+- **T0**：你们一共有 100 次往来（你发出 100 次，对方发来 0 次），分布在 100 天、1 个会话里，最近一次是 2026 年 8 月 23 日。对方一次也没有回过，所以这条关系只算弱联系。
+- **T1**：你们一共有 100 次往来（你发出 100 次，对方发来 0 次），分布在 100 天、1 个会话里，最近一次是 2026 年 8 月 23 日。对方一次也没有回过，所以这条关系只算弱联系。
+- **T2**：你们一共有 100 次往来（你发出 100 次，对方发来 0 次），分布在 100 天、1 个会话里，最近一次是 2026 年 8 月 23 日。对方一次也没有回过，所以这条关系只算弱联系。
+- **T3**：你们一共有 100 次往来（你发出 100 次，对方发来 0 次），分布在 100 天、1 个会话里，最近一次是 2026 年 8 月 23 日。对方一次也没有回过，只有一头在说话的关系不会算成紧密联系，所以是弱联系。
+

@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = ["crates/soul-algo-tie", "crates/soul-algo-trait"]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.83"
+license = "LicenseRef-All-Rights-Reserved"
