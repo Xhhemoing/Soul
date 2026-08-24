@@ -562,8 +562,20 @@ impl Session {
     }
 
     /// Record that the user authorized one directory, and remember it.
+    ///
+    /// A refusal is written down before it is handed back. [`Refusal::audit`]
+    /// carries the reason code and the count and never the path, and a
+    /// directory the product declined to take on is exactly the sort of thing
+    /// AC-23 expects to find in the chain — including the two cases where the
+    /// disk refused rather than Soul, which record as `ROUTINE` and say so.
     pub fn authorize(&mut self, path: &str) -> Result<FilesView, SessionRefusal> {
-        let root = self.fileplan.authorize(path)?;
+        let root = match self.fileplan.authorize(path) {
+            Ok(root) => root,
+            Err(refusal) => {
+                self.append_audit(&[refusal.audit()])?;
+                return Err(refusal.into());
+            }
+        };
         let canonical = root.canonical().to_path_buf();
         if !self.config.authorized_roots.contains(&canonical) {
             self.config.authorized_roots.push(canonical);
@@ -583,16 +595,32 @@ impl Session {
     /// directory it walked. Without this append, `file.plan` was an action the
     /// matrix named and no installed Soul could produce.
     ///
+    /// Three entries are possible and each one is a different fact. A refusal
+    /// records that a plan was asked for and denied. A scan that ran records
+    /// the plan. And a scan that walked past a file name asking to be obeyed
+    /// records `injection.blocked` with a count — AC-25's third channel, which
+    /// until now only `soul-fileplan`'s own tests ever saw: the count is read
+    /// off the scan rather than off the plan, because a hostile name that was
+    /// skipped as unplannable is still a name that tried.
+    ///
     /// [`Preview::audit`]: soul_fileplan::Preview::audit
     pub fn preview(&mut self, path: &str) -> Result<PlanPreview, SessionRefusal> {
-        let preview = self.fileplan.preview(
+        let preview = match self.fileplan.preview(
             &mut self.issuer,
             path,
             RequestOrigin::User,
             ScanLimits::default(),
             now_unix_millis(),
-        )?;
-        self.append_audit(&[preview.audit()])?;
+        ) {
+            Ok(preview) => preview,
+            Err(refusal) => {
+                self.append_audit(&[refusal.audit()])?;
+                return Err(refusal.into());
+            }
+        };
+        let mut entries = vec![preview.audit()];
+        entries.extend(preview.scan().injection_audit());
+        self.append_audit(&entries)?;
         Ok(PlanPreview::of(&preview))
     }
 
@@ -604,6 +632,17 @@ impl Session {
     }
 
     /// Everything Soul will say about one person, and what each line rests on.
+    ///
+    /// AC-16's product path, including the half that had nowhere to run: a
+    /// session with an endpoint configured offers the counts to it for
+    /// rephrasing, and the click that opened this person is the trigger the
+    /// request is minted against. AC-17 is what happens when there is no
+    /// endpoint, or when the one there is coughs — the counts summary, which
+    /// is what every installation saw before this.
+    ///
+    /// The store guard is dropped before the chain is appended to.
+    /// [`Session::append_audit`] takes the same mutex and `std::sync::Mutex`
+    /// is not reentrant.
     pub fn person_summary(
         &mut self,
         contact_id: &str,
@@ -612,15 +651,20 @@ impl Session {
             reason_code: ReasonCode::Routine.as_str().to_owned(),
             explanation: "这不是一个认得出来的人的编号。".to_owned(),
         })?;
-        let store = self.opened_store()?;
-        let store = hold(&store);
-        Ok(draft::summarize_person(
-            &mut self.policy,
-            &store,
-            contact_id,
-            RequestOrigin::User,
-            now_unix_millis(),
-        )?)
+        let summarized = {
+            let store = self.opened_store()?;
+            let store = hold(&store);
+            draft::summarize_person(
+                &self.draft,
+                &mut self.policy,
+                &store,
+                contact_id,
+                RequestOrigin::User,
+                now_unix_millis(),
+            )?
+        };
+        self.append_audit(&summarized.audit)?;
+        Ok(summarized.view)
     }
 
     /// AC-17: a draft written on this machine, with no request body built.
@@ -660,13 +704,14 @@ impl Session {
         // and their name is what this call is deciding whether to send.
         self.sync_identifiers();
         let brief = self.owner_brief();
-        Ok(draft::prepare_pasted(
+        let prepared = draft::prepare_pasted(
             &mut self.draft,
             &mut self.policy,
             brief,
             pasted,
             include_original == Some(true),
-        )?)
+        );
+        prepared.map_err(|refusal| self.refuse_draft(refusal))
     }
 
     /// Step two: the user approved the plan they were shown.
@@ -675,10 +720,33 @@ impl Session {
     /// the draft that came back — and both are written before the draft is
     /// handed over, so a chain that could not be appended to is a refusal
     /// rather than a draft nobody can account for.
+    ///
+    /// A refusal owes one. An approval that names nothing prepared, a plan
+    /// hash that is not the one on screen, a token the ledger has already seen
+    /// — [`DraftRefusal::audit`] maps each onto the action
+    /// `audit.schema.json` already has for it, and until this the chain heard
+    /// about generations that succeeded and nothing at all about the ones that
+    /// were stopped.
     pub fn generate_draft(&mut self, approval: &Approval) -> Result<DraftValue, SessionRefusal> {
-        let drafted = draft::generate_prepared(&mut self.draft, &mut self.policy, approval)?;
+        let generated = draft::generate_prepared(&mut self.draft, &mut self.policy, approval);
+        let drafted = generated.map_err(|refusal| self.refuse_draft(refusal))?;
         self.append_audit(&drafted.audit)?;
         Ok(drafted.draft)
+    }
+
+    /// Write down what a refused draft owes the chain, and hand it back.
+    ///
+    /// The refusal the user reads is the one they were given, unless the chain
+    /// itself is what failed: a store that is open and will not record a
+    /// denial is the more serious of the two problems, and reporting the
+    /// original refusal would leave nobody looking at it. A store that never
+    /// opened appends nothing and says so — see [`Session::append_audit`].
+    fn refuse_draft(&self, refusal: DraftRefusal) -> SessionRefusal {
+        let entries: Vec<AuditContent> = refusal.audit().into_iter().collect();
+        match self.append_audit(&entries) {
+            Ok(()) => refusal.into(),
+            Err(problem) => problem,
+        }
     }
 
     /// The voice and the axis readings a draft prompt may know about.

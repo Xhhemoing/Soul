@@ -408,7 +408,8 @@ fn a_person_summary_off_a_real_import_cites_rows_the_store_returns() {
         .contact_id;
 
     let mut policy = PolicySession::closed();
-    let view = soulcore::commands::draft::summarize_person(
+    let summarized = soulcore::commands::draft::summarize_person(
+        &drafting(),
         &mut policy,
         &store,
         someone,
@@ -416,6 +417,12 @@ fn a_person_summary_off_a_real_import_cites_rows_the_store_returns() {
         NOW_MS,
     )
     .expect("a summary");
+    let view = summarized.view;
+    assert!(
+        summarized.audit.is_empty(),
+        "a session with no endpoint owes the chain nothing for a summary: {:?}",
+        summarized.audit,
+    );
 
     assert_eq!(view.contact_id, someone.to_string());
     assert_eq!(view.source, "counts");
@@ -451,6 +458,7 @@ fn a_summary_of_somebody_the_graph_has_never_seen_is_refused() {
     let mut policy = PolicySession::closed();
 
     let refused = soulcore::commands::draft::summarize_person(
+        &drafting(),
         &mut policy,
         &store,
         uuid::Uuid::now_v7(),
@@ -469,6 +477,7 @@ fn asking_for_a_summary_from_pasted_content_is_refused() {
     let mut policy = PolicySession::closed();
 
     let refused = soulcore::commands::draft::summarize_person(
+        &drafting(),
         &mut policy,
         &store,
         uuid::Uuid::now_v7(),

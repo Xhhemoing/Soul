@@ -28,19 +28,21 @@
 //! configured and returns text. Whether the user then sends the draft to
 //! anybody is between them and their messaging app.
 //!
-//! `summarize_person` writes no audit entry, and that is deliberate rather
-//! than an omission: it reads the graph and the evidence rows the graph
-//! already cites, changes nothing, and `docs/schemas/audit.schema.json` is
-//! frozen with no action for it. An entry invented here would be a claim the
-//! contract does not make.
+//! `summarize_person` invents no audit action of its own, and that is
+//! deliberate rather than an omission: reading the graph and the evidence rows
+//! the graph already cites changes nothing, and
+//! `docs/schemas/audit.schema.json` is frozen with no action for it. The
+//! entries it can hand back are the ones the *rephrasing* owes — `egress.request`
+//! for a request that left, and whatever the refusal already names when one
+//! did not. Nothing new is claimed on behalf of the summary itself.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use soul_draft::analysis::{self, PersonSummary, SummarySource};
 use soul_draft::brief::ProfileBrief;
-use soul_draft::draft::{BodyFacts, Draft, DraftRequest, Drafter};
-use soul_draft::error::DraftError;
+use soul_draft::draft::{BodyFacts, Draft, DraftRequest, Drafter, ReplyGenerator};
+use soul_draft::error::{DraftError, GenerationRefused};
 use soul_graph::GraphError;
 use soul_policy::audit::AuditContent;
 use soul_policy::hitl::{
@@ -51,6 +53,7 @@ use soul_policy::redactor::{
 };
 use soul_policy::ReasonCode;
 use soul_profile::ProfileError;
+use soul_schema::audit::AuditAction;
 use soul_schema::contact::ContactClass;
 use soul_schema::memory::ForgetState;
 use soul_store::SqlCipherStore;
@@ -522,18 +525,42 @@ pub fn brief(store: &SqlCipherStore, profile_id: Uuid) -> Result<ProfileBrief, D
     )?)?)
 }
 
+/// One person summary, and what the chain is owed for it.
+///
+/// The same shape [`Drafted`] has, and for the same reason: the caller holds
+/// the open store. A summary that never left the machine owes nothing, so the
+/// list is empty on the counts path — which is every session with no endpoint
+/// configured.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Summarized {
+    pub view: PersonSummaryView,
+    pub audit: Vec<AuditContent>,
+}
+
 /// Everything Soul will say about one person, and what each line rests on.
 ///
 /// AC-16. The evidence is resolved out of the store before the summary is
 /// built, so a point cannot cite a row that has been forgotten; `soul-draft`
 /// refuses the whole summary rather than returning a shorter one.
+///
+/// With an endpoint configured the counts are then offered to it for
+/// rephrasing, which is the half PRODUCT_LOCK's 无 key 时统计降级 needs in
+/// order to be a degradation rather than the only path there is. What goes out
+/// is [`analysis::summary_body`] — the statements this machine derived, no
+/// third-party prose — and the Graph click is the user trigger the token is
+/// minted against, so there is no second screen and no second command.
+///
+/// AC-17 is the other half: an endpoint that refuses, times out, or answers
+/// with something the clinical check drops leaves the counts summary exactly as
+/// it was. The chain still hears about the attempt.
 pub fn summarize_person(
+    drafting: &DraftSession,
     policy: &mut PolicySession,
     store: &SqlCipherStore,
     contact_id: Uuid,
     origin: RequestOrigin,
     now_ms: u64,
-) -> Result<PersonSummaryView, DraftRefusal> {
+) -> Result<Summarized, DraftRefusal> {
     allow(policy, ActionKind::AnalysePeople, origin, now_ms)?;
 
     let graph = soul_graph::load(store)?;
@@ -545,8 +572,82 @@ pub fn summarize_person(
         .clone();
     let resolved = soul_graph::resolve_evidence(store, &edge)?;
 
-    let summary = analysis::summarize_person(&graph, contact_id, &resolved)?;
-    PersonSummaryView::of(&summary)
+    let counts = analysis::summarize_person(&graph, contact_id, &resolved)?;
+    if policy.guard().config().e1_endpoint().is_none() {
+        return Ok(Summarized {
+            view: PersonSummaryView::of(&counts)?,
+            audit: Vec::new(),
+        });
+    }
+
+    // Cloned because `phrase_with` needs the redactor while the generator
+    // below holds the session mutably. It is the same set either way.
+    let redactor = policy.redactor().clone();
+    let mut rephraser = Rephraser {
+        model: drafting.model().to_owned(),
+        policy,
+        now_ms,
+        audit: Vec::new(),
+    };
+    let phrased = analysis::phrase_with(&counts, &redactor, &mut rephraser).ok();
+    let audit = std::mem::take(&mut rephraser.audit);
+
+    Ok(Summarized {
+        view: PersonSummaryView::of(phrased.as_ref().unwrap_or(&counts))?,
+        audit,
+    })
+}
+
+/// What the person summary's rephrasing is told when the endpoint did not
+/// produce one. Never the endpoint's own words: a hostile endpoint controls
+/// those, and this string is only ever read by the fallback above anyway.
+const REPHRASING_REFUSED: &str = "the summary rephrasing did not come back";
+
+/// One rephrasing request against the endpoint the user configured.
+///
+/// A [`ReplyGenerator`] rather than a free function because
+/// [`analysis::phrase_with`] is what builds the body, and the capability token
+/// has to be minted against the body that is actually going out rather than
+/// against one assembled a second time beside it.
+///
+/// The audit entries are collected rather than returned, because the trait's
+/// error type carries no room for one and because the entries are owed either
+/// way: a request that left owes `egress.request`, and one that was refused
+/// owes whatever [`DraftRefusal::audit`] already names.
+struct Rephraser<'a> {
+    policy: &'a mut PolicySession,
+    model: String,
+    now_ms: u64,
+    audit: Vec<AuditContent>,
+}
+
+impl Rephraser<'_> {
+    /// Record what the chain is owed, and say no without quoting anything.
+    fn refused(&mut self, refusal: DraftRefusal) -> GenerationRefused {
+        self.audit.extend(refusal.audit());
+        GenerationRefused::new(REPHRASING_REFUSED).because(refusal.reason_code())
+    }
+}
+
+impl ReplyGenerator for Rephraser<'_> {
+    fn generate(&mut self, body: RedactedBody) -> Result<String, GenerationRefused> {
+        let plan = PlanHash::of(&e1_plan(&self.model, &body));
+        let scope = CapabilityScope::E1Generate;
+        let token_id = match self.policy.issue_token(scope, plan, self.now_ms) {
+            Ok(token) => token.token_id(),
+            Err(refused) => return Err(self.refused(DraftRefusal::Token(refused))),
+        };
+        match self
+            .policy
+            .e1_generate(&self.model, body, token_id, self.now_ms)
+        {
+            Ok(outcome) => {
+                self.audit.push(outcome.audit());
+                Ok(outcome.body)
+            }
+            Err(refusal) => Err(self.refused(refusal.into())),
+        }
+    }
 }
 
 /// What the desktop shell may display about one person.
@@ -664,6 +765,39 @@ impl DraftRefusal {
                 ReasonCode::PlanHashMismatch
             }
             DraftRefusal::Profile(_) | DraftRefusal::Graph(_) => ReasonCode::Routine,
+        }
+    }
+
+    /// The audit entry this refusal owes the chain, where it owes one.
+    ///
+    /// No action is invented here: `hitl.deny`, `capability.reject` and
+    /// `egress.request` are the three `audit.schema.json` already has for a
+    /// refused generation, and each variant is mapped onto the one it is.
+    /// [`E1Refusal::audit`] decides for itself, because a refusal that never
+    /// reached the guard and one the guard turned away are different entries.
+    ///
+    /// `None` for the variants that describe a value rather than a decision —
+    /// a profile that will not resolve, a graph that has no such tie. There is
+    /// no denial there for the chain to record, and a `hitl.deny` written for
+    /// one would say the user was refused something they never asked for.
+    pub fn audit(&self) -> Option<AuditContent> {
+        match self {
+            DraftRefusal::E1(refusal) => Some(refusal.audit()),
+            DraftRefusal::Hitl(HitlDenial::Token(_)) => Some(AuditContent::denied(
+                AuditAction::CapabilityReject,
+                self.reason_code(),
+            )),
+            DraftRefusal::Hitl(_)
+            | DraftRefusal::NothingPrepared
+            | DraftRefusal::NotThePreparedRequest => Some(AuditContent::denied(
+                AuditAction::HitlDeny,
+                self.reason_code(),
+            )),
+            DraftRefusal::Token(refused) => Some(AuditContent::denied(
+                AuditAction::CapabilityReject,
+                refused.reason,
+            )),
+            DraftRefusal::Draft(_) | DraftRefusal::Profile(_) | DraftRefusal::Graph(_) => None,
         }
     }
 }

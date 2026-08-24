@@ -37,6 +37,11 @@ struct MockState {
     requests: Mutex<Vec<RecordedRequest>>,
     /// When set, every request answers `302` pointing here.
     redirect_to: Mutex<Option<String>>,
+    /// The assistant message every answer carries. Empty by default, which is
+    /// a reply the readers in `soul-draft` deliberately refuse: a server that
+    /// handed back usable text unasked would let a test claim a model path it
+    /// never configured.
+    reply: Mutex<String>,
 }
 
 /// A running mock endpoint. Dropping it stops the server.
@@ -151,6 +156,19 @@ impl MockLlm {
             .expect("no panics while holding the lock") = Some(target.into());
     }
 
+    /// Answer every subsequent request with this assistant message.
+    ///
+    /// For the paths that read what came back — a draft from the user's own
+    /// endpoint, a rephrased people summary — where the default empty message
+    /// only ever exercises the degradation.
+    pub fn set_reply(&self, text: impl Into<String>) {
+        *self
+            .state
+            .reply
+            .lock()
+            .expect("no panics while holding the lock") = text.into();
+    }
+
     pub fn clear_redirect(&self) {
         *self
             .state
@@ -220,12 +238,17 @@ async fn handle(State(state): State<Arc<MockState>>, request: Request) -> Respon
         return (StatusCode::FOUND, [(axum::http::header::LOCATION, target)]).into_response();
     }
 
+    let reply = state
+        .reply
+        .lock()
+        .expect("no panics while holding the lock")
+        .clone();
     axum::Json(serde_json::json!({
         "id": "chatcmpl-soul-mock",
         "object": "chat.completion",
         "choices": [{
             "index": 0,
-            "message": { "role": "assistant", "content": "" },
+            "message": { "role": "assistant", "content": reply },
             "finish_reason": "stop"
         }]
     }))

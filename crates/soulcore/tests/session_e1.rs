@@ -838,6 +838,240 @@ fn the_pinned_voice_reaches_the_endpoint_and_the_chain_records_the_request() {
     drop(keep);
 }
 
+// ------------------------------------------- AC-16, from the Graph page ---
+
+/// A rephrasing an endpoint could plausibly answer with: counts read back as a
+/// sentence, and nothing a medical product would say.
+const REPHRASED: &str = "你们最近往来比较稳定，多数时候是一对一说话。";
+
+/// One a user would want dropped, and `soul-policy`'s denylist does drop.
+/// The same shape as `soul-draft`'s
+/// `a_rephrasing_that_reads_like_a_diagnosis_is_dropped_and_the_points_stand`,
+/// asked of the product instead of the crate.
+const DIAGNOSTIC: &str = "从往来频率看，对方有明显的焦虑症倾向。";
+
+/// The person this session's graph has the most exchanges for.
+///
+/// Read off `Session::people`, which is the same list the Graph page draws, so
+/// the identifier a test summarizes is one the interface could have clicked.
+fn a_third_party(session: &Session) -> String {
+    session
+        .people()
+        .expect("the store opened")
+        .people
+        .into_iter()
+        .filter(|person| !person.is_you && person.tie_count > 0)
+        .max_by_key(|person| person.interaction_count)
+        .expect("the export has somebody in it")
+        .contact_id
+}
+
+/// AC-16's product path: an installed Soul that filled 设置 has something to
+/// degrade *from*.
+///
+/// `analysis::phrase_with` has existed since WP10 and nothing called it, so
+/// `PersonSummaryView::source` was `counts` on every machine, endpoint or no
+/// endpoint — which made PRODUCT_LOCK's 无 key 时统计降级 a description of the
+/// only path there was. The Graph click is the trigger the request is minted
+/// against; there is no second screen and no new command.
+///
+/// What is on the wire is the assertion that matters. The body is Soul's own
+/// counts, headed by the line that says so, and the display names this export
+/// sealed are not in it.
+#[test]
+fn a_person_summary_is_rephrased_by_the_endpoint_the_user_configured() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    endpoint.set_reply(REPHRASED);
+    let mut session = Session::open(&directory);
+    session
+        .commit_telegram(&telegram_export())
+        .expect("the export commits");
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let contact_id = a_third_party(&session);
+    let summary = session.person_summary(&contact_id).expect("a summary");
+
+    assert_eq!(summary.source, "user_endpoint");
+    assert!(
+        summary.text.contains(REPHRASED),
+        "the rephrasing never reached the screen: {}",
+        summary.text,
+    );
+    assert!(!summary.points.is_empty());
+    assert!(!summary.clinical_claim);
+    for point in &summary.points {
+        assert!(!point.evidence_ids.is_empty(), "`{}`", point.statement);
+        assert!(summary.text.contains(&point.statement));
+    }
+
+    // What went out: one request, to the address the user typed, carrying the
+    // owner-derived counts and no third party's words.
+    let sent = endpoint.requests();
+    assert_eq!(sent.len(), 1, "one summary, one request");
+    assert_eq!(sent[0].path, "/v1/chat/completions");
+    assert!(
+        sent[0].body.contains("【本机统计，供改写参考"),
+        "the body is not the statistical one: {}",
+        sent[0].body,
+    );
+    for label in stored_third_party_labels(&session) {
+        assert!(
+            !sent[0].body.contains(&label),
+            "a display name reached the endpoint: {}",
+            sent[0].body,
+        );
+    }
+    assert!(
+        !sent[0].body.contains(&contact_id),
+        "the contact id travelled: {}",
+        sent[0].body,
+    );
+    assert!(
+        !sent[0]
+            .headers
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("authorization")),
+        "this build has no key to send: {:?}",
+        sent[0].headers,
+    );
+
+    // AC-23: the request is in the chain, and nothing it carried is.
+    let chain = session.audit().expect("the store opened");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    let request = chain
+        .entries
+        .iter()
+        .find(|entry| entry.action == "egress.request")
+        .expect("a request left this machine");
+    assert_eq!(request.decision, "allowed");
+    assert_eq!(request.egress_class.as_deref(), Some("E1"));
+    assert!(request.capability_token_id.is_some());
+    assert!(request.follows_previous);
+    let played = format!("{chain:?}");
+    for prose in [REPHRASED, IMPORTED_NAME, "本机统计"] {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
+    }
+
+    // And nothing about any of it is written down. The wizard is finished last
+    // so the file inspected is one written after the request went out.
+    finish_the_wizard(&mut session);
+    let text = config_text(&directory);
+    for word in ["llm", "endpoint", "http", "summary", "narrative"] {
+        assert!(
+            !text.contains(word),
+            "`{word}` reached config.json:\n{text}",
+        );
+    }
+    let value: serde_json::Value = serde_json::from_str(&text).expect("parse");
+    let object = value.as_object().expect("the file is a JSON object");
+    let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        ["authorized_roots", "wizard_completed"],
+        "config.json grew a field, and a rephrased summary is the last thing that may add one",
+    );
+    drop(keep);
+}
+
+/// AC-17 for the same screen: with nothing configured the counts stand, and no
+/// socket is opened to find that out.
+///
+/// The mock is running and would answer. `request_count() == 0` is therefore a
+/// statement about sockets rather than about intent, and the absence of
+/// `egress.request` from the chain says the same thing from the other side.
+#[test]
+fn with_no_endpoint_a_person_summary_is_the_counts_and_reaches_nothing() {
+    let (keep, directory) = scratch();
+    let listening = MockLlm::start().expect("something nobody configured");
+    let mut session = Session::open(&directory);
+    session
+        .commit_telegram(&telegram_export())
+        .expect("the export commits");
+
+    let contact_id = a_third_party(&session);
+    let summary = session.person_summary(&contact_id).expect("a summary");
+
+    assert_eq!(summary.source, "counts");
+    assert!(!summary.points.is_empty());
+    assert!(
+        !summary.text.contains("整体来看"),
+        "a narrative appeared with nobody to have written it: {}",
+        summary.text,
+    );
+    assert_eq!(
+        listening.request_count(),
+        0,
+        "a session with nothing configured opened a socket anyway",
+    );
+
+    let chain = session.audit().expect("the store opened");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    assert!(
+        !chain
+            .entries
+            .iter()
+            .any(|entry| entry.action == "egress.request"),
+        "the chain recorded a request that was never made: {:?}",
+        chain.entries,
+    );
+    drop(keep);
+}
+
+/// An endpoint that answers like a clinician changes nothing but its own
+/// silence.
+///
+/// The counts summary is taken first, off the same session with no endpoint
+/// configured, so "the points are intact" is a comparison rather than an
+/// assertion that the list is non-empty. The request did leave, so the chain
+/// records it; what it bought was dropped on the way in.
+#[test]
+fn a_rephrasing_that_reads_like_a_diagnosis_leaves_the_counts_standing() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    endpoint.set_reply(DIAGNOSTIC);
+    let mut session = Session::open(&directory);
+    session
+        .commit_telegram(&telegram_export())
+        .expect("the export commits");
+
+    let contact_id = a_third_party(&session);
+    let counts = session.person_summary(&contact_id).expect("a summary");
+    assert_eq!(counts.source, "counts");
+
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+    let after = session.person_summary(&contact_id).expect("a summary");
+
+    assert_eq!(
+        after.source, "counts",
+        "the summary claimed a rephrasing that was thrown away",
+    );
+    assert_eq!(after.points, counts.points, "the points are not negotiable");
+    assert_eq!(after.text, counts.text);
+    assert!(!after.text.contains("焦虑症"), "{}", after.text);
+    soul_policy::assert_non_clinical(&after.text).expect("nothing a medical product would say");
+
+    // The request happened, and the chain says so. Degrading is not pretending
+    // nothing left.
+    assert_eq!(endpoint.request_count(), 1);
+    let chain = session.audit().expect("the store opened");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    assert!(chain
+        .entries
+        .iter()
+        .any(|entry| entry.action == "egress.request"));
+    assert!(
+        !format!("{chain:?}").contains("焦虑"),
+        "the chain carries what the endpoint said",
+    );
+    drop(keep);
+}
+
 /// Clearing puts the session back where it started, guard included.
 #[test]
 fn clearing_the_endpoint_closes_the_guard_again() {

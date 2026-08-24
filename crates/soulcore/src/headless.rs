@@ -529,13 +529,15 @@ fn flow(scratch: &Path) -> Flow<FlowOutcome> {
     let summary = at(
         "summary",
         draft_commands::summarize_person(
+            &drafting,
             &mut policy,
             &store,
             contact_id,
             RequestOrigin::User,
             NOW_MS,
         ),
-    )?;
+    )?
+    .view;
     require(
         "summary",
         !summary.points.is_empty()

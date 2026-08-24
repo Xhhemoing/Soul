@@ -116,6 +116,17 @@ impl PolicySession {
         &self.guard
     }
 
+    /// The redactor every body this session sends is built through.
+    ///
+    /// Borrowed rather than handed out by value so there is only ever one set
+    /// of identifiers in play. A caller that needs to build a body while also
+    /// holding this session mutably — `draft.rs`'s summary rephrasing is the
+    /// one — clones it, which is a copy of the same set rather than a second
+    /// opinion about who exists.
+    pub fn redactor(&self) -> &Redactor {
+        &self.redactor
+    }
+
     /// May this action proceed?
     ///
     /// Straight through to [`soul_policy::hitl::check_action`]. Wrapping it
