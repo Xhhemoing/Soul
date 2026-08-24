@@ -12,5 +12,7 @@
 
 pub mod commands;
 pub mod config;
+pub mod headless;
+pub mod netwatch;
 
 pub use config::{CloudState, Config};

@@ -85,6 +85,7 @@ fn open_capabilities_names_each_switch() {
 fn the_headless_binary_prints_closed_defaults_and_exits_zero() {
     let binary = std::path::Path::new(env!("CARGO_BIN_EXE_soul-headless"));
     let output = std::process::Command::new(binary)
+        .arg("config")
         .output()
         .expect("run soul-headless");
 
