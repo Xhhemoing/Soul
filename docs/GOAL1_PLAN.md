@@ -50,6 +50,17 @@ WP01 独占先行。其后 WP02–WP06、WP08 面向 `soul-store-api` 可并行�
 
 WP01 已完成，取舍与遗留见 `docs/STATUS.md`。
 
+## WP02 完成定义
+
+1. [x] `crates/soul-store` 的 `SqlCipherStore` 跑通 `soul_store_api::conformance::run_conformance`，与 `FakeStore` 同一套。
+2. [x] SQLCipher 整库 + 字段级 XChaCha20-Poly1305（AAD=行 id+字段名），CK 由 KEK 包裹存表；`KeyProvider` 抽象落地，`TestKeyProvider` 在 Linux 可跑，`DpapiKeyProvider` 是骨架（见 STATUS 取舍 3）。
+3. [x] AC-15：影响面预览为真查询；执行后关库重开，CK 销毁、正文不可解、推断 orphaned、审计链仍通过；`FORGET_CK_DELETE_MID` 崩溃后重启不留半毁状态。
+4. [x] AC-20：研究预览行来自真聚合，第三人候选行查到后排除，`written_to_disk=false`，不写任何文件（运行期与源码级双查）。
+5. [x] AC-24 存储侧：`STORE_EVENT_COMMIT_MID` 子进程真死，重开后哈希链通过、最多丢 1 条。
+6. [x] AC-04 存储侧：库文件（含 `-wal`/`-shm`）字节里搜不到已知明文。
+
+WP02 已完成，取舍与遗留见 `docs/STATUS.md`。
+
 WP01 允许：根工装、`crates/{soul-schema,soul-store-api,soul-testkit,xtask,soulcore}`、`fixtures/`、`.github/workflows/ci.yml`、`justfile`、schema 仅 `$ref` 重接与收紧、`schemas.lock.json`、`SECURITY.md` 加密落地段、`STATUS.md`。
 
 WP01 禁止：产品定义文档、`apps/`、业务 crate、HTTP client 进 normal 依赖、实现导入/档案/采集/起草/文件计划。

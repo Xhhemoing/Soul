@@ -4,7 +4,7 @@
 
 ## 当前里程碑
 
-**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。
+**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。批 1（WP01）与批 2 的数据面（WP02）已完成。
 
 ## 进度
 
@@ -15,6 +15,7 @@
 | R3 复核冻结 | 完成。仲裁见 `docs/scan-rounds/R3-SYNTHESIS.md`，结论 `PLAN_FROZEN` |
 | Goal 1 规划 | 完成。DAG 见 `docs/GOAL1_PLAN.md` |
 | WP01 骨架 | 完成。见下节 |
+| WP02 数据面 | 完成。见下节 |
 | v0.1 其余 WP | 未开始 |
 
 ## WP01 完成情况
@@ -43,10 +44,38 @@
 8. **`cargo-deny` 用预编译二进制，钉 0.18.6。** 0.16.x 解析不了当前 advisory 数据库的 CVSS 4.0；能在 1.83 上从源码编出来的版本都太老。CI 直接下载 musl 二进制。
 9. **UI 面全是占位。** `package.json` / `pnpm-workspace.yaml` / `just ui-*` 空转退出 0，等 WP09 建 `apps/desktop`。
 
+## WP02 完成情况
+
+真加密主库 `crates/soul-store` 落地，`just ci-full` 在本机 Linux 上绿（`lint / schema / e0 / denylist / fixtures-verify / test / ui-*` 加 `cargo deny check` 四项 ok）。GitHub Actions 未在本次推送上跑完；Windows 侧仍以 `test-windows` job 为准。
+
+| 交付 | 证据 |
+|---|---|
+| 真库跑同一套契约 | `crates/soul-store/tests/conformance_real.rs`：`soul_store_api::conformance::run_conformance` 对 `SqlCipherStore` 全过（每个检查一个独立库文件），另测关库重开、错密钥打不开、事件过滤走 SQL |
+| SQLCipher 而不是明文 SQLite | `SqlCipherStore::open` 读不到 `PRAGMA cipher_version` 就报错退出，不静默降级；feature 与 WP01 冒烟一致（`bundled-sqlcipher-vendored-openssl`） |
+| AC-04 存储侧无明文残留 | `tests/no_plaintext_at_rest.rs`：三个 needle（ASCII 与中文）写进去后扫目录下**每个**文件（含 `-wal`/`-shm`）都搜不到；反向断言正文仍能从 `open()` 取回，避免「什么都没写」也能过；不带密钥的 `rusqlite` 连接连表都列不出来 |
+| AC-15 遗忘 | `tests/forget.rs`：预览三个数字（3 个 blob / 2 把 CK / 1 条推断）来自真查询——同一个库里第二条记忆只有 1 个 blob、1 把 CK，常量过不了；执行后**关库重开**，两把 CK 消失、正文 `ContentKeyDestroyed`、记忆变墓碑、推断 `orphaned`、另一条记忆完好、审计三条仍在且链验证通过、审计 JSON 里搜不到正文。联系人单元另测（经关系边的证据 orphan 推断） |
+| AC-15 中途崩溃 | `tests/crash_recovery.rs::a_crash_between_content_key_deletions_leaves_no_half_forgotten_memory`：`FORGET_CK_DELETE_MID` 在第一把 CK 删掉之后触发，子进程真 abort。重开后断言「整个单元的 CK 要么全在且可解密，要么全销毁且不可解密」，本实现落在回滚一侧（整个遗忘一个事务）；审计链仍通过。有不武装 fail point 的对照运行：遗忘走完、正文不可解 |
+| AC-20 研究预览 | `tests/research_preview.rs`：fixture 里放了第三人事件（含密封正文）、mixed 事件、第三人联系人显示名。`rows` 来自 `GROUP BY kind, 小时桶, privacy_subject` 的真聚合（早上两条同类事件合成 `aggregate_count = 2`）；`third_party_rows` 由「已发布行里再数一遍第三人」得到，`zero_third_party_rows` 只接受 0，把过滤器改成放行第三人会让预览直接构造失败（已实测）；`third_party_rows_excluded > 0` 证明确实查到了并排除；输出过 `export-manifest.schema.json` 校验、过 leakage checker（第三人正文 + 姓名 + 账号入语料）；只有第三人占用的时段不出现在 rows 里；预览前后目录文件名与字节数完全不变；另有一条测试把 `research_preview.rs` 源码读回来，断言其中没有任何写文件的 API |
+| AC-24 存储侧 | `tests/crash_recovery.rs::a_crash_mid_commit_loses_one_event_and_leaves_the_chain_verifiable`：`STORE_EVENT_COMMIT_MID` 用 `2*off->panic` 放过前两条、第三条在 INSERT 之后 COMMIT 之前杀掉子进程。重开后 `integrity_check` 为 ok、正好丢 1 条、已提交的两条都在、审计链验证通过。对照运行不武装则三条全写入 |
+| fail point 名字没有另起一套 | `soul_store::failpoints` 与 `soul_testkit::crash::failpoints` 逐条相等，由 `the_fail_point_names_match_the_test_kit` 断言。soul-store 必须自己写字面量，因为 testkit 只能是 dev 依赖 |
+
+落地内容：`crates/soul-store/{keys,sql,store,forget,audit,research_preview}.rs` 与五个测试文件；`soul-store-api` 新增 `research.rs`；`soulcore/src/commands/store.rs` 薄封装（`open_test_store` / `preview_forget` / `execute_forget` / `research_preview`）与 `soulcore/tests/store_commands.rs`。
+
+### WP02 的取舍与遗留
+
+1. **`soul-store-api` 只加不减，加的是 `research.rs`。** 合同里原本没有任何研究面，AC-20 无法对着存储边界表达。新增 `ResearchPreview` trait 故意**不**并进 `SoulStore`：研究轨道只读，写路径不该能碰到它。同一模块还提供 `zero_third_party_rows(counted)`——这是 `third_party_rows` 唯一的构造入口，只接受 0，所以那个字段不可能是没人验过的字面量。`run_conformance` 一行未改，`FakeStore` 未实现 `ResearchPreview`（真库以外没有事件表可查）。
+2. **审计链的三个字段由库写，不由调用方写。** `append_audit` 覆盖 `seq` / `prev_hash` / `entry_hash`：调用方能自带链接的话，链就只对它自己自洽，AC-24 的「重开后链通过」也就不成立。`conformance` 传进来的占位哈希因此被覆盖，它只断言条数与无正文，不受影响。WP08 若要接管审计，接的是这套语义：链归存储，内容归调用方，`additionalProperties: false` 挡正文。
+3. **`DpapiKeyProvider` 是骨架，Windows 密钥保护仍是缺口。** 见 `SECURITY.md`。Win32 绑定要 `unsafe`，本 crate `#![forbid(unsafe_code)]`，两个入口宁可返回 `KeyError::Unsupported` 也不编造密钥。补齐前不要在 UI 上声称 Windows 的 KEK 已受保护。
+4. **遗忘是单事务，所以中途崩溃是回滚而不是半毁。** 工作单要求「要么 CK 还在且可解密，要么已销毁且不可解密」，两侧都合格；实现选了前者，并把这个选择写成断言，将来若改成分批提交，测试会立刻红。
+5. **时间桶按 UTC 小时切。** `ts` 以 `Z` 结尾时取 `substr(ts,1,13)`；带偏移量的时间戳降级成日期级桶，而不是把本地小时贴上 `time_bucket_utc` 的标签。v0.1 写入方一律用 UTC，这条是防御性的。
+6. **`zeroize` 不开 `derive`。** `zeroize_derive` 1.5 需要 edition 2024，工作区钉 1.83。`SecretKey` 手写 `Drop` 调 `[u8; 32]::zeroize`，`Debug` 打印 `<redacted>`，有测试。
+7. **`soulcore` 现在通过 `soul-store` 间接依赖 `rusqlite` + vendored OpenSSL。** `e0-audit` 与 `cargo deny` 都还是绿的（禁的是 HTTP client），但 `cargo build -p soulcore` 从此要编 OpenSSL；WP01 遗留里关于 windows-latest 需要 perl 与 NASM 的那条现在也适用于主二进制，不只是测试。
+8. **`meta.schema_version = 1`，还没有迁移器。** 表结构变了要么加迁移，要么在开发期删库重来。WP03–WP06 加列前先决定是哪一种。
+
 ## 阻塞
 
 无。
 
 ## 下一步
 
-批 2：WP02 数据面（真 SQLCipher 存储、遗忘、研究预览不写文件）∥ WP08 权限面（策略、审计链、net_guard、redactor、HITL 令牌）。两者都对着 `soul-store-api` 的 trait 与 `conformance::run_conformance` 写，新后端必须跑通同一套。
+批 2 的另一半：WP08 权限面（策略、审计链、net_guard、redactor、HITL 令牌）。它对着 `soul-store-api` 的 trait 写，并接手上面第 2 条描述的审计链语义。批 3（WP03+WP04 / WP05+WP06）现在可以起，`soul-store` 的表已经有 `profiles` / `memories` / `contacts` / `relationships` 与各自的证据联结表。

@@ -36,7 +36,14 @@ DPAPI → KEK → DB DEK → 每单元 CK。正文字段 AEAD，AAD=行 id+字�
 
 密钥链：Windows DPAPI 保护 KEK；KEK 包裹 DEK 与全部 CK。整库加密挡的是把 `soul.db` 拷走的人；字段级 AEAD 挡的是「删了行但页面还在」，并且让遗忘有具体的销毁对象——CK 一销毁，即使整库仍能打开，那段正文也解不出来。AAD 绑行 id 与字段名，密文因此不能被搬到另一行或另一列重放（`crates/soul-store-api/tests/field_aead.rs` 正反两向断言）。
 
-Linux 上没有 DPAPI。CI 与 headless 测试走 `TestKeyProvider`：密钥来自测试固定值或临时目录，不接触任何平台密钥库，只用于让存储契约在 Linux 上可跑。`KeyProvider` 抽象与 DPAPI 实现属于 WP02；WP01 只落结论与冒烟证据。
+Linux 上没有 DPAPI。CI 与 headless 测试走 `TestKeyProvider`：密钥来自测试固定值或临时目录，不接触任何平台密钥库，只用于让存储契约在 Linux 上可跑。
+
+WP02 已落 `KeyProvider` 抽象，两个实现在 `crates/soul-store/src/keys.rs`：
+
+- `TestKeyProvider`：`from_seed("…")` 由固定串按域分离派生 DEK 与 KEK（同一 seed 跨进程可重现，崩溃测试的子进程靠这个重开同一个库）；`in_dir(dir)` 把 64 字节种子放在 `dir/soul-test-keys.bin`，首次使用时生成。两条路都不碰平台密钥库，名字里写明只作测试用。
+- `DpapiKeyProvider`：**骨架**。类型可构造、跨平台可编译，但两个取密钥入口都返回 `KeyError::Unsupported` 而不是编造密钥——Win32 绑定要引入 `unsafe`，本 crate 现在 `#![forbid(unsafe_code)]`。因此 Windows 真机安装路径此刻是缺口，不是「已实现但没测」；`soulcore` 只从 `open_test_store` 走 `TestKeyProvider`，Linux CI 不受影响。补齐 DPAPI 前不得声称 Windows 上 KEK 已受保护。
+
+密钥链在库里的落法：DEK 交给 SQLCipher（`PRAGMA key = "x'<64 hex>'"` 原始密钥形式，不走口令 KDF）；KEK 用 XChaCha20-Poly1305 包裹每把 CK，AAD 为 `content-key|<content_key_id>`，所以一把包好的 CK 不能被搬到另一个 `content_key_id` 下解开。CK 只以包裹态存在 `content_keys` 表，遗忘就是删这一行。
 
 不承诺：抵抗本机管理员、物理取证、内核恶意软件；不承诺 SSD 物理擦除。遗忘的可测语义是「CK 已销毁，正文不可解，派生推断降为 orphaned」，UI 必须照此如实写。
 
