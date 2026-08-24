@@ -23,6 +23,7 @@
 | WP06 导入 | 完成。见下节 |
 | WP07 前台采集 | 完成。见下节 |
 | WP09 桌面壳 | 第一段（壳）完成。见下节。起草 UI 全文属 WP10，未开始 |
+| WP11 文件计划 | 核心与命令面完成。见下节。UI 视图未接，`/files` 仍是空路由 |
 | v0.1 其余 WP | 未开始 |
 
 ## WP01 完成情况
@@ -285,6 +286,45 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 9. **起草 / 文件计划 / 导入 / 记忆 / 人脉这些路由是空的，但不是白屏。** `components/Pending.tsx` 写明这一页归哪个 WP。`App.test.tsx` 里两条断言钉住空路由的形状：起草页没有输入框也没有发送按钮，文件计划页没有任何执行按钮——工作单禁止假实现，测试就是这条禁令的执行者。要在这些页面上加控件的人会先撞到它们。
 10. **前端只有 4 个测试文件，没有组件快照。** 断言全是「用户能看见什么」（`getByRole` / 可见文本），不是 DOM 结构。快照测试会在 WP10 改版式的时候整片变红，却挡不住把云开关文案改掉这种真问题。
 
+## WP11 完成情况
+
+`crates/soul-fileplan` 落地：只读目录扫描、整理计划预览、`plan_hash`，以及一个没有成功分支的执行拒绝面。本机 `cargo test -p soul-fileplan -p soulcore` 绿（44 项），`cargo test --workspace --all-targets` 72 个测试目标全绿，`xtask` 三项（e0-audit / denylist-audit / schema-freeze --check）绿，`cargo clippy --workspace --all-targets --all-features -D warnings` 绿。
+
+D31 是这份工作单的边界：只读预览留在 Goal 1，写执行是 v0.1.1（AC-27）。所以这里没有 `execute`，也没有一个将来可以填上的 `Ok` 分支。
+
+| 交付 | 证据 |
+|---|---|
+| AC-18 未授权 100% 拒绝 | `tests/unauthorized_paths.rs::every_way_of_naming_the_unauthorized_directory_is_refused`：语料按「一条路径能被写成另一条路径的方式」构造——`..`、`.`、符号链接（出去的和留在里面的）、混用分隔符、大小写、`\\?\` / `\\.\` / `\\server\share`、盘符相对、保留设备名（`NUL` / `con.txt`）、尾随点与空格、备用数据流、控制字符、以及把根名当前缀的 `AlphaExtra`。30 条全部被拒且拒绝理由都属于「授权类」，语料长度本身被断言，缩水会红。同一批语料再走一遍 `preview`（UI 走的那道门），拒绝后目录逐字节不变 |
+| AC-18 授权侧真出计划 | `tests/authorized_scan.rs`：四条 move 逐条点名（`budget.csv → 表格/`、`photo.jpg → 图片/`、`report.pdf → 文档/`、`笔记.txt → 文档/`），八条 left-alone 连理由一起点名。没有这一半，上面那个 100% 用「永远返回错误」就能拿到 |
+| AC-18 扫描前后快照不变 | 同上：三条独立断言——crate 自己的 before/after `DirectorySnapshot` 相等；测试自己写的 `walk()`（不调用 crate 的哈希）在授权目录上前后逐项相等；同一个 `walk()` 在**整棵树**（含未授权的 `Bravo`）上前后相等。`tests/no_write_api.rs` 里连跑五次预览再比一遍 |
+| AC-19 未知动作 | `tests/execution_is_refused.rs`：`plan.execute` / `file.move` / 大小写变体 / 空串全部 `UNKNOWN_ACTION`；另一条对 `ActionKind::ALL` 里**不属于本面**的每一个动作断言同样的答案——文件计划面认得 `forget.execute` 就等于给遗忘开了第二道门 |
+| AC-19 plan_hash 变则拒 | 同上：改一条 move 的目的地、改一个计数字段、以及「批准之后用户往目录里存了一个文件再重扫」三条路径，都得到 `PLAN_HASH_MISMATCH` |
+| AC-19 令牌重放拒绝 | 同上：先真发一张 `ForgetExecute` 令牌并真消费掉，再拿它来请求执行，得到 `TOKEN_REPLAYED` 且审计动作是 `capability.reject` |
+| v0.1 不消费写文件令牌 | `refuse_execution(issuer: &TokenIssuer, …)` **不可变**借用账本，所以「不消费」是签名而不是分支。`a_file_write_token_is_neither_honoured_nor_spent`：发一张 `FileWrite` 令牌，请求执行被拒，`is_spent` 仍为 false，再请求一次仍是同一个 `WRITE_NOT_IMPLEMENTED`（若第一次偷偷烧掉，第二次会变成重放）。`FILEPLAN_ACTIONS` 里没有一个动作 `needs_capability_token` |
+| 完美请求也拒 | `a_request_with_nothing_wrong_with_it_is_refused_anyway`：用户发起、令牌有效、计划与批准的哈希一致，返回 `WRITE_NOT_IMPLEMENTED`。返回类型 `ExecutionRefusal` 不是 `Result`，没有成功变体可构造 |
+| 全 crate 禁写 API | `tests/no_write_api.rs` 三层：① 扫 `src/*.rs` 每一行（去掉注释）找 28 个写调用与存储写半边；② 读 `Cargo.toml`（去掉注释）断言 normal 依赖里没有 `soul-store` / `soul-collect` / `soul-import` / `tempfile`；③ 跑五次预览再比整棵树。控制用例喂五行真的写调用证明搜索认得出来，另喂三行读调用证明它不会误伤。还有一条断言公共面没有 `fn execute` / `apply` / `perform` / `commit` / `undo`，且 `execute.rs` 里不出现 `Result<` |
+| AC-25 文件名通道 | `tests/file_names_are_data.rs`：五个敌意文件名真落在磁盘上，扫描把它们计进 `injection_signals` 并出 `injection.blocked` 审计（只有计数），但仍然当数据留在计划里；对每个名字 × `ActionKind::ALL`，以 `ExternalContent` 发起全部被拒；名字提到的任何 URL 过 `NetGuard::closed()` 全拒。计划里能搜到 `李雷的照片.jpg`（控制），三条审计条目搜不到 |
+| 计划哈希稳定且可比 | `the_plan_hash_is_stable_until_the_directory_is_not`：同一目录两次预览哈希与计划完全相等；存进一个文件后哈希变、move 多一条。`executable_in_this_version: false` 在被哈希的值里面，把它改成 true 哈希就变 |
+| 目的地不出授权根 | `no_proposed_destination_leaves_the_authorized_root`：每条 move 的目的地都走同一个 `resolve`（对尚不存在的路径也成立），并断言它确实还不存在 |
+
+落地内容：`crates/soul-fileplan/{screen,authorize,refusal,kind,scan,plan,execute,preview}.rs` 与四个测试文件加 `tests/common/mod.rs`；`soulcore/src/commands/fileplan.rs`。根 `Cargo.toml` 追加了 member 与依赖项，`soulcore/Cargo.toml` 追加一行，`soulcore/src/commands/mod.rs` 追加 `pub mod fileplan;` 与目录注释里的一句。没有动 schema，没有动产品定义，没有新 fixture，没有动 `xtask`。
+
+### WP11 的取舍与遗留
+
+1. **路径筛查在原始字符串上做，不在 `Path` 上。** `Path` 每个平台解析得不一样：Linux 上 `\\?\C:\Windows` 是一个无害的相对段，没有根也没有分隔符，Windows 上它是绕过 Win32 规范化的 verbatim 设备路径。照着 `Path::components` 写的规则会在跑测试的机器上说没事、在发布的机器上才出事。所以 `screen.rs` 一律按字符判断，Windows 的那几条（保留设备名、尾随点与空格、备用数据流）在 Linux 上也生效——只在没有测试的平台上生效的规则等于没有规则。代价是 Linux 上一个合法含冒号的文件名会被判为不可计划（`SkipReason::UnplannableName`），这是有意选的保守方向。
+2. **包含性判两遍，符号链接一律不跟。** 词法一遍（对着用户授权时给的写法）、规范化一遍（`canonicalize` 解完链接之后）；中间还把根以下的每一段用 `symlink_metadata` 看一眼，是链接就拒，**指回自己目录里的链接也拒**。比包含性要求的更严，但它是「文件系统在检查和读取之间变了」也仍然成立的那条规则。`the_lexical_and_canonical_checks_disagree_about_a_link_on_purpose` 单独证明第二张网不是冗余的：一条出根的链接在词法上完全在根里面。
+3. **大小写是唯一不能到处一样的规则。** 折叠大小写会让包含性**更容易**成立，所以把 NTFS 的规则用在大小写敏感的文件系统上，会把 `/A/secret` 判进 `/a` 这个从没被授权的根里。`PathMatching` 因此是显式的两个变体，默认取平台真实行为，两个变体都在 Linux 上跑过。Windows 侧只有 `cfg!(windows)` 这一行没有被真机验过。
+4. **`ReasonCode` 借了 `CONSENT_MISSING`。** WP08 冻结的词表里没有 `PATH_NOT_AUTHORIZED`，而扩一个权限词表不是 WP11 该做的事。`CONSENT_MISSING` 对每一次授权类拒绝都是真话：用户从没同意过那个目录，这就是答案是「不」的全部原因。「读不到」和「不是目录」两种不是产品拒绝的情况记 `ROUTINE`。将来若要加词，`Refusal::reason_code` 是唯一要改的地方。
+5. **`refuse_execution` 把 HITL 的三步又写了一遍。** 为的是能不可变借用账本（见上表「不消费写文件令牌」那一行）。第二份拼写靠 `the_refusals_agree_with_the_policy_gate` 保持诚实：同一个请求，本面给的理由码必须等于 `soul_policy::hitl::check_action` 给的。
+6. **UI 视图没有接，`/files` 仍是 WP09 留的空路由。** 视图类型 `soulcore::commands::fileplan::PlanPreview` 已经就绪并有序列化形状测试（含 `deny_unknown_fields` 往返），接上去只差 `core.ts` / `commands.rs` / `router.tsx` 那几处注册。没有当场接的原因是本工作单与 WP10 起草 UI 在同一个工作树里并行，两边要改的正是同一批文件（`core.ts`、`contract.test.ts`、`src-tauri/src/commands.rs`、`router.tsx`、`App.test.tsx`），并发读改写会互相吞掉改动。`App.test.tsx::文件计划页没有任何执行按钮` 仍然是那条禁令的执行者，接视图的人会先撞到它——这正是它存在的意义。
+7. **没有加 `soulcore/tests/fileplan_commands.rs`。** 工作单允许的 soulcore 面只有 `src/commands/fileplan.rs`，所以命令面的六项测试写在模块内的 `#[cfg(test)]` 里。其中「本面没有执行入口」那条要把禁用的名字拼出来才能找它们，第一次跑的时候找到了自己，现在先把测试模块以下的部分切掉再搜。
+8. **授权列表不落盘。** `FilePlanSession` 只活在内存里；`Config.authorized_roots` 已经有这个字段，`from_config` 能从它恢复并把**不再解析得开的根当成拒绝报出来**而不是从列表里悄悄消失。配置文件本身住在哪里是 WP13 的问题，在它回答之前重启一次就要重新授权——这是错也要往安全那一边错的方向。
+9. **快照比的是 mtime 与长度，不是 atime。** 在挂了 atime 更新的文件系统上，`read_dir` 会动目录的访问时间。那是「读」的固有代价而不是写，快照要是把 atime 也算进去，每次扫描都会自己判自己失败。所以「磁盘没变」的准确含义是：没有条目增减、没有长度变化、没有修改时间变化。扫描不打开任何文件，所以文件的 atime 也不动。
+10. **泄漏检查用了两把尺子。** 中文短名用 4 个 scalar，英文名用产品自己的 `≥8`。原因是 `ctio` 是 `injection.blocked` 的片段而不是用户的内容，`prev` 是审计链自己的 `prev_hash`——在英文上把阈值压到 4，抓到的是契约的字段名。姓名/账号那条规则对两边都是任意长度生效，`李雷` 靠的是它。
+11. **整理规则故意很笨。** 只把散在最外层的文件按扩展名分进一层分类文件夹，目录不动、子目录里的不动、认不出的不动、目标已被占用的不动。理由是预览是给人批准的，一个人跟不上的推理不是可以被同意的东西。扩展名是猜测，所以 `kind.rs` 只按名字判断，一个字节都不读——一个仍然会打开每个文件的只读承诺比听上去要小。
+12. **`soul-fileplan` 不依赖 `soul-store`，因此扫描结果不落库。** PRODUCT_LOCK 把目录文件元数据采集和写执行一起推到 v0.1.1；没有存储依赖，「扫描不会悄悄变成采集」就不需要靠自觉。预览活在内存里，唯一比它活得久的是一条只带计数与哈希的审计条目。
+13. **扫描有上限**（深度 8、条目 20000）。撞上限时 `truncated` 为真并出 `SkipReason::DepthLimit` / `EntryLimit`，不是安静地少显示一些。上限值是拍的，等真机上有人对着家目录跑一次再调。
+
 ## 下一步
 
-批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集与 WP09 桌面壳第一段也已完成。下一步是 WP10 起草 UI（空路由已就位）与把壳接上真的 `SqlCipherStore`。不要启动 Goal 2。文件写入仍是 v0.1.1。
+批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集与 WP09 桌面壳第一段也已完成。批 5 的 WP11 核心与命令面已完成，视图未接。下一步是 WP09 功能视图（把起草与文件计划两个空路由接上核心，两边的视图类型都已就绪）与把壳接上真的 `SqlCipherStore`。不要启动 Goal 2。文件写入仍是 v0.1.1。
