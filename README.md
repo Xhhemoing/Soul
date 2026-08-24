@@ -1,9 +1,10 @@
 # Soul
 
-Windows 优先、本地优先的常驻桌面代理。它有一份用户可编辑的持久身份和三层记忆，在人在回路审批下操作这台电脑；动作可预览、可撤销、可审计。数据默认不出本机。
+灵魂级个人软件。根据你授权的社交档案、电脑操作和日常记录，在 Windows 本机复刻电子版的你——人格、记忆、心理倾向、人脉图——并辅助处理电脑事务、起草回复、分析人与事。本机采集与浅层处理；云端深度分析默认关闭。行为数据可在授权下用于行为预测研究。
 
-当前仓库处于产品锁定阶段，还没有可运行的应用。
+当前处于产品锁定阶段，还没有可运行的应用。
 
 - 产品锁定：[`docs/PRODUCT_LOCK.md`](docs/PRODUCT_LOCK.md)
+- 自主拍板：[`docs/DECISIONS.md`](docs/DECISIONS.md)
 - 进度：[`docs/STATUS.md`](docs/STATUS.md)
 - 正式开工提示词：[`docs/FORMAL_WORK_PROMPT.md`](docs/FORMAL_WORK_PROMPT.md)
