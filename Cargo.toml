@@ -16,6 +16,7 @@ members = [
   "crates/soul-collect",
   "crates/soul-draft",
   "crates/soul-fileplan",
+  "crates/soul-win-dpapi",
 ]
 
 [workspace.package]
@@ -73,6 +74,7 @@ soul-memory = { path = "crates/soul-memory", version = "0.1.0" }
 soul-collect = { path = "crates/soul-collect", version = "0.1.0" }
 soul-draft = { path = "crates/soul-draft", version = "0.1.0" }
 soul-fileplan = { path = "crates/soul-fileplan", version = "0.1.0" }
+soul-win-dpapi = { path = "crates/soul-win-dpapi", version = "0.1.0" }
 
 [profile.test]
 opt-level = 1

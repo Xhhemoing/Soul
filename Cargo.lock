@@ -1679,6 +1679,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "soul-win-dpapi"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.20",
+ "zeroize",
+]
+
+[[package]]
 name = "soulcore"
 version = "0.1.0"
 dependencies = [
