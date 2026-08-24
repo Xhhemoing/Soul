@@ -19,7 +19,7 @@
 
 ## WP01 完成情况
 
-`GOAL1_PLAN.md` 的五条完成定义全部满足，本机 Linux `just ci` 绿。
+`GOAL1_PLAN.md` 的五条完成定义在本机 Linux 上满足，`just ci` 绿。GitHub Actions 尚未在本推送上跑完；Windows SQLCipher 冒烟以 `test-windows` job 为准。
 
 | 完成定义 | 证据 |
 |---|---|
