@@ -33,6 +33,10 @@ export function Home({ snapshot }: HomeProps): React.JSX.Element {
           <li>
             已授权目录：<strong>{snapshot.authorized_root_count} 个</strong>
           </li>
+          <li>
+            社交软件聊天记录：<strong>本版不从 QQ / 微信客户端读取</strong>
+            （后续用进程外开源读取与 wechat-rpa 的导出再导入，Soul 只吃文件）
+          </li>
         </ul>
       </section>
 

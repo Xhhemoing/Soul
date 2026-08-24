@@ -1,34 +1,26 @@
 # agent/dev-sota — Goal 1 剩余实现
 
-**分支**：`agent/dev-sota`（基于 `origin/cursor/soul-goal1-7b1c` @ `862e858`）  
-**目标**：按 Round 1 简报落地 P0（WP10 起草、WP11 只读文件计划、壳接真库），每步写码 → 优化 → 审查。  
-**不做**：Goal 2、文件写执行、E0、OAuth、WP13 完整打包（可列缺口）、全面 WP09 功能视图（本轮最多薄 IPC）。
+**分支**：`agent/dev-sota`  
+**目标**：P0（WP10/WP11/壳接库）已落地。本轮按作者指示：聊天数据读取先不做；继续把已有核心接到 UI。
 
 ## 循环
 
 | 轮 | 内容 | 状态 |
 |---|---|---|
-| Plan | 2 fable 拆任务 + 2 opus 接口勘探 + 2 gpt-sol 工装/测试探针 | 完成 |
-| Write 波次1 | ST-00 骨架 + ST-03 壳接库 | 完成（`2920d2f`） |
-| Write 波次2 | ST-01 WP10 + ST-02 WP11（opus-fast 并行） | 完成（本提交） |
-| Optimize | 泄漏检查器假阳性、DPAPI 仅 Unsupported 回退、SOTA must-fix 补测 | 完成 |
-| Review | fable 全局 SOTA review（WP10/WP11 ship-with-must-fix → 已补） | 完成 |
-| PR | #4 `https://github.com/Xhhemoing/Soul/pull/4`；验证后合并进 `main` | 进行中 |
+| Plan | 拆 P0 | 完成 |
+| Write / Optimize / Review P0 | WP10 + WP11 + 壳接库 + SOTA 补钉 | 完成（`9705fb4`） |
+| 拍板 D32 | QQ/微信读取推迟：开源 QQ / wechat-rpa，进程外导出再导入 | 本轮 |
+| Plan 波次 UI | fable 拆 WP09 起草页 + 文件页 | 进行中 |
+| Write | opus-fast 并行：host DTO/IPC、起草 UI、文件 UI | 待 |
+| Review | fable SOTA | 待 |
+| PR | 更新 #4；CI 绿后合并 `main` | 进行中 |
 
-## 子任务
+## 作者新约束（2026-08-24）
 
-| ST | 包 | 状态 |
-|---|---|---|
-| ST-00 | 骨架注册 | 完成 |
-| ST-03 | 壳接真库 + 授权目录 | 完成 |
-| ST-01 | WP10 soul-draft + soulcore 编排 | 完成（见 `reports/ST-01.md`） |
-| ST-02 | WP11 soul-fileplan + soulcore 编排 | 完成（见 `reports/ST-02.md`） |
-| ST-04 | 收口回归 + STATUS/GOAL1_PLAN | 完成 |
+- **数据读取先不考虑。** QQ：既有开源项目。微信：wechat-rpa。
+- Soul 本仓库不嵌 RPA/抓取；日后只适配它们的导出为 `soul-import-v1`。
+- 采集页、OAuth、微信/QQ 客户端通道均不在本波次。
 
-## 约束
+## 本波次做
 
-- 子代理第一行声明实际模型 slug；禁止静默降级。
-- 实现者：`claude-opus-5-thinking-high-fast`。规划/审查：`claude-fable-5-thinking-xhigh`。探针：`gpt-5.6-sol-xhigh-fast`。
-- 权限/数据面与 UI 面分人。UI 不含业务逻辑。
-- `soul-fileplan` 无写 API。起草永不发送。
-- 无 DPAPI 时壳可用 `TestKeyProvider`，UI/SECURITY 必须如实写，不得声称 KEK 已保护。
+把已落地的 `soul-draft` / `soul-fileplan` 接到桌面：粘贴起草（无发送按钮）、授权目录只读计划（无执行按钮）。UI 无业务逻辑；IPC wrapper ≤1 句。
