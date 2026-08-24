@@ -17,8 +17,8 @@
 | 正式开工提示词（实现用） | `docs/FORMAL_WORK_PROMPT.md` |
 | 三轮双模型扫描模板 | `docs/templates/THREE_ROUND_DUAL_SCAN.md` |
 | 计划验证提示词 | `docs/PLAN_VERIFY_PROMPT.md` |
-| R1 双模型扫描 | 进行中 |
-| R2 规范修复 | 未开始 |
+| R1 双模型扫描 | 完成，见 `docs/scan-rounds/R1-SYNTHESIS.md`，结论 `PLAN_BLOCKED` |
+| R2 规范修复 | 进行中 |
 | R3 复核冻结 | 未开始 |
 | v0.1 实现 | 未开始 |
 
@@ -28,4 +28,4 @@
 
 ## 下一步
 
-跑完三轮扫描修复：每轮并行 `claude-opus-5-thinking-high-fast` 与 `gpt-5.6-sol-xhigh-fast`，综合稿交给下一轮。R3 结论为 `PLAN_FROZEN` 后再粘贴 `docs/FORMAL_WORK_PROMPT.md` 开工。
+R2 正在按 `docs/scan-rounds/R1-SYNTHESIS.md` 出规范补丁。R3 结论为 `PLAN_FROZEN` 前不要写业务代码。
