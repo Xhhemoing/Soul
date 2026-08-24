@@ -4,7 +4,7 @@
 
 ## 当前里程碑
 
-**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。批 1（WP01）与批 2（WP02 数据面 + WP08 权限面）已完成。Windows CI 在 schema freeze CRLF 修复后一度全绿；WP11 落地后 `test (windows-latest)` 因 `canonicalize` 的 `\\?\C:\...` 被当成 UNC 而红，筛查已改为只把本地盘的 extended-length 写法剥成盘符路径。WP13 第二段之后，桌面壳握着这个进程唯一的 `SqlCipherStore` 句柄，配置能读回来，`/files`、`/graph` 与起草的端点确认屏都不再是空路由。WP09 第三段之后**一条空路由都不剩**，向导也真的把那十一道题画出来了（见「WP09 完成情况（第三段）」）：`router.tsx` 里没有 `ownedBy` 了，AC-03 从此在壳上也走得通，不只在 headless 里。**DPAPI 已落地**（见「DPAPI 完成情况」）：Windows 上 KEK 由 `CryptProtectData` 用户级保护，DEK 包在它下面，`Session::open` 在那台机器上应当开得了库——前提是有一个登录用户的配置文件，这一条只有真机与 windows-latest 能证。
+**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。WP01–WP11、WP13 与 DPAPI 均已落地。**`2e72ddf` 上 GitHub Actions run [`32754617268`](https://github.com/Xhhemoing/Soul/actions/runs/32754617268) 五门全绿**：lint、ubuntu `just ci`、sbom、windows-latest `cargo test --workspace --all-targets`（含 NTFS 文件计划、`cfg(windows)` DPAPI、`one_store` 运行时那一半）、桌面壳 `command_surface` / `no_egress_path` / `one_store` / `shell_is_local_only`、`ipc_roundtrip --no-run`、以及 package（`soul.exe` 内嵌 `asInvoker`、`install-smoke.ps1 -SkipInstall` 15 项 0 失败）。AC-01 托盘外观、UAC 盾牌、真机采集、WebView2 流量、卸载与 `keys.dpapi` 仍只在 `scripts/author-manual-checklist.md` 上，CI 不能替，也不要在本文件假装过了。
 
 ## 进度
 
@@ -26,8 +26,8 @@
 | WP10 起草与人事摘要 | 完成。见下节。本机路径与端点路径的确认屏都已接上（遗留 6 消除） |
 | WP11 文件计划 | 完成。见下节。`/files` 已接 `PlanPreview`，仍然没有执行按钮（遗留 8 消除） |
 | WP13 安装 smoke / CI / SBOM / 壳接库 | 两段都完成。见下节。剩下的是 Windows 真机手动那七条 |
-| DPAPI（WP13 遗留） | 完成。见「DPAPI 完成情况」。`unsafe` 隔离在 `crates/soul-win-dpapi`，Windows 那一半等 windows-latest 第一次跑 |
-| v0.1 其余 WP | 未开始 |
+| DPAPI（WP13 遗留） | 完成。见「DPAPI 完成情况」。`unsafe` 隔离在 `crates/soul-win-dpapi`。windows-latest 已跑过 `cfg(windows)` 往返、`dpapi_key_chain`、桌面 `one_store`（`one_session_hands_out_one_store` 过） |
+| v0.1 其余 WP | 无。Goal 1 代码门禁在 `2e72ddf` 上绿；剩下的是作者 Win11 手动清单 |
 
 ## WP01 完成情况
 
@@ -467,11 +467,11 @@ CI 到此为止。下面每一条都要在 Windows 11 x64 真机上由作者过�
 5. **`Home` 上的「已授权目录」计数在这次会话里可能过期。** 那个数来自启动时读的一次 `config_snapshot`，授权一个新目录之后 `/files` 会更新，概览不会。`/files` 才是那份名单的现场视图。
 6. **`ipc_roundtrip` 的每个用例都新起一个应用。** Tauri 的 mock runtime 便宜，但这意味着「重启」和「同一个 session 上的两步」得分开表达——`Shell` 这个小结构体就是那条分界，`Shell::restart` 是前者，同一个 `Shell` 上调两次是后者。
 7. **`soul-headless` 没有接 `Session`。** 它照旧用 `open_test_store` 走临时库，因为它证明的是 AC-21 的主流程，不是安装后的那个目录。两条路都只经过 `store::open_store`，但它们不是同一个句柄，也不该是。
-8. **`one_store` 进了 windows-latest 那份点名清单，`ipc_roundtrip` 没有。** 后者链 WebView2 的 mock runtime，在 runner 上一条断言都跑不到（见 WP13 第一段遗留 7），只 `--no-run` 编译。`one_store` 不碰 mock runtime，而且它的运行时那一半正好是 Windows 的情况——DPAPI 拒绝，没有句柄可比，session 必须直说而不是蒙混过去。
+8. **`one_store` 进了 windows-latest 那份点名清单，`ipc_roundtrip` 没有。** 后者链 WebView2 的 mock runtime，在 runner 上一条断言都跑不到（见 WP13 第一段遗留 7），只 `--no-run` 编译——run `32754617268` 上这一步也绿了。`one_store` 不碰 mock runtime。DPAPI 落地之后运行时那一半在 windows-latest 上是两个 `Some` 且指针相等（`one_session_hands_out_one_store`）；`(None, None)` 且 `!store_opened` 仍留给没有加载用户配置文件的账户，不许变成「开了另一个库」。
 
 ## DPAPI 完成情况（Goal 1 的第三件事）
 
-Goal 1 剩下的三件事里的第三件：`DpapiKeyProvider` 不再是骨架。本机 Linux 上 `cargo test --workspace --all-targets` 绿（86 个测试目标 484 项）、`cargo clippy --workspace --all-targets --all-features -D warnings` 绿、`cargo fmt --all -- --check` 绿、`xtask all`（e0-audit / denylist-audit / schema-freeze --check）绿、`xtask sbom` 绿；`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --test one_store` 绿。**Windows 上的那一半没有跑过**——见下面的遗留 1。
+Goal 1 剩下的三件事里的第三件：`DpapiKeyProvider` 不再是骨架。本机 Linux 上 `cargo test --workspace --all-targets` 绿（86 个测试目标 484 项）、`cargo clippy --workspace --all-targets --all-features -D warnings` 绿、`cargo fmt --all -- --check` 绿、`xtask all`（e0-audit / denylist-audit / schema-freeze --check）绿、`xtask sbom` 绿；`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --test one_store` 绿。**Windows 那一半已在 windows-latest 上执行**：run `32754617268` 的 `cargo test --workspace --all-targets` 含 `soul-win-dpapi` 往返与 `dpapi_key_chain`，桌面壳 `one_store` 的 `one_session_hands_out_one_store` 过。
 
 ### 落法
 
@@ -494,8 +494,8 @@ Goal 1 剩下的三件事里的第三件：`DpapiKeyProvider` 不再是骨架。
 
 ### DPAPI 的取舍与遗留
 
-1. **Windows 那一半在这次工作里没有被执行过。** 写它的机器是 Linux，`soul-store` 编 vendored OpenSSL，连 `cargo check --target x86_64-pc-windows-msvc` 都跑不起来（perl 报不出 Windows 风格路径）。能在本机证明的只有：`soul-win-dpapi` 单独 `cargo check`/`clippy --target x86_64-pc-windows-msvc` 过，以及所有不带 `#[cfg]` 的那些测试。**第一份真答案来自 windows-latest 那个 job**，它跑 `cargo test --workspace --all-targets`，上面所有 `cfg(windows)` 的用例都在里面。
-2. **要一个登录用户，不是机器范围。** 不传 `CRYPTPROTECT_LOCAL_MACHINE`，所以没有加载用户配置文件的上下文（某些服务账户、某些 CI 沙箱）没有主密钥可用，`CryptProtectData` 会失败。那台机器上 `store_opened` 仍然是 false，notice 里带 Win32 状态码。这是有意的：机器范围意味着同机的另一个账户能解开这个库，那不是这个产品要的保护。**若 windows-latest 上因此红了，正确的修法是查 runner 的账户，不是改成机器范围。**
+1. ~~**Windows 那一半在这次工作里没有被执行过。**~~ **已执行。** run [`32754617268`](https://github.com/Xhhemoing/Soul/actions/runs/32754617268) 在 windows-latest 上跑了 `cargo test --workspace --all-targets`（含全部 `cfg(windows)`）和桌面 `one_store`。写代码的机器仍是 Linux，交叉 `cargo check --target x86_64-pc-windows-msvc` 仍然编不了 vendored OpenSSL；那不再是「没跑过」，只是「本机交叉编不了」。
+2. **要一个登录用户，不是机器范围。** 不传 `CRYPTPROTECT_LOCAL_MACHINE`，所以没有加载用户配置文件的上下文（某些服务账户、某些 CI 沙箱）没有主密钥可用，`CryptProtectData` 会失败。那台机器上 `store_opened` 仍然是 false，notice 里带 Win32 状态码。这是有意的：机器范围意味着同机的另一个账户能解开这个库，那不是这个产品要的保护。windows-latest 这一次**没有**因此失败：`one_session_hands_out_one_store` 拿到两个 `Some`。以后若红了，正确的修法仍是查 runner 的账户，不是改成机器范围。
 3. **`keys.dpapi` 是这台机器上唯一能打开 `soul.db` 的东西。** 删掉它、或者换一个 Windows 账户、或者重装系统丢了主密钥，库就永久打不开了。v0.1 没有导出/恢复这把密钥的入口，也没有在 UI 上说这件事。要不要有恢复码是产品决定，不是这一单能定的；**在有之前，卸载脚本不能删这个文件**（`scripts/author-manual-checklist.md` 第 7 节「卸载会不会删掉用户数据」现在多了一层意思）。
 4. **secondary entropy 是常量，写在源码里，不是秘密。** `soul/v1/dpapi/key-blob`。它买到的是「Soul 保护的 blob 不会被同账户下另一个程序顺手解开」，以及将来第二处用 DPAPI 时可以换一个串从而拿到独立的 blob。保护强度全部来自用户凭据，文档里写清楚了这一点，免得有人把它当成第二把密钥。
 5. **每次取密钥都读一遍文件、调一次 DPAPI，不缓存。** `SqlCipherStore::open` 会取两次（DEK 一次、KEK 一次），于是一次开库两次 `CryptUnprotectData`。缓存意味着 KEK 在内存里活得和 provider 一样久，而不是和一次调用一样久；两次系统调用换这个，划算。
@@ -536,14 +536,38 @@ Goal 1 剩下的三件事里的第一件：向导把十一道题画出来了，`
 9. **`/profile` 的纠正每次都把整屏重读一遍。** 锁、证据带、整段读法三样是一起动的，局部更新意味着界面得自己知道纠正一条轴会不会影响别的轴的证据带——那正是核心该知道而界面不该知道的东西。代价是一次纠正一次往返。
 10. **前端的 refusal 处理提成了 `refusal.tsx`。** 三条路由各有一份复本，现在七条共用一个 `asRefusal` 加一个 `Refused`。它不判断任何东西，只是把「核心扔出来的东西不一定长得像 `Refusal`」这件事收在一处。
 
+## Goal 1 门禁对照（`2e72ddf` / run 32754617268）
+
+CI 能证的一半已经在这一次 run 上绿了。作者手动那一半没有，所以 Goal 1 **还不能关**。
+
+| ID | CI / 自动化证据 | 仍缺 |
+|---|---|---|
+| AC-01 | `soul.exe` 内嵌 `asInvoker`；`install-smoke.ps1 -SkipInstall` 验证进程名、清单、`uiAccess=false` | 托盘图标、启动不弹 UAC 的肉眼、标准用户安装 NSIS——作者清单 1–4 |
+| AC-02 | headless 主流程 `fully_closed`；`session_commands` 配置形状拒能力字段；smoke「nothing is switched on」 | — |
+| AC-03 | 问卷 intake 与 `session_screens` / Wizard 测试 | — |
+| AC-04 / AC-05 | 导入 fixture + 无明文残留；Telegram 缺字段可读失败 | — |
+| AC-06 / AC-08 | 图谱边与推断解引用；≥3 节点 | — |
+| AC-07 | 纠正锁 + 起草 prompt 用用户值 | — |
+| AC-09 / AC-10 | `soul-collect` 假源：关=0；开≥1；撤销后 1s 无新事件 | 真机前台切换——作者清单 6 |
+| AC-11–AC-13 | mock LLM 精确 origin、占位、单次豁免 | — |
+| AC-14 / AC-15 | 记忆 CRUD、CK 销毁、墓碑、审计无正文 | — |
+| AC-16 / AC-17 | 人事摘要有证据、无诊断词；无 key 走模板且无非回环连接 | — |
+| AC-18 / AC-19 | 授权扫描只读预览、未授权 100% 拒绝、未知动作 / 改 hash / 重放拒绝 | — |
+| AC-20 | 研究预览第三人行=0、`written_to_disk=false` | — |
+| AC-21 | Linux 读 `/proc` 且 `observed`；Windows smoke 进程外 TCP 表 0 条非回环；源码 e0-audit | WebView2 子系统流量——作者清单 5 |
+| AC-22 | 云开关 UI + 核心恒「尚未启用」；依赖图无 E0 | 资源监视器那一眼——作者清单 5 |
+| AC-23 / AC-24 | 审计回放无正文；崩溃最多丢 1 条且链可验证 | — |
+| AC-25 | 导入 / 粘贴 / 文件名三路注入不进工具计划、不外连该 URL | — |
+| AC-26 | 同 run：lint、ubuntu `just ci`、windows workspace+壳、sbom、package | 真机 `tauri build` 拉 NSIS 仍是作者机器上的事 |
+
+十三个产品锁切片与上表同一条缝：灵魂层与只读代理层有测试；托盘外观与真机采集没有。
+
 ## 下一步
 
-批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集与 WP09 桌面壳三段也已完成。批 5 的 WP10 起草与人事摘要、WP11 文件计划都已完成并接到界面上。WP13 两段都完成：安装 smoke / CI / SBOM 是第一段，一个 store 句柄、能读回的配置、`/files` 与 `/graph` 与端点确认屏是第二段。
+批 3–5 与 WP13、DPAPI 都已完成。`2e72ddf` 上 CI 五门全绿。原先写在这里的三件事，两件已经做完，剩下的一件是人在真机前面：
 
-原先写在这里的三件事，两件已经做完，剩下的一件是人在真机前面：
-
-1. ~~**向导还没有画那十一道题。**~~ **已完成**，见「WP09 完成情况（第三段）」。十一道题、四条视图、`router.tsx` 里最后一个 `ownedBy`，都在那一段里。跟着它来的是几条只有真人能答的问题，都记在那一节的遗留里：这些页面在 150% 缩放下的中文排版没人看过（WP09 手动缺口 6 现在多了六页要看），`/audit` 到底要不要分页取决于真实使用几个月之后链有多长，而「遗忘」这个真会毁东西的按钮长什么样、放在哪里，是产品该看一眼的事，不是测试能定的。
-2. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替，也不要在文档里假装它们过了。
-3. ~~**DPAPI 要真的实现**~~ **已实现**，见「DPAPI 完成情况」。剩下的是三件跟着它来的事：windows-latest 上那批 `cfg(windows)` 用例第一次跑出来的结果；真机上确认有登录用户配置文件时库确实打得开（检查清单可以在第 3 节旁边加一条「`%LOCALAPPDATA%\Soul\keys.dpapi` 存在且 `/graph` 不再给拒绝」）；以及「丢了这个 blob 就永久打不开库」要不要在 UI 上说、卸载时要不要保留它。 NTFS 不能同时放下 `Alpha` 和 `alpha`，授权扫描的第三目录因此只在 Unix 上种；Windows 的大小写用例改写 `Alpha` 自己。AC-21 的套接字观察在 Linux CI 读 `/proc`，在 Windows CI 由 `scripts/install-smoke.ps1` 从进程外看 TCP 表——`soulcore` 禁止 `unsafe`，不能在库里调 Windows TCP API。
+1. ~~**向导还没有画那十一道题。**~~ **已完成**，见「WP09 完成情况（第三段）」。
+2. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替，也不要在文档里假装它们过了。package job 已上传 `soul.exe` 与 `soul-headless.exe` 工件，作者可以先用 `-SkipInstall` 对同一对二进制跑 smoke，再在本机 `tauri build` 走真安装。
+3. ~~**DPAPI 要真的实现**~~ **已实现，且 windows-latest 已跑过。** 真机上仍要确认有登录用户配置文件时 `%LOCALAPPDATA%\Soul\keys.dpapi` 存在且 `/graph` 不再给拒绝。卸载脚本不能删这个文件。NTFS 不能同时放下 `Alpha` 和 `alpha`，授权扫描的第三目录因此只在 Unix 上种。AC-21 的套接字观察在 Linux CI 读 `/proc`，在 Windows CI 由 `scripts/install-smoke.ps1` 从进程外看 TCP 表。
 
 不要启动 Goal 2。文件写入仍是 v0.1.1（AC-27）：`/files` 有计划、有哈希、没有执行按钮，也没有可以绑执行按钮的命令。
