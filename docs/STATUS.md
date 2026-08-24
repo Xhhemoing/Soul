@@ -4,7 +4,7 @@
 
 ## 当前里程碑
 
-**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。WP01–WP11、WP13 与 DPAPI 均已落地。**NSIS 安装目录与数据目录碰撞已在代码里关闭**（`installer-hooks.nsh` 强制 `%LOCALAPPDATA%\Programs\Soul`，`shell_is_local_only` 与 `install_smoke_script` 测试钉住；真机 NSIS 仍待作者手动）。**`2e72ddf` 上 GitHub Actions run [`32754617268`](https://github.com/Xhhemoing/Soul/actions/runs/32754617268) 五门全绿**：lint、ubuntu `just ci`、sbom、windows-latest `cargo test --workspace --all-targets`（含 NTFS 文件计划、`cfg(windows)` DPAPI、`one_store` 运行时那一半）、桌面壳 `command_surface` / `no_egress_path` / `one_store` / `shell_is_local_only`、`ipc_roundtrip --no-run`、以及 package（`soul.exe` 内嵌 `asInvoker`、`install-smoke.ps1 -SkipInstall` 15 项 0 失败）。AC-01 托盘外观、UAC 盾牌、真机采集、WebView2 流量、卸载与 `keys.dpapi` 仍只在 `scripts/author-manual-checklist.md` 上，CI 不能替，也不要在本文件假装过了。
+**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。WP01–WP11、WP13 与 DPAPI 均已落地。**NSIS 安装目录与数据目录碰撞已在代码里关闭**（`installer-hooks.nsh` 强制 `%LOCALAPPDATA%\Programs\Soul`，`shell_is_local_only` 与 `install_smoke_script` 测试钉住；真机 NSIS 仍待作者手动）。**`2e72ddf` 上 GitHub Actions run [`32754617268`](https://github.com/Xhhemoing/Soul/actions/runs/32754617268) 五门全绿**：lint、ubuntu `just ci`、sbom、windows-latest `cargo test --workspace --all-targets`（含 NTFS 文件计划、`cfg(windows)` DPAPI、`one_store` 运行时那一半）、桌面壳 `command_surface` / `no_egress_path` / `one_store` / `shell_is_local_only`、`ipc_roundtrip --no-run`、以及 package（`soul.exe` 内嵌 `asInvoker`、`install-smoke.ps1 -SkipInstall` 15 项 0 失败）。**HEAD `8b856bd` 的 hosted CI 没有跑起来**（[32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) 五门约 8 秒、0 step、空 `runner_name`；其后每次 push 同一形态）。同一账户上 `agent/dev-sota` 的 run 也是 0 step、空 runner，所以这不是本仓库 workflow 写坏了。GitHub Status 在 2026-08-24 14:34 UTC 那次 Actions 事故已经恢复，而 `2e72ddf` 的绿 run 17:05 才开始，HEAD 的空 runner 不是那次事故。更像是私有仓库 Actions minutes 用尽（Windows 分钟按 2 倍计；push 与 pull_request 曾经各开五门）。workflow 现改为功能分支只跑 `pull_request`，合入 `main` 才跑 `push`。请对 [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) **Re-run all jobs**，或恢复 minutes 后再推。那次绿的 package 工件早于 `9602b97`（NSIS 装进 Programs 而不是数据目录），**不能拿来做卸载 / `keys.dpapi` 的作者手动**。托盘文案已由 `shell_is_local_only` 钉成「打开 Soul」「退出 Soul」，图标是否出现在通知区仍只在 `scripts/author-manual-checklist.md` 上。UAC 盾牌、真机采集、WebView2 流量同左。CI 不能替，也不要在本文件假装过了。
 
 ## 进度
 
@@ -27,7 +27,7 @@
 | WP11 文件计划 | 完成。见下节。`/files` 已接 `PlanPreview`，仍然没有执行按钮（遗留 8 消除） |
 | WP13 安装 smoke / CI / SBOM / 壳接库 | 两段都完成。见下节。剩下的是 Windows 真机手动那七条 |
 | DPAPI（WP13 遗留） | 完成。见「DPAPI 完成情况」。`unsafe` 隔离在 `crates/soul-win-dpapi`。windows-latest 已跑过 `cfg(windows)` 往返、`dpapi_key_chain`、桌面 `one_store`（`one_session_hands_out_one_store` 过） |
-| v0.1 其余 WP | 无。Goal 1 代码门禁在 `2e72ddf` 上绿；剩下的是作者 Win11 手动清单 |
+| v0.1 其余 WP | 无。Goal 1 代码门禁在 `2e72ddf` 上绿；HEAD `8b856bd` 另有 NSIS Programs 目录与托盘文案钉死，hosted 五门尚未真正开跑。剩下的是 HEAD hosted 绿，以及作者 Win11 手动清单 |
 
 ## WP01 完成情况
 
@@ -536,13 +536,13 @@ Goal 1 剩下的三件事里的第一件：向导把十一道题画出来了，`
 9. **`/profile` 的纠正每次都把整屏重读一遍。** 锁、证据带、整段读法三样是一起动的，局部更新意味着界面得自己知道纠正一条轴会不会影响别的轴的证据带——那正是核心该知道而界面不该知道的东西。代价是一次纠正一次往返。
 10. **前端的 refusal 处理提成了 `refusal.tsx`。** 三条路由各有一份复本，现在七条共用一个 `asRefusal` 加一个 `Refused`。它不判断任何东西，只是把「核心扔出来的东西不一定长得像 `Refusal`」这件事收在一处。
 
-## Goal 1 门禁对照（`2e72ddf` / run 32754617268）
+## Goal 1 门禁对照（`2e72ddf` / run 32754617268；HEAD `8b856bd` hosted 未开跑）
 
-CI 能证的一半已经在这一次 run 上绿了。作者手动那一半没有，所以 Goal 1 **还不能关**。
+CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS Programs 目录与托盘文案钉死还没有 hosted package/test 跑过。作者手动那一半没有，所以 Goal 1 **还不能关**。
 
 | ID | CI / 自动化证据 | 仍缺 |
 |---|---|---|
-| AC-01 | `soul.exe` 内嵌 `asInvoker`；`install-smoke.ps1 -SkipInstall` 验证进程名、清单、`uiAccess=false` | 托盘图标、启动不弹 UAC 的肉眼、标准用户安装 NSIS——作者清单 1–4 |
+| AC-01 | `soul.exe` 内嵌 `asInvoker`；`install-smoke.ps1 -SkipInstall` 验证进程名、清单、`uiAccess=false`（`2e72ddf` package）。HEAD 另用测试钉住托盘文案与 `$INSTDIR=%LOCALAPPDATA%\Programs\Soul` | 托盘图标是否出现、启动不弹 UAC 的肉眼、标准用户 NSIS 真装真卸（须用 `8b856bd` 或之后在 Win11 上 `tauri build`，不要用 `2e72ddf` 工件）——作者清单 1–4 |
 | AC-02 | headless 主流程 `fully_closed`；`session_commands` 配置形状拒能力字段；smoke「nothing is switched on」 | — |
 | AC-03 | 问卷 intake 与 `session_screens` / Wizard 测试 | — |
 | AC-04 / AC-05 | 导入 fixture + 无明文残留；Telegram 缺字段可读失败 | — |
@@ -558,16 +558,17 @@ CI 能证的一半已经在这一次 run 上绿了。作者手动那一半没有
 | AC-22 | 云开关 UI + 核心恒「尚未启用」；依赖图无 E0 | 资源监视器那一眼——作者清单 5 |
 | AC-23 / AC-24 | 审计回放无正文；崩溃最多丢 1 条且链可验证 | — |
 | AC-25 | 导入 / 粘贴 / 文件名三路注入不进工具计划、不外连该 URL | — |
-| AC-26 | 同 run：lint、ubuntu `just ci`、windows workspace+壳、sbom、package | 真机 `tauri build` 拉 NSIS 仍是作者机器上的事 |
+| AC-26 | `2e72ddf` 同 run：lint、ubuntu `just ci`、windows workspace+壳、sbom、package。HEAD `8b856bd` 本地 `just ci` 绿；hosted [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) 五门空 runner | HEAD hosted 真正开跑并绿；真机 `tauri build` 拉 NSIS 仍是作者机器上的事 |
 
 十三个产品锁切片与上表同一条缝：灵魂层与只读代理层有测试；托盘外观与真机采集没有。
 
 ## 下一步
 
-批 3–5 与 WP13、DPAPI 都已完成。`2e72ddf` 上 CI 五门全绿。原先写在这里的三件事，两件已经做完，剩下的一件是人在真机前面：
+批 3–5 与 WP13、DPAPI 都已完成。`2e72ddf` 上 CI 五门全绿。HEAD `8b856bd` 本地绿，hosted 五门没有 runner。原先写在这里的三件事，两件已经做完，剩下的是 hosted 与真机：
 
 1. ~~**向导还没有画那十一道题。**~~ **已完成**，见「WP09 完成情况（第三段）」。
-2. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替，也不要在文档里假装它们过了。package job 已上传 `soul.exe` 与 `soul-headless.exe` 工件，作者可以先用 `-SkipInstall` 对同一对二进制跑 smoke，再在本机 `tauri build` 走真安装。
-3. ~~**DPAPI 要真的实现**~~ **已实现，且 windows-latest 已跑过。** 真机上仍要确认有登录用户配置文件时 `%LOCALAPPDATA%\Soul\keys.dpapi` 存在且 `/graph` 不再给拒绝。卸载脚本不能删这个文件。NTFS 不能同时放下 `Alpha` 和 `alpha`，授权扫描的第三目录因此只在 Unix 上种。AC-21 的套接字观察在 Linux CI 读 `/proc`，在 Windows CI 由 `scripts/install-smoke.ps1` 从进程外看 TCP 表。
+2. **HEAD hosted CI。** 请对 [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) **Re-run all jobs**，或恢复 Actions minutes。空 runner 不是产品回归。在 HEAD package 绿之前，不要用 `2e72ddf` 的 `windows-binaries` 做卸载 / `keys.dpapi`——那次构建还把程序装进数据目录。
+3. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替。真装真卸从 `8b856bd`（或之后）在本机 `tauri build`，不要用过期工件。采集探针：`soul-headless collect-probe --i-consent --seconds 20`。
+4. ~~**DPAPI 要真的实现**~~ **已实现，且 windows-latest 已跑过。** 真机上仍要确认有登录用户配置文件时 `%LOCALAPPDATA%\Soul\keys.dpapi` 存在且 `/graph` 不再给拒绝。卸载脚本不能删这个文件。NTFS 不能同时放下 `Alpha` 和 `alpha`，授权扫描的第三目录因此只在 Unix 上种。AC-21 的套接字观察在 Linux CI 读 `/proc`，在 Windows CI 由 `scripts/install-smoke.ps1` 从进程外看 TCP 表。
 
 不要启动 Goal 2。文件写入仍是 v0.1.1（AC-27）：`/files` 有计划、有哈希、没有执行按钮，也没有可以绑执行按钮的命令。
