@@ -114,9 +114,11 @@ fn one_session_hands_out_one_store() {
             Arc::ptr_eq(&first, &second),
             "two calls, two stores; the write-ahead logs would diverge from here",
         ),
-        // Windows: DPAPI still refuses rather than fabricating a key, so there
-        // is no handle to compare. That is the documented state, not a pass by
-        // accident, and the source checks above still ran.
+        // A machine whose key provider could not produce a key has no handle
+        // to compare. Since DPAPI landed that should not happen on Windows —
+        // an account with no loaded user profile has no master key, and that
+        // is the case this arm is left for. It has to be a session that says
+        // the store is closed, not one that quietly opened something else.
         (None, None) => assert!(!session.status().store_opened),
         _ => panic!("the session opened a store between two calls"),
     }

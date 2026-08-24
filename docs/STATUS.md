@@ -4,7 +4,7 @@
 
 ## 当前里程碑
 
-**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。批 1（WP01）与批 2（WP02 数据面 + WP08 权限面）已完成。Windows CI 在 schema freeze CRLF 修复后一度全绿；WP11 落地后 `test (windows-latest)` 因 `canonicalize` 的 `\\?\C:\...` 被当成 UNC 而红，筛查已改为只把本地盘的 extended-length 写法剥成盘符路径。WP13 第二段之后，桌面壳握着这个进程唯一的 `SqlCipherStore` 句柄，配置能读回来，`/files`、`/graph` 与起草的端点确认屏都不再是空路由；Windows 上库仍然打不开，因为 DPAPI 还是骨架。
+**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。批 1（WP01）与批 2（WP02 数据面 + WP08 权限面）已完成。Windows CI 在 schema freeze CRLF 修复后一度全绿；WP11 落地后 `test (windows-latest)` 因 `canonicalize` 的 `\\?\C:\...` 被当成 UNC 而红，筛查已改为只把本地盘的 extended-length 写法剥成盘符路径。WP13 第二段之后，桌面壳握着这个进程唯一的 `SqlCipherStore` 句柄，配置能读回来，`/files`、`/graph` 与起草的端点确认屏都不再是空路由。**DPAPI 已落地**（见「DPAPI 完成情况」）：Windows 上 KEK 由 `CryptProtectData` 用户级保护，DEK 包在它下面，`Session::open` 在那台机器上应当开得了库——前提是有一个登录用户的配置文件，这一条只有真机与 windows-latest 能证。
 
 ## 进度
 
@@ -26,6 +26,7 @@
 | WP10 起草与人事摘要 | 完成。见下节。本机路径与端点路径的确认屏都已接上（遗留 6 消除） |
 | WP11 文件计划 | 完成。见下节。`/files` 已接 `PlanPreview`，仍然没有执行按钮（遗留 8 消除） |
 | WP13 安装 smoke / CI / SBOM / 壳接库 | 两段都完成。见下节。剩下的是 Windows 真机手动那七条 |
+| DPAPI（WP13 遗留） | 完成。见「DPAPI 完成情况」。`unsafe` 隔离在 `crates/soul-win-dpapi`，Windows 那一半等 windows-latest 第一次跑 |
 | v0.1 其余 WP | 未开始 |
 
 ## WP01 完成情况
@@ -75,7 +76,7 @@
 
 1. **`soul-store-api` 只加不减，加的是 `research.rs`。** 合同里原本没有任何研究面，AC-20 无法对着存储边界表达。新增 `ResearchPreview` trait 故意**不**并进 `SoulStore`：研究轨道只读，写路径不该能碰到它。同一模块还提供 `zero_third_party_rows(counted)`——这是 `third_party_rows` 唯一的构造入口，只接受 0，所以那个字段不可能是没人验过的字面量。`run_conformance` 一行未改，`FakeStore` 未实现 `ResearchPreview`（真库以外没有事件表可查）。
 2. **审计链的三个字段由库写，不由调用方写。** `append_audit` 覆盖 `seq` / `prev_hash` / `entry_hash`：调用方能自带链接的话，链就只对它自己自洽，AC-24 的「重开后链通过」也就不成立。`conformance` 传进来的占位哈希因此被覆盖，它只断言条数与无正文，不受影响。WP08 若要接管审计，接的是这套语义：链归存储，内容归调用方，`additionalProperties: false` 挡正文。
-3. **`DpapiKeyProvider` 是骨架，Windows 密钥保护仍是缺口。** 见 `SECURITY.md`。Win32 绑定要 `unsafe`，本 crate `#![forbid(unsafe_code)]`，两个入口宁可返回 `KeyError::Unsupported` 也不编造密钥。补齐前不要在 UI 上声称 Windows 的 KEK 已受保护。
+3. ~~**`DpapiKeyProvider` 是骨架，Windows 密钥保护仍是缺口。**~~ **已消除**，见下面「DPAPI 完成情况」。`unsafe` 没有进 `soul-store`：它在新的 `crates/soul-win-dpapi` 里，`soul-store` 仍然 `#![forbid(unsafe_code)]`。
 4. **遗忘是单事务，所以中途崩溃是回滚而不是半毁。** 工作单要求「要么 CK 还在且可解密，要么已销毁且不可解密」，两侧都合格；实现选了前者，并把这个选择写成断言，将来若改成分批提交，测试会立刻红。
 5. **时间桶按 UTC 小时切。** `ts` 以 `Z` 结尾时取 `substr(ts,1,13)`；带偏移量的时间戳降级成日期级桶，而不是把本地小时贴上 `time_bucket_utc` 的标签。v0.1 写入方一律用 UTC，这条是防御性的。
 6. **`zeroize` 不开 `derive`。** `zeroize_derive` 1.5 需要 edition 2024，工作区钉 1.83。`SecretKey` 手写 `Drop` 调 `[u8; 32]::zeroize`，`Debug` 打印 `<redacted>`，有测试。
@@ -459,7 +460,7 @@ CI 到此为止。下面每一条都要在 Windows 11 x64 真机上由作者过�
 
 ### WP13 第二段的取舍与遗留
 
-1. **Windows 上库仍然打不开。** `DpapiKeyProvider` 是 SECURITY.md 里写着的骨架，`KeyError::Unsupported`。session 不去替它兜底：那台机器上 `store_opened` 是 false，`/graph` 给拒绝，`/files` 照常工作（文件计划不碰库）。**要它变绿得先实现 DPAPI**，那是安全面的工作单，不是这里现编一个 key 派生。
+1. ~~**Windows 上库仍然打不开。**~~ **已消除（DPAPI 那一单）。** session 那一侧一行没改：它照旧不替 provider 兜底，provider 给不出密钥就 `store_opened = false`、`/graph` 给拒绝、`/files` 照常工作。变了的是 provider 现在在 Windows 上给得出密钥。
 2. **session 的命令不写审计。** 授权目录、看计划、看摘要这三件事里，只有文件计划本来就有自己的审计条目（`FilePlanSession` 写）。「用户授权了一个目录」在冻结的 `audit.schema.json` 里没有对应动作，和 WP10 遗留 4 是同一条理由：现编一个动作等于让审计条目声称一件契约没说过的事。
 3. **`config.json` 是明文。** 它只有一个布尔和一串路径，没有一个字节是内容。把它放进库里意味着「读配置」要先「开库」，而库开不开正是配置要报告的事情之一——那是个环。路径本身算不算隐私是可以讨论的，讨论的结果如果是「算」，那要改的是把它挪进库并接受首次启动读不到它。
 4. **`SOUL_DATA_DIR` 是一个真的环境变量，不是只在测试里生效。** 它在平台规则**之前**读，所以一个测试没法半躲开平台规则。代价是任何人都能用它把 Soul 指到别处；这和「数据目录在哪里得看得见」是同一件事的两面，且它不会打开任何能力。
@@ -467,6 +468,40 @@ CI 到此为止。下面每一条都要在 Windows 11 x64 真机上由作者过�
 6. **`ipc_roundtrip` 的每个用例都新起一个应用。** Tauri 的 mock runtime 便宜，但这意味着「重启」和「同一个 session 上的两步」得分开表达——`Shell` 这个小结构体就是那条分界，`Shell::restart` 是前者，同一个 `Shell` 上调两次是后者。
 7. **`soul-headless` 没有接 `Session`。** 它照旧用 `open_test_store` 走临时库，因为它证明的是 AC-21 的主流程，不是安装后的那个目录。两条路都只经过 `store::open_store`，但它们不是同一个句柄，也不该是。
 8. **`one_store` 进了 windows-latest 那份点名清单，`ipc_roundtrip` 没有。** 后者链 WebView2 的 mock runtime，在 runner 上一条断言都跑不到（见 WP13 第一段遗留 7），只 `--no-run` 编译。`one_store` 不碰 mock runtime，而且它的运行时那一半正好是 Windows 的情况——DPAPI 拒绝，没有句柄可比，session 必须直说而不是蒙混过去。
+
+## DPAPI 完成情况（Goal 1 的第三件事）
+
+Goal 1 剩下的三件事里的第三件：`DpapiKeyProvider` 不再是骨架。本机 Linux 上 `cargo test --workspace --all-targets` 绿（86 个测试目标 484 项）、`cargo clippy --workspace --all-targets --all-features -D warnings` 绿、`cargo fmt --all -- --check` 绿、`xtask all`（e0-audit / denylist-audit / schema-freeze --check）绿、`xtask sbom` 绿；`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --test one_store` 绿。**Windows 上的那一半没有跑过**——见下面的遗留 1。
+
+### 落法
+
+新 crate `crates/soul-win-dpapi`，公开面只有 `protect` / `unprotect` 两个函数与一个 `DpapiError`。唯一的 `unsafe` 在 `src/sys.rs` 的一个函数里：两个 `extern "system"` 声明（`CryptProtectData` / `CryptUnprotectData`，加 `LocalFree` 与 `GetLastError`）与一次调用，输出缓冲复制一份后先擦零再 `LocalFree`。crate 根在 Windows 上 `deny(unsafe_code)`、其它平台 `forbid(unsafe_code)`，和 `soul-collect` 的 `windows.rs` 是同一个写法与同一个理由：四个声明比一个绑定 crate 便宜，而且工作区的第三方版本是集中钉的。
+
+`soul-store` 因此**没有**放宽 `#![forbid(unsafe_code)]`，也没有加一个 `#[cfg]`：`soul-win-dpapi` 在非 Windows 上照常编译并返回 `Unsupported`，所以 `DpapiKeyProvider` 的每一行都由 Linux 构建类型检查过。
+
+`%LOCALAPPDATA%\Soul\keys.dpapi` 的内容是 `魔数‖u32 长度‖DPAPI(KEK)‖24 字节 nonce‖u32 长度‖KEK 包裹的 DEK`，AAD 是 `soul/v1/database-dek`。完整的表与作用范围说明在 `SECURITY.md` 的「DPAPI 落地」一节。
+
+| 交付 | 证据 |
+|---|---|
+| KEK 由 DPAPI 保护，不是编的也不是派生的 | `crates/soul-win-dpapi/tests/roundtrip.rs`（`cfg(windows)`）：往返逐字节一致、blob 里搜不到那 32 字节、同一密钥保护两次得到两个不同的 blob、换 entropy 与改一个字节都解不开、喂垃圾只拿到状态码不 panic |
+| KEK 包裹 DEK，两把是独立的随机密钥 | `crates/soul-store/src/keys.rs` 单元测试：包裹后的字节不等于 DEK、换一把 KEK 解不开、改一个字节解不开、**用 `content-key\|<id>` 那个 AAD 包出来的 32 字节也解不开**（所以 `content_keys` 表里的一行不能被塞进 blob 当数据库密钥用） |
+| 文件格式坏一点就拒，而且不覆盖 | 同上：空文件、截断的魔数、改过的版本字节、多一个尾字节、长度字段说谎、长度为 0、三处截断，九种全拒；对照的好 blob 必须过。`open_blob` 报 `KeyError::Corrupt` 并把文件原样留着——它是这台机器上唯一能打开 `soul.db` 的东西 |
+| 真的开得了库 | `crates/soul-store/tests/dpapi_key_chain.rs`：开库 → 写一行 → 关库 → **新 provider** 重开 → 把那一行读回来。这个文件里一个 `#[cfg]` 都没有，两半都编译，靠 `cfg!` 在运行时分支——`soul-store` 编 vendored OpenSSL，在 Linux 上根本 `cargo check --target x86_64-pc-windows-msvc` 不了，所以「Windows 那半编得过」只能靠这个写法保证 |
+| Linux 上走的不是这条路 | `soulcore/tests/session_commands.rs::nothing_but_the_developer_seed_file_opens_the_store_off_windows`：断言的是盘上有什么——`soul-test-keys.bin` 在、`keys.dpapi` 不在。`key_protection` 那个标签是 session 自己写的字符串，证不了谁开的库。同文件里 `the_session_says_which_key_material_opened_the_store` 的 Windows 分支现在要求 `store_opened` 为真且 blob 落地 |
+| 非 Windows 上拒绝，而且拒绝时不写文件 | `keys.rs::off_windows_the_provider_refuses_and_leaves_no_key_material_behind`：两个入口都 `Unsupported`，目录里一个文件都没有。一个「服务不了这个平台却留下了文件」的 provider，是一个编了密钥又不用的 provider |
+
+落地内容：`crates/soul-win-dpapi/{Cargo.toml,src/lib.rs,src/sys.rs,tests/roundtrip.rs}`；`crates/soul-store/src/keys.rs`（`DpapiKeyProvider` 实现、`KeyError::Corrupt`、blob 编解码与 DEK 包裹）与 `crates/soul-store/tests/dpapi_key_chain.rs`；`crates/soulcore/src/commands/session.rs` 只改注释；`crates/soulcore/tests/session_commands.rs`；`apps/desktop/src-tauri/tests/{one_store,ipc_roundtrip}.rs` 各改一段注释。根 `Cargo.toml` 追加 member 与依赖项，两份 `Cargo.lock` 各多一个包。没有动 schema，没有动产品定义，没有新 fixture，没有动 `xtask`，没有加第三方依赖，`deny.toml` 一行未改。
+
+### DPAPI 的取舍与遗留
+
+1. **Windows 那一半在这次工作里没有被执行过。** 写它的机器是 Linux，`soul-store` 编 vendored OpenSSL，连 `cargo check --target x86_64-pc-windows-msvc` 都跑不起来（perl 报不出 Windows 风格路径）。能在本机证明的只有：`soul-win-dpapi` 单独 `cargo check`/`clippy --target x86_64-pc-windows-msvc` 过，以及所有不带 `#[cfg]` 的那些测试。**第一份真答案来自 windows-latest 那个 job**，它跑 `cargo test --workspace --all-targets`，上面所有 `cfg(windows)` 的用例都在里面。
+2. **要一个登录用户，不是机器范围。** 不传 `CRYPTPROTECT_LOCAL_MACHINE`，所以没有加载用户配置文件的上下文（某些服务账户、某些 CI 沙箱）没有主密钥可用，`CryptProtectData` 会失败。那台机器上 `store_opened` 仍然是 false，notice 里带 Win32 状态码。这是有意的：机器范围意味着同机的另一个账户能解开这个库，那不是这个产品要的保护。**若 windows-latest 上因此红了，正确的修法是查 runner 的账户，不是改成机器范围。**
+3. **`keys.dpapi` 是这台机器上唯一能打开 `soul.db` 的东西。** 删掉它、或者换一个 Windows 账户、或者重装系统丢了主密钥，库就永久打不开了。v0.1 没有导出/恢复这把密钥的入口，也没有在 UI 上说这件事。要不要有恢复码是产品决定，不是这一单能定的；**在有之前，卸载脚本不能删这个文件**（`scripts/author-manual-checklist.md` 第 7 节「卸载会不会删掉用户数据」现在多了一层意思）。
+4. **secondary entropy 是常量，写在源码里，不是秘密。** `soul/v1/dpapi/key-blob`。它买到的是「Soul 保护的 blob 不会被同账户下另一个程序顺手解开」，以及将来第二处用 DPAPI 时可以换一个串从而拿到独立的 blob。保护强度全部来自用户凭据，文档里写清楚了这一点，免得有人把它当成第二把密钥。
+5. **每次取密钥都读一遍文件、调一次 DPAPI，不缓存。** `SqlCipherStore::open` 会取两次（DEK 一次、KEK 一次），于是一次开库两次 `CryptUnprotectData`。缓存意味着 KEK 在内存里活得和 provider 一样久，而不是和一次调用一样久；两次系统调用换这个，划算。
+6. **`keys.dpapi` 先写 `.partial` 再 rename，但没有 fsync。** 和 `config.json` 同一个写法。断在中间时下次启动看到的是「没有 blob」，那时库也还不存在，所以从零开始是对的状态。真正的风险窗口是「blob 写成了、库还没建」和它的反面，两者都只会让下一次启动重建缺的那一半。
+7. **`KeyError` 多了一个 `Corrupt` 变体。** 现有的 `Malformed` 说的是「文件长度不对」，对 `TestKeyProvider` 的定长种子文件够用，对一个有结构的 blob 不够。没有复用 `Unavailable`，因为这两种要给用户的话不一样：一个是「这台机器解不开」，一个是「这个文件不是这一版认得的形状」。
+8. **UI 上那句话没有改。** `KeyProtection::Dpapi.notice()` 一直写着「数据库密钥由 Windows 的用户级密钥保护接管。」——在这一单之前它是提前写好的，现在它是真的。屏幕上没有一个字需要动，这正好说明当初把 `KeyProtection` 分成两个变体是对的。
 
 ## 下一步
 
@@ -476,6 +511,6 @@ CI 到此为止。下面每一条都要在 Windows 11 x64 真机上由作者过�
 
 1. **向导还没有画那十一道题。** `profile::questions()` 给出题面、选项和形状，`profile::intake` 收答案，`fixtures/questionnaire/v0_1.json` 钉住题号。store 句柄这个挡路的东西已经没有了——向导现在有 session 可用，缺的只是那一屏。同一批里还有 `/profile`、`/memory`、`/research`、`/audit` 四条 WP09 功能视图的空路由，核心与命令面都在，接法和 `/files`、`/graph` 一样。
 2. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替，也不要在文档里假装它们过了。
-3. **DPAPI 要真的实现**，否则 Windows 上库打不开、`/graph` 只会给拒绝。这是 Goal 1 在目标平台上能不能读自己数据的前提。
+3. ~~**DPAPI 要真的实现**~~ **已实现**，见「DPAPI 完成情况」。剩下的是三件跟着它来的事：windows-latest 上那批 `cfg(windows)` 用例第一次跑出来的结果；真机上确认有登录用户配置文件时库确实打得开（检查清单可以在第 3 节旁边加一条「`%LOCALAPPDATA%\Soul\keys.dpapi` 存在且 `/graph` 不再给拒绝」）；以及「丢了这个 blob 就永久打不开库」要不要在 UI 上说、卸载时要不要保留它。
 
 不要启动 Goal 2。文件写入仍是 v0.1.1（AC-27）：`/files` 有计划、有哈希、没有执行按钮，也没有可以绑执行按钮的命令。

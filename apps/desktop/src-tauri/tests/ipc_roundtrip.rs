@@ -498,9 +498,10 @@ fn an_authorized_directory_scans_read_only_and_is_remembered() {
 fn the_people_screen_reads_an_empty_store_as_an_empty_graph() {
     let graph = match invoke("people_graph", json!({})) {
         Ok(graph) => graph,
-        // On a platform whose key provider refuses — Windows, where DPAPI is
-        // still a skeleton — the store does not open and the refusal is the
-        // honest answer. It must still be a refusal with a code on it.
+        // On a machine whose key provider could not produce a key the store
+        // does not open, and a refusal is the honest answer. It must still be
+        // a refusal with a code on it rather than an empty graph, because the
+        // two must not look the same on screen.
         Err(refusal) => {
             assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
             return;

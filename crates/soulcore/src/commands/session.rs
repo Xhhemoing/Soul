@@ -31,13 +31,20 @@
 //! ## Key material
 //!
 //! [`key_provider`] picks the platform one. On Windows that is
-//! `DpapiKeyProvider`, which — see `docs/SECURITY.md` — still refuses rather
-//! than fabricating a key, so the store does not open there yet and the
-//! session says so in as many words. Anywhere else, which for this product
-//! means a developer machine or Linux CI, it is `TestKeyProvider` against a
-//! seed file in the same directory, and [`KeyProtection`] carries that fact to
-//! the interface so nothing on screen can claim a protection this build does
-//! not have.
+//! `DpapiKeyProvider`, which — see `docs/SECURITY.md` — protects the KEK with
+//! `CryptProtectData` under the logged-in user and keeps the database key
+//! wrapped under it in `keys.dpapi` beside the database. Anywhere else, which
+//! for this product means a developer machine or Linux CI, it is
+//! `TestKeyProvider` against a seed file in the same directory, and
+//! [`KeyProtection`] carries that fact to the interface so nothing on screen
+//! can claim a protection this build does not have.
+//!
+//! Either way the store may still fail to open — a Windows account with no
+//! loaded user profile has no DPAPI master key to protect anything with — and
+//! that is a state the session reports rather than works around. There is no
+//! fallback path from the Windows provider to the developer one; a build that
+//! quietly downgraded its key protection would be worse than one that did not
+//! start.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -134,7 +141,9 @@ pub enum DirectoryError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum KeyProtection {
-    /// Windows DPAPI. Still a skeleton — see `docs/SECURITY.md`.
+    /// Windows DPAPI, protecting the KEK under the logged-in user. The chain
+    /// below it is `docs/SECURITY.md`'s: KEK wraps the database key and every
+    /// content key.
     Dpapi,
     /// A seed file beside the database, with no platform protection at all.
     DeveloperKeyFile,
@@ -167,6 +176,11 @@ impl KeyProtection {
 /// means the Windows arm is type-checked by the Linux build too. With
 /// `#[cfg]` it would only ever be compiled on the platform nobody develops on,
 /// which is where a rename goes unnoticed until CI.
+///
+/// The branch is one-way. Nothing below it may fall back from `Dpapi` to
+/// `DeveloperKeyFile`: a Windows machine whose DPAPI is unavailable has to be
+/// told so, not handed an unprotected seed file with the same database
+/// behind it.
 fn key_provider(directory: &Path) -> (Box<dyn soul_store::KeyProvider>, KeyProtection) {
     if cfg!(windows) {
         (

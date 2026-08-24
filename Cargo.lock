@@ -1642,6 +1642,7 @@ dependencies = [
  "soul-schema",
  "soul-store-api",
  "soul-testkit",
+ "soul-win-dpapi",
  "tempfile",
  "thiserror 2.0.20",
  "uuid",

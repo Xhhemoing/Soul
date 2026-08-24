@@ -368,9 +368,13 @@ fn a_store_with_nobody_in_it_produces_an_empty_graph() {
     drop(keep);
 }
 
-/// The key material this machine used is named rather than assumed. On the
-/// platform Soul ships to that is DPAPI, which still refuses — so the session
-/// says the store did not open instead of pretending it did.
+/// The key material this machine used is named rather than assumed.
+///
+/// On the platform Soul ships to that is DPAPI, and since the provider stopped
+/// being a skeleton the store opens there: the KEK is protected under the
+/// logged-in user in `keys.dpapi`, and the notice on screen says so instead of
+/// explaining why there is nothing to show. Anywhere else the seed file beside
+/// the database is what opened it, and the notice has to admit that.
 #[test]
 fn the_session_says_which_key_material_opened_the_store() {
     let (keep, directory) = scratch();
@@ -378,9 +382,16 @@ fn the_session_says_which_key_material_opened_the_store() {
 
     if cfg!(windows) {
         assert_eq!(status.key_protection, "dpapi");
-        assert!(!status.store_opened, "DPAPI is still a skeleton");
-        assert!(status.store_notice.contains("没有打开"));
-        assert!(!directory.join(KEY_BLOB_FILE_NAME).exists());
+        assert!(status.store_opened, "{}", status.store_notice);
+        assert!(
+            status.store_notice.contains("密钥"),
+            "a protected build has to say what protects it: {}",
+            status.store_notice,
+        );
+        assert!(
+            directory.join(KEY_BLOB_FILE_NAME).is_file(),
+            "the store opened without a DPAPI-protected KEK beside it",
+        );
     } else {
         assert_eq!(status.key_protection, "developer_key_file");
         assert!(status.store_opened);
@@ -388,6 +399,37 @@ fn the_session_says_which_key_material_opened_the_store() {
             status.store_notice.contains("开发构建"),
             "a build with no platform key protection has to say so",
         );
+        assert!(
+            !directory.join(KEY_BLOB_FILE_NAME).exists(),
+            "there is no DPAPI on this platform, so nothing may write its blob",
+        );
     }
+    drop(keep);
+}
+
+/// The other half of the same promise, and the one Linux CI is here to check:
+/// the Windows provider is not what opened this store.
+///
+/// `key_protection` is a label the session writes; this looks at what is
+/// actually on disk. `TestKeyProvider::in_dir` leaves `soul-test-keys.bin`
+/// and `DpapiKeyProvider` leaves `keys.dpapi`, so exactly one of them is
+/// present on any machine and it says which provider ran.
+#[test]
+fn nothing_but_the_developer_seed_file_opens_the_store_off_windows() {
+    if cfg!(windows) {
+        return;
+    }
+    let (keep, directory) = scratch();
+    let session = Session::open(&directory);
+
+    assert!(session.status().store_opened);
+    assert!(
+        directory.join("soul-test-keys.bin").is_file(),
+        "the developer seed file is what opens the store on this platform",
+    );
+    assert!(
+        !directory.join(KEY_BLOB_FILE_NAME).exists(),
+        "a DPAPI key blob off Windows means the platform branch went the wrong way",
+    );
     drop(keep);
 }

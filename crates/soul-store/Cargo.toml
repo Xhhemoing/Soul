@@ -10,6 +10,11 @@ description = "Soul's encrypted main database: SQLCipher pages, XChaCha20-Poly13
 [dependencies]
 soul-schema = { workspace = true }
 soul-store-api = { workspace = true }
+# The two Win32 calls behind `DpapiKeyProvider`, in the one crate in this
+# workspace that is allowed an `unsafe` block on the key path. It compiles on
+# every platform and refuses on the ones without DPAPI, which is what keeps
+# this crate free of `#[cfg]` and free of `unsafe`.
+soul-win-dpapi = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

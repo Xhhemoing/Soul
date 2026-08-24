@@ -3517,6 +3517,7 @@ dependencies = [
  "sha2",
  "soul-schema",
  "soul-store-api",
+ "soul-win-dpapi",
  "thiserror 2.0.20",
  "uuid",
  "zeroize",
@@ -3532,6 +3533,14 @@ dependencies = [
  "soul-schema",
  "thiserror 2.0.20",
  "uuid",
+]
+
+[[package]]
+name = "soul-win-dpapi"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.20",
+ "zeroize",
 ]
 
 [[package]]

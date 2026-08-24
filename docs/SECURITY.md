@@ -41,9 +41,29 @@ Linux 上没有 DPAPI。CI 与 headless 测试走 `TestKeyProvider`：密钥来�
 WP02 已落 `KeyProvider` 抽象，两个实现在 `crates/soul-store/src/keys.rs`：
 
 - `TestKeyProvider`：`from_seed("…")` 由固定串按域分离派生 DEK 与 KEK（同一 seed 跨进程可重现，崩溃测试的子进程靠这个重开同一个库）；`in_dir(dir)` 把 64 字节种子放在 `dir/soul-test-keys.bin`，首次使用时生成。两条路都不碰平台密钥库，名字里写明只作测试用。
-- `DpapiKeyProvider`：**骨架**。类型可构造、跨平台可编译，但两个取密钥入口都返回 `KeyError::Unsupported` 而不是编造密钥——Win32 绑定要引入 `unsafe`，本 crate 现在 `#![forbid(unsafe_code)]`。因此 Windows 真机安装路径此刻是缺口，不是「已实现但没测」；`soulcore` 只从 `open_test_store` 走 `TestKeyProvider`，Linux CI 不受影响。补齐 DPAPI 前不得声称 Windows 上 KEK 已受保护。
+- `DpapiKeyProvider`：**已落地**（原为骨架）。见下面「DPAPI 落地」。
 
 密钥链在库里的落法：DEK 交给 SQLCipher（`PRAGMA key = "x'<64 hex>'"` 原始密钥形式，不走口令 KDF）；KEK 用 XChaCha20-Poly1305 包裹每把 CK，AAD 为 `content-key|<content_key_id>`，所以一把包好的 CK 不能被搬到另一个 `content_key_id` 下解开。CK 只以包裹态存在 `content_keys` 表，遗忘就是删这一行。
+
+## DPAPI 落地
+
+`DPAPI → KEK` 这一段现在是真的调用，不是骨架。落在 `%LOCALAPPDATA%\Soul\keys.dpapi`：
+
+| 位置 | 内容 | 谁能解开 |
+|---|---|---|
+| 文件头 | 8 字节魔数与格式版本 | 任何人（不是秘密） |
+| 第一段 | **KEK** 经 `CryptProtectData` 保护后的密文 | 只有当前登录用户在这台机器上 |
+| 第二段 | 24 字节 nonce 加 **DEK** 在 KEK 下的 XChaCha20-Poly1305 密文，AAD = `soul/v1/database-dek` | 拿到 KEK 的人 |
+
+于是三段箭头都实在：DPAPI 保护 KEK，KEK 包裹 DEK（`keys.dpapi` 里）与每把 CK（`content_keys` 表里）。DEK 与 KEK 是两把独立的随机密钥，不是一个种子的两次派生——`TestKeyProvider` 才是那种做法，它也只用于测试。
+
+作用范围是**用户级**，不是机器级：不传 `CRYPTPROTECT_LOCAL_MACHINE`，所以同机的另一个账户解不开这个 blob，另一台机器上的同名账户也解不开（除非漫游配置文件与主密钥跟着走）。本机管理员、附在该会话上的调试器、以及任何以该用户身份运行的东西仍然可以——这与本文件开头「不承诺」的那三条一致，DPAPI 不改变它们。`CRYPTPROTECT_UI_FORBIDDEN` 恒开：开库时没有人可以被提示，失败就报失败。
+
+`unsafe` 隔离在 `crates/soul-win-dpapi`：整个 crate 的公开面只有 `protect` / `unprotect` 两个函数，唯一的 `unsafe` 在 `src/sys.rs` 一个函数里（两个 `extern "system"` 声明加一次调用，输出缓冲复制后先擦零再 `LocalFree`），crate 根在 Windows 上是 `deny(unsafe_code)`、其它平台是 `forbid(unsafe_code)`。`soul-store` 因此仍然是 `#![forbid(unsafe_code)]`。这个 crate 在非 Windows 上照常编译并返回 `DpapiError::Unsupported`，所以 `DpapiKeyProvider` 里一个 `#[cfg]` 都没有，Linux 构建照样给 Windows 那条路做类型检查。
+
+`keys.dpapi` 只在首次使用时创建（先写 `.partial` 再 rename），之后**永不重写**。解析不了的 blob 报 `KeyError::Corrupt` 并原样留着：它是这台机器上唯一能打开 `soul.db` 的东西，一个会覆盖它的实现就是一个会把库扔掉的实现。删掉这个文件等于永久失去这个库。
+
+测什么：`crates/soul-win-dpapi/tests/roundtrip.rs`（`cfg(windows)`：往返一致、blob 里搜不到明文密钥、两次保护结果不同、换 entropy 解不开、改一个字节解不开；`cfg(not(windows))`：两个方向都 `Unsupported`）；`crates/soul-store/src/keys.rs` 的单元测试（文件格式往返与九种坏 blob 全拒、DEK 在 KEK 下的包裹与换 KEK/换 AAD 都解不开）；`crates/soul-store/tests/dpapi_key_chain.rs`（开库 → 写一行 → 关库 → 新 provider 重开 → 读回来）。Linux 侧另有 `soulcore/tests/session_commands.rs` 断言这台机器上开库的是种子文件而不是 DPAPI。
 
 不承诺：抵抗本机管理员、物理取证、内核恶意软件；不承诺 SSD 物理擦除。遗忘的可测语义是「CK 已销毁，正文不可解，派生推断降为 orphaned」，UI 必须照此如实写。
 
