@@ -36,9 +36,11 @@ axum = "0.7.9"
 tokio = "1.43.0"
 hex = "0.4.3"
 
-soul-schema = { path = "crates/soul-schema" }
-soul-store-api = { path = "crates/soul-store-api" }
-soul-testkit = { path = "crates/soul-testkit" }
+# The versions are redundant for a path dependency but keep cargo-deny's
+# wildcard check meaningful for the third-party graph.
+soul-schema = { path = "crates/soul-schema", version = "0.1.0" }
+soul-store-api = { path = "crates/soul-store-api", version = "0.1.0" }
+soul-testkit = { path = "crates/soul-testkit", version = "0.1.0" }
 
 [profile.test]
 opt-level = 1

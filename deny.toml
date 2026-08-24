@@ -1,0 +1,89 @@
+# cargo-deny configuration.
+#
+# The load-bearing section is [bans]. PRODUCT_LOCK says the E0 egress class has
+# no code path in v0.1, and DECISIONS D12 spells out that a runtime switch is
+# not enough: there must be no HTTP client and no vendor domain in the tree at
+# all. `xtask e0-audit` enforces that for the shipped crates; cargo-deny is the
+# second, coarser net that also covers transitive additions.
+#
+# The one sanctioned exception is `soul-testkit`, which runs a loopback mock
+# endpoint so AC-11 and AC-12 can inspect a real request. It is excluded from
+# the graph below rather than allowlisted crate by crate.
+#
+# WP08 introduces `soul-egress` as the single crate permitted to hold an HTTP
+# client for the user's own E1 endpoint. That work package edits this file to
+# add a narrowly scoped `wrappers` entry; until then the ban is absolute.
+
+[graph]
+targets = [
+  "x86_64-pc-windows-msvc",
+  "x86_64-unknown-linux-gnu",
+]
+# Test instruments are not shipped. Their unique dependencies leave the graph
+# with them.
+exclude = ["soul-testkit"]
+all-features = false
+
+[output]
+feature-depth = 1
+
+[advisories]
+version = 2
+ignore = []
+
+[licenses]
+# Private period, All Rights Reserved. The workspace crates are `publish =
+# false` and carry a LicenseRef, so only third-party licences are judged here,
+# and permissively at that.
+version = 2
+allow = [
+  "MIT",
+  "MIT-0",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "Zlib",
+  "MPL-2.0",
+  "CC0-1.0",
+  "BSL-1.0",
+  "OpenSSL",
+]
+confidence-threshold = 0.8
+private = { ignore = true }
+# The list above is forward-looking; WP09 pulls in the Tauri tree. An entry
+# that is not currently exercised is not a configuration error.
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+highlight = "all"
+
+deny = [
+  # HTTP clients. None of these may appear in the shipped graph.
+  { name = "reqwest" },
+  { name = "hyper" },
+  { name = "hyper-util" },
+  { name = "ureq" },
+  { name = "curl" },
+  { name = "curl-sys" },
+  { name = "isahc" },
+  { name = "attohttpc" },
+  { name = "surf" },
+
+  # Tauri plugins that would open an egress path behind the app's back.
+  { name = "tauri-plugin-updater" },
+  { name = "tauri-plugin-http" },
+]
+
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
