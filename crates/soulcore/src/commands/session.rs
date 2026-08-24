@@ -160,22 +160,27 @@ impl KeyProtection {
 }
 
 /// The platform's key provider, and the name of what it is.
-#[cfg(windows)]
+///
+/// `cfg!` rather than `#[cfg]`: both providers exist on every platform —
+/// `DpapiKeyProvider` compiles anywhere and refuses everywhere it has no
+/// `CryptProtectData` to call — so writing the choice as a runtime constant
+/// means the Windows arm is type-checked by the Linux build too. With
+/// `#[cfg]` it would only ever be compiled on the platform nobody develops on,
+/// which is where a rename goes unnoticed until CI.
 fn key_provider(directory: &Path) -> (Box<dyn soul_store::KeyProvider>, KeyProtection) {
-    (
-        Box::new(soul_store::DpapiKeyProvider::new(
-            directory.join(KEY_BLOB_FILE_NAME),
-        )),
-        KeyProtection::Dpapi,
-    )
-}
-
-#[cfg(not(windows))]
-fn key_provider(directory: &Path) -> (Box<dyn soul_store::KeyProvider>, KeyProtection) {
-    (
-        Box::new(soul_store::TestKeyProvider::in_dir(directory)),
-        KeyProtection::DeveloperKeyFile,
-    )
+    if cfg!(windows) {
+        (
+            Box::new(soul_store::DpapiKeyProvider::new(
+                directory.join(KEY_BLOB_FILE_NAME),
+            )),
+            KeyProtection::Dpapi,
+        )
+    } else {
+        (
+            Box::new(soul_store::TestKeyProvider::in_dir(directory)),
+            KeyProtection::DeveloperKeyFile,
+        )
+    }
 }
 
 /// Everything that survives a restart.
