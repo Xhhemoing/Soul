@@ -10,8 +10,8 @@ use soul_import::questionnaire::{Answer, CollectingSink};
 use soul_schema::audit::AuditAction;
 use soul_schema::common::Timestamp;
 use soul_store_api::{AuditLog, GraphStore};
-use soulcore::commands::{graph as graph_commands, import as import_commands};
 use soul_testkit::fixtures;
+use soulcore::commands::{graph as graph_commands, import as import_commands};
 
 const SEED: &str = "soulcore import and graph commands";
 const AT: i64 = 1_787_500_000;
