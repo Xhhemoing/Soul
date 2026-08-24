@@ -4,7 +4,7 @@
 
 ## 当前里程碑
 
-**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。WP01–WP11、WP13 与 DPAPI 均已落地。**NSIS 安装目录与数据目录碰撞已在代码里关闭**（`installer-hooks.nsh` 强制 `%LOCALAPPDATA%\Programs\Soul`，`shell_is_local_only` 与 `install_smoke_script` 测试钉住；真机 NSIS 仍待作者手动）。**`2e72ddf` 上 GitHub Actions run [`32754617268`](https://github.com/Xhhemoing/Soul/actions/runs/32754617268) 五门全绿**：lint、ubuntu `just ci`、sbom、windows-latest `cargo test --workspace --all-targets`（含 NTFS 文件计划、`cfg(windows)` DPAPI、`one_store` 运行时那一半）、桌面壳 `command_surface` / `no_egress_path` / `one_store` / `shell_is_local_only`、`ipc_roundtrip --no-run`、以及 package（`soul.exe` 内嵌 `asInvoker`、`install-smoke.ps1 -SkipInstall` 15 项 0 失败）。**HEAD `8b856bd` 的 hosted CI 没有跑起来**（[32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) 五门约 8 秒、0 step、空 `runner_name`；其后每次 push 同一形态）。同一账户上 `agent/dev-sota` 的 run 也是 0 step、空 runner，所以这不是本仓库 workflow 写坏了。GitHub Status 在 2026-08-24 14:34 UTC 那次 Actions 事故已经恢复，而 `2e72ddf` 的绿 run 17:05 才开始，HEAD 的空 runner 不是那次事故。更像是私有仓库 Actions minutes 用尽（Windows 分钟按 2 倍计；push 与 pull_request 曾经各开五门）。workflow 仍在 push 上跑（只跑 pull_request 会让 HEAD 一次 run 都没有），但 concurrency 改成 `head_ref || ref_name`，同一分支的 push 与 PR 互取消，避免十门一起计费。请对 [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) **Re-run all jobs**，或恢复 minutes 后再推。那次绿的 package 工件早于 `9602b97`（NSIS 装进 Programs 而不是数据目录），**不能拿来做卸载 / `keys.dpapi` 的作者手动**。托盘文案已由 `shell_is_local_only` 钉成「打开 Soul」「退出 Soul」，图标是否出现在通知区仍只在 `scripts/author-manual-checklist.md` 上。UAC 盾牌、真机采集、WebView2 流量同左。CI 不能替，也不要在本文件假装过了。
+**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。WP01–WP11、WP13 与 DPAPI 均已落地。**产品锁第二片的导入那一半已经接到界面上**（WP09 第四段）：`/import` 一页、`Session` 上四个方法、四条 IPC 命令，装出来的 Soul 现在读得了 `soul-import-v1` JSONL 与 Telegram Desktop 的 `result.json`；在这之前只有 headless 冒烟走得通，用户拿不到。真机上用界面导一次仍然没人做过，作者清单第 8 节标着可选。**NSIS 安装目录与数据目录碰撞已在代码里关闭**（`installer-hooks.nsh` 强制 `%LOCALAPPDATA%\Programs\Soul`，`shell_is_local_only` 与 `install_smoke_script` 测试钉住；真机 NSIS 仍待作者手动）。**`2e72ddf` 上 GitHub Actions run [`32754617268`](https://github.com/Xhhemoing/Soul/actions/runs/32754617268) 五门全绿**：lint、ubuntu `just ci`、sbom、windows-latest `cargo test --workspace --all-targets`（含 NTFS 文件计划、`cfg(windows)` DPAPI、`one_store` 运行时那一半）、桌面壳 `command_surface` / `no_egress_path` / `one_store` / `shell_is_local_only`、`ipc_roundtrip --no-run`、以及 package（`soul.exe` 内嵌 `asInvoker`、`install-smoke.ps1 -SkipInstall` 15 项 0 失败）。**HEAD `8b856bd` 的 hosted CI 没有跑起来**（[32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) 五门约 8 秒、0 step、空 `runner_name`；其后每次 push 同一形态）。同一账户上 `agent/dev-sota` 的 run 也是 0 step、空 runner，所以这不是本仓库 workflow 写坏了。GitHub Status 在 2026-08-24 14:34 UTC 那次 Actions 事故已经恢复，而 `2e72ddf` 的绿 run 17:05 才开始，HEAD 的空 runner 不是那次事故。更像是私有仓库 Actions minutes 用尽（Windows 分钟按 2 倍计；push 与 pull_request 曾经各开五门）。workflow 仍在 push 上跑（只跑 pull_request 会让 HEAD 一次 run 都没有），但 concurrency 改成 `head_ref || ref_name`，同一分支的 push 与 PR 互取消，避免十门一起计费。请对 [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) **Re-run all jobs**，或恢复 minutes 后再推。那次绿的 package 工件早于 `9602b97`（NSIS 装进 Programs 而不是数据目录），**不能拿来做卸载 / `keys.dpapi` 的作者手动**。托盘文案已由 `shell_is_local_only` 钉成「打开 Soul」「退出 Soul」，图标是否出现在通知区仍只在 `scripts/author-manual-checklist.md` 上。UAC 盾牌、真机采集、WebView2 流量同左。CI 不能替，也不要在本文件假装过了。
 
 ## 进度
 
@@ -22,7 +22,7 @@
 | WP05 人脉图 | 完成。见下节 |
 | WP06 导入 | 完成。见下节。问卷回退与 WP03 的入档路径已合并，`soul-profile` 实现 `UserStatedSink` |
 | WP07 前台采集 | 完成。见下节 |
-| WP09 桌面壳 | 三段都完成。见下节。壳里那一个 store 句柄由 WP13 第二段落地（遗留 8 消除），十一道题与最后四条功能视图是第三段（遗留 9 消除） |
+| WP09 桌面壳 | 四段都完成。见下节。壳里那一个 store 句柄由 WP13 第二段落地（遗留 8 消除），十一道题与最后四条功能视图是第三段（遗留 9 消除），`/import` 那一屏是第四段——在此之前装出来的 Soul 读不了任何导出文件 |
 | WP10 起草与人事摘要 | 完成。见下节。本机路径与端点路径的确认屏都已接上（遗留 6 消除） |
 | WP11 文件计划 | 完成。见下节。`/files` 已接 `PlanPreview`，仍然没有执行按钮（遗留 8 消除） |
 | WP13 安装 smoke / CI / SBOM / 壳接库 | 两段都完成。见下节。剩下的是 Windows 真机手动那七条 |
@@ -536,6 +536,37 @@ Goal 1 剩下的三件事里的第一件：向导把十一道题画出来了，`
 9. **`/profile` 的纠正每次都把整屏重读一遍。** 锁、证据带、整段读法三样是一起动的，局部更新意味着界面得自己知道纠正一条轴会不会影响别的轴的证据带——那正是核心该知道而界面不该知道的东西。代价是一次纠正一次往返。
 10. **前端的 refusal 处理提成了 `refusal.tsx`。** 三条路由各有一份复本，现在七条共用一个 `asRefusal` 加一个 `Refused`。它不判断任何东西，只是把「核心扔出来的东西不一定长得像 `Refusal`」这件事收在一处。
 
+## WP09 完成情况（第四段：导入接到界面上）
+
+PRODUCT_LOCK v0.1 第二片要在一台干净的 Win11 上证「问卷 + `soul-import-v1` JSONL / Telegram Desktop `result.json`」。问卷在向导里（第三段），两种导入却只有 headless 冒烟走得通：`crates/soul-import` 会解析、`soulcore/src/commands/import.rs` 会入库，但 `Session` 上没有入口，`commands.rs` 里没有命令，`core.ts` 的 `COMMANDS` 里没有键，路由表里没有那一页。**装了 Soul 的人拿不到这两条路**。这一段补的就是这个洞。
+
+本机 `just ci` 绿（`cargo fmt --check`、`clippy --workspace --all-targets --all-features -D warnings`、schema-freeze、e0-audit、denylist-audit、fixture 语料、`cargo test --workspace --all-targets` 516 项、install-smoke 脚本检查、sbom、`ui-lint`、`ui-test` 12 个文件 113 项）；`just desktop-test` 绿（42 项，`ipc_roundtrip` 从 21 长到 23）。没有加任何依赖：`apps/desktop/src-tauri/Cargo.toml` 仍然只有 tauri、serde、serde_json、soulcore，没有 `tauri-plugin-dialog`，文件是 WebView 里的 `<input type="file">` 读的。没有动 schema，没有动 `StoredConfig`（还是 `wizard_completed` + `authorized_roots` 两个字段、`deny_unknown_fields`），设置页没有多出采集开关。
+
+| 交付 | 证据 |
+|---|---|
+| `Session` 上四个方法 | `preview_soul_import_v1` / `preview_telegram` / `commit_soul_import_v1` / `commit_telegram`。提交时按同一份文本**重新解析**，会话里不留暂存的导出——两次点击之间不该有别人的聊天记录躺在内存里，而同样的字节本来就会算出同样的计数。库没开时给的是和其他读命令同一种 `SessionRefusal`：预览也要求库是开的，否则用户会看完计数才被告知这份文件根本导不进去 |
+| AC-04 走壳：入库、密封、重开还在 | `crates/soulcore/tests/session_import.rs` 7 项。`three_partners.jsonl` 过 `Session`：预览 5 个人 16 条消息且**预览之后图仍是空的**，提交后 5 个联系人 16 条事件 4 条关系，`drop` 掉再 `Session::open` 同一个目录，人还在。然后把数据目录里每个文件按字节扫一遍，fixture 里的每一句中文都搜不到 |
+| AC-05 走壳：Telegram 缺字段可读地拒 | 同一文件：`result_missing_fields.json` 拒得有位置、有句子，而且把拒绝信搜一遍，导出里的对方名字一个都不在里面。不是 JSON 的东西也拒——只报位置，不回贴内容 |
+| AC-25 走壳 | `an_export_that_tries_to_give_instructions_is_counted_and_obeyed_by_nothing`：把注入语料接在一份有主人的导出后面，预览就报出「有几条写成了命令的样子」，回执报同一个数，内容照样当数据入库 |
+| 重复导入认人 | `importing_the_same_file_twice_matches_the_people_it_already_knows`：第二次 `contacts_created` 是 0、`contacts_matched` 是 3，联系人表还是 3 个人。事件仍然写第二遍（WP06 遗留 6，没有外部 id 索引可以去重） |
+| 计数就是计数 | `ImportPreview` / `ImportReceiptView` 上只有格式名、几个计数、两个布尔和一句 notice。没有一个字段能装正文、昵称或账号标识，所以「预览不复述文件」是类型的性质，不是页面的自觉 |
+| 四条命令真的过得去 IPC | `apps/desktop/src-tauri/tests/ipc_roundtrip.rs::an_export_crosses_the_ipc_as_counts_and_becomes_people` 用真的 `invoke_handler` 走预览→提交→`people_graph`，再把三份回包拼起来搜 fixture 里每一条消息正文，一条都搜不到。`the_import_argument_is_required_and_spelled_the_way_the_webview_spells_it` 钉住 `text` 这个参数名，四条命令各试一遍 |
+| 两侧命令名仍是同一份 | `COMMANDS` 从 27 个长到 31 个，`command_surface.rs` 照旧比对两侧、照旧要求每个 wrapper 体只有一条语句。`contract.test.ts` 另把 `IMPORT_LOCAL_ONLY_NOTICE` 对着 `commands/import.rs` 里的常量核一遍 |
+| 那一屏 | `apps/desktop/src/routes/Import.tsx` + `Import.test.tsx` 11 项：两种格式的名字（含 Telegram 的 Export chat history → Machine-readable JSON 那句路径）都在页面上，有一个 `type="file"` 的输入框，按钮里没有登录 / 授权 / 解压 / 执行，整页搜不到 `OAuth` 与 `.zip`。选中 fixture 之后屏幕上是计数，**并且用 fixture 自己的每一行做断言**：任何一行出现在 DOM 里都会红。确认之后回执还是计数，认不出主人时确认按钮是灰的，读不成的文件给理由码加核心那句话。整页再过一遍 denylist，全程 `forbidNetwork` 没有一次尝试 |
+| 导入完人脉图就有人 | 提交那一步在 `Session` 里顺手 `soul_graph::rebuild`，和 headless 冒烟同一条路，回执里的 `ties_rebuilt` 就是它。所以「导入 → 去人脉图看」中间不需要用户再点什么，也没有第二次开库 |
+
+落地内容：`crates/soulcore/src/commands/{import,session}.rs`、`crates/soulcore/tests/session_import.rs`；`apps/desktop/src-tauri/src/{commands,lib}.rs`、`tests/ipc_roundtrip.rs`；`apps/desktop/src/` 的 `core.ts`、`router.tsx`、`App.tsx`、`routes/Import.tsx`、`test/fakeCore.ts` 与 `Import.test.tsx` / `App.test.tsx` / `contract.test.ts`；`scripts/author-manual-checklist.md` 第 8 节。
+
+### WP09 第四段的取舍与遗留
+
+1. **格式由用户在页面上选，不靠嗅探。** 两种文件都可能叫 `.json`，靠后缀猜等于让一个坏掉的 Telegram 导出去撞 JSONL 解析器，报出来的拒绝信会指错地方。页面上是两个单选，选哪个就调哪条命令。代价是用户要认得自己导出的是什么——那句话写在选项旁边。
+2. **提交时重新解析，不留暂存。** 好处是会话里不存别人的聊天记录，坏处是同一份文件被解析两遍。文本本来就在 WebView 里（用户刚选的那个文件），所以第二遍不需要再读一次磁盘。真正的代价是「预览之后文件在磁盘上被改了」这种情况下两次结果可能不同——但用户点确认时送回去的是浏览器里那份文本，不是路径，所以这条其实关不上也不用关。
+3. **v0.1 的导入不是一个事务。** `commit` 中途失败会留下已经写进去的那一部分。`ImportError` 转成的拒绝信里说了这一点。做成事务要 `soul-store` 那一层给出跨多次写入的边界，那不是这一段能加的。
+4. **同一份文件导入两次仍然会写两遍事件**（WP06 遗留 6）。界面上没有拦：拦就要么记住导入过什么（那要落盘一份文件指纹），要么按内容去重（那要一列外部 id）。现在的做法是回执把 `contacts_matched` 报出来，用户看得见「这些人我已经认识」。
+5. **页面不显示文件名。** 显示的是「读到 N 个字符」。文件名是 `<input type="file">` 自己画的，再回显一遍不多给任何信息，而 `chat_with_某某.json` 这种名字里带的是第三人。
+6. **`/graph` 那句空状态改了。** 原来写着「导入还没有接到界面上」，那句话现在是假的。改成指向「导入」页。
+7. **Win11 真机上还没有人用界面导过一次。** `scripts/author-manual-checklist.md` 第 8 节写了怎么用仓库里的 fixture 走一遍，**标成可选、没有标成过了**。CI 能证的是命令过得去 IPC、库里落的是密文、屏幕上渲染的是计数；证不了的是那个文件选择对话框在真机上长什么样。
+
 ## Goal 1 门禁对照（`2e72ddf` / run 32754617268；HEAD `8b856bd` hosted 未开跑）
 
 CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS Programs 目录与托盘文案钉死还没有 hosted package/test 跑过。作者手动那一半没有，所以 Goal 1 **还不能关**。
@@ -545,7 +576,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 | AC-01 | `soul.exe` 内嵌 `asInvoker`；`install-smoke.ps1 -SkipInstall` 验证进程名、清单、`uiAccess=false`（`2e72ddf` package）。HEAD 另用测试钉住托盘文案与 `$INSTDIR=%LOCALAPPDATA%\Programs\Soul` | 托盘图标是否出现、启动不弹 UAC 的肉眼、标准用户 NSIS 真装真卸（须用 `8b856bd` 或之后在 Win11 上 `tauri build`，不要用 `2e72ddf` 工件）——作者清单 1–4 |
 | AC-02 | headless 主流程 `fully_closed`；`session_commands` 配置形状拒能力字段；smoke「nothing is switched on」 | — |
 | AC-03 | 问卷 intake 与 `session_screens` / Wizard 测试 | — |
-| AC-04 / AC-05 | 导入 fixture + 无明文残留；Telegram 缺字段可读失败 | — |
+| AC-04 / AC-05 | 导入 fixture + 无明文残留；Telegram 缺字段可读失败。**壳这一侧也接上了**：`session_import.rs`（过 `Session`、过真库、重开后仍在、数据目录里搜不到原文）、`ipc_roundtrip.rs` 走真的 `invoke_handler`、`Import.test.tsx` 用 fixture 自己的行断言 DOM 上没有正文 | 真机上用界面导一次（作者清单 8，可选，不是门禁项） |
 | AC-06 / AC-08 | 图谱边与推断解引用；≥3 节点 | — |
 | AC-07 | 纠正锁 + 起草 prompt 用用户值 | — |
 | AC-09 / AC-10 | `soul-collect` 假源：关=0；开≥1；撤销后 1s 无新事件 | 真机前台切换——作者清单 6 |
@@ -568,7 +599,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 1. ~~**向导还没有画那十一道题。**~~ **已完成**，见「WP09 完成情况（第三段）」。
 2. **HEAD hosted CI。** 请对 [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) **Re-run all jobs**，或恢复 Actions minutes。空 runner 不是产品回归。在 HEAD package 绿之前，不要用 `2e72ddf` 的 `windows-binaries` 做卸载 / `keys.dpapi`——那次构建还把程序装进数据目录。
-3. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替。真装真卸从 `8b856bd`（或之后）在本机 `tauri build`，不要用过期工件。采集探针：`soul-headless collect-probe --i-consent --seconds 20`。
+3. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」（第 8 节的界面导入是可选的，不属于门禁）。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替。真装真卸从 `8b856bd`（或之后）在本机 `tauri build`，不要用过期工件。采集探针：`soul-headless collect-probe --i-consent --seconds 20`。
 4. ~~**DPAPI 要真的实现**~~ **已实现，且 windows-latest 已跑过。** 真机上仍要确认有登录用户配置文件时 `%LOCALAPPDATA%\Soul\keys.dpapi` 存在且 `/graph` 不再给拒绝。卸载脚本不能删这个文件。NTFS 不能同时放下 `Alpha` 和 `alpha`，授权扫描的第三目录因此只在 Unix 上种。AC-21 的套接字观察在 Linux CI 读 `/proc`，在 Windows CI 由 `scripts/install-smoke.ps1` 从进程外看 TCP 表。
 
 不要启动 Goal 2。文件写入仍是 v0.1.1（AC-27）：`/files` 有计划、有哈希、没有执行按钮，也没有可以绑执行按钮的命令。
