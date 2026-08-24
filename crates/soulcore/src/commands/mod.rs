@@ -31,6 +31,7 @@
 //! because the write half is v0.1.1.
 
 pub mod collect;
+pub mod draft;
 pub mod fileplan;
 pub mod graph;
 pub mod import;
