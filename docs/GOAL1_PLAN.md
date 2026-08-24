@@ -61,6 +61,14 @@ WP01 已完成，取舍与遗留见 `docs/STATUS.md`。
 
 WP02 已完成，取舍与遗留见 `docs/STATUS.md`。
 
+## WP08 完成定义
+
+1. [x] `soul-policy` 签发 `EgressPermit` / HITL 令牌；未知动作、plan hash 变、令牌重放拒绝；v0.1 不消费写文件令牌。
+2. [x] `soul-egress` 是唯一 HTTP client；`send` 必须持有 permit；跨 origin 重定向拒绝。
+3. [x] redactor 默认占位；一次性整条豁免不记住；研究路径无豁免。
+4. [x] 审计内容无正文；崩溃后链可验证。
+5. [x] 外部内容进 `UntrustedText`，三路注入不能变成指令或外连。
+
 WP01 允许：根工装、`crates/{soul-schema,soul-store-api,soul-testkit,xtask,soulcore}`、`fixtures/`、`.github/workflows/ci.yml`、`justfile`、schema 仅 `$ref` 重接与收紧、`schemas.lock.json`、`SECURITY.md` 加密落地段、`STATUS.md`。
 
 WP01 禁止：产品定义文档、`apps/`、业务 crate、HTTP client 进 normal 依赖、实现导入/档案/采集/起草/文件计划。

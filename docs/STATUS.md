@@ -4,7 +4,7 @@
 
 ## 当前里程碑
 
-**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。批 1（WP01）与批 2 的数据面（WP02）已完成。
+**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。批 1（WP01）与批 2（WP02 数据面 + WP08 权限面）已完成。Windows CI 在 schema freeze CRLF 修复后全绿。
 
 ## 进度
 
@@ -16,6 +16,7 @@
 | Goal 1 规划 | 完成。DAG 见 `docs/GOAL1_PLAN.md` |
 | WP01 骨架 | 完成。见下节 |
 | WP02 数据面 | 完成。见下节 |
+| WP08 权限面 | 完成。见下节 |
 | v0.1 其余 WP | 未开始 |
 
 ## WP01 完成情况
@@ -76,6 +77,26 @@
 
 无。
 
+## WP08 完成情况
+
+`soul-policy` 与 `soul-egress` 落地。本机 `cargo test -p soul-policy -p soul-egress -p soulcore` 绿；`xtask e0-audit` / `denylist-audit` 绿。HTTP client 只出现在 `soul-egress`，且必须持有 `soul-policy` 签发的 `EgressPermit`。
+
+| 交付 | 证据 |
+|---|---|
+| AC-11 精确 origin / 跨 origin 重定向拒绝 | `crates/soul-egress/tests/e1_origin.rs`：请求只打到配置 origin；跨 origin 与换端口 302 都不跟；无 endpoint 时发不出 permit |
+| AC-12/13 第三人占位与一次性豁免 | `redactor_leakage.rs` / `redactor_exemption.rs`：默认路径过 leakage checker；豁免按值消费、下次回到占位；研究路径无豁免入口 |
+| AC-19 HITL | `hitl.rs`：未知动作拒绝、plan hash 变拒绝、令牌一次性、写文件令牌即使「完美」也拒绝 |
+| AC-23 审计无正文 | `audit_chain.rs`：矩阵回放过 leakage checker；散文字段在入库前被拒 |
+| AC-24 审计侧崩溃 | `audit_crash.rs`：提交前死丢整条、写入后死保留，链都能重开验证 |
+| AC-25 三路注入 | `injection.rs`：导入行 / 粘贴 / 文件名都进 `UntrustedText`，不能授权动作，不能外连语料里的 URL |
+| E0 无代码路径 | `net_guard.rs`：`EgressClass` 没有 E0；`e0-audit` 6 个成品 crate 清洁；`deny.toml` 仅 `soul-egress` 可包 `reqwest` |
+
+### WP08 取舍
+
+1. **`EgressPermit` 无公开构造函数。** 字段对本模块私有，另一个 crate 无法伪造。
+2. **写文件能力令牌在 v0.1 不签发也不消费。** HITL 测试断言没有 known action 要这个 scope。
+3. **审计链字段仍由存储覆盖**（WP02 取舍 2）。WP08 只构造无正文内容。
+
 ## 下一步
 
-批 2 的另一半：WP08 权限面（策略、审计链、net_guard、redactor、HITL 令牌）。它对着 `soul-store-api` 的 trait 写，并接手上面第 2 条描述的审计链语义。批 3（WP03+WP04 / WP05+WP06）现在可以起，`soul-store` 的表已经有 `profiles` / `memories` / `contacts` / `relationships` 与各自的证据联结表。
+批 3：WP03+WP04（档案与记忆）与 WP05+WP06（人脉图与导入）可并行。不要启动 Goal 2。文件写入仍是 v0.1.1。
