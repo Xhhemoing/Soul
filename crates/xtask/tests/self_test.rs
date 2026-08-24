@@ -86,6 +86,53 @@ fn the_url_scanner_skips_fixtures_and_tests() {
     );
 }
 
+/// Build output is skipped by the manifest beside it, not by its name. A
+/// hand-written `src/gen/` has no `tauri.conf.json` next to it and stays in
+/// the audit; without this test the exemption would be a way to hide source
+/// from the scanner by choosing a directory name.
+#[test]
+fn the_url_scanner_skips_generated_output_but_not_a_directory_that_shares_its_name() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let offending = "const BAD: &str = \"https://evil.example/x\";\n";
+
+    write(dir.path(), "apps/desktop/package.json", "{}\n");
+    write(dir.path(), "apps/desktop/dist/assets/bundle.js", offending);
+    write(dir.path(), "apps/desktop/src-tauri/tauri.conf.json", "{}\n");
+    write(
+        dir.path(),
+        "apps/desktop/src-tauri/gen/schemas/x.json",
+        offending,
+    );
+
+    write(dir.path(), "crates/pretend/src/gen/table.rs", offending);
+    write(dir.path(), "crates/pretend/dist/notes.rs", offending);
+
+    let scan = egress::scan_tree_for_urls(dir.path()).expect("scan");
+    let flagged: Vec<String> = scan
+        .hits
+        .iter()
+        .map(|hit| hit.file.display().to_string().replace('\\', "/"))
+        .collect();
+
+    assert_eq!(
+        flagged.len(),
+        2,
+        "expected only the source copies: {flagged:#?}"
+    );
+    assert!(
+        flagged
+            .iter()
+            .any(|f| f.ends_with("crates/pretend/src/gen/table.rs")),
+        "a hand-written gen/ has no generator manifest beside it: {flagged:#?}",
+    );
+    assert!(
+        flagged
+            .iter()
+            .any(|f| f.ends_with("crates/pretend/dist/notes.rs")),
+        "a dist/ with no package.json beside it is not bundler output: {flagged:#?}",
+    );
+}
+
 /// A bare scheme from a `format!` has no domain to object to.
 #[test]
 fn the_url_scanner_ignores_a_scheme_with_no_host() {

@@ -73,22 +73,23 @@ pub const ALLOWED_URL_PREFIXES: &[&str] = &[
 ];
 
 /// Directory names that are exempt everywhere they appear.
+pub const EXEMPT_DIRS: &[&str] = &["fixtures", "tests", "target", "node_modules", ".git"];
+
+/// Build output, exempt only where the tool that writes it lives.
 ///
-/// `dist` and `gen` are build output, added when WP09 created `apps/`: the
-/// first is a bundler's copy of its own dependencies, the second is written by
-/// `tauri-build` on every compile. Both quote vendor URLs that nobody in this
-/// repository wrote, and neither is committed. The audit is about what the
-/// source says, so scanning either produces noise that would make `just ci`
-/// red for a reason unrelated to egress.
-pub const EXEMPT_DIRS: &[&str] = &[
-    "fixtures",
-    "tests",
-    "target",
-    "node_modules",
-    "dist",
-    "gen",
-    ".git",
-];
+/// Added when WP09 created `apps/`: `dist` is a bundler's copy of its own
+/// dependencies, `gen` is written by `tauri-build` on every compile. Both
+/// quote vendor URLs that nobody in this repository wrote, and neither is
+/// committed, so scanning them makes `just ci` red for a reason that has
+/// nothing to do with egress.
+///
+/// The marker file is what keeps this from becoming a hole. A directory named
+/// `gen` is only skipped when it sits beside the manifest of the tool that
+/// generates it; `crates/whatever/src/gen/` is hand-written source and is
+/// still read. Exempting the bare names anywhere would have meant a source
+/// directory could disappear from this audit by being named the right thing.
+pub const EXEMPT_BUILD_OUTPUT: &[(&str, &str)] =
+    &[("dist", "package.json"), ("gen", "tauri.conf.json")];
 
 /// Workspace members exempt from the source scan. `xtask` has to spell the
 /// allowlist and the banned names out in order to enforce them.
@@ -431,9 +432,18 @@ fn is_exempt_dir(path: &Path, is_dir: bool) -> bool {
     if !is_dir {
         return false;
     }
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .is_some_and(|name| EXEMPT_DIRS.contains(&name))
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    if EXEMPT_DIRS.contains(&name) {
+        return true;
+    }
+    EXEMPT_BUILD_OUTPUT.iter().any(|(dir, marker)| {
+        *dir == name
+            && path
+                .parent()
+                .is_some_and(|parent| parent.join(marker).is_file())
+    })
 }
 
 fn is_scannable(path: &Path) -> bool {
