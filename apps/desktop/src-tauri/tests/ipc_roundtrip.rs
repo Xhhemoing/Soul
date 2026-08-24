@@ -534,6 +534,90 @@ fn the_person_argument_is_required_and_spelled_the_way_the_webview_spells_it() {
     assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
 }
 
+/// One line of a fixture in this repository, read the way the WebView reads a
+/// file the user picked: as text, from outside the core.
+fn fixture(relative: &str) -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .join("fixtures")
+        .join(relative);
+    std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+}
+
+/// The whole import path over the real IPC: counts out, then people.
+///
+/// This is the one thing neither side's own tests can see. `soulcore` proves
+/// the file parses and lands sealed, and vitest proves the screen renders
+/// counts, but only here is the file text carried across `invoke_handler` the
+/// way an installed app carries it — and only here does the JSON that reaches
+/// the WebView get searched for the sentences the export contained.
+#[test]
+fn an_export_crosses_the_ipc_as_counts_and_becomes_people() {
+    let text = fixture("import/soul-import-v1/three_partners.jsonl");
+    let shell = Shell::on(scratch());
+
+    let preview = match shell.invoke("preview_soul_import_v1", json!({ "text": text })) {
+        Ok(preview) => preview,
+        // No key, no store, no import — and the screen has to be told which.
+        Err(refusal) => {
+            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+            return;
+        }
+    };
+    assert_eq!(preview["source"], json!("soul-import-v1"));
+    assert_eq!(preview["participants"], json!(5));
+    assert_eq!(preview["messages"], json!(16));
+    assert_eq!(preview["writes_anything"], json!(false));
+
+    let receipt = shell
+        .invoke("commit_soul_import_v1", json!({ "text": text }))
+        .expect("the same text commits");
+    assert_eq!(receipt["contacts_created"], json!(5));
+    assert_eq!(receipt["events_written"], json!(16));
+    assert_eq!(receipt["ties_rebuilt"], json!(4));
+
+    let graph = shell.invoke("people_graph", json!({})).expect("a graph");
+    assert_eq!(graph["people"].as_array().map(Vec::len), Some(5));
+
+    // Nothing anybody wrote in that file came back across the IPC, on any of
+    // the three answers the screen renders.
+    let answered = format!("{preview}{receipt}{graph}");
+    for line in text.lines().filter(|line| line.contains("\"text\"")) {
+        let said = line
+            .rsplit_once("\"text\":\"")
+            .and_then(|(_, rest)| rest.split_once('"'))
+            .map(|(said, _)| said)
+            .expect("every message line carries a body");
+        assert!(
+            !answered.contains(said),
+            "the IPC answered with something the export said: {said}",
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
+/// `text` is what `core.ts` sends, for all four import commands.
+#[test]
+fn the_import_argument_is_required_and_spelled_the_way_the_webview_spells_it() {
+    for command in [
+        "preview_soul_import_v1",
+        "preview_telegram",
+        "commit_soul_import_v1",
+        "commit_telegram",
+    ] {
+        assert!(
+            invoke(command, json!({})).is_err(),
+            "{command} imported from a missing argument, which would hide a renamed one",
+        );
+        // Something that is not either format: the command has to answer, and
+        // the answer has to be a refusal with a code on it rather than a panic.
+        let refusal = invoke(command, json!({ "text": "not an export" }))
+            .expect_err("neither format accepts that");
+        assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+    }
+}
+
 /// `pasted` is what `core.ts` sends. It is a single word, so Tauri's camelCase
 /// conversion leaves it alone — which is exactly the kind of thing that is
 /// true until somebody renames the argument, so it is asserted.

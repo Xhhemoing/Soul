@@ -58,7 +58,10 @@ fn files_in(directory: &Path) -> Vec<(String, Vec<u8>)> {
 }
 
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
-    needle.len() <= haystack.len() && haystack.windows(needle.len()).any(|window| window == needle)
+    needle.len() <= haystack.len()
+        && haystack
+            .windows(needle.len())
+            .any(|window| window == needle)
 }
 
 /// The whole path a Windows user takes: pick a file, read what is in it, say
@@ -70,7 +73,11 @@ fn a_soul_import_v1_file_committed_through_the_session_lands_sealed_and_shows_up
 
     let mut session = Session::open(&directory);
     assert!(
-        session.people().expect("an empty graph is still one").people.is_empty(),
+        session
+            .people()
+            .expect("an empty graph is still one")
+            .people
+            .is_empty(),
         "the store starts with nobody in it, so what is below came from the file",
     );
 
@@ -107,7 +114,10 @@ fn a_soul_import_v1_file_committed_through_the_session_lands_sealed_and_shows_up
     assert!(people.ties.iter().all(|tie| !tie.evidence.is_empty()));
     assert!(people.third_party_data_is_local_only);
     assert!(
-        people.people.iter().all(|person| !person.identifier_hint.is_empty()),
+        people
+            .people
+            .iter()
+            .all(|person| !person.identifier_hint.is_empty()),
         "people are told apart by a digest, and there is no name on the view at all",
     );
 
@@ -175,12 +185,12 @@ fn an_export_that_tries_to_give_instructions_is_counted_and_obeyed_by_nothing() 
     let owned = fixtures::read_text("import/soul-import-v1/valid_basic.jsonl").expect("fixture");
     let attempts =
         fixtures::read_text("import/soul-import-v1/injection_lines.jsonl").expect("fixture");
-    let text: String = owned
+    let lines: Vec<&str> = owned
         .lines()
         .chain(attempts.lines().filter(|line| !line.contains("\"header\"")))
         .filter(|line| !line.trim().is_empty())
-        .map(|line| format!("{line}\n"))
         .collect();
+    let text = lines.join("\n");
 
     let mut session = Session::open(&directory);
     let preview = session

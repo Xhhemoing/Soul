@@ -28,7 +28,8 @@ use soul_store::SqlCipherStore;
 /// file is read in the WebView the user picked it in, and what the core does
 /// with it is seal it and point at it. Nothing on this path uploads anything
 /// and nothing on it reads a message in order to decide what to do next.
-pub const IMPORT_LOCAL_ONLY_NOTICE: &str = "导入全程在本机：文件由你自己挑，内容读进来就地加密入库，\
+pub const IMPORT_LOCAL_ONLY_NOTICE: &str =
+    "导入全程在本机：文件由你自己挑，内容读进来就地加密入库，\
     不上传，也不会被当成指令执行。导入的正文一律当数据看待。";
 
 /// What a file that did not parse is told, in front of the parser's own
