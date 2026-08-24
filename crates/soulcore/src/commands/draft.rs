@@ -49,7 +49,6 @@ use soul_policy::hitl::{
 use soul_policy::redactor::{KnownIdentifiers, OneShotExemption, RedactedBody, Redactor};
 use soul_policy::ReasonCode;
 use soul_profile::ProfileError;
-use soul_schema::common::SupportedBand;
 use soul_store::SqlCipherStore;
 
 use crate::commands::policy::{e1_plan, E1Refusal, PolicySession, TokenRefused};
@@ -355,6 +354,48 @@ pub fn draft_pasted(
         .draft)
 }
 
+/// Step one of the endpoint path, for something a person pasted.
+///
+/// The sibling of [`draft_pasted`], and the two make the same two decisions:
+/// the origin is [`RequestOrigin::User`] because a call arriving over the IPC
+/// is a click, and the clock is read here because a shell entry point is the
+/// outermost edge.
+///
+/// What comes back is a description, not a draft. Nothing has left: the body
+/// is built and held so that the counts the user is about to read are the
+/// counts of the request that would go out, and [`generate_prepared`] is the
+/// only thing that can spend it. There is no exemption argument, because the
+/// second confirmation an exemption needs is a screen this build does not
+/// have; a paste stays placeheld.
+pub fn prepare_pasted(
+    drafting: &mut DraftSession,
+    policy: &mut PolicySession,
+    pasted: &str,
+) -> Result<E1DraftPlan, DraftRefusal> {
+    let request = DraftRequest::from_paste(ProfileBrief::neutral(), pasted);
+    drafting.prepare(
+        policy,
+        request,
+        None,
+        RequestOrigin::User,
+        soul_policy::clock::now_unix_millis(),
+    )
+}
+
+/// Step two: the user read the plan and approved this exact preparation.
+///
+/// The approval has to echo both halves of what was on screen. An approval
+/// that names another preparation, or another shape of the same preparation,
+/// reaches no endpoint — [`DraftSession::generate`] takes the prepared body by
+/// value before it checks, so a refusal also leaves nothing to approve twice.
+pub fn generate_prepared(
+    drafting: &mut DraftSession,
+    policy: &mut PolicySession,
+    approval: &Approval,
+) -> Result<Drafted, DraftRefusal> {
+    drafting.generate(policy, approval, soul_policy::clock::now_unix_millis())
+}
+
 /// The profile a draft prompt is allowed to know about.
 ///
 /// Blank profiles resolve to the neutral voice rather than failing, because
@@ -430,7 +471,7 @@ impl PersonSummaryView {
                 .map(|point| SummaryPointView {
                     statement: point.statement().to_owned(),
                     evidence_ids: point.evidence_ids().iter().map(Uuid::to_string).collect(),
-                    band: band_word(point.band()).to_owned(),
+                    band: crate::commands::graph::band_word(point.band()).to_owned(),
                 })
                 .collect(),
             notice: summary.notice.clone(),
@@ -446,14 +487,6 @@ pub struct SummaryPointView {
     /// Never empty. `SummaryPoint::new` refuses to build a point without one.
     pub evidence_ids: Vec<String>,
     pub band: String,
-}
-
-fn band_word(band: SupportedBand) -> &'static str {
-    match band {
-        SupportedBand::Weak => "weak",
-        SupportedBand::Moderate => "moderate",
-        SupportedBand::Strong => "strong",
-    }
 }
 
 /// The gate every command here goes through first.
