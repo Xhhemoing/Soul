@@ -507,6 +507,21 @@ impl ProfileStore for SqlCipherStore {
         }
     }
 
+    fn list_evidence(&self) -> StoreResult<Vec<SoulEvidence>> {
+        let mut statement = self
+            .conn
+            .prepare("SELECT doc FROM evidence ORDER BY evidence_id")
+            .map_err(backend)?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(backend)?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(from_doc(&row.map_err(backend)?)?);
+        }
+        Ok(out)
+    }
+
     fn put_inference(&mut self, inference: SoulInference) -> StoreResult<Uuid> {
         self.check(SchemaId::Inference, &inference)?;
         if inference.evidence_ids.is_empty() {
@@ -831,6 +846,21 @@ impl GraphStore for SqlCipherStore {
             .map_err(backend)?;
         let rows = statement
             .query_map([contact_id.to_string()], |row| row.get::<_, String>(0))
+            .map_err(backend)?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(from_doc(&row.map_err(backend)?)?);
+        }
+        Ok(out)
+    }
+
+    fn list_relationships(&self) -> StoreResult<Vec<SoulRelationship>> {
+        let mut statement = self
+            .conn
+            .prepare("SELECT doc FROM relationships ORDER BY relationship_id")
+            .map_err(backend)?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
             .map_err(backend)?;
         let mut out = Vec::new();
         for row in rows {

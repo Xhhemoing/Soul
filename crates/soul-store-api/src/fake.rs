@@ -305,6 +305,10 @@ impl ProfileStore for FakeStore {
             .ok_or_else(|| StoreError::not_found("evidence", evidence_id))
     }
 
+    fn list_evidence(&self) -> StoreResult<Vec<SoulEvidence>> {
+        Ok(self.evidence.values().cloned().collect())
+    }
+
     fn put_inference(&mut self, inference: SoulInference) -> StoreResult<Uuid> {
         self.check(SchemaId::Inference, &inference)?;
         if inference.evidence_ids.is_empty() {
@@ -405,6 +409,10 @@ impl GraphStore for FakeStore {
             .filter(|edge| edge.from_contact_id == contact_id || edge.to_contact_id == contact_id)
             .cloned()
             .collect())
+    }
+
+    fn list_relationships(&self) -> StoreResult<Vec<SoulRelationship>> {
+        Ok(self.relationships.values().cloned().collect())
     }
 }
 

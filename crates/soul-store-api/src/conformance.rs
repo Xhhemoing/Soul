@@ -32,6 +32,7 @@ pub fn run_conformance<S: SoulStore>(mk: impl Fn() -> S) {
     sealed_text_round_trips(&mk);
     sealed_text_is_bound_to_its_row_and_field(&mk);
     graph_edges_are_reachable_from_either_end(&mk);
+    the_graph_listings_see_everything_that_was_written(&mk);
     forget_preview_is_read_only_and_matches_execution(&mk);
     forget_destroys_the_key_and_orphans_derived_inference(&mk);
     audit_survives_a_forget(&mk);
@@ -198,6 +199,44 @@ fn graph_edges_are_reachable_from_either_end<S: SoulStore>(mk: &impl Fn() -> S) 
     assert_eq!(store.relationships_for(left).expect("from side").len(), 1);
     assert_eq!(store.relationships_for(right).expect("to side").len(), 1);
     assert_eq!(store.list_contacts().expect("contacts").len(), 2);
+}
+
+/// WP05 derives the whole graph in one pass, so the two listing queries have
+/// to see rows written through the single-row entry points. A backend that
+/// answered from a stale index would build a graph missing whichever edge it
+/// forgot about.
+fn the_graph_listings_see_everything_that_was_written<S: SoulStore>(mk: &impl Fn() -> S) {
+    let mut store = mk();
+    let left = uuid7("60");
+    let right = uuid7("61");
+    store.put_contact(contact(left)).expect("left contact");
+    store.put_contact(contact(right)).expect("right contact");
+    store.put_evidence(evidence("a10")).expect("first evidence");
+    store.put_evidence(evidence("a11")).expect("second evidence");
+    let edge_id = store
+        .put_relationship(relationship("70", left, right, &[uuid7("a10")]))
+        .expect("edge");
+
+    let listed = store.list_evidence().expect("list evidence");
+    assert_eq!(listed.len(), 2, "both evidence rows are listed");
+    assert!(
+        listed.iter().any(|row| row.evidence_id == uuid7("a11")),
+        "the listing must return the rows, not just the right count",
+    );
+
+    let edges = store.list_relationships().expect("list relationships");
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0].relationship_id, edge_id);
+    assert_eq!(edges[0].evidence_ids, vec![uuid7("a10")]);
+
+    // Rewriting an edge under the same id updates it rather than adding a
+    // second one, which is what makes a graph rebuild idempotent.
+    store
+        .put_relationship(relationship("70", left, right, &[uuid7("a10"), uuid7("a11")]))
+        .expect("rewrite the edge");
+    let edges = store.list_relationships().expect("list again");
+    assert_eq!(edges.len(), 1, "the rewrite must not duplicate the edge");
+    assert_eq!(edges[0].evidence_ids.len(), 2);
 }
 
 fn forget_preview_is_read_only_and_matches_execution<S: SoulStore>(mk: &impl Fn() -> S) {

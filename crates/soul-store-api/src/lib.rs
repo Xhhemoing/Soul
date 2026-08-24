@@ -59,6 +59,13 @@ pub trait ProfileStore {
     fn put_evidence(&mut self, evidence: SoulEvidence) -> StoreResult<Uuid>;
     fn get_evidence(&self, evidence_id: Uuid) -> StoreResult<SoulEvidence>;
 
+    /// Every evidence row, oldest identifier first.
+    ///
+    /// WP05 needs it: the graph is derived by grouping interaction evidence by
+    /// peer, and there is no column to filter on because `source_refs` is
+    /// deliberately opaque to the store. Callers filter in memory.
+    fn list_evidence(&self) -> StoreResult<Vec<SoulEvidence>>;
+
     /// Must reject an inference whose `evidence_ids` is empty or dangling.
     fn put_inference(&mut self, inference: SoulInference) -> StoreResult<Uuid>;
     fn get_inference(&self, inference_id: Uuid) -> StoreResult<SoulInference>;
@@ -84,6 +91,11 @@ pub trait GraphStore {
     fn put_relationship(&mut self, relationship: SoulRelationship) -> StoreResult<Uuid>;
     fn get_relationship(&self, relationship_id: Uuid) -> StoreResult<SoulRelationship>;
     fn relationships_for(&self, contact_id: Uuid) -> StoreResult<Vec<SoulRelationship>>;
+
+    /// Every edge. WP05 rebuilds the whole graph rather than one ego network,
+    /// and it has to recognise the edges it wrote last time to update them
+    /// instead of adding a second copy.
+    fn list_relationships(&self) -> StoreResult<Vec<SoulRelationship>>;
 }
 
 /// Sealed prose. The only way plaintext enters or leaves the store.
