@@ -772,7 +772,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 ## 下一步
 
-批 3–5 与 WP13、DPAPI 都已完成。`2e72ddf` 上 CI 五门全绿。HEAD `2d2badd` 本地绿（含导入 / 采集 / E1 / AC-13 / 语气与审计 / 第三人姓名占位 / 档案页再答 / 人事摘要走端点 / 拒绝落链 / 遗忘拒绝落链 / 摘要来源上屏），hosted 五门没有 runner。原先写在这里的产品缺口已经做完，剩下的是 hosted 与真机：
+批 3–5 与 WP13、DPAPI 都已完成。`2e72ddf` 上 CI 五门全绿。HEAD `2d2badd` / `816e167` 本机 `just ci` 与 `just desktop-test` 全绿（含导入 / 采集 / E1 / AC-13 / 语气与审计 / 第三人姓名占位 / 档案页再答 / 人事摘要走端点 / 拒绝落链 / 遗忘拒绝落链 / 摘要来源上屏），hosted 五门没有 runner。原先写在这里的产品缺口已经做完，剩下的是 hosted 与真机：
 
 1. ~~**向导还没有画那十一道题。**~~ **已完成**，见「WP09 完成情况（第三段）」。
 2. **HEAD hosted CI。** 恢复 Actions minutes 后 `workflow_dispatch` 本分支。空 runner 不是产品回归。workflow 已收窄：只自动 `push` 本分支与 `main`，没有 `pull_request` 触发，纯文档改动不开五门。已知最新一次空 run：[32790536998](https://github.com/Xhhemoing/Soul/actions/runs/32790536998)（`2d2badd`）。本机证据不是 hosted 证据：`just ci` + `just desktop-test` 在 `816e167` 上绿。在 HEAD package 绿之前，不要用 `2e72ddf` 的 `windows-binaries` 做卸载 / `keys.dpapi`——那次构建还把程序装进数据目录。
