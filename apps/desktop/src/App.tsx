@@ -25,6 +25,7 @@ import { Draft } from "./routes/Draft";
 import { Files } from "./routes/Files";
 import { Graph } from "./routes/Graph";
 import { Home } from "./routes/Home";
+import { Import } from "./routes/Import";
 import { Memory } from "./routes/Memory";
 import { Profile } from "./routes/Profile";
 import { Research } from "./routes/Research";
@@ -92,6 +93,7 @@ export function App(): React.JSX.Element {
       <main className="content" aria-labelledby="route-title">
         <h1 id="route-title">{route.title}</h1>
         {route.id === "home" ? <Home snapshot={snapshot} status={status} /> : null}
+        {route.id === "import" ? <Import /> : null}
         {route.id === "profile" ? <Profile /> : null}
         {route.id === "files" ? <Files /> : null}
         {route.id === "graph" ? <Graph /> : null}

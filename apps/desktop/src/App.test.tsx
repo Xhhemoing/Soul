@@ -95,6 +95,20 @@ describe("桌面壳", () => {
     }
   });
 
+  /**
+   * The two formats PRODUCT_LOCK names have to be reachable from the installed
+   * app, not only from the headless smoke run. This is the route that makes
+   * that true, so the check is that it arrives with a file input on it.
+   */
+  it("导入页有内容了，两种格式都在，选文件的框也在", async () => {
+    await startAtRoute("#/import");
+
+    expect(screen.queryByTestId("pending-owner")).toBeNull();
+    expect(await screen.findByText(/soul-import-v1 JSONL/)).toBeVisible();
+    expect(screen.getByText(/Telegram Desktop 的 result.json/)).toBeVisible();
+    expect(screen.getByLabelText("选择文件")).toHaveAttribute("type", "file");
+  });
+
   it("人脉图页有内容了，不再是空路由", async () => {
     await startAtRoute("#/graph");
 
