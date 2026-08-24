@@ -14,6 +14,26 @@
     "strength": { "enum": ["weak", "moderate", "strong"] },
     "method": { "enum": ["user_stated", "manual", "heuristic", "statistical", "llm"] },
     "exportable_to_research": { "type": "boolean", "default": false },
-    "privacy": { "type": "object" }
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject", "derivation", "purposes", "retention", "egress"],
+      "properties": {
+        "subject": { "enum": ["self", "third_party", "mixed", "system"] },
+        "derivation": { "enum": ["raw", "derived", "aggregate"] },
+        "purposes": { "type": "array", "minItems": 1 },
+        "retention": { "type": "object" },
+        "egress": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["e0", "e1", "research_export"],
+          "properties": {
+            "e0": { "const": "deny" },
+            "e1": { "enum": ["deny", "placeholder", "allow"] },
+            "research_export": { "enum": ["deny", "hash", "bucket", "allow"] }
+          }
+        }
+      }
+    }
   }
 }

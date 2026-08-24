@@ -4,22 +4,21 @@
 
 ## 当前里程碑
 
-计划验证 / 规范冻结（三轮双模型）。R2 文档已落盘。尚未 `PLAN_FROZEN`。尚未写应用代码。
+**`PLAN_FROZEN`**。可以按 `docs/FORMAL_WORK_PROMPT.md` 进入 Goal 1。尚未写应用代码。
 
 ## 进度
 
 | 项 | 状态 |
 |---|---|
-| 产品重锁与自主拍板 | 完成 |
-| R1 双模型扫描 | 完成，`PLAN_BLOCKED`，见 `docs/scan-rounds/R1-SYNTHESIS.md` |
-| R2 规范修复 | 父代理已落盘，见 `docs/scan-rounds/R2-SYNTHESIS.md` |
-| R3 复核冻结 | 进行中 |
+| R1 双模型扫描 | 完成，曾 `PLAN_BLOCKED` |
+| R2 规范修复 | 完成并落盘 |
+| R3 复核冻结 | 完成。仲裁见 `docs/scan-rounds/R3-SYNTHESIS.md`，结论 `PLAN_FROZEN` |
 | v0.1 实现 | 未开始 |
 
 ## 阻塞
 
-等 R3 给出 `PLAN_FROZEN` 或残留 P0。
+无计划阻塞。WP01 需把 schema `$ref` 接到 `_defs` 并补泄漏 fixture。
 
 ## 下一步
 
-R3 只读核对落盘文档与 schema 是否闭合 R1 P0。
+CreateGoal：Goal 1。派 fable planner，再按 DAG 派 opus 写码。Goal 2 在 Goal 1 关闭前不要启动。

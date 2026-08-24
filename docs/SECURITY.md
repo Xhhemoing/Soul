@@ -10,7 +10,7 @@
 
 ## 出网
 
-一切出站必须带 `egress_class ∈ {E0,E1,L}`。E0 在 v0.1 构建期消除：无 cloud feature、无项目方域名、CI 源码断言。E1 仅用户配置的精确 origin；跨 origin 重定向拒绝。WebView 只加载本地资源。关闭 Tauri updater。
+一切出站必须带 `egress_class ∈ {E0,E1,L}`（schema 与文档一律用 `L`，不用 `loopback`）。E0 在 v0.1 构建期消除：无 cloud feature、无项目方域名、CI 源码断言。E1 仅用户配置的精确 origin；配置变更会使计划哈希失效；跨 origin 重定向拒绝。WebView 只加载本地资源。关闭 Tauri updater。
 
 ## 第三人 redactor
 

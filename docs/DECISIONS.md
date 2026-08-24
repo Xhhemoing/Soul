@@ -34,3 +34,4 @@
 | D28 | Goal 2 | 拆到 GOAL2_POLISH_PROMPT.md | Goal 1 必须有终点 |
 | D29 | 验收权威 | FORMAL 中 Given/When/Then 矩阵 | 散文不作门禁 |
 | D30 | 工作包增减 | R2 后只减不增 | 防回弹 |
+| D31 | 只读整理预览是否留在 Goal 1 | 留。执行仍在 v0.1.1。这是代理层只读证明，不是产品卖点 | 否决 R3-sol 删除 AC-18 的建议 |

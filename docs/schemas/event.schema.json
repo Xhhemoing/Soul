@@ -31,8 +31,56 @@
       ]
     },
     "actor_subject": { "enum": ["self", "third_party", "system"] },
-    "consent_id": { "type": ["string", "null"] },
-    "privacy": { "type": "object" },
-    "body_ref": { "type": ["object", "null"] }
+    "consent_id": { "type": ["string", "null"], "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "privacy": { "$ref": "#/$defs/privacy" },
+    "body_ref": { "oneOf": [{ "$ref": "#/$defs/sealedText" }, { "type": "null" }] }
+  },
+  "$defs": {
+    "sealedText": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_key_id", "blob_id", "alg", "subject", "char_count"],
+      "properties": {
+        "content_key_id": { "type": "string" },
+        "blob_id": { "type": "string" },
+        "alg": { "const": "xchacha20poly1305-ietf" },
+        "subject": { "enum": ["self", "third_party", "mixed"] },
+        "char_count": { "type": "integer", "minimum": 0 },
+        "placeholder": { "type": ["string", "null"] }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject", "derivation", "purposes", "retention", "egress"],
+      "properties": {
+        "subject": { "enum": ["self", "third_party", "mixed", "system"] },
+        "derivation": { "enum": ["raw", "derived", "aggregate"] },
+        "purposes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["soul_profile", "assistant_task", "graph", "memory", "research", "audit", "diagnostics"] }
+        },
+        "retention": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": { "enum": ["until_forgotten", "days", "session"] },
+            "days": { "type": ["integer", "null"], "minimum": 1 }
+          }
+        },
+        "egress": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["e0", "e1", "research_export"],
+          "properties": {
+            "e0": { "const": "deny" },
+            "e1": { "enum": ["deny", "placeholder", "allow"] },
+            "research_export": { "enum": ["deny", "hash", "bucket", "allow"] }
+          }
+        }
+      }
+    }
   }
 }
