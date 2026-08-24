@@ -71,14 +71,14 @@ mod tests {
         assert_eq!(rfc3339_utc(1), "1970-01-01T00:00:01Z");
         // 2000-02-29, the leap day the hundred-year rule keeps.
         assert_eq!(rfc3339_utc(951_782_400), "2000-02-29T00:00:00Z");
-        assert_eq!(rfc3339_utc(1_787_913_600), "2026-08-24T00:00:00Z");
-        assert_eq!(rfc3339_utc(1_787_913_600 + 39_600), "2026-08-24T11:00:00Z");
+        assert_eq!(rfc3339_utc(1_787_529_600), "2026-08-24T00:00:00Z");
+        assert_eq!(rfc3339_utc(1_787_529_600 + 39_600), "2026-08-24T11:00:00Z");
     }
 
     #[test]
     fn the_last_second_of_a_day_does_not_roll_over() {
-        assert_eq!(rfc3339_utc(1_788_047_999), "2026-08-25T23:59:59Z");
-        assert_eq!(rfc3339_utc(1_788_048_000), "2026-08-26T00:00:00Z");
+        assert_eq!(rfc3339_utc(1_787_702_399), "2026-08-25T23:59:59Z");
+        assert_eq!(rfc3339_utc(1_787_702_400), "2026-08-26T00:00:00Z");
     }
 
     #[test]

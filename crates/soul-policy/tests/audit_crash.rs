@@ -26,7 +26,7 @@ use soul_testkit::crash::{self, run_crashing_subprocess, CrashScenario};
 
 const DB_PATH_ENV: &str = "SOUL_POLICY_AUDIT_CRASH_DB";
 const SEED: &str = "wp08 audit crash";
-const AT: i64 = 1_787_913_600;
+const AT: i64 = 1_787_529_600;
 
 const CHILD: &str = "child_appends_three_audit_entries_and_may_die_in_the_third";
 const ENTRIES_ATTEMPTED: usize = 3;

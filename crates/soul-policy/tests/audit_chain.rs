@@ -28,7 +28,7 @@ use soul_store_api::AuditLog;
 use soul_testkit::LeakageChecker;
 
 const SEED: &str = "wp08 audit chain";
-const AT: i64 = 1_787_913_600; // 2026-08-24T00:00:00Z
+const AT: i64 = 1_787_529_600; // 2026-08-24T00:00:00Z
 
 /// The prose and identifiers the recorded actions were about. None of it may
 /// reach the audit table.
@@ -78,11 +78,17 @@ fn matrix_of_actions() -> Vec<AuditContent> {
         AuditContent::allowed(AuditAction::ProfileCorrect, ReasonCode::Routine).about(&[subject]),
         AuditContent::allowed(AuditAction::MemoryWrite, ReasonCode::Routine).about(&[subject]),
         AuditContent::allowed(AuditAction::ForgetExecute, ReasonCode::Routine).about(&[subject]),
-        AuditContent::allowed(AuditAction::DraftCreate, ReasonCode::ThirdPartyBodyPlaceheld)
-            .for_plan(plan.as_str()),
-        AuditContent::allowed(AuditAction::EgressRequest, ReasonCode::ThirdPartyBodyPlaceheld)
-            .over(AuditEgressClass::E1)
-            .for_plan(plan.as_str()),
+        AuditContent::allowed(
+            AuditAction::DraftCreate,
+            ReasonCode::ThirdPartyBodyPlaceheld,
+        )
+        .for_plan(plan.as_str()),
+        AuditContent::allowed(
+            AuditAction::EgressRequest,
+            ReasonCode::ThirdPartyBodyPlaceheld,
+        )
+        .over(AuditEgressClass::E1)
+        .for_plan(plan.as_str()),
         AuditContent::denied(AuditAction::EgressRequest, ReasonCode::E0NoCodePath)
             .over(AuditEgressClass::None),
         AuditContent::allowed(AuditAction::FilePlan, ReasonCode::Routine).for_plan(plan.as_str()),
