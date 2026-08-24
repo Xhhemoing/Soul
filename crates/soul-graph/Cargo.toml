@@ -1,0 +1,26 @@
+[package]
+name = "soul-graph"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Soul's people graph: nodes are people, edges carry interaction strength, relationship type, last contact and evidence. Never leaves the machine."
+
+[dependencies]
+soul-schema = { workspace = true }
+soul-store-api = { workspace = true }
+# For the audit content a graph rebuild owes the chain. No HTTP client sits
+# under `soul-policy`, so this does not widen soulcore's egress surface.
+soul-policy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+soul-store = { workspace = true }
+soul-testkit = { workspace = true }
+tempfile = { workspace = true }
