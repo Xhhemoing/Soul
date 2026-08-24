@@ -1,6 +1,9 @@
 /target
 target/
 node_modules/
+# Vite output and Tauri's bundle staging. Both are build products.
+apps/desktop/dist/
+apps/desktop/src-tauri/gen/
 *.db
 *.db-shm
 *.db-wal
