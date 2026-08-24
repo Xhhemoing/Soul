@@ -37,6 +37,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 soulcore = { path = "../../../crates/soulcore" }
 
+# `tauri/test` brings the mock runtime, which has no window and no WebView.
+# It is how `tests/ipc_roundtrip.rs` calls the commands the way the WebView
+# calls them, on a CI host with no display.
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
+
 [features]
 # Embeds `../dist` into the executable. `tauri build` turns it on; a plain
 # `cargo check` leaves it off so the Rust side stays buildable on a machine
