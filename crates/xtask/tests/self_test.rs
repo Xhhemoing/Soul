@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use xtask::denylist::{self, HitContext};
 use xtask::egress;
+use xtask::sbom::{self, Subject};
 use xtask::schema_freeze;
 
 fn workspace_metadata() -> cargo_metadata::Metadata {
@@ -508,4 +509,265 @@ fn a_crlf_checkout_still_matches_the_lock() {
             .is_empty(),
         "CRLF checkouts must still match the lock",
     );
+}
+
+// ----------------------------------------------------------------- sbom ---
+
+const SHIPPED: Subject = Subject {
+    name: "test-shipped",
+    manifest: "Cargo.toml",
+    excluded_roots: egress::TEST_TOOLING,
+    what: "the shipped closure, as the real subject defines it",
+};
+
+/// Same roots as the egress audit, so the document describes the program that
+/// audit cleared. `soul-testkit` owns an HTTP stack and reaches `axum`; both
+/// have to be absent, and the second half of this test shows they are absent
+/// because the walk excluded them rather than because nothing was found.
+#[test]
+fn the_sbom_describes_what_ships_and_leaves_the_test_instruments_out() {
+    let metadata = workspace_metadata();
+    let document = sbom::from_metadata(&metadata, &SHIPPED, &Default::default());
+    let names: Vec<&str> = document
+        .components
+        .iter()
+        .map(|c| c.name.as_str())
+        .collect();
+
+    for present in [
+        "soulcore",
+        "soul-store",
+        "soul-egress",
+        "reqwest",
+        "rusqlite",
+    ] {
+        assert!(
+            names.contains(&present),
+            "{present} ships and belongs in the bill of materials",
+        );
+    }
+    for absent in ["soul-testkit", "xtask", "axum"] {
+        assert!(
+            !names.contains(&absent),
+            "{absent} is a test instrument and must not appear",
+        );
+    }
+
+    const EVERYTHING: Subject = Subject {
+        excluded_roots: &[],
+        ..SHIPPED
+    };
+    let wide = sbom::from_metadata(&metadata, &EVERYTHING, &Default::default());
+    let wide_names: Vec<&str> = wide.components.iter().map(|c| c.name.as_str()).collect();
+    assert!(
+        wide_names.contains(&"axum") && wide_names.contains(&"soul-testkit"),
+        "dropping the exclusions must widen the document, or the test above is vacuous",
+    );
+    assert!(wide.components.len() > document.components.len());
+}
+
+/// A release diff should be a diff of the dependencies, so the same checkout
+/// has to produce the same bytes — including the serial number, which is
+/// derived from the components rather than drawn at random.
+#[test]
+fn the_same_checkout_produces_the_same_document_twice() {
+    let metadata = workspace_metadata();
+    let first = sbom::from_metadata(&metadata, &SHIPPED, &Default::default());
+    let second = sbom::from_metadata(&metadata, &SHIPPED, &Default::default());
+
+    let one = first.to_json().expect("serialize");
+    let two = second.to_json().expect("serialize");
+    assert_eq!(one, two);
+    assert!(one.contains("\"serialNumber\": \"urn:uuid:"));
+    assert!(one.contains("\"specVersion\": \"1.5\""));
+    assert!(one.contains("\"bomFormat\": \"CycloneDX\""));
+
+    // The serial number tracks the contents: change one licence and it moves.
+    let mut altered = first.clone();
+    altered.components[0].license = Some("LicenseRef-Something-Else".to_owned());
+    assert_ne!(altered.to_json().expect("serialize"), one);
+}
+
+/// PRODUCT_LOCK bans vendor domains from this repository. An artifact this
+/// repository generates is not an exception, and cargo metadata is full of
+/// registry addresses, so the absence is a filter rather than a coincidence.
+#[test]
+fn no_url_survives_into_a_generated_document() {
+    let metadata = workspace_metadata();
+    let text = sbom::from_metadata(&metadata, &SHIPPED, &Default::default())
+        .to_json()
+        .expect("serialize");
+    assert!(
+        !text.contains("://"),
+        "the bill of materials quotes a URL: {:?}",
+        text.lines().find(|line| line.contains("://")),
+    );
+
+    let raw = serde_json::to_string(&metadata).expect("serialize metadata");
+    assert!(
+        raw.contains("://"),
+        "cargo metadata should be full of registry addresses, or the filter above proves nothing",
+    );
+}
+
+#[test]
+fn the_lockfile_parser_pairs_a_checksum_with_the_crate_it_belongs_to() {
+    let text = concat!(
+        "version = 3\n\n",
+        "[[package]]\n",
+        "name = \"serde\"\n",
+        "version = \"1.0.217\"\n",
+        "source = \"registry+sparse\"\n",
+        "checksum = \"aaaa\"\n\n",
+        "[[package]]\n",
+        "name = \"soulcore\"\n",
+        "version = \"0.1.0\"\n",
+        "dependencies = [\n \"serde\",\n]\n\n",
+        "[[package]]\n",
+        "name = \"uuid\"\n",
+        "version = \"1.11.1\"\n",
+        "checksum = \"bbbb\"\n",
+    );
+    let found = sbom::parse_lock_checksums(text);
+
+    assert_eq!(found.len(), 2);
+    assert_eq!(
+        found.get(&("serde".to_owned(), "1.0.217".to_owned())),
+        Some(&"aaaa".to_owned()),
+    );
+    assert_eq!(
+        found.get(&("uuid".to_owned(), "1.11.1".to_owned())),
+        Some(&"bbbb".to_owned()),
+    );
+    assert!(
+        !found.contains_key(&("soulcore".to_owned(), "0.1.0".to_owned())),
+        "a path dependency has no archive to hash, so it must not acquire one",
+    );
+}
+
+#[test]
+fn this_repositorys_lockfile_hashes_the_crates_the_document_lists() {
+    let root = xtask::repo_root();
+    let checksums = sbom::read_lock_checksums(&root.join("Cargo.lock"));
+    assert!(
+        checksums.len() > 100,
+        "the workspace lockfile should carry hundreds of checksums, found {}",
+        checksums.len(),
+    );
+
+    let document = sbom::from_metadata(&workspace_metadata(), &SHIPPED, &checksums);
+    let registry: Vec<_> = document
+        .components
+        .iter()
+        .filter(|c| c.origin == "registry")
+        .collect();
+    assert!(registry.len() > 100);
+    assert!(
+        registry.iter().all(|c| c.checksum.is_some()),
+        "every crate that came from the registry has a hash in the lockfile",
+    );
+    assert!(document
+        .components
+        .iter()
+        .filter(|c| c.workspace_member)
+        .all(|c| c.checksum.is_none() && c.origin == "path"),);
+}
+
+/// A dependency whose terms nobody wrote down is the one case `deny.toml`'s
+/// allowlist cannot speak to, so it is reported rather than serialized as a
+/// blank.
+#[test]
+fn a_dependency_with_no_stated_licence_is_named() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let root = dir.path();
+    write(
+        root,
+        "Cargo.toml",
+        concat!(
+            "[workspace]\nresolver = \"2\"\nmembers = [\"host\"]\n\n",
+            "[workspace.package]\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        ),
+    );
+    write(
+        root,
+        "host/Cargo.toml",
+        concat!(
+            "[package]\nname = \"host\"\nversion.workspace = true\n",
+            "edition.workspace = true\nlicense = \"MIT\"\npublish = false\n\n",
+            "[dependencies]\nquiet = { path = \"../quiet\" }\n",
+        ),
+    );
+    write(root, "host/src/lib.rs", "pub fn f() {}\n");
+    write(
+        root,
+        "quiet/Cargo.toml",
+        concat!(
+            "[package]\nname = \"quiet\"\nversion = \"0.1.0\"\n",
+            "edition = \"2021\"\npublish = false\n",
+        ),
+    );
+    write(root, "quiet/src/lib.rs", "pub fn g() {}\n");
+
+    const SYNTHETIC: Subject = Subject {
+        name: "synthetic",
+        manifest: "Cargo.toml",
+        excluded_roots: &[],
+        what: "a two-crate workspace built for this test",
+    };
+    let document = sbom::build(&root.join("Cargo.toml"), &SYNTHETIC).expect("build");
+    assert_eq!(document.unlicensed, vec!["pkg:cargo/quiet@0.1.0"]);
+
+    // Nothing is invented in its place: the component ships without the key
+    // rather than with an empty or guessed expression.
+    let parsed: serde_json::Value =
+        serde_json::from_str(&document.to_json().expect("serialize")).expect("valid JSON");
+    let quiet = parsed["components"]
+        .as_array()
+        .expect("components")
+        .iter()
+        .find(|c| c["name"] == serde_json::json!("quiet"))
+        .expect("the unlicensed crate is still listed");
+    assert!(quiet.get("licenses").is_none());
+
+    // Give it terms and the finding goes away, so the check is about the
+    // manifest and not about the crate's name.
+    write(
+        root,
+        "quiet/Cargo.toml",
+        concat!(
+            "[package]\nname = \"quiet\"\nversion = \"0.1.0\"\n",
+            "edition = \"2021\"\nlicense = \"MIT/Apache-2.0\"\npublish = false\n",
+        ),
+    );
+    let document = sbom::build(&root.join("Cargo.toml"), &SYNTHETIC).expect("build");
+    assert!(document.unlicensed.is_empty());
+    assert!(document
+        .components
+        .iter()
+        .any(|c| c.name == "quiet" && c.license.as_deref() == Some("MIT OR Apache-2.0")));
+}
+
+/// Every subject names a manifest that exists, and writing them out leaves one
+/// document per subject.
+#[test]
+fn every_subject_resolves_and_lands_on_disk() {
+    let root = xtask::repo_root();
+    let out = tempfile::tempdir().expect("temp dir");
+
+    let written = sbom::write_all(&root, out.path()).expect("write the documents");
+    assert_eq!(written.len(), sbom::SUBJECTS.len());
+    assert!(sbom::SUBJECTS.iter().any(|s| s.name == "soul-desktop"));
+
+    for (path, document) in &written {
+        assert!(path.is_file(), "{} was not written", path.display());
+        let text = std::fs::read_to_string(path).expect("read back");
+        let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
+        assert_eq!(parsed["bomFormat"], serde_json::json!("CycloneDX"));
+        assert_eq!(
+            parsed["components"].as_array().map(Vec::len),
+            Some(document.components.len()),
+        );
+        assert!(document.unlicensed.is_empty(), "{document}");
+        assert!(!text.contains("://"));
+    }
 }

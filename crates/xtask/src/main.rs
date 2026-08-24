@@ -4,7 +4,7 @@
 
 use anyhow::{bail, Result};
 
-use xtask::{denylist, egress, repo_root, schema_freeze};
+use xtask::{denylist, egress, repo_root, sbom, schema_freeze};
 
 const USAGE: &str = "\
 xtask — Soul repository guardrails
@@ -19,6 +19,8 @@ COMMANDS:
     schema-freeze     Pin docs/schemas by digest.
         --check       Fail if the documents drifted from the lock (CI default).
         --write       Rewrite the lock. Needs approval to change the contracts.
+    sbom              Write a CycloneDX bill of materials per shipped workspace.
+        --out <dir>   Where to write them. Default: target/sbom.
     all               Run e0-audit, denylist-audit and schema-freeze --check.
 ";
 
@@ -30,6 +32,7 @@ fn main() -> Result<()> {
         Some("e0-audit") => run_e0(&root),
         Some("denylist-audit") => run_denylist(&root),
         Some("schema-freeze") => run_schema_freeze(&root, args.get(1).map(String::as_str)),
+        Some("sbom") => run_sbom(&root, &args[1..]),
         Some("all") => {
             run_e0(&root)?;
             run_denylist(&root)?;
@@ -65,6 +68,47 @@ fn run_denylist(root: &std::path::Path) -> Result<()> {
     println!("{report}");
     if !report.is_clean() {
         bail!("denylist-audit failed: {} hit(s)", report.hits.len());
+    }
+    Ok(())
+}
+
+/// Write the bills of materials and say what went into them.
+///
+/// A crate with no stated licence fails the command rather than appearing in
+/// the document as a blank: `deny.toml` judges an allowlist of SPDX names, and
+/// a dependency whose terms nobody wrote down is the one case that list cannot
+/// speak to.
+fn run_sbom(root: &std::path::Path, args: &[String]) -> Result<()> {
+    let out = match args.first().map(String::as_str) {
+        Some("--out") => match args.get(1) {
+            Some(dir) => std::path::PathBuf::from(dir),
+            None => bail!("--out needs a directory"),
+        },
+        None => root.join(sbom::DEFAULT_OUT_DIR),
+        Some(other) => {
+            eprint!("{USAGE}");
+            bail!("sbom takes --out <dir>, not `{other}`");
+        }
+    };
+
+    let written = sbom::write_all(root, &out)?;
+    let mut unlicensed = Vec::new();
+    for (path, document) in &written {
+        println!("sbom: {} -> {}", document, path.display());
+        for (licence, crates) in document.licence_index() {
+            println!("    {:<40} {} crate(s)", licence, crates.len());
+        }
+        unlicensed.extend(document.unlicensed.iter().cloned());
+    }
+
+    if !unlicensed.is_empty() {
+        for purl in &unlicensed {
+            eprintln!("  no stated licence: {purl}");
+        }
+        bail!(
+            "sbom failed: {} dependency/dependencies state no licence",
+            unlicensed.len(),
+        );
     }
     Ok(())
 }

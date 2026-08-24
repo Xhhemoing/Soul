@@ -10,6 +10,7 @@
 
 pub mod denylist;
 pub mod egress;
+pub mod sbom;
 pub mod schema_freeze;
 
 use std::path::{Path, PathBuf};
