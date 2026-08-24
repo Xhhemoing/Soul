@@ -30,6 +30,7 @@ use soul_schema::common::Timestamp;
 use soul_schema::soul_import_v1::SenderScope;
 
 use crate::defect::{Defect, ImportFailure, Locator};
+use crate::instant::is_civil_datetime;
 use crate::model::{
     ImportSource, ParticipantHandle, ParticipantIndex, StagedImport, StagedMessage,
 };
@@ -284,33 +285,6 @@ fn read_instant(message: &Value, locator: &Locator, defects: &mut Vec<Defect>) -
             None
         }
     }
-}
-
-/// `YYYY-MM-DDTHH:MM:SS`, with the components in range.
-fn is_civil_datetime(text: &str) -> bool {
-    let bytes = text.as_bytes();
-    if bytes.len() != 19 {
-        return false;
-    }
-    let shape = b"nnnn-nn-nnTnn:nn:nn";
-    for (index, expected) in shape.iter().enumerate() {
-        let actual = bytes[index];
-        let ok = match expected {
-            b'n' => actual.is_ascii_digit(),
-            other => actual == *other,
-        };
-        if !ok {
-            return false;
-        }
-    }
-    let number = |from: usize, to: usize| text[from..to].parse::<u32>().unwrap_or(u32::MAX);
-    let (month, day) = (number(5, 7), number(8, 10));
-    let (hour, minute, second) = (number(11, 13), number(14, 16), number(17, 19));
-    (1..=12).contains(&month)
-        && (1..=31).contains(&day)
-        && hour < 24
-        && minute < 60
-        && second < 60
 }
 
 /// Telegram writes `text` either as a string or as a list of runs, where a run

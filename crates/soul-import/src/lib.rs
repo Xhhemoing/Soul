@@ -38,6 +38,7 @@
 
 pub mod commit;
 pub mod defect;
+pub mod instant;
 pub mod model;
 pub mod questionnaire;
 pub mod redact;

@@ -140,7 +140,7 @@ pub fn schema_defects(
         .iter_errors(instance)
         .map(|error| {
             let field = field_of(&error);
-            let reason = guard.guard(describe(&error));
+            let reason = guard.guard(describe(&error, guard));
             Defect {
                 locator: locator.clone(),
                 field,
@@ -171,9 +171,9 @@ fn field_of(error: &ValidationError<'_>) -> Option<String> {
 ///
 /// Everything named here comes from the schema — a required property name, an
 /// enumeration, a format, a limit — except the property names in
-/// `additionalProperties`, which are bounded by [`summarize_names`] and then
-/// passed through the content guard like everything else.
-fn describe(error: &ValidationError<'_>) -> String {
+/// `additionalProperties`, which are the one fragment out of the file and are
+/// bounded and guarded by [`summarize_names`].
+fn describe(error: &ValidationError<'_>, guard: &ContentGuard) -> String {
     match &error.kind {
         ValidationErrorKind::Required { property } => match property {
             Value::String(name) => format!("is required and this item has no `{name}`"),
@@ -190,6 +190,7 @@ fn describe(error: &ValidationError<'_>) -> String {
                             other => other.to_string(),
                         })
                         .collect::<Vec<_>>(),
+                    guard,
                 ),
             ),
             _ => "is not one of the values the contract allows".to_owned(),
@@ -207,7 +208,7 @@ fn describe(error: &ValidationError<'_>) -> String {
         ValidationErrorKind::AdditionalProperties { unexpected } => {
             format!(
                 "carries {}, which the contract does not define",
-                summarize_names(unexpected)
+                summarize_names(unexpected, guard)
             )
         }
         ValidationErrorKind::MinLength { limit } => format!("needs at least {limit} character(s)"),

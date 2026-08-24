@@ -13,17 +13,31 @@
 //! the document's content fields and replaces anything that repeats a run of
 //! them.
 //!
-//! The run length is short on purpose. The leakage checker in `soul-testkit`
-//! uses eight scalars because it is looking at prose leaving the machine; here
-//! the bar is four, because an error message has no business repeating even a
-//! fragment.
+//! There are two bars, because there are two kinds of string.
+//!
+//! A **fragment** is something lifted out of the file — a property name the
+//! contract does not define, say. Four scalars of content in one is an echo,
+//! and the fragment is dropped. That is a shorter run than the leakage checker
+//! in `soul-testkit` uses, because a fragment has no business repeating
+//! anything at all.
+//!
+//! A **sentence** is one this crate composed out of its own vocabulary, with
+//! any fragments already guarded. Holding it to four scalars turns out to
+//! punish the reader rather than the attacker: a file whose text happens to
+//! mention `RFC 3339` would silence the very sentence that explains what is
+//! wrong with it. A sentence is refused when it repeats [`MIN_QUOTED_RUN`]
+//! scalars, which fixed vocabulary does not reach by accident and a quotation
+//! does immediately.
 
 use std::collections::BTreeSet;
 
 use serde_json::Value;
 
-/// Shortest run of a content field that counts as an echo.
+/// Shortest run of a content field that counts as an echo in a fragment.
 pub const MIN_ECHOED_RUN: usize = 4;
+
+/// Shortest run that counts as a quotation in a composed sentence.
+pub const MIN_QUOTED_RUN: usize = 12;
 
 /// What replaces a message that echoed content.
 pub const GENERIC_REASON: &str = "the value does not satisfy the contract";
@@ -81,35 +95,52 @@ impl ContentGuard {
         self.secrets.len()
     }
 
-    /// Does `message` repeat [`MIN_ECHOED_RUN`] or more scalars of any content
-    /// field?
-    pub fn echoes_content(&self, message: &str) -> bool {
-        if self.secrets.is_empty() {
-            return false;
-        }
-        let haystack: String = message.chars().collect();
+    /// Does `message` repeat `run` or more scalars of any content field?
+    pub fn repeats_run(&self, message: &str, run: usize) -> bool {
         self.secrets.iter().any(|secret| {
-            secret
-                .windows(MIN_ECHOED_RUN)
-                .any(|window| haystack.contains(&window.iter().collect::<String>()))
+            secret.len() >= run
+                && secret
+                    .windows(run)
+                    .any(|window| message.contains(&window.iter().collect::<String>()))
         })
     }
 
-    /// `message`, or [`GENERIC_REASON`] if it echoed content.
+    /// Does `message` echo a content field closely enough for a fragment?
+    pub fn echoes_content(&self, message: &str) -> bool {
+        self.repeats_run(message, MIN_ECHOED_RUN)
+    }
+
+    /// Does `message` quote a content field?
+    pub fn quotes_content(&self, message: &str) -> bool {
+        self.repeats_run(message, MIN_QUOTED_RUN)
+    }
+
+    /// A string taken out of the file, or nothing if it echoes content.
+    pub fn guard_fragment(&self, fragment: &str) -> Option<String> {
+        match self.echoes_content(fragment) {
+            true => None,
+            false => Some(fragment.to_owned()),
+        }
+    }
+
+    /// A composed sentence, or [`GENERIC_REASON`] if it quotes content.
     pub fn guard(&self, message: impl Into<String>) -> String {
         let message = message.into();
-        match self.echoes_content(&message) {
+        match self.quotes_content(&message) {
             true => GENERIC_REASON.to_owned(),
             false => message,
         }
     }
 }
 
-/// Field names, truncated and capped, for an `additionalProperties` message.
+/// Field names, truncated, capped and guarded, for a message about fields the
+/// contract does not define.
 ///
 /// A key is not prose, but a hostile file can put prose in a key, so the
-/// rendering is bounded before the guard ever sees it.
-pub fn summarize_names(names: &[String]) -> String {
+/// rendering is bounded and then each name is guarded as the fragment it is.
+/// A name that echoed content is dropped, which is why the count at the end
+/// counts the names rather than what is shown.
+pub fn summarize_names(names: &[String], guard: &ContentGuard) -> String {
     const MAX_NAMES: usize = 3;
     const MAX_LEN: usize = 40;
     let shown: BTreeSet<String> = names
@@ -119,7 +150,11 @@ pub fn summarize_names(names: &[String]) -> String {
             true => format!("{}…", name.chars().take(MAX_LEN).collect::<String>()),
             false => name.clone(),
         })
+        .filter_map(|name| guard.guard_fragment(&name))
         .collect();
+    if shown.is_empty() {
+        return format!("{} field(s) it does not define", names.len());
+    }
     let joined = shown
         .into_iter()
         .map(|name| format!("`{name}`"))
