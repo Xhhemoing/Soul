@@ -10,6 +10,9 @@
 //!   key, so "forget" has something concrete to destroy;
 //! * [`ForgetOps::execute_forget`] destroys that key, which makes the plaintext
 //!   unrecoverable and demotes derived inferences to `orphaned`.
+//!
+//! [`research::ResearchPreview`] sits deliberately outside [`SoulStore`]: the
+//! research track reads, and only reads.
 
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]
@@ -17,10 +20,12 @@
 pub mod conformance;
 pub mod fake;
 pub mod forget;
+pub mod research;
 pub mod types;
 
 pub use fake::FakeStore;
 pub use forget::{ForgetImpact, ForgetOps, ForgetReceipt, ForgetUnit};
+pub use research::{ResearchPreview, ResearchPreviewReport, ResearchPreviewRequest};
 pub use types::{EventFilter, InferenceState, SealRequest, StoreError, StoreResult};
 
 use uuid::Uuid;

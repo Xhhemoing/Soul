@@ -1242,6 +1242,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "soul-store"
+version = "0.1.0"
+dependencies = [
+ "chacha20poly1305",
+ "fail",
+ "hex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "soul-schema",
+ "soul-store-api",
+ "soul-testkit",
+ "tempfile",
+ "thiserror",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "soul-store-api"
 version = "0.1.0"
 dependencies = [

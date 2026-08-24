@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/soul-schema",
   "crates/soul-store-api",
+  "crates/soul-store",
   "crates/soul-testkit",
   "crates/xtask",
   "crates/soulcore",
@@ -35,11 +36,15 @@ walkdir = "2.5.0"
 axum = "0.7.9"
 tokio = "1.43.0"
 hex = "0.4.3"
+# No `derive` feature: zeroize_derive 1.5 needs edition 2024, and this
+# workspace is pinned to Rust 1.83. `Zeroize` for `[u8; N]` is enough.
+zeroize = "1.8.1"
 
 # The versions are redundant for a path dependency but keep cargo-deny's
 # wildcard check meaningful for the third-party graph.
 soul-schema = { path = "crates/soul-schema", version = "0.1.0" }
 soul-store-api = { path = "crates/soul-store-api", version = "0.1.0" }
+soul-store = { path = "crates/soul-store", version = "0.1.0" }
 soul-testkit = { path = "crates/soul-testkit", version = "0.1.0" }
 
 [profile.test]
