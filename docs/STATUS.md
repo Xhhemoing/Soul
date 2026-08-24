@@ -20,7 +20,7 @@
 
 ## WP01 完成情况
 
-`GOAL1_PLAN.md` 的五条完成定义在本机 Linux 上满足，`just ci` 绿。GitHub Actions 尚未在本推送上跑完；Windows SQLCipher 冒烟以 `test-windows` job 为准。
+`GOAL1_PLAN.md` 的五条完成定义在本机 Linux 上满足，`just ci` 绿。第一次 Windows CI 里 SQLCipher 冒烟已通过；失败原因是 schema freeze 把 CRLF 检出当成内容变更。哈希已改为按 LF 计算，并加了 `.gitattributes`。
 
 | 完成定义 | 证据 |
 |---|---|

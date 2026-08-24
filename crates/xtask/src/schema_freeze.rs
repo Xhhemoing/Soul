@@ -53,11 +53,31 @@ impl fmt::Display for LockDrift {
     }
 }
 
-/// Hex SHA-256 of the file's bytes, so line endings are part of the identity.
+/// Hex SHA-256 of the file as if it used Unix newlines.
+///
+/// Line endings are **not** part of the contract: a Windows checkout that
+/// turns LF into CRLF must still match the lock that was written on Linux.
+/// A real schema edit still changes the digest because the payload changes.
 pub fn digest_file(path: &Path) -> Result<String> {
     let bytes =
         std::fs::read(path).with_context(|| format!("reading {} to hash", path.display()))?;
-    Ok(hex::encode(Sha256::digest(&bytes)))
+    Ok(hex::encode(Sha256::digest(normalize_newlines(&bytes))))
+}
+
+/// Collapse `\r\n` to `\n`. Bare `\r` is left alone so a genuine CR edit still hashes differently.
+pub fn normalize_newlines(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\r' && i + 1 < bytes.len() && bytes[i + 1] == b'\n' {
+            out.push(b'\n');
+            i += 2;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    out
 }
 
 /// Digest every `*.json` document in `docs/schemas/`, excluding the lock file.
@@ -150,4 +170,30 @@ pub fn check_lock(repo_root: &Path) -> Result<Vec<LockDrift>> {
     }
 
     Ok(drift)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    #[test]
+    fn crlf_and_lf_hash_the_same() {
+        let lf = b"{\"a\":1}\n";
+        let crlf = b"{\"a\":1}\r\n";
+        assert_eq!(
+            hex::encode(Sha256::digest(normalize_newlines(lf))),
+            hex::encode(Sha256::digest(normalize_newlines(crlf))),
+        );
+    }
+
+    #[test]
+    fn a_bare_carriage_return_is_not_silently_dropped() {
+        let with_cr = b"a\rb\n";
+        let without = b"ab\n";
+        assert_ne!(
+            hex::encode(Sha256::digest(normalize_newlines(with_cr))),
+            hex::encode(Sha256::digest(normalize_newlines(without))),
+        );
+    }
 }

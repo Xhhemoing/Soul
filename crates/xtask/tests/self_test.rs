@@ -316,3 +316,34 @@ fn the_schema_freeze_notices_an_edited_document() {
         schema_freeze::LockDrift::Changed { file, .. } if file == "audit.schema.json",
     ));
 }
+
+/// Git for Windows may check out LF files as CRLF. That must not fail the freeze.
+#[test]
+fn a_crlf_checkout_still_matches_the_lock() {
+    let source = xtask::repo_root();
+    let dir = tempfile::tempdir().expect("temp dir");
+    let staging = dir.path();
+
+    std::fs::create_dir_all(staging.join("docs/schemas")).expect("mkdir");
+    for entry in std::fs::read_dir(source.join("docs/schemas")).expect("read source schemas") {
+        let entry = entry.expect("entry");
+        let dest = staging.join("docs/schemas").join(entry.file_name());
+        std::fs::copy(entry.path(), &dest).expect("copy");
+        if entry.path().extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        if entry.file_name() == std::ffi::OsStr::new("schemas.lock.json") {
+            continue;
+        }
+        let lf = std::fs::read_to_string(&dest).expect("read");
+        let crlf = lf.replace('\n', "\r\n");
+        std::fs::write(&dest, crlf).expect("write crlf");
+    }
+
+    assert!(
+        schema_freeze::check_lock(staging)
+            .expect("check the crlf copy")
+            .is_empty(),
+        "CRLF checkouts must still match the lock",
+    );
+}

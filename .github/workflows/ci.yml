@@ -79,6 +79,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Pair with .gitattributes eol=lf so schema files are not rewritten as CRLF.
+          # Hashing also normalizes newlines; this keeps rustfmt from fighting the runner.
+          lfs: false
 
       - uses: dtolnay/rust-toolchain@1.83
 
