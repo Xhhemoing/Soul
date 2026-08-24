@@ -47,11 +47,6 @@ fn refusable(tree: &Tree) -> Vec<(&'static str, String)> {
         ("a file in it", format!("{bravo}/secret.txt")),
         ("a file below it", format!("{bravo}/nested/deep.txt")),
         ("its parent", base.clone()),
-        ("a sibling that was never named", tree.lower_alpha()),
-        (
-            "a file in that sibling",
-            format!("{}/decoy.txt", tree.lower_alpha()),
-        ),
         (
             "out and back in with ..",
             format!("{alpha}/../Bravo/secret.txt"),
@@ -104,6 +99,11 @@ fn refusable(tree: &Tree) -> Vec<(&'static str, String)> {
 
     #[cfg(unix)]
     {
+        corpus.push(("a sibling that was never named", tree.lower_alpha()));
+        corpus.push((
+            "a file in that sibling",
+            format!("{}/decoy.txt", tree.lower_alpha()),
+        ));
         corpus.push((
             "a link out of the authorized root",
             format!("{alpha}/escape/secret.txt"),
@@ -125,7 +125,7 @@ fn every_way_of_naming_the_unauthorized_directory_is_refused() {
     let corpus = refusable(&tree);
 
     assert!(
-        corpus.len() >= 27,
+        corpus.len() >= 25,
         "the corpus shrank to {} entries",
         corpus.len(),
     );
@@ -230,12 +230,19 @@ fn an_authorization_that_names_nothing_refuses_everything() {
 fn case_is_decided_by_the_filesystem_rather_than_assumed() {
     let tree = Tree::build();
 
+    // Unix: a third directory named `alpha`. Windows: the same directory as
+    // `Alpha`, probed through the other spelling, at a file that is actually
+    // there (`photo.jpg`). NTFS cannot hold both spellings at once.
+    let case_probe = if cfg!(windows) {
+        format!("{}/photo.jpg", tree.lower_alpha())
+    } else {
+        format!("{}/decoy.txt", tree.lower_alpha())
+    };
+
     let mut exact = Authorization::with_matching(PathMatching::Exact);
     exact.authorize(&tree.alpha()).expect("authorize Alpha");
     assert!(
-        exact
-            .resolve(&format!("{}/decoy.txt", tree.lower_alpha()))
-            .is_err(),
+        exact.resolve(&case_probe).is_err(),
         "on a case-sensitive filesystem `alpha` is a third directory, not `Alpha`",
     );
 
@@ -243,9 +250,7 @@ fn case_is_decided_by_the_filesystem_rather_than_assumed() {
     folded.authorize(&tree.alpha()).expect("authorize Alpha");
     // Under NTFS's rule the two spellings are one directory, so this one is
     // accepted — and that is correct, because on Windows it is the same place.
-    assert!(folded
-        .resolve(&format!("{}/decoy.txt", tree.lower_alpha()))
-        .is_ok());
+    assert!(folded.resolve(&case_probe).is_ok());
 
     // What neither rule may do is let the unauthorized directory in, in any
     // case, which is the part AC-18 is actually about.

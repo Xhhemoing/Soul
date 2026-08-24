@@ -101,6 +101,12 @@ impl Tree {
         write(&base.join("Bravo"), "secret.txt", "第三人的私事");
         write(&base.join("Bravo/nested"), "deep.txt", "更深的私事");
 
+        // NTFS cannot hold `Alpha` and `alpha` as two directories. On Windows
+        // the write below would land `decoy.txt` inside the authorized root
+        // and the authorized-scan tests would start counting a file nobody
+        // put there. The third directory is therefore a Unix fixture; Windows
+        // case tests recase `Alpha` itself.
+        #[cfg(unix)]
         write(
             &base.join("alpha"),
             "decoy.txt",
