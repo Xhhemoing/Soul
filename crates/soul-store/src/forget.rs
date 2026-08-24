@@ -23,7 +23,7 @@ use soul_schema::memory::ForgetState;
 use soul_store_api::forget::{ForgetImpact, ForgetOps, ForgetReceipt, ForgetUnit};
 use soul_store_api::types::{InferenceState, StoreError, StoreResult};
 
-use crate::store::{as_text, backend, placeholders, SqlCipherStore};
+use crate::store::{as_text, backend, enum_text, placeholders, SqlCipherStore};
 
 /// Everything one forget would touch, resolved against the database.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -164,7 +164,10 @@ impl SqlCipherStore {
     }
 
     pub(crate) fn impact_of(&self, unit: ForgetUnit) -> StoreResult<ForgetImpact> {
-        let plan = self.forget_plan(unit)?;
+        self.impact_from_plan(unit, &self.forget_plan(unit)?)
+    }
+
+    fn impact_from_plan(&self, unit: ForgetUnit, plan: &ForgetPlan) -> StoreResult<ForgetImpact> {
         if plan.content_keys.is_empty() {
             return Ok(ForgetImpact::default());
         }
@@ -198,7 +201,7 @@ impl SqlCipherStore {
         )?;
 
         Ok(ForgetImpact {
-            content_key_ids: plan.content_keys,
+            content_key_ids: plan.content_keys.clone(),
             memories_affected: plan.memories.len() as u64,
             contacts_affected: plan.contacts.len() as u64,
             sealed_blobs_destroyed,
@@ -225,13 +228,9 @@ fn mark_forgotten(tx: &Transaction<'_>, table: &str, id_column: &str, id: Uuid) 
     };
 
     let mut value: Value = serde_json::from_str(&doc).map_err(backend)?;
-    let forgotten = serde_json::to_value(ForgetState::Forgotten).map_err(backend)?;
-    let forgotten_text = forgotten
-        .as_str()
-        .ok_or_else(|| StoreError::Backend("forget_state must serialize to a string".into()))?
-        .to_owned();
+    let forgotten_text = enum_text(&ForgetState::Forgotten)?;
     if let Some(object) = value.as_object_mut() {
-        object.insert("forget_state".into(), forgotten);
+        object.insert("forget_state".into(), Value::String(forgotten_text.clone()));
     }
     tx.execute(
         &format!("UPDATE {table} SET forget_state = ?2, doc = ?3 WHERE {id_column} = ?1"),
@@ -251,14 +250,11 @@ impl ForgetOps for SqlCipherStore {
     }
 
     fn execute_forget(&mut self, unit: ForgetUnit) -> StoreResult<ForgetReceipt> {
-        let impact = self.impact_of(unit)?;
+        // One resolution, used both for the receipt and for the deletions, so
+        // the user cannot be charged for something the receipt did not name.
         let plan = self.forget_plan(unit)?;
-        let orphaned = serde_json::to_value(InferenceState::Orphaned)
-            .ok()
-            .and_then(|value| value.as_str().map(str::to_owned))
-            .ok_or_else(|| {
-                StoreError::Backend("inference state must serialize to a string".into())
-            })?;
+        let impact = self.impact_from_plan(unit, &plan)?;
+        let orphaned = enum_text(&InferenceState::Orphaned)?;
 
         let tx = self.conn.transaction().map_err(backend)?;
 

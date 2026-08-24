@@ -48,7 +48,7 @@ pub(crate) fn backend<E: std::fmt::Display>(error: E) -> StoreError {
 }
 
 /// Serialize a contract enum to the string the schema uses for it.
-fn enum_text<T: serde::Serialize>(value: &T) -> StoreResult<String> {
+pub(crate) fn enum_text<T: serde::Serialize>(value: &T) -> StoreResult<String> {
     match serde_json::to_value(value).map_err(backend)? {
         Value::String(text) => Ok(text),
         other => Err(StoreError::Backend(format!(
@@ -114,20 +114,18 @@ impl SqlCipherStore {
         conn.execute_batch(&format!("PRAGMA key = \"x'{}'\";", dek.to_hex()))
             .map_err(backend)?;
 
+        // A plain SQLite build answers this pragma with no rows at all.
         let cipher_version: Option<String> = conn
             .query_row("PRAGMA cipher_version", [], |row| row.get(0))
             .optional()
             .map_err(backend)?;
-        match cipher_version {
-            Some(version) if !version.trim().is_empty() => version,
-            _ => {
-                return Err(StoreError::Backend(
-                    "this SQLite build reports no cipher_version, so it is not SQLCipher and the \
-                     database would be written in the clear"
-                        .into(),
-                ))
-            }
-        };
+        if cipher_version.is_none_or(|version| version.trim().is_empty()) {
+            return Err(StoreError::Backend(
+                "this SQLite build reports no cipher_version, so it is not SQLCipher and the \
+                 database would be written in the clear"
+                    .into(),
+            ));
+        }
 
         // The first read is what actually verifies the key.
         conn.query_row("SELECT count(*) FROM sqlite_schema", [], |row| {
