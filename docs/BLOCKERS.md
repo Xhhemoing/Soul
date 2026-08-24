@@ -1,6 +1,6 @@
 # Soul 阻碍项
 
-状态：`BLOCKERS_FROZEN`（Round 1 六路独立 + Round 2 六路交叉验证后由父代理冻结）。
+状态：`BLOCKERS_FROZEN`（Round 1 六路独立 + Round 2 六路交叉验证 + Round 3 冻结确认后由父代理冻结；Round 3 发现主干在分析期间继续推进，下列「已落地」以 `origin/cursor/soul-goal1-7b1c` @ `2e72ddf` 为准）。
 日期：2026-08-24。父代理 run `bc-b296c4d9-0feb-4f6e-b844-aeaca7a8a073`。
 权威：Goal 1 线上的 `docs/PRODUCT_LOCK.md`、`docs/FORMAL_WORK_PROMPT.md`；`main` 上的 `docs/algorithms/DECISION.md`（`ALGO_FROZEN`）。本分析分支从 `main` 长出，前两份要到 M2 之后才出现在同一棵树上。
 过程稿：`.agent_workspace/blockers/`。进度仍以 Goal 1 线的 `docs/STATUS.md` 为准。
@@ -44,7 +44,7 @@ DECISION.md §6.1 仍写 `crates/soul-algo` 与 `graph_build.rs`：真名是 `so
 | 线 | 尖端 | 与 `main` | 说明 |
 |---|---|---|---|
 | `main` | `7b35bde`（PR #5 squash） | — | 只有算法 crate + 过程稿 |
-| `cursor/soul-goal1-7b1c` PR #2 | `3e88b48` | 祖先 `ea6f62f`；**CONFLICTING**；**draft** | **主干。** WP01–WP13 两段、问卷已合并、`/files` `/graph` 已接 |
+| `cursor/soul-goal1-7b1c` PR #2 | `2e72ddf`（分析中从 `3e88b48` 向前） | 祖先 `ea6f62f`；**CONFLICTING**；**draft** | **主干。** 分析期间已另落：`soul-win-dpapi`、向导十一题与 `/profile` 等四屏、一次不合规的 fileplan 夹具改动（见 M3） |
 | `agent/dev-sota` PR #4 | 仍在推（R2 时 `fc9836e`） | 祖先 `ea6f62f`；**CONFLICTING** | 在 `862e858`（WP09）与 Goal 1 **分叉**后各自重做 WP10/WP11。PR 正文「#2 已是祖先」为假。最新推送在重复 goal1 已有的 Draft/Files 视图。违反 `cursor/` 前缀 |
 | PR #1 | `a785317` | MERGEABLE draft | Goal 1 祖先 |
 | PR #3 | 现状盘点 | CONFLICTING | 关 |
@@ -90,19 +90,23 @@ git merge origin/main
 
 不是 `\\?\C:\` 剥前缀（`9ba160d` 已修授权）。`Tree::build` 往 `base/alpha` 写 `decoy.txt`，NTFS 上即 `Alpha`。失败点：`authorized_scan.rs:65`、`:165`。产品行为正确。
 
-`unauthorized_paths` 因 fail-fast **从未在 windows-latest 跑到**；探针还要改四处（约 `:50` `:53` `:237` `:247`）。语料长度断言 `>= 27` 在 Windows 上刚好饱和：探针拿掉 `lower_alpha` 两条后会变成 25 然后**红在守卫上**。守卫必须改成精确式：
+`unauthorized_paths` 因 fail-fast **从未在 windows-latest 跑到**。探针只改 **两处**语料条目（约 `:50` `:53` 的 `lower_alpha`）以及长度守卫。`:237` / `:247` 在 `case_is_decided_by_the_filesystem_rather_than_assumed` 内：该测试显式指定 `PathMatching`，在 NTFS 上本身是绿的——**不要改、不要跟探针走**。
+
+语料长度断言 `>= 27` 在 Windows 上刚好饱和。守卫必须改成精确式（`probe` = 文件系统把 `alpha` 与 `Alpha` 当成两个目录）：
 
 ```text
 25 + (probe ? 2 : 0) + (cfg!(unix) ? 3 : 0)
 ```
 
-**Bravo 无条件留在语料里。** `case_is_decided_by_the_filesystem_rather_than_assumed` 不要改、不要跟探针走。问文件系统，不要问 `cfg!(windows)`（APFS 会折、NTFS 可标大小写敏感）。不要为绿把守卫放宽成无条件 `>= 25`（Linux 会默默丢条目）。不要 `#[ignore]`。
+**Bravo 无条件留在语料里。** 问文件系统，不要问 `cfg!(windows)`（APFS 会折、NTFS 可标大小写敏感）。不要为绿把守卫放宽成无条件 `>= 25`（Linux 会默默丢条目）。不要 `#[ignore]`。
+
+主干 `fc96e46`（「do not plant a case-twin of Alpha on NTFS」）**走了禁止路径**：decoy 用 `#[cfg(unix)]`、守卫无条件 `>= 25`、tripwire 按 `cfg!(windows)` 选路径。父代理 **不采纳** 这次为绿放宽。后续必须改回精确守卫 + 文件系统探针；该提交的「Windows 可能变绿」不构成 M3 关闭。
 
 `test-windows` 里**每一次** `cargo test`（工作区 + desktop shell）建议带 `--no-fail-fast`，与夹具 **同一次推送**即可。它是可观测性，不是第二道 P0 门；夹具修好后默认也会跑完。desktop 步现在因工作区步失败从未开始，`one_store` / `ipc_roundtrip --no-run` 在尖端上零次执行。
 
 大小写敏感的 Windows 目录上，默认 `PathMatching::CaseFolded` 仍可能接受无人授权的 `alpha`：那是产品 P2，预期红，禁止改回 `cfg` 来藏。
 
-Windows 测试在 DPAPI 落地前会在 `Session::open` 处继续红。不要把「每步全绿」读成「DPAPI 之前什么都不许做」。在夹具修复之后立刻加测试入口 `Session::open_with_keys(dir, provider)`，让 `soulcore` 在 Windows 上用显式 `TestKeyProvider` 跑完，发货路径的 `Session::open` 保持诚实。用签入的豁免名单也可以，但入口更便宜。
+DPAPI 已在主干落地（`soul-win-dpapi`）。Windows 全绿仍卡在 fileplan 夹具：`dpapi_key_chain` 因字母序从未跑到。修完 M3 后看 `Session::open` 在 windows-latest 是否已通；不通再加 `open_with_keys`。不要把「每步全绿」读成「夹具之外什么都不许做」。
 
 ---
 
@@ -118,9 +122,15 @@ Windows 测试在 DPAPI 落地前会在 `Session::open` 处继续红。不要把
 
 A2：`soul-draft::points_for` 已读生效 `band`，没有第二套 3/10/3。换 `a2_render` 是为了 `COPY_ZH.md` 的分列句与沉寂句，不是去重常量。适配器必须把分列填成 `Some`，否则 A2 静默丢掉冻结句。A2 的 `u32` 与 UUID 证据：优先在 Goal 1 适配（重建期映射）；需要时允许加宽冻结 crate 接口。产品 crate 禁止第三个 `180`。源码守卫继续扫 `soul-draft` 与 A2。
 
-夹具（产品边界，不只算法 crate）：`lilei_12`；群洪 + 每向 1 条一对一 → Weak 且分列精确；仅群聊 Weak；2/3、9/10、日 2/3；179/180/359/360 闭区间；休眠 peer 用全库 `as_of`（per-peer 对照必须不同）。
+夹具（产品边界，不只算法 crate）：`lilei_12`；群洪 + 每向 1 条一对一 → Weak 且分列精确；仅群聊 Weak；2/3、9/10、日 2/3；179/180/359/360 闭区间；休眠 peer 用全库 `as_of`（per-peer 对照必须不同）；**owner 在群里发言不得刷新从未在该条消息里出现的历史发言人的 `last_contact`**（见下节 G1+）。
 
-已知代价禁止静默修补：仅群聊 Weak、F04c、真实群聊可挡住降档。
+已知代价禁止静默修补：仅群聊 Weak、F04c、**真实**群聊（peer 本人发言）可挡住降档。
+
+### G1+ — 停止 owner 群消息的历史发言人扇出（P0，与 G1 同批）
+
+`soul-import` 把 owner 的一条群消息写成对「该会话全部历史发言人」的 Outgoing。这不是 DECISION §4.3 定价的「peer 还在群里所以关系没死」——那要的是 **peer 自己的**群聊行。伪造的 `last_contact` 会让 200 天无一对一的关系永远不降档。
+
+**不需要成员表。** 修复：owner 群消息不要对历史发言人写 Outgoing；incoming 仍记实际发送者。展示计数随之变诚实。不要在算法 crate 里加权重。去重仍是 P1（见 G4）。
 
 ### G2 — intake 绕过轴锁（P0）
 
@@ -138,29 +148,29 @@ A2：`soul-draft::points_for` 已读生效 `band`，没有第二套 3/10/3。换
 
 矩阵与 PRODUCT_LOCK 都没有「重复导入必须幂等」。STATUS 已记录同一文件会写两遍。去重键需要身份/事务设计，不能当小修 P0。
 
-群聊 N:1 扇出会伪造 `last_contact`、挡住降档。T4D 次数门已挡住「刷 Strong」。Telegram `result.json` 通常没有逐条成员表，「没有同场集合就零 Outgoing」可能过纠。**标 P1 / 已知限制**：T4D 接线后如实入档；有成员集合再收紧。不要在算法 crate 里加权重补偿。
+群聊 N:1 扇出的 **降档分量** 已升为 G1+（P0）。其余（展示计数膨胀、去重）仍是 P1。
 
-去重（P1）：`sha256("soul.import.dedup.v1|source|canonical_external_id")`。JSONL 的 `id` 必须带上会话/账号命名空间。只存摘要。同文件两次导入不改变档位——作为设计目标，不是矩阵行。
+去重（P1）：`sha256("soul.import.dedup.v1|source|canonical_external_id")`。JSONL 的 `id` 必须带上会话/账号命名空间。只存摘要。同文件两次导入不改变档位——作为设计目标，不是矩阵行。不要在算法 crate 里加权重补偿。
 
-### G5 — 壳只接了切片的一部分（P0 关闭，非合入）
+### G5 — 壳仍缺导入入口与采集开关（P0 关闭残余，非合入）
 
-AC-03 的「谁跑」是 CI，喂 fixture 合规。锁的是切片 2/3：无文件则问卷回退、可编辑档案。向导没有十一题，问卷命令未注册。`COMMAND_NAMES` 14 个；`profile` / `memory` / `import` / `collect` / `policy` 没接到壳。采集开关检查清单自己写着界面没有。
+分析期间主干已接：向导十一题、`/profile`（含 `correct_axis`）、记忆 / 研究 / 审计四屏；`COMMAND_NAMES` 约 27 个。原先「问卷 UI 缺失」的关闭门 **已达成，不要再做一遍**。
 
-关闭 Goal 1 前至少：向导十一题（来自 `questions()`）+ `/profile`（`correct_axis`，G2 之后）。导入 / 记忆 / 采集 / 研究预览是同一欠债，按 WP09 视图补，不要另起 Goal 2。
+仍缺：导入没有用户路径（无 `import_*` 命令）；采集开关没有界面。切片 2 的「问卷 + 导入」还差导入半边；切片 7 采集默认关但要能打开。按 WP09 补这两处，不要另起 Goal 2。
 
 ---
 
 ## 4. 发货与诚实缺口
 
-### S1 — DPAPI 骨架（P0 发货 / P1 合入）
+### S1 — DPAPI：**已落地，Windows CI 未验证**（原 P0 发货）
 
-矩阵 AC-04/AC-08 的「谁跑」是 CI，用 `TestKeyProvider` / `open_test_store`，**挡不住任何矩阵行**。这与 S5 一样是措辞洞：按字面 Goal 1 可以在「唯一发货平台库打不开」时合法关闭。关闭清单必须把「Windows 能打开自己的库」写成产品条件，或改矩阵。
+主干 `40b3474` / `2f323d5` 落地 `crates/soul-win-dpapi`（不是文稿曾用的 `soul-winkeys`）：`soul-store` 仍 `forbid(unsafe_code)`；失败走 `Unavailable` / `Corrupt`，不新铸钥匙。crate 在 Linux 也能编（`SUPPORTED = cfg!(windows)`），便于类型检查。
 
-实现放进新 crate **`soul-winkeys`**（仅 `cfg(windows)`，零依赖），**不要**把 `soul-store` 的 `forbid(unsafe_code)` 降成 `deny`。失败 → `Unavailable`，禁止新铸钥匙清空用户库。明文密钥文件不是发货路径。
+矩阵 AC-04/AC-08 仍用测试钥匙，**挡不住任何矩阵行**（措辞洞同 S5）。关闭清单仍须「Windows 能打开自己的库」，证据是 windows-latest 跑过 `dpapi_key_chain`——这取决于 M3。不要再新建第二个 DPAPI crate。明文密钥文件不是发货路径。
 
 ### S2 — KnownIdentifiers 空（P1）
 
-STATUS：「降低精度不是底线」（第三人 turn 整段占位 + shape scrub）。升 P0 的条件：一条能穿过现有占位、让 AC-12 红的夹具（owner 文本里嵌 2–3 字中文名）。图上解封姓名是另一件事，不要绑在清洗上。
+STATUS：「降低精度不是底线」（第三人 turn 整段占位 + shape scrub）。crate 边界的 AC-12 测试 **自带** `KnownIdentifiers`，所以「再写一条嵌中文名的夹具」在现有测试里红不了。升 P0 的条件是：在 **session 缝**（`closed_session` / headless 起草，今日空表）上加泄漏断言。图上解封姓名是另一件事。
 
 ### S3 — AC-21 观察器（P2）
 
@@ -185,12 +195,12 @@ STATUS：「降低精度不是底线」（第三人 turn 整段占位 + shape sc
 | 0 | 本文件 `BLOCKERS_FROZEN` 合进 `main`（PR #6）；停 `agent/dev-sota` | 合入 |
 | 1 | M3 夹具探针 + 精确语料守卫；可选同推 `--no-fail-fast`；`Session::open_with_keys` | 合入 |
 | 2 | M2：`main` merge 进 `cursor/soul-goal1-7b1c`；PR #2 mark ready | 合入 |
-| 3 | G1 T4D 机器档 + 边界夹具 | 关闭 |
+| 3 | G1 T4D 机器档 + G1+ 停止历史发言人扇出 + 边界夹具 | 关闭 |
 | 4 | G2 A0 intake | 关闭 |
 | 5 | G3 纠正（COPY_ZH 先加 P5 变体）+ A2 读生效档 | 关闭 |
-| 6 | G5 向导 + `/profile`（及其余未接切片按 WP09） | 关闭 |
-| 7 | S1 `soul-winkeys` | 发货 |
-| 8 | G4 去重/扇出（P1）、S2 夹具（P1） | 不挡 |
+| 6 | G5 导入入口 + 采集开关（向导/`/profile` 已在主干） | 关闭 |
+| 7 | S1：M3 之后确认 `dpapi_key_chain` 在 windows-latest 跑过（不要新建 crate） | 发货 |
+| 8 | G4 去重（P1）、S2 session 缝断言（P1） | 不挡 |
 | 9 | PR #2 merge commit 进 `main`；关 #3 #4 | 合入 |
 | 10 | 作者签 `scripts/author-manual-checklist.md` | 关闭 |
 
