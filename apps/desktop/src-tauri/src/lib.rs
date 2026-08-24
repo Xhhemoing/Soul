@@ -17,6 +17,8 @@
 
 #![forbid(unsafe_code)]
 
+use tauri::Manager;
+
 pub mod commands;
 pub mod tray;
 
@@ -38,15 +40,19 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
 pub fn run() {
     configure(tauri::Builder::default())
         .setup(|app| {
-            tray::install(app.handle())?;
+            app.manage(tray::install_or_report(app.handle()));
             Ok(())
         })
-        // Closing the window puts Soul in the tray rather than ending it. The
-        // tray menu is where quitting lives, so the user always has one.
+        // Closing the window puts Soul in the tray rather than ending it —
+        // but only when there is a tray to put it in. Without one the tray
+        // menu's 退出 is unreachable, and a window that will not close and
+        // cannot be quit is worse than no tray at all.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                if window.state::<tray::TrayState>().installed {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
             }
         })
         .run(tauri::generate_context!())

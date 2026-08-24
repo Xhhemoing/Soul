@@ -1,9 +1,11 @@
 //! The tray icon. AC-01's visible half.
 //!
-//! Two entries: bring the window back, and quit. Closing the window hides it
-//! instead of exiting (see `lib.rs`), so quitting has to be reachable from
-//! here or the process becomes hard to stop — which is not the impression a
-//! program that reads your life should give.
+//! Two entries: bring the window back, and quit. When the tray is there,
+//! closing the window hides it instead of exiting (see `lib.rs`), so quitting
+//! has to be reachable from here or the process becomes hard to stop — which
+//! is not the impression a program that reads your life should give. When the
+//! tray is not there, the window closes for real; `install_or_report` says
+//! which of the two this session got.
 //!
 //! Building the tray is compiled on every platform and only *works* where
 //! there is a desktop session. Linux CI compiles this file and stops there;
@@ -16,10 +18,34 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Runtime};
 
+/// Whether this session has a tray. Read by the window-close handler.
+#[derive(Debug, Clone, Copy)]
+pub struct TrayState {
+    pub installed: bool,
+}
+
 pub const TRAY_ID: &str = "soul-tray";
 pub const MENU_OPEN: &str = "tray.open";
 pub const MENU_QUIT: &str = "tray.quit";
 pub const MAIN_WINDOW: &str = "main";
+
+/// Install the tray, or say so and carry on.
+///
+/// Failing to start over a missing notification area would be the wrong trade:
+/// on Windows 11 there is always one, and on a desktop that has none the user
+/// is better served by a window they can close.
+pub fn install_or_report<R: Runtime>(app: &AppHandle<R>) -> TrayState {
+    match install(app) {
+        Ok(()) => TrayState { installed: true },
+        Err(error) => {
+            eprintln!(
+                "soul: no tray icon on this desktop ({error}); \
+                 closing the window will quit instead of hiding"
+            );
+            TrayState { installed: false }
+        }
+    }
+}
 
 pub fn install<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn Error>> {
     let open = MenuItem::with_id(app, MENU_OPEN, "打开 Soul", true, None::<&str>)?;
