@@ -4,7 +4,7 @@
 
 ## 当前里程碑
 
-**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。WP01–WP11、WP13 与 DPAPI 均已落地。**产品锁第二片的导入那一半已经接到界面上**（WP09 第四段）：`/import` 一页、`Session` 上四个方法、四条 IPC 命令，装出来的 Soul 现在读得了 `soul-import-v1` JSONL 与 Telegram Desktop 的 `result.json`；在这之前只有 headless 冒烟走得通，用户拿不到。真机上用界面导一次仍然没人做过，作者清单第 8 节标着可选。**产品锁第七片（前台采集）也接上了界面**（WP09 第五段）：`/collect` 一页、`Session` 上一个同意账本加一个采集器、三条 IPC 命令。在这之前 `soul-collect` 有门、`soulcore::commands::collect` 有管道，而唯一开得了它们的是 `soul-headless collect-probe`——一件仪器，不是产品面；装了 Soul 的 Windows 用户没有任何办法把采集打开。`config.json` 一个字段都没有多：同意活在进程里，重启回到关，`session_collect.rs` 把这份文件的字节读回来搜 `collect` / `consent` 两个词。真机上按下「开始采集」再切二十秒窗口仍然没人做过，作者清单第 6 节。**E1（用户自备端点）也接上了界面**（WP09 第六段）：设置页多了一个地址输入框与「保存端点 / 清除端点」，`Session` 上多了设与清两个方法，两条 IPC 命令。在这之前 `Origin::parse` 与 `PolicySession::with_user_endpoint` 都在，而产品这一侧没有任何开关，所以装出来的 Soul 上那行「语言模型端点」永远是「未填写」，起草页的确认屏假设了一个没人配得了的端点。地址只活在这次运行里：`config.json` 仍然是两个字段，`session_e1.rs` 把字节读回来搜端口号与 `llm` / `endpoint` / `http`，重开目录之后批准一次生成拿到的是 `E1_NOT_CONFIGURED`。填写不访问地址——那台 `MockLlm` 一直在监听，`request_count()` 是 0。没有 key 输入框，因为 `soul-egress` 还没有 `Authorization` 头（见第六段遗留 1）。真机上填一个本机端点再按生成没有人做过，作者清单第 9 节标着可选。**NSIS 安装目录与数据目录碰撞已在代码里关闭**（`installer-hooks.nsh` 强制 `%LOCALAPPDATA%\Programs\Soul`，`shell_is_local_only` 与 `install_smoke_script` 测试钉住；真机 NSIS 仍待作者手动）。**`2e72ddf` 上 GitHub Actions run [`32754617268`](https://github.com/Xhhemoing/Soul/actions/runs/32754617268) 五门全绿**：lint、ubuntu `just ci`、sbom、windows-latest `cargo test --workspace --all-targets`（含 NTFS 文件计划、`cfg(windows)` DPAPI、`one_store` 运行时那一半）、桌面壳 `command_surface` / `no_egress_path` / `one_store` / `shell_is_local_only`、`ipc_roundtrip --no-run`、以及 package（`soul.exe` 内嵌 `asInvoker`、`install-smoke.ps1 -SkipInstall` 15 项 0 失败）。**HEAD `8b856bd` 的 hosted CI 没有跑起来**（[32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) 五门约 8 秒、0 step、空 `runner_name`；其后每次 push 同一形态）。同一账户上 `agent/dev-sota` 的 run 也是 0 step、空 runner，所以这不是本仓库 workflow 写坏了。GitHub Status 在 2026-08-24 14:34 UTC 那次 Actions 事故已经恢复，而 `2e72ddf` 的绿 run 17:05 才开始，HEAD 的空 runner 不是那次事故。更像是私有仓库 Actions minutes 用尽（Windows 分钟按 2 倍计；push 与 pull_request 曾经各开五门）。workflow 仍在 push 上跑（只跑 pull_request 会让 HEAD 一次 run 都没有），但 concurrency 改成 `head_ref || ref_name`，同一分支的 push 与 PR 互取消，避免十门一起计费。请对 [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) **Re-run all jobs**，或恢复 minutes 后再推。那次绿的 package 工件早于 `9602b97`（NSIS 装进 Programs 而不是数据目录），**不能拿来做卸载 / `keys.dpapi` 的作者手动**。托盘文案已由 `shell_is_local_only` 钉成「打开 Soul」「退出 Soul」，图标是否出现在通知区仍只在 `scripts/author-manual-checklist.md` 上。UAC 盾牌、真机采集、WebView2 流量同左。CI 不能替，也不要在本文件假装过了。
+**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。WP01–WP11、WP13 与 DPAPI 均已落地。**产品锁第二片的导入那一半已经接到界面上**（WP09 第四段）：`/import` 一页、`Session` 上四个方法、四条 IPC 命令，装出来的 Soul 现在读得了 `soul-import-v1` JSONL 与 Telegram Desktop 的 `result.json`；在这之前只有 headless 冒烟走得通，用户拿不到。真机上用界面导一次仍然没人做过，作者清单第 8 节标着可选。**产品锁第七片（前台采集）也接上了界面**（WP09 第五段）：`/collect` 一页、`Session` 上一个同意账本加一个采集器、三条 IPC 命令。在这之前 `soul-collect` 有门、`soulcore::commands::collect` 有管道，而唯一开得了它们的是 `soul-headless collect-probe`——一件仪器，不是产品面；装了 Soul 的 Windows 用户没有任何办法把采集打开。`config.json` 一个字段都没有多：同意活在进程里，重启回到关，`session_collect.rs` 把这份文件的字节读回来搜 `collect` / `consent` 两个词。真机上按下「开始采集」再切二十秒窗口仍然没人做过，作者清单第 6 节。**E1（用户自备端点）也接上了界面**（WP09 第六段）：设置页多了一个地址输入框与「保存端点 / 清除端点」，`Session` 上多了设与清两个方法，两条 IPC 命令。在这之前 `Origin::parse` 与 `PolicySession::with_user_endpoint` 都在，而产品这一侧没有任何开关，所以装出来的 Soul 上那行「语言模型端点」永远是「未填写」，起草页的确认屏假设了一个没人配得了的端点。地址只活在这次运行里：`config.json` 仍然是两个字段，`session_e1.rs` 把字节读回来搜端口号与 `llm` / `endpoint` / `http`，重开目录之后批准一次生成拿到的是 `E1_NOT_CONFIGURED`。填写不访问地址——那台 `MockLlm` 一直在监听，`request_count()` 是 0。没有 key 输入框，因为 `soul-egress` 还没有 `Authorization` 头（见第六段遗留 1）。真机上填一个本机端点再按生成没有人做过，作者清单第 9 节标着可选。**NSIS 安装目录与数据目录碰撞已在代码里关闭**（`installer-hooks.nsh` 强制 `%LOCALAPPDATA%\Programs\Soul`，`shell_is_local_only` 与 `install_smoke_script` 测试钉住；真机 NSIS 仍待作者手动）。**`2e72ddf` 上 GitHub Actions run [`32754617268`](https://github.com/Xhhemoing/Soul/actions/runs/32754617268) 五门全绿**：lint、ubuntu `just ci`、sbom、windows-latest `cargo test --workspace --all-targets`（含 NTFS 文件计划、`cfg(windows)` DPAPI、`one_store` 运行时那一半）、桌面壳 `command_surface` / `no_egress_path` / `one_store` / `shell_is_local_only`、`ipc_roundtrip --no-run`、以及 package（`soul.exe` 内嵌 `asInvoker`、`install-smoke.ps1 -SkipInstall` 15 项 0 失败）。**HEAD `7005683` 的 hosted CI 没有跑起来**（最新空 run [32773901867](https://github.com/Xhhemoing/Soul/actions/runs/32773901867) 五门约 21 秒、0 step、空 `runner_name`；最早同形态 [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400)）。同一账户上 `agent/dev-sota` 的 run 也是 0 step、空 runner，所以这不是本仓库 workflow 写坏了。GitHub Status 在 2026-08-24 14:34 UTC 那次 Actions 事故已经恢复，而 `2e72ddf` 的绿 run 17:05 才开始，HEAD 的空 runner 不是那次事故。更像是私有仓库 Actions minutes 用尽（Windows 分钟按 2 倍计；push 与 pull_request 曾经各开五门）。workflow 仍在 push 上跑（只跑 pull_request 会让 HEAD 一次 run 都没有），但 concurrency 改成 `head_ref || ref_name`，同一分支的 push 与 PR 互取消，避免十门一起计费。请对 [32773901867](https://github.com/Xhhemoing/Soul/actions/runs/32773901867) **Re-run all jobs**，或恢复 minutes 后再推。那次绿的 package 工件早于 `9602b97`（NSIS 装进 Programs 而不是数据目录），**不能拿来做卸载 / `keys.dpapi` 的作者手动**。托盘文案已由 `shell_is_local_only` 钉成「打开 Soul」「退出 Soul」，图标是否出现在通知区仍只在 `scripts/author-manual-checklist.md` 上。UAC 盾牌、真机采集、WebView2 流量同左。CI 不能替，也不要在本文件假装过了。
 
 ## 进度
 
@@ -27,7 +27,7 @@
 | WP11 文件计划 | 完成。见下节。`/files` 已接 `PlanPreview`，仍然没有执行按钮（遗留 8 消除） |
 | WP13 安装 smoke / CI / SBOM / 壳接库 | 两段都完成。见下节。剩下的是 Windows 真机手动那七条 |
 | DPAPI（WP13 遗留） | 完成。见「DPAPI 完成情况」。`unsafe` 隔离在 `crates/soul-win-dpapi`。windows-latest 已跑过 `cfg(windows)` 往返、`dpapi_key_chain`、桌面 `one_store`（`one_session_hands_out_one_store` 过） |
-| v0.1 其余 WP | 无。Goal 1 代码门禁在 `2e72ddf` 上绿；HEAD `8b856bd` 另有 NSIS Programs 目录与托盘文案钉死，hosted 五门尚未真正开跑。剩下的是 HEAD hosted 绿，以及作者 Win11 手动清单 |
+| v0.1 其余 WP | 无。Goal 1 代码门禁在 `2e72ddf` 上绿；HEAD `7005683` 另有 NSIS Programs 目录、托盘文案钉死、导入/采集/E1 产品面，hosted 五门尚未真正开跑。剩下的是 HEAD hosted 绿，以及作者 Win11 手动清单 |
 
 ## WP01 完成情况
 
@@ -635,7 +635,7 @@ PRODUCT_LOCK 的 E1 是「用户自备的 OpenAI 兼容端点」。守卫早就�
 5. **改地址不会作废已经准备好的那份草稿。** `prepare_draft` 存的是计数与一个哈希，从来不含主机名；用户先准备、再去设置页改地址、再回来按生成，请求会去新地址。走到这一步得中途离开起草页（那时组件已经卸载，屏幕上的计划也没了），所以实际上碰不到。真要堵，是在设与清里把 `draft.discard()` 一起调掉——那会在用户完全不知情的情况下丢掉一份准备好的草稿，两种都不完美，选了不动状态的那种。
 6. **真机那一半没有。** Linux 上证的是「填了会去那台 mock」，Windows 真机上「填一个本机 Ollama 然后按生成」没有人做过，作者清单第 9 节（可选，不是门禁项）。**没有勾。**
 
-## Goal 1 门禁对照（`2e72ddf` / run 32754617268；HEAD `8b856bd` hosted 未开跑）
+## Goal 1 门禁对照（`2e72ddf` / run 32754617268；HEAD `7005683` hosted 未开跑）
 
 CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS Programs 目录与托盘文案钉死还没有 hosted package/test 跑过。作者手动那一半没有，所以 Goal 1 **还不能关**。
 
@@ -657,17 +657,17 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 | AC-22 | 云开关 UI + 核心恒「尚未启用」；依赖图无 E0 | 资源监视器那一眼——作者清单 5 |
 | AC-23 / AC-24 | 审计回放无正文；崩溃最多丢 1 条且链可验证 | — |
 | AC-25 | 导入 / 粘贴 / 文件名三路注入不进工具计划、不外连该 URL | — |
-| AC-26 | `2e72ddf` 同 run：lint、ubuntu `just ci`、windows workspace+壳、sbom、package。HEAD `8b856bd` 本地 `just ci` 绿；hosted [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) 五门空 runner | HEAD hosted 真正开跑并绿；真机 `tauri build` 拉 NSIS 仍是作者机器上的事 |
+| AC-26 | `2e72ddf` 同 run：lint、ubuntu `just ci`、windows workspace+壳、sbom、package。HEAD `7005683` 本地 E1 测试绿（`session_e1` 8、`ipc_roundtrip` 29、`command_surface` 6、UI 14 文件 136 项）；hosted [32773901867](https://github.com/Xhhemoing/Soul/actions/runs/32773901867) 五门空 runner | HEAD hosted 真正开跑并绿；真机 `tauri build` 拉 NSIS 仍是作者机器上的事 |
 
 十三个产品锁切片与上表同一条缝：灵魂层与只读代理层有测试；托盘外观与真机采集没有。缝的位置和上一版比又挪了一格——E1 此前是「crate 有守卫，产品没有开关」，现在是「产品有开关，真机没人填过」。同一句话对第七片（采集）也成立。
 
 ## 下一步
 
-批 3–5 与 WP13、DPAPI 都已完成。`2e72ddf` 上 CI 五门全绿。HEAD `8b856bd` 本地绿，hosted 五门没有 runner。原先写在这里的三件事，两件已经做完，剩下的是 hosted 与真机：
+批 3–5 与 WP13、DPAPI 都已完成。`2e72ddf` 上 CI 五门全绿。HEAD `7005683` 本地绿（含 E1 产品面），hosted 五门没有 runner。原先写在这里的产品缺口（向导十一题、导入页、采集页、端点表单）已经做完，剩下的是 hosted 与真机：
 
 1. ~~**向导还没有画那十一道题。**~~ **已完成**，见「WP09 完成情况（第三段）」。
-2. **HEAD hosted CI。** 请对 [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) **Re-run all jobs**，或恢复 Actions minutes。空 runner 不是产品回归。在 HEAD package 绿之前，不要用 `2e72ddf` 的 `windows-binaries` 做卸载 / `keys.dpapi`——那次构建还把程序装进数据目录。
-3. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」（第 8 节的界面导入是可选的，不属于门禁）。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替。真装真卸从 `8b856bd`（或之后）在本机 `tauri build`，不要用过期工件。采集现在有产品路径：打开 `/collect`，按「开始采集」，切二十秒窗口，按「停止采集」。要一份带秒数的两段测量仍然用探针：`soul-headless collect-probe --i-consent --seconds 20`。
+2. **HEAD hosted CI。** 请对 [32773901867](https://github.com/Xhhemoing/Soul/actions/runs/32773901867) **Re-run all jobs**，或恢复 Actions minutes。空 runner 不是产品回归。在 HEAD package 绿之前，不要用 `2e72ddf` 的 `windows-binaries` 做卸载 / `keys.dpapi`——那次构建还把程序装进数据目录。
+3. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」（第 8 节的界面导入、第 9 节的本机端点是可选的，不属于门禁）。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替。真装真卸从 `8b856bd`（或之后）在本机 `tauri build`，不要用过期工件。采集现在有产品路径：打开 `/collect`，按「开始采集」，切二十秒窗口，按「停止采集」。要一份带秒数的两段测量仍然用探针：`soul-headless collect-probe --i-consent --seconds 20`。端点现在有产品路径：打开 `/settings`，填地址，按「保存端点」，再去起草页生成。
 4. ~~**DPAPI 要真的实现**~~ **已实现，且 windows-latest 已跑过。** 真机上仍要确认有登录用户配置文件时 `%LOCALAPPDATA%\Soul\keys.dpapi` 存在且 `/graph` 不再给拒绝。卸载脚本不能删这个文件。NTFS 不能同时放下 `Alpha` 和 `alpha`，授权扫描的第三目录因此只在 Unix 上种。AC-21 的套接字观察在 Linux CI 读 `/proc`，在 Windows CI 由 `scripts/install-smoke.ps1` 从进程外看 TCP 表。
 
 不要启动 Goal 2。文件写入仍是 v0.1.1（AC-27）：`/files` 有计划、有哈希、没有执行按钮，也没有可以绑执行按钮的命令。
