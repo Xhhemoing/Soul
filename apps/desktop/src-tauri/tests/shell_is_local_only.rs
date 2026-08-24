@@ -113,6 +113,23 @@ fn the_webview_can_only_load_what_shipped_with_it() {
         "the policy names a remote origin: {csp}",
     );
 
+    // `connect-src` is the one directive that could let the page talk to
+    // something. Everything in it is either the page itself or the local IPC
+    // bridge: Tauri reaches the Rust side with a fetch to `ipc://localhost` —
+    // `http://ipc.localhost` on Windows — and a bare host source matches that
+    // over the page's own scheme without naming one.
+    let connect = csp
+        .split(';')
+        .map(str::trim)
+        .find(|directive| directive.starts_with("connect-src"))
+        .expect("connect-src is stated rather than inherited");
+    for source in connect.split_whitespace().skip(1) {
+        assert!(
+            source == "'self'" || source == "ipc:" || source.ends_with(".localhost"),
+            "connect-src allows something that is not the page or the local IPC bridge: {source}",
+        );
+    }
+
     assert_eq!(
         security["dangerousDisableAssetCspModification"],
         Value::Bool(false)
