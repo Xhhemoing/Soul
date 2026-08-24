@@ -20,12 +20,7 @@ fn warm(scorer: Scorer, interactions: &[Interaction], as_of: i64) {
     }
 }
 
-fn time_chunk(
-    scorer: Scorer,
-    interactions: &[Interaction],
-    as_of: i64,
-    passes: usize,
-) -> Duration {
+fn time_chunk(scorer: Scorer, interactions: &[Interaction], as_of: i64, passes: usize) -> Duration {
     let started = Instant::now();
     for _ in 0..passes {
         let scores = scorer(black_box(interactions), black_box(as_of));
@@ -56,9 +51,7 @@ fn main() {
     println!("MODEL_SLUG: {MODEL_SLUG}");
     println!("AS_OF: {FIXTURE_AS_OF_RFC3339} ({FIXTURE_AS_OF_UNIX})");
     println!("MATRIX");
-    println!(
-        "| Fixture | Events | All days | Direct events | Direct days | Last age | T4 | T4D |"
-    );
+    println!("| Fixture | Events | All days | Direct events | Direct days | Last age | T4 | T4D |");
     println!("|---|---:|---:|---:|---:|---:|---|---|");
     for fixture in ablation_fixtures() {
         let t4 = score_t4(&fixture.interactions, fixture.primary_peer, fixture.as_of);

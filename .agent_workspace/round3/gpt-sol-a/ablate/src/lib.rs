@@ -591,7 +591,10 @@ mod tests {
                         Direction::Incoming
                     },
                     Venue::Direct,
-                    at_age(last_age + index as i64 % day_count, 9 * 3_600 + index as i64),
+                    at_age(
+                        last_age + index as i64 % day_count,
+                        9 * 3_600 + index as i64,
+                    ),
                 )
             })
             .collect();
@@ -621,11 +624,7 @@ mod tests {
             ("F_OLD", Band::Weak, Band::Weak),
             ("F_ONESIDE", Band::Weak, Band::Weak),
             ("F_DORMANT_200d", Band::Moderate, Band::Moderate),
-            (
-                "F_HEAVY_GROUP_PLUS_TWO_DIRECTS",
-                Band::Strong,
-                Band::Weak,
-            ),
+            ("F_HEAVY_GROUP_PLUS_TWO_DIRECTS", Band::Strong, Band::Weak),
         ];
         let fixtures = ablation_fixtures();
         assert_eq!(fixtures.len(), expected.len());
