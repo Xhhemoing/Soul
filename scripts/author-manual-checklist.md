@@ -1,0 +1,173 @@
+# 作者手动清单
+
+CI 到此为止。下面每一条都要在一台 **Windows 11 x64、非管理员账户** 上由作者亲手过一遍，
+过完把结果写回 `docs/STATUS.md` 的对应工作单段落——写「过了」没有用，要写看到了什么。
+
+这份清单不是「顺便测一下」。AC-01（安装启动、托盘出现、不提权）与 AC-09 / AC-10（真机采集）
+在验收矩阵里就写着「作者手动」；AC-21 与 AC-22 的机器证据在 CI 里已经有了，这里补的是
+「操作系统层面也没有流量」那一半。凡是这份清单里过不去的，正确的做法是**记成缺口**，
+不是把安装器改成会去下载点什么。
+
+## 0. 先准备好产物
+
+打包在作者机器上做，不在 CI 上做：`tauri build` 会去取 NSIS，那是出网，
+CI 不允许（见 `docs/STATUS.md` WP13「Windows 手动缺口」）。
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm --filter @soul/desktop build
+pnpm --filter @soul/desktop tauri build
+cargo build --release -p soulcore --bin soul-headless
+```
+
+产物：
+- `apps/desktop/src-tauri/target/release/bundle/nsis/Soul_0.1.0_x64-setup.exe`
+- `apps/desktop/src-tauri/target/release/soul.exe`
+- `target/release/soul-headless.exe`
+
+**开始之前**：这台机器上不能已经装着 Soul（`%LOCALAPPDATA%\Soul` 要不存在），
+`控制面板 → 程序和功能` 里也不能有 Soul。否则测的是升级，不是干净安装。
+
+---
+
+## 1. 静默安装 → headless smoke → 卸载
+
+这一条脚本会替你跑，也只有这一条是脚本跑的。**不要用管理员身份打开这个 PowerShell 窗口**：
+「不需要管理员」正是要测的东西，脚本自己会检查，发现自己被提权了会直接失败。
+
+```powershell
+pwsh -File scripts/install-smoke.ps1 `
+    -Installer .\apps\desktop\src-tauri\target\release\bundle\nsis\Soul_0.1.0_x64-setup.exe `
+    -Headless  .\target\release\soul-headless.exe
+```
+
+- [ ] 退出码是 0，末行是 `N check(s), 0 failed`。
+- [ ] 安装期间**没有弹出 UAC 对话框**。（脚本测不到这个：UAC 弹窗是给人看的。屏幕暗一下就是失败。）
+- [ ] 安装期间没有任何窗口弹出来（`/S` 是静默）。
+- [ ] 卸载之后 `%LOCALAPPDATA%\Soul` 没有了，`程序和功能` 里也没有了。
+
+脚本查的是：安装器返回 0、卸载项在 HKCU（不是 HKLM，说明是按用户装的）、
+装出来的可执行文件叫 `soul.exe` 且清单是 `asInvoker`、`soul-headless smoke` 退出 0
+且报告干净、卸载返回 0 且 `soul.exe` 与注册项都消失。失败会打印是哪一项。
+
+**已知缺口**：安装包里没有 `soul-headless.exe`（Tauri bundle 只放 `mainBinaryName`），
+所以 `-Headless` 指的是同一个 commit 编出来的那个，不是安装器放上去的那个。
+这一步证明的是「这个 build 的核心在这台机器上跑起来不出网」，不是「安装器放上去的核心不出网」。
+
+---
+
+## 2. 托盘图标（AC-01）
+
+CI 编译 `apps/desktop/src-tauri/src/tray.rs`，但没有 runner 有通知区域可以看。
+
+重新装一遍（步骤 1 的脚本已经卸载了），从开始菜单双击启动，然后：
+
+- [ ] 通知区域里出现 Soul 的图标（可能被折叠进「显示隐藏的图标」，展开也算，
+      但要记下来是折叠的还是直接可见的——那是 Windows 的默认行为，不是 bug）。
+- [ ] 鼠标悬停，tooltip 是 `Soul`。
+- [ ] 右键，菜单有两项：`打开 Soul`、`退出 Soul`。
+- [ ] 点 `打开 Soul`：主窗口出现、恢复、拿到焦点。
+- [ ] 关掉主窗口（右上角 ×）：**进程还在**（任务管理器里看得到），窗口消失。
+      这是 `lib.rs` 里的关窗即收起。
+- [ ] 再点 `打开 Soul`：窗口回来了。
+- [ ] 点 `退出 Soul`：进程真的没了（任务管理器里没有 `soul.exe`）。
+
+托盘装不上时代码会走另一条路（关窗即退出，`stderr` 打一行）。Windows 11 一定有通知区域，
+所以这条路在这里不该走到；真走到了要记下来。
+
+## 3. 不提权（AC-01）
+
+- [ ] 开始菜单里的 Soul 图标上**没有盾牌角标**。
+- [ ] 双击启动**不弹 UAC**。
+- [ ] 任务管理器 → 详细信息 → 加一列「已提升」：`soul.exe` 那一行是 `否`。
+- [ ] 用一个**标准用户**账户（不是管理员）登录，重复步骤 1 与本节：装得上、跑得起来。
+      按用户安装的意思就是这个。
+
+## 4. 进程名是 `soul.exe`
+
+`tauri.conf.json` 的 `mainBinaryName` 与 `[[bin]] name` 都有测试钉住，但显示出来是另一回事。
+
+- [ ] 任务管理器 → 详细信息里，那一行叫 `soul.exe`，不是 `app.exe` 也不是 `Soul.exe`。
+- [ ] `%LOCALAPPDATA%\Soul\soul.exe` 存在。
+- [ ] 属性 → 详细信息：产品名 `Soul`，版本 `0.1.0`。
+
+---
+
+## 5. 点云端开关，系统层面没有流量（AC-22）
+
+CI 证明的是：代码里没有这条路径、JS 侧五个出网 API 一次没被调、依赖图里走不到任何 HTTP client。
+这里补的是操作系统那一眼。
+
+1. 启动 Soul，先让它待 30 秒（启动期的任何流量都要算进来）。
+2. 打开 `资源监视器 → 网络`，或者另开一个 PowerShell 窗口跑：
+
+```powershell
+$soul = Get-Process soul
+while ($true) {
+    Get-NetTCPConnection -OwningProcess $soul.Id -ErrorAction SilentlyContinue |
+        Where-Object { $_.State -ne 'Listen' -and $_.RemoteAddress -notin '127.0.0.1','::1','0.0.0.0','::' }
+    Start-Sleep -Milliseconds 500
+}
+```
+
+3. 在界面上把云端开关**连点五次**。
+
+- [ ] 上面的循环从头到尾一行都没有输出。
+- [ ] 资源监视器里 `soul.exe` 的「TCP 连接」是空的，「网络活动」里发送/接收字节数不增长。
+- [ ] 开关旁边的文字**始终**是「尚未启用」，点完五次还是这句。
+- [ ] 顺手看一眼 `Get-NetUDPEndpoint -OwningProcess $soul.Id`：WebView2 可能有 DNS 之类的
+      本机解析，记下看到了什么。`soul.exe` 自己不该有对外 UDP。
+
+**WebView2 会有自己的进程**（`msedgewebview2.exe`），它们不是 `soul.exe`。
+如果那些进程在出网，那是 WebView2 运行时的行为，要单独记一条缺口，
+不要含糊地写成「Soul 出网了」或者「没事」。
+
+---
+
+## 6. 真机采集（AC-09、AC-10）
+
+界面上还没有采集开关（WP07 落的是 crate 与命令面，壳没接），所以这一条用 headless 探针跑。
+它把应用名写进一个临时库，跑完删掉，**不碰你真正的 Soul 库**。
+
+```powershell
+.\target\release\soul-headless.exe collect-probe --i-consent --seconds 20
+```
+
+两段，每段 20 秒，屏幕上会提示现在是哪一段：
+
+1. **采集关**：在这 20 秒里正常切换应用（至少十次：浏览器、资源管理器、记事本，来回切）。
+2. **采集开**：同样再切十次。
+
+- [ ] 退出码是 0。
+- [ ] 第一段（`consent off`）的 `events_written` 是 `0`。这是 AC-09。
+- [ ] 第二段（`consent on`）的 `events_written` **大于 0**。是 0 的话不是「更安全」，
+      是探针没看到你的桌面，要查原因。
+- [ ] `events_after_revocation` 与 `events_a_second_later` 相等。这是 AC-10 的「关闭后 1 秒内无新事件」。
+- [ ] `egress.non_loopback_connections` 是 `0`。
+- [ ] `source` 是 `windows.foreground_process`。
+- [ ] 报告里**没有任何应用名、窗口标题或路径**——从头到尾只有计数。看到名字就是泄漏，立刻记下来。
+
+顺手：第二段切换的时候，故意让某个窗口的标题里带上一句私密的话（比如记事本里写点什么再看标题栏），
+- [ ] 报告里没有它。（代码层面 `window_titles_are_not_collected.rs` 已经证明过，这里是眼睛再看一遍。）
+
+---
+
+## 7. 环境相关的几条
+
+- [ ] **WebView2 运行时**：`webviewInstallMode: "skip"` 意味着安装器不会去下载它。
+      Windows 11 自带 Evergreen 运行时，所以双击应该就能开。开不了的话，
+      正确的修法是在安装器与文档里说清楚要装什么，**不是**改成让它自己下载。
+- [ ] **中文字体与 DPI**：显示缩放 150% 下，向导那段长说明有没有被截断；
+      正文里的中文是不是回退到了别的字体。
+- [ ] **卸载之后用户数据还在不在**：卸载完看 `%LOCALAPPDATA%\Soul`（以及真库所在目录）。
+      记下实际行为——「卸载会不会删掉我的记忆」是用户会问的第一个问题，答案得是查过的。
+- [ ] **杀毒软件**：Defender 有没有拦下未签名的安装器（SmartScreen 大概率会拦一次）。
+      记下来，那是发布前要处理的事，不是这次要绕过的事。
+
+---
+
+## 记录
+
+每一项后面写清楚**看到了什么**，不是「OK」。过不去的写进 `docs/STATUS.md` 的
+「Windows 手动缺口」，连同你当时看到的原样输出。这份清单存在的意义，
+是让那些机器证明不了的话有一个人签字；签字的人写「过了」两个字，和没签是一样的。
