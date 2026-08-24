@@ -1,0 +1,17 @@
+{"type":"header","format":"soul-import-v1","version":1,"exported_at":"2026-08-24T08:00:00Z"}
+{"type":"message","id":"t-0001","occurred_at":"2026-08-18T09:12:00Z","sender_scope":"self","conversation_id":"c-01","sender_id":"u-self","text":"明天上午十点在公司门口见"}
+{"type":"message","id":"t-0002","occurred_at":"2026-08-18T09:13:05Z","sender_scope":"third_party","conversation_id":"c-01","sender_id":"u-lilei","text":"好的没问题"}
+{"type":"message","id":"t-0003","occurred_at":"2026-08-19T21:40:00Z","sender_scope":"self","conversation_id":"c-01","sender_id":"u-self","text":"今晚在 café 见面聊一下"}
+{"type":"message","id":"t-0004","occurred_at":"2026-08-19T21:44:30Z","sender_scope":"third_party","conversation_id":"c-01","sender_id":"u-lilei","text":"我到了，坐在靠窗那桌"}
+{"type":"message","id":"t-0005","occurred_at":"2026-08-20T08:02:00Z","sender_scope":"self","conversation_id":"c-01","sender_id":"u-self","text":"昨天那件事我再想想，周五给你答复"}
+{"type":"message","id":"t-0006","occurred_at":"2026-08-20T08:09:12Z","sender_scope":"third_party","conversation_id":"c-01","sender_id":"u-lilei","text":"不急，你想清楚再说"}
+{"type":"message","id":"t-0007","occurred_at":"2026-08-20T19:30:00Z","sender_scope":"self","conversation_id":"c-02","sender_id":"u-self","text":"这周先把方案定下来，别拖到下周"}
+{"type":"message","id":"t-0008","occurred_at":"2026-08-20T19:34:11Z","sender_scope":"third_party","conversation_id":"c-02","sender_id":"u-wangxiao","text":"团队里那位 👩‍💻 很靠谱"}
+{"type":"message","id":"t-0009","occurred_at":"2026-08-21T10:00:00Z","sender_scope":"third_party","conversation_id":"c-02","sender_id":"u-wangxiao","text":"我把初稿放到共享目录了"}
+{"type":"message","id":"t-0010","occurred_at":"2026-08-22T13:15:00Z","sender_scope":"self","conversation_id":"c-03","sender_id":"u-self","text":"妈，周末我回家吃饭"}
+{"type":"message","id":"t-0011","occurred_at":"2026-08-22T13:20:41Z","sender_scope":"third_party","conversation_id":"c-03","sender_id":"u-mama","text":"好，我买你爱吃的"}
+{"type":"message","id":"t-0012","occurred_at":"2026-08-23T09:00:00Z","sender_scope":"third_party","conversation_id":"c-04","sender_id":"u-zhaoqi","text":"下周三的分享你还来吗"}
+{"type":"message","id":"t-0013","occurred_at":"2026-08-23T09:06:00Z","sender_scope":"self","conversation_id":"c-04","sender_id":"u-self","text":"来，我提前十五分钟到"}
+{"type":"message","id":"t-0014","occurred_at":"2026-08-23T20:11:00Z","sender_scope":"self","conversation_id":"c-05","sender_id":"u-self","text":"这个群里的排期我看过了，没问题"}
+{"type":"message","id":"t-0015","occurred_at":"2026-08-23T20:13:00Z","sender_scope":"third_party","conversation_id":"c-05","sender_id":"u-wangxiao","text":"那我按这个排"}
+{"type":"message","id":"t-0016","occurred_at":"2026-08-23T20:15:30Z","sender_scope":"third_party","conversation_id":"c-05","sender_id":"u-zhaoqi","text":"我这边也跟上"}

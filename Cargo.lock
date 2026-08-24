@@ -1495,6 +1495,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "soul-import"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "jsonschema",
+ "serde",
+ "serde_json",
+ "sha2",
+ "soul-graph",
+ "soul-policy",
+ "soul-schema",
+ "soul-store",
+ "soul-store-api",
+ "soul-testkit",
+ "tempfile",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
 name = "soul-policy"
 version = "0.1.0"
 dependencies = [

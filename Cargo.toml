@@ -7,6 +7,7 @@ members = [
   "crates/soul-policy",
   "crates/soul-egress",
   "crates/soul-graph",
+  "crates/soul-import",
   "crates/soul-testkit",
   "crates/xtask",
   "crates/soulcore",
@@ -60,6 +61,7 @@ soul-store = { path = "crates/soul-store", version = "0.1.0" }
 soul-policy = { path = "crates/soul-policy", version = "0.1.0" }
 soul-egress = { path = "crates/soul-egress", version = "0.1.0" }
 soul-graph = { path = "crates/soul-graph", version = "0.1.0" }
+soul-import = { path = "crates/soul-import", version = "0.1.0" }
 soul-testkit = { path = "crates/soul-testkit", version = "0.1.0" }
 
 [profile.test]
