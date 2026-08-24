@@ -78,31 +78,51 @@ impl T4 {
         (after, before)
     }
 
+    pub fn counts_band_from_score(score: &TieScore) -> Band {
+        let ladder = gate::band(
+            Observed {
+                reciprocal: score.is_reciprocal(),
+                count: score.interaction_count,
+                days: score.active_day_count,
+            },
+            THRESHOLDS,
+        );
+        if score.any_direct() {
+            ladder
+        } else {
+            ladder.capped_at(GROUP_ONLY_CEILING)
+        }
+    }
+
     /// The counts clause, without a conclusion, so the recency clause can be
-    /// bolted on after it.
+    /// bolted on after it. Wording follows the tallies, not `score.band`.
     pub(crate) fn zh_reason(score: &TieScore) -> String {
         let venue = zh_venue(score.any_direct());
-        match score.band {
-            Band::Strong => format!(
-                "{venue}，双方都发过消息，往来 {} 次不少于 {STRONG_MIN_INTERACTIONS} 次，分布的 {} 天也不少于 {STRONG_MIN_ACTIVE_DAYS} 天",
-                score.interaction_count, score.active_day_count,
-            ),
-            Band::Moderate if !score.any_direct() => format!(
-                "{venue}；双方虽然都发过消息、在群里来往了 {} 次，但群里再热闹也只说明认识，不足以说明关系紧密",
-                score.interaction_count,
-            ),
-            Band::Moderate if score.interaction_count < STRONG_MIN_INTERACTIONS => format!(
-                "{venue}，双方也都发过消息，但一共 {} 次，还不到 {STRONG_MIN_INTERACTIONS} 次",
-                score.interaction_count,
-            ),
-            Band::Moderate => format!(
-                "{venue}，双方也都发过消息，往来 {} 次够多，但只分布在 {} 天里，不到 {STRONG_MIN_ACTIVE_DAYS} 天，看不出是长期习惯",
-                score.interaction_count, score.active_day_count,
-            ),
-            Band::Weak => format!(
-                "{venue}，双方虽然都发过消息，但一共只有 {} 次，不到 {MODERATE_MIN_INTERACTIONS} 次，还只是打过招呼",
-                score.interaction_count,
-            ),
+        let count = score.interaction_count;
+        let days = score.active_day_count;
+        let rec = score.is_reciprocal();
+        if !score.any_direct() {
+            format!(
+                "{venue}；双方虽然都发过消息、在群里来往了 {count} 次，但群里再热闹也只说明认识，不足以说明关系紧密"
+            )
+        } else if rec && count >= STRONG_MIN_INTERACTIONS && days >= STRONG_MIN_ACTIVE_DAYS {
+            format!(
+                "{venue}，双方都发过消息，往来 {count} 次不少于 {STRONG_MIN_INTERACTIONS} 次，分布的 {days} 天也不少于 {STRONG_MIN_ACTIVE_DAYS} 天"
+            )
+        } else if rec && count >= STRONG_MIN_INTERACTIONS {
+            format!(
+                "{venue}，双方也都发过消息，往来 {count} 次够多，但只分布在 {days} 天里，不到 {STRONG_MIN_ACTIVE_DAYS} 天，看不出是长期习惯"
+            )
+        } else if rec && count >= MODERATE_MIN_INTERACTIONS {
+            format!(
+                "{venue}，双方也都发过消息，但一共 {count} 次，还不到 {STRONG_MIN_INTERACTIONS} 次"
+            )
+        } else if rec {
+            format!(
+                "{venue}，双方虽然都发过消息，但一共只有 {count} 次，不到 {MODERATE_MIN_INTERACTIONS} 次，还只是打过招呼"
+            )
+        } else {
+            format!("{venue}，往来 {count} 次，但还看不出双方都回过")
         }
     }
 }
@@ -121,16 +141,8 @@ impl TieAlgorithm for T4 {
         if let Some(reason) = zh_common_weak_reason(score, &counts) {
             return reason;
         }
-        let band_before = match score.detail {
-            Detail::Demoted { band_before } => band_before,
-            Detail::RawCounts => score.band,
-        };
-
-        // The counts clause describes the band the counts produced, not the
-        // one silence left behind.
-        let mut before_score = score.clone();
-        before_score.band = band_before;
-        let reason = T4::zh_reason(&before_score);
+        let band_before = T4::counts_band_from_score(score);
+        let reason = T4::zh_reason(score);
         let silent = score.silent_days;
 
         let Some(threshold) = crossed_threshold(silent) else {

@@ -299,20 +299,20 @@ fn dormancy_is_a_sentence_not_a_demotion() {
 }
 
 #[test]
-fn the_dormancy_threshold_is_strictly_more_than_the_constant() {
+fn the_dormancy_threshold_is_closed_at_the_constant() {
     assert_eq!(DORMANT_AFTER_DAYS, 180);
 
     let at_threshold = score("quiet_for_exactly_the_threshold");
     assert_eq!(at_threshold.days_since_last_contact(), Some(180));
-    assert!(!at_threshold.is_dormant());
-    assert!(!a2_render(&at_threshold).has("personnel.recency.dormant"));
+    assert!(at_threshold.is_dormant());
+    assert!(a2_render(&at_threshold).has("personnel.recency.dormant"));
 
-    let one_day_later = TieScore {
-        last_contact_unix: Some(FIXTURE_AS_OF_UNIX - 181 * DAY),
+    let one_day_earlier = TieScore {
+        last_contact_unix: Some(FIXTURE_AS_OF_UNIX - 179 * DAY),
         ..at_threshold
     };
-    assert!(one_day_later.is_dormant());
-    assert!(a2_render(&one_day_later).has("personnel.recency.dormant"));
+    assert!(!one_day_earlier.is_dormant());
+    assert!(!a2_render(&one_day_earlier).has("personnel.recency.dormant"));
 }
 
 #[test]

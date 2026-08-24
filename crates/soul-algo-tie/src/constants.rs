@@ -53,6 +53,10 @@ pub const DEMOTE_AFTER_SILENT_DAYS: i64 = 180;
 /// Silence from here on caps the tie at Weak, whatever the history says.
 pub const WEAK_AFTER_SILENT_DAYS: i64 = 360;
 
+/// Names frozen in `docs/algorithms/DECISION.md` §3. Same values as above.
+pub const DEMOTE_ONE_BAND_DAYS: i64 = DEMOTE_AFTER_SILENT_DAYS;
+pub const FORCE_WEAK_DAYS: i64 = WEAK_AFTER_SILENT_DAYS;
+
 #[cfg(test)]
 mod tests {
     use super::*;

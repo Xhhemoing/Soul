@@ -329,6 +329,8 @@ pub struct Tally {
     pub last_contact: i64,
     /// Newest one-to-one exchange, 0 when there was none.
     pub last_direct_contact: i64,
+    /// Distinguishes "no private row yet" from a real private row at Unix 0.
+    saw_direct: bool,
 }
 
 impl Tally {
@@ -366,8 +368,9 @@ impl Tally {
         }
         if interaction.venue_direct {
             self.direct_days.insert(epoch_day(at));
-            if self.last_direct_contact == 0 || at > self.last_direct_contact {
+            if !self.saw_direct || at > self.last_direct_contact {
                 self.last_direct_contact = at;
+                self.saw_direct = true;
             }
         }
         self.conversations.insert(interaction.conversation_id);

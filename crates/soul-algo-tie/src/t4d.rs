@@ -53,8 +53,8 @@ use crate::constants::{
 use crate::gate::{self, Observed, Thresholds};
 use crate::recency::{self, crossed_threshold};
 use crate::types::{
-    zh_common_weak_reason, zh_counts_split, Band, Detail, Interaction, Tally, TieAlgorithm,
-    TieScore,
+    zh_common_weak_reason, zh_counts_split, zh_date, Band, Detail, Interaction, Tally,
+    TieAlgorithm, TieScore,
 };
 
 /// The bars. The same three numbers as T4 — Goal 1's 3 / 10 / 3 — read in a
@@ -95,37 +95,49 @@ impl T4D {
 
     /// The counts clause, without a conclusion.
     ///
-    /// Every branch names the one-to-one count, because that is the number the
-    /// band was decided on, and every branch that has group traffic to explain
-    /// says what happened to it.
+    /// Wording is chosen from the one-to-one tallies, never from `score.band`.
+    /// A stored or rehydrated band can disagree with those tallies; the
+    /// sentence still has to be something the user can recount.
     pub(crate) fn zh_reason(score: &TieScore) -> String {
         let direct = score.direct_count();
-        let head = match score.band {
-            Band::Strong => format!(
-                "你们一对一聊过 {direct} 次，双方都发过，不少于 {STRONG_MIN_INTERACTIONS} 次，而且分布在 {} 天里，也不少于 {STRONG_MIN_ACTIVE_DAYS} 天",
-                score.direct_active_day_count,
-            ),
-            Band::Moderate if direct >= STRONG_MIN_INTERACTIONS => format!(
-                "你们一对一聊过 {direct} 次，双方都发过，次数够多，但只分布在 {} 天里，不到 {STRONG_MIN_ACTIVE_DAYS} 天，看不出是长期习惯",
-                score.direct_active_day_count,
-            ),
-            Band::Moderate => format!(
-                "你们一对一聊过 {direct} 次，双方都发过，但还不到 {STRONG_MIN_INTERACTIONS} 次",
-            ),
-            Band::Weak if direct == 0 => {
-                "你们从来没有单独聊过，一对一 0 次，看不出你们私下有来往".to_string()
-            }
-            Band::Weak if score.direct_in_count == 0 => format!(
-                "一对一的 {direct} 次全是你发出的，对方一次也没有单独回过你",
-            ),
-            Band::Weak if score.direct_out_count == 0 => format!(
-                "一对一的 {direct} 次全是对方发来的，你一次也没有单独回过",
-            ),
-            Band::Weak => format!(
-                "你们一对一聊过 {direct} 次，双方都发过，但不到 {MODERATE_MIN_INTERACTIONS} 次，还只是打过招呼",
-            ),
+        let days = score.direct_active_day_count;
+        let rec = score.is_direct_reciprocal();
+        let head = if direct == 0 {
+            "你们从来没有单独聊过，一对一 0 次，看不出你们私下有来往".to_string()
+        } else if !rec && score.direct_in_count == 0 {
+            format!("一对一的 {direct} 次全是你发出的，对方一次也没有单独回过你")
+        } else if !rec && score.direct_out_count == 0 {
+            format!("一对一的 {direct} 次全是对方发来的，你一次也没有单独回过")
+        } else if rec && direct >= STRONG_MIN_INTERACTIONS && days >= STRONG_MIN_ACTIVE_DAYS {
+            format!(
+                "你们一对一聊过 {direct} 次，双方都发过，不少于 {STRONG_MIN_INTERACTIONS} 次，而且分布在 {days} 天里，也不少于 {STRONG_MIN_ACTIVE_DAYS} 天"
+            )
+        } else if rec && direct >= STRONG_MIN_INTERACTIONS {
+            format!(
+                "你们一对一聊过 {direct} 次，双方都发过，次数够多，但只分布在 {days} 天里，不到 {STRONG_MIN_ACTIVE_DAYS} 天，看不出是长期习惯"
+            )
+        } else if rec && direct >= MODERATE_MIN_INTERACTIONS {
+            format!("你们一对一聊过 {direct} 次，双方都发过，但还不到 {STRONG_MIN_INTERACTIONS} 次")
+        } else if rec {
+            format!(
+                "你们一对一聊过 {direct} 次，双方都发过，但不到 {MODERATE_MIN_INTERACTIONS} 次，还只是打过招呼"
+            )
+        } else {
+            format!("你们一对一聊过 {direct} 次，但还看不出双方都单独回过")
         };
         format!("{head}{}", T4D::zh_group_note(score))
+    }
+
+    /// Counts-stage band implied by the numbers already on the score.
+    pub fn counts_band_from_score(score: &TieScore) -> Band {
+        gate::band(
+            Observed {
+                reciprocal: score.is_direct_reciprocal(),
+                count: score.direct_count(),
+                days: score.direct_active_day_count,
+            },
+            THRESHOLDS,
+        )
     }
 
     /// What the group traffic was allowed to do, said out loud.
@@ -139,6 +151,16 @@ impl T4D {
         format!(
             "；你们在群里还有 {} 次往来，那只说明你们常在同一个场合，不算进这一档",
             score.group_count(),
+        )
+    }
+
+    fn zh_direct_clock_note(score: &TieScore) -> String {
+        if !score.any_direct() || score.last_direct_contact_unix == score.last_contact_unix {
+            return String::new();
+        }
+        format!(
+            "一对一最近一次是 {}。",
+            zh_date(score.last_direct_contact_unix)
         )
     }
 }
@@ -157,31 +179,35 @@ impl TieAlgorithm for T4D {
         if let Some(reason) = zh_common_weak_reason(score, &counts) {
             return reason;
         }
-        let band_before = match score.detail {
-            Detail::Demoted { band_before } => band_before,
-            Detail::RawCounts => score.band,
-        };
-
-        let mut before_score = score.clone();
-        before_score.band = band_before;
-        let reason = T4D::zh_reason(&before_score);
+        let band_before = T4D::counts_band_from_score(score);
+        let reason = T4D::zh_reason(score);
         let silent = score.silent_days;
+        let computed = recency::demote(band_before, silent);
+        let note = T4D::zh_direct_clock_note(score);
+
+        if score.band != computed {
+            return format!(
+                "{counts}{reason}，按现在的规则应是{}。存档里这一档是{}。{note}",
+                computed.as_zh(),
+                score.band.as_zh(),
+            );
+        }
 
         let Some(threshold) = crossed_threshold(silent) else {
             return format!(
-                "{counts}{reason}，最近一次往来距今 {silent} 天，还不到 {} 天，不用往下降，所以算{}。",
+                "{counts}{reason}，最近一次往来距今 {silent} 天，还不到 {} 天，不用往下降，所以算{}。{note}",
                 crate::constants::DEMOTE_AFTER_SILENT_DAYS,
                 score.band.as_zh(),
             );
         };
         if score.band == band_before {
             return format!(
-                "{counts}{reason}；你们最近一次往来距今 {silent} 天，已经不少于 {threshold} 天没有联系，本来就已经是最弱的一档，所以还是{}。",
+                "{counts}{reason}；你们最近一次往来距今 {silent} 天，已经不少于 {threshold} 天没有联系，本来就已经是最弱的一档，所以还是{}。{note}",
                 score.band.as_zh(),
             );
         }
         format!(
-            "{counts}{reason}，本来可以算{}；不过你们最近一次往来距今 {silent} 天，已经不少于 {threshold} 天没有联系，所以往下降到{}。要是你们又聊起来，这一档会自己涨回去。",
+            "{counts}{reason}，本来可以算{}；不过你们最近一次往来距今 {silent} 天，已经不少于 {threshold} 天没有联系，所以往下降到{}。要是你们又聊起来，这一档会自己涨回去。{note}",
             band_before.as_zh(),
             score.band.as_zh(),
         )

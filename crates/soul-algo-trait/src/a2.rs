@@ -182,7 +182,7 @@ impl TieScore {
 
     /// Whether the dormancy sentence applies.
     pub fn is_dormant(&self) -> bool {
-        matches!(self.days_since_last_contact(), Some(days) if days > DORMANT_AFTER_DAYS)
+        matches!(self.days_since_last_contact(), Some(days) if days >= DORMANT_AFTER_DAYS)
     }
 
     /// The venue split, when the tie algorithm supplied one.
