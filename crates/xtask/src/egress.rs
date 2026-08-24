@@ -73,7 +73,22 @@ pub const ALLOWED_URL_PREFIXES: &[&str] = &[
 ];
 
 /// Directory names that are exempt everywhere they appear.
-pub const EXEMPT_DIRS: &[&str] = &["fixtures", "tests", "target", "node_modules", ".git"];
+///
+/// `dist` and `gen` are build output, added when WP09 created `apps/`: the
+/// first is a bundler's copy of its own dependencies, the second is written by
+/// `tauri-build` on every compile. Both quote vendor URLs that nobody in this
+/// repository wrote, and neither is committed. The audit is about what the
+/// source says, so scanning either produces noise that would make `just ci`
+/// red for a reason unrelated to egress.
+pub const EXEMPT_DIRS: &[&str] = &[
+    "fixtures",
+    "tests",
+    "target",
+    "node_modules",
+    "dist",
+    "gen",
+    ".git",
+];
 
 /// Workspace members exempt from the source scan. `xtask` has to spell the
 /// allowlist and the banned names out in order to enforce them.

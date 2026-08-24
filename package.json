@@ -2,7 +2,7 @@
   "name": "soul",
   "version": "0.1.0",
   "private": true,
-  "description": "Soul desktop workspace root. The UI arrives in WP09 under apps/desktop; these scripts are placeholders so `just ci` is runnable today.",
+  "description": "Soul desktop workspace root. The application lives in apps/desktop; these scripts delegate to it.",
   "license": "SEE LICENSE IN README.md",
   "packageManager": "pnpm@10.15.0",
   "engines": {
@@ -10,9 +10,9 @@
     "pnpm": ">=10"
   },
   "scripts": {
-    "install:ui": "echo \"no UI workspace yet (WP09 adds apps/desktop)\"",
-    "lint": "echo \"no UI workspace yet (WP09 adds apps/desktop)\"",
-    "test": "echo \"no UI workspace yet (WP09 adds apps/desktop)\"",
-    "build": "echo \"no UI workspace yet (WP09 adds apps/desktop)\""
+    "lint": "pnpm --filter @soul/desktop lint",
+    "test": "pnpm --filter @soul/desktop test",
+    "build": "pnpm --filter @soul/desktop build",
+    "dev": "pnpm --filter @soul/desktop tauri dev"
   }
 }

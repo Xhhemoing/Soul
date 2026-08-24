@@ -20,7 +20,7 @@ default:
     @just --list
 
 # One-time developer setup. Safe to re-run.
-# cargo equivalent: rustup component add rustfmt clippy && pnpm install
+# cargo equivalent: rustup component add rustfmt clippy && pnpm install --frozen-lockfile
 setup:
     rustup component add rustfmt clippy
     @echo "setup: rust toolchain ready ({{ if path_exists('rust-toolchain.toml') == 'true' { 'pinned by rust-toolchain.toml' } else { 'unpinned' } }})"
@@ -81,15 +81,48 @@ ci: lint schema e0 denylist fixtures-verify test ui-lint ui-test
 ci-full: ci deny
 
 # ---------------------------------------------------------------- UI ---
-# Placeholders until WP09 brings up apps/desktop. They exit 0 on purpose:
-# `just ci` should be runnable today, and these recipes are where the real
-# pnpm commands will go rather than being invented at that point.
+# apps/desktop, landed by WP09. `ui-lint` and `ui-test` install first, so
+# `just ci` works from a clean checkout; `just` runs a shared dependency once.
 
+# pnpm equivalent: pnpm install --frozen-lockfile
 ui-install:
-    @echo "ui-install: no UI workspace yet (WP09 adds apps/desktop); skipping pnpm install"
+    pnpm install --frozen-lockfile
 
-ui-lint:
-    @echo "ui-lint: no UI workspace yet (WP09 adds apps/desktop); nothing to lint"
+# pnpm equivalent: pnpm --filter @soul/desktop lint  (tsc --noEmit && eslint .)
+ui-lint: ui-install
+    pnpm --filter @soul/desktop lint
 
-ui-test:
-    @echo "ui-test: no UI workspace yet (WP09 adds apps/desktop); nothing to test"
+# pnpm equivalent: pnpm --filter @soul/desktop test  (vitest run)
+ui-test: ui-install
+    pnpm --filter @soul/desktop test
+
+# The production frontend bundle, which `tauri build` embeds.
+# pnpm equivalent: pnpm --filter @soul/desktop build
+ui-build: ui-install
+    pnpm --filter @soul/desktop build
+
+# ----------------------------------------------------------- desktop ---
+# apps/desktop/src-tauri is its own cargo workspace, so the recipes above and
+# the whole-workspace recipes at the top never touch it. That is deliberate:
+# building it needs a WebView, and Linux is only a CI host for this product.
+#
+# On the target platform (Windows 11 x64) nothing extra is required. On a
+# Linux box, first:
+#   sudo apt-get install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+#                        librsvg2-dev libxdo-dev build-essential
+#
+# Not chained into `ci`: the Linux job would then need that GUI stack for a
+# platform Soul does not target. The Windows CI job runs `desktop-test`.
+
+# cargo equivalent: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets
+desktop-check:
+    cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets
+
+# cargo equivalent: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets
+desktop-test:
+    cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets
+
+# Run the shell against the Vite dev server. Desktop session required.
+# pnpm equivalent: pnpm --filter @soul/desktop tauri dev
+desktop-dev: ui-install
+    pnpm --filter @soul/desktop tauri dev

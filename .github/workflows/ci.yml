@@ -65,6 +65,15 @@ jobs:
         with:
           key: test-linux
 
+      # `just ci` ends with ui-lint and ui-test, which are real pnpm commands
+      # since WP09. The store cache is what keeps that from costing a minute.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
       # `just` is the documented entry point. 1.46.0 is the last release that
       # builds on Rust 1.83; the recipes it runs are plain cargo commands, and
       # each one is also written out in the justfile comments.
@@ -103,3 +112,12 @@ jobs:
       # here, including crates/soul-store-api/tests/sqlcipher_smoke.rs.
       - name: cargo test
         run: cargo test --workspace --all-targets
+
+      # apps/desktop/src-tauri is its own cargo workspace and is therefore not
+      # covered by the line above. Windows is the only runner that can build it
+      # without installing a GUI stack for a platform Soul does not ship on, so
+      # this is where the shell, the tray code and the asInvoker manifest get
+      # compiled. The tray icon itself is still author-manual: no runner has a
+      # notification area to look at.
+      - name: cargo test (desktop shell)
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets

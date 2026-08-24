@@ -1,4 +1,4 @@
-# The UI workspace is empty until WP09 creates apps/desktop.
-# The glob is already here so adding that package needs no config change.
+# apps/desktop is the shell WP09 landed. The glob was already here, so adding
+# it needed no config change.
 packages:
   - "apps/*"
