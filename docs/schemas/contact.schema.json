@@ -7,9 +7,11 @@
   "required": ["schema_version", "contact_id", "contact_class", "forget_state"],
   "properties": {
     "schema_version": { "const": "1.0.0" },
-    "contact_id": { "type": "string" },
+    "contact_id": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" },
     "contact_class": { "enum": ["self", "third_party", "group", "service"] },
-    "display_label_ref": { "type": "object" },
+    "display_label_ref": {
+      "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/sealedText"
+    },
     "identifiers": {
       "type": "array",
       "items": {
@@ -18,7 +20,7 @@
         "required": ["kind", "value_hash"],
         "properties": {
           "kind": { "enum": ["phone", "email", "handle", "platform_uid"] },
-          "value_hash": { "type": "string" }
+          "value_hash": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/sha256" }
         }
       }
     },

@@ -7,7 +7,7 @@
   "required": ["schema_version", "profile_id", "voice", "trait_axes", "clinical_claim"],
   "properties": {
     "schema_version": { "const": "1.0.0" },
-    "profile_id": { "type": "string" },
+    "profile_id": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" },
     "voice": { "type": "object" },
     "trait_axes": {
       "type": "array",
@@ -17,11 +17,16 @@
         "additionalProperties": false,
         "required": ["axis_id", "position", "evidence_band", "clinical_claim"],
         "properties": {
-          "axis_id": { "type": "string" },
+          "axis_id": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" },
           "label": { "type": "string" },
           "position": { "enum": ["leans_low", "mixed", "leans_high", "unknown"] },
-          "evidence_band": { "enum": ["weak", "moderate", "strong", "none"] },
-          "evidence_ids": { "type": "array", "items": { "type": "string" } },
+          "evidence_band": {
+            "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/evidenceBand"
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" }
+          },
           "locked_by_user": { "type": "boolean" },
           "clinical_claim": { "const": false }
         }

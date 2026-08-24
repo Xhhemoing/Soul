@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0.0",
+  "profile_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a40",
+  "voice": {},
+  "trait_axes": [
+    {
+      "axis_id": "openness",
+      "position": "leans_high",
+      "evidence_band": "moderate",
+      "clinical_claim": false
+    }
+  ],
+  "clinical_claim": false
+}

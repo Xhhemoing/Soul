@@ -1,0 +1,44 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/soul-schema",
+  "crates/soul-store-api",
+  "crates/soul-testkit",
+  "crates/xtask",
+  "crates/soulcore",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83"
+license = "LicenseRef-Soul-Proprietary"
+publish = false
+
+# Every third-party version used anywhere in the workspace is pinned here.
+# Member crates must reference them with `workspace = true`.
+[workspace.dependencies]
+anyhow = "1.0.95"
+thiserror = "2.0.11"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.135"
+sha2 = "0.10.8"
+uuid = { version = "1.11.1", features = ["v7", "serde"] }
+jsonschema = { version = "0.26.2", default-features = false }
+rusqlite = "0.32.1"
+chacha20poly1305 = "0.10.1"
+fail = "0.5.1"
+unicode-normalization = "0.1.24"
+tempfile = "3.15.0"
+cargo_metadata = "0.19.1"
+walkdir = "2.5.0"
+axum = "0.7.9"
+tokio = "1.43.0"
+hex = "0.4.3"
+
+soul-schema = { path = "crates/soul-schema" }
+soul-store-api = { path = "crates/soul-store-api" }
+soul-testkit = { path = "crates/soul-testkit" }
+
+[profile.test]
+opt-level = 1

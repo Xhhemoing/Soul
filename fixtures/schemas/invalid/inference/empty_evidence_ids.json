@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0.0",
+  "inference_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a20",
+  "target": { "kind": "trait_axis", "axis_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a30" },
+  "statement_key": "voice.directness.leans_high",
+  "evidence_ids": [],
+  "evidence_band": "moderate",
+  "clinical_claim": false
+}

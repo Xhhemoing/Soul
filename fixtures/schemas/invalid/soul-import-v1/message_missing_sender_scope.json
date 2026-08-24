@@ -1,0 +1,8 @@
+{
+  "type": "message",
+  "id": "m-0002",
+  "occurred_at": "2026-08-20T09:13:00Z",
+  "conversation_id": "c-01",
+  "sender_id": "u-lilei",
+  "text": "缺少 sender_scope"
+}

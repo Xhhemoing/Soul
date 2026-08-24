@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "memory_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a50",
+  "type": "episodic",
+  "title_ref": {
+    "content_key_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a51",
+    "blob_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a52",
+    "alg": "xchacha20poly1305-ietf",
+    "aad": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a50|title_ref",
+    "subject": "self",
+    "char_count": 9,
+    "placeholder": null
+  },
+  "summary_ref": {
+    "content_key_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a51",
+    "blob_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a53",
+    "alg": "xchacha20poly1305-ietf",
+    "aad": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a50|summary_ref",
+    "subject": "mixed",
+    "char_count": 120,
+    "placeholder": "[第三人正文已占位]"
+  },
+  "source_event_ids": ["0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a01"],
+  "evidence_ids": ["0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a10"],
+  "content_key_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a51",
+  "forget_state": "active",
+  "third_party_content_present": true
+}

@@ -1,0 +1,10 @@
+/target
+target/
+node_modules/
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
+.DS_Store

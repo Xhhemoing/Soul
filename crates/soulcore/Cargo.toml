@@ -1,0 +1,22 @@
+[package]
+name = "soulcore"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Soul orchestration core. WP01 ships configuration defaults and a headless entry point only."
+
+# Normal dependencies stay narrow on purpose: no HTTP stack, no test kit.
+[dependencies]
+soul-schema = { workspace = true }
+soul-store-api = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+soul-testkit = { workspace = true }
+
+[[bin]]
+name = "soul-headless"
+path = "src/bin/soul-headless.rs"
