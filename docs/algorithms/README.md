@@ -1,7 +1,10 @@
-# Soul v0.1 算法选型
+# Soul v0.1 算法
 
-本目录是人脉图关系强度与灵魂档案/人事分析两条算法线的规范与验收入口。
+权威：`DECISION.md`（`ALGO_FROZEN`）。
 
-过程稿在 `.agent_workspace/`。参考实现将落入 `crates/soul-algo/`（Round 1 之后由父代理合并）。
+保留：
 
-**尚未冻结。** 在 `DECISION.md` 写出 `ALGO_FROZEN` 之前，实现不得被 Goal 1 当作唯一权威。
+1. **T4D** — `crates/soul-algo-tie`（默认 `TieAlgo::T4D`）
+2. **A0** — `crates/soul-algo-trait`
+
+过程稿在 `.agent_workspace/`。Goal 1 采纳方式：用本 crate 的 `score` 替换 `soul-graph` 的 `Tally::band`，不要把 SQLCipher 拉进算法 crate。
