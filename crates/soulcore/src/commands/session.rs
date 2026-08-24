@@ -903,7 +903,10 @@ impl Session {
     /// status says which of the two happened rather than reporting the grant
     /// as if something were being watched.
     pub fn grant_collect_consent(&mut self) -> Result<CollectStatus, SessionRefusal> {
-        self.grant_collection(collect_commands::platform_source(), CollectorConfig::default())
+        self.grant_collection(
+            collect_commands::platform_source(),
+            CollectorConfig::default(),
+        )
     }
 
     /// As [`Session::grant_collect_consent`], against a source the caller has.

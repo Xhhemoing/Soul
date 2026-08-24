@@ -3,7 +3,7 @@
  * the routes other work packages own are empty rather than mocked up.
  */
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -11,6 +11,7 @@ import { App } from "./App";
 import { ROUTES } from "./router";
 import {
   CLOUD_LABEL,
+  COLLECT_RUNNING,
   forbidNetwork,
   installFakeCore,
   OPEN_SESSION,
@@ -139,6 +140,54 @@ describe("桌面壳", () => {
     expect(screen.queryByTestId("pending-owner")).toBeNull();
     expect(await screen.findByTestId("research-on-screen-only")).toHaveTextContent("没有落盘");
     expect(screen.getByTestId("research-third-party")).toHaveTextContent("别人的数据 0 行");
+  });
+
+  /**
+   * The route this work package exists for. Until it landed, an installed Soul
+   * had no way to reach the consent ledger at all, so the check is the plain
+   * one: the page arrives, and the switch that turns collection on is on it.
+   */
+  it("采集页有内容了，而且开关就在这一页上", async () => {
+    await startAtRoute("#/collect");
+
+    expect(screen.queryByTestId("pending-owner")).toBeNull();
+    expect(await screen.findByTestId("collect-state")).toBeVisible();
+    expect(screen.getByRole("button", { name: "开始采集" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "停止采集" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "采集", level: 1 })).toBeVisible();
+  });
+
+  /**
+   * 设置 is the cloud page, and the cloud is a capability this build does not
+   * have. Collection is one it does, gated by a ledger rather than by a
+   * configuration field, and a toggle for it sitting beside the cloud switch
+   * would suggest the two are the same kind of thing.
+   */
+  it("设置页上没有采集开关", async () => {
+    await startAtRoute("#/settings");
+
+    for (const button of screen.queryAllByRole("button")) {
+      expect(button.textContent ?? "").not.toMatch(/采集/);
+    }
+    expect(screen.queryByTestId("collect-state")).toBeNull();
+    expect(screen.getAllByRole("switch")).toHaveLength(1);
+  });
+
+  /**
+   * 概览 used to read `ConfigSnapshot.collect_enabled`, which is false for the
+   * whole life of the process however much is being collected: nothing writes
+   * that field at runtime and `config.json` has nowhere to keep it. The
+   * fixture below is exactly that disagreement — a snapshot saying everything
+   * is closed, and a ledger with a collector running — and the line has to
+   * follow the ledger.
+   */
+  it("概览上的采集那一行读的是同意账本，不是配置里的旧字段", async () => {
+    await startAtRoute("#/", { collect: COLLECT_RUNNING });
+
+    const fact = await screen.findByTestId("collect-fact");
+    expect(fact).toHaveTextContent("正在采集");
+    expect(screen.getByTestId("closed-state")).toHaveTextContent("全部能力默认关闭");
+    expect(within(fact).getByRole("link", { name: "采集" })).toHaveAttribute("href", "#/collect");
   });
 
   it("审计页有内容了，不再是空路由", async () => {

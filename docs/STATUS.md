@@ -4,7 +4,7 @@
 
 ## 当前里程碑
 
-**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。WP01–WP11、WP13 与 DPAPI 均已落地。**产品锁第二片的导入那一半已经接到界面上**（WP09 第四段）：`/import` 一页、`Session` 上四个方法、四条 IPC 命令，装出来的 Soul 现在读得了 `soul-import-v1` JSONL 与 Telegram Desktop 的 `result.json`；在这之前只有 headless 冒烟走得通，用户拿不到。真机上用界面导一次仍然没人做过，作者清单第 8 节标着可选。**NSIS 安装目录与数据目录碰撞已在代码里关闭**（`installer-hooks.nsh` 强制 `%LOCALAPPDATA%\Programs\Soul`，`shell_is_local_only` 与 `install_smoke_script` 测试钉住；真机 NSIS 仍待作者手动）。**`2e72ddf` 上 GitHub Actions run [`32754617268`](https://github.com/Xhhemoing/Soul/actions/runs/32754617268) 五门全绿**：lint、ubuntu `just ci`、sbom、windows-latest `cargo test --workspace --all-targets`（含 NTFS 文件计划、`cfg(windows)` DPAPI、`one_store` 运行时那一半）、桌面壳 `command_surface` / `no_egress_path` / `one_store` / `shell_is_local_only`、`ipc_roundtrip --no-run`、以及 package（`soul.exe` 内嵌 `asInvoker`、`install-smoke.ps1 -SkipInstall` 15 项 0 失败）。**HEAD `8b856bd` 的 hosted CI 没有跑起来**（[32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) 五门约 8 秒、0 step、空 `runner_name`；其后每次 push 同一形态）。同一账户上 `agent/dev-sota` 的 run 也是 0 step、空 runner，所以这不是本仓库 workflow 写坏了。GitHub Status 在 2026-08-24 14:34 UTC 那次 Actions 事故已经恢复，而 `2e72ddf` 的绿 run 17:05 才开始，HEAD 的空 runner 不是那次事故。更像是私有仓库 Actions minutes 用尽（Windows 分钟按 2 倍计；push 与 pull_request 曾经各开五门）。workflow 仍在 push 上跑（只跑 pull_request 会让 HEAD 一次 run 都没有），但 concurrency 改成 `head_ref || ref_name`，同一分支的 push 与 PR 互取消，避免十门一起计费。请对 [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) **Re-run all jobs**，或恢复 minutes 后再推。那次绿的 package 工件早于 `9602b97`（NSIS 装进 Programs 而不是数据目录），**不能拿来做卸载 / `keys.dpapi` 的作者手动**。托盘文案已由 `shell_is_local_only` 钉成「打开 Soul」「退出 Soul」，图标是否出现在通知区仍只在 `scripts/author-manual-checklist.md` 上。UAC 盾牌、真机采集、WebView2 流量同左。CI 不能替，也不要在本文件假装过了。
+**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。WP01–WP11、WP13 与 DPAPI 均已落地。**产品锁第二片的导入那一半已经接到界面上**（WP09 第四段）：`/import` 一页、`Session` 上四个方法、四条 IPC 命令，装出来的 Soul 现在读得了 `soul-import-v1` JSONL 与 Telegram Desktop 的 `result.json`；在这之前只有 headless 冒烟走得通，用户拿不到。真机上用界面导一次仍然没人做过，作者清单第 8 节标着可选。**产品锁第七片（前台采集）也接上了界面**（WP09 第五段）：`/collect` 一页、`Session` 上一个同意账本加一个采集器、三条 IPC 命令。在这之前 `soul-collect` 有门、`soulcore::commands::collect` 有管道，而唯一开得了它们的是 `soul-headless collect-probe`——一件仪器，不是产品面；装了 Soul 的 Windows 用户没有任何办法把采集打开。`config.json` 一个字段都没有多：同意活在进程里，重启回到关，`session_collect.rs` 把这份文件的字节读回来搜 `collect` / `consent` 两个词。真机上按下「开始采集」再切二十秒窗口仍然没人做过，作者清单第 6 节。**NSIS 安装目录与数据目录碰撞已在代码里关闭**（`installer-hooks.nsh` 强制 `%LOCALAPPDATA%\Programs\Soul`，`shell_is_local_only` 与 `install_smoke_script` 测试钉住；真机 NSIS 仍待作者手动）。**`2e72ddf` 上 GitHub Actions run [`32754617268`](https://github.com/Xhhemoing/Soul/actions/runs/32754617268) 五门全绿**：lint、ubuntu `just ci`、sbom、windows-latest `cargo test --workspace --all-targets`（含 NTFS 文件计划、`cfg(windows)` DPAPI、`one_store` 运行时那一半）、桌面壳 `command_surface` / `no_egress_path` / `one_store` / `shell_is_local_only`、`ipc_roundtrip --no-run`、以及 package（`soul.exe` 内嵌 `asInvoker`、`install-smoke.ps1 -SkipInstall` 15 项 0 失败）。**HEAD `8b856bd` 的 hosted CI 没有跑起来**（[32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) 五门约 8 秒、0 step、空 `runner_name`；其后每次 push 同一形态）。同一账户上 `agent/dev-sota` 的 run 也是 0 step、空 runner，所以这不是本仓库 workflow 写坏了。GitHub Status 在 2026-08-24 14:34 UTC 那次 Actions 事故已经恢复，而 `2e72ddf` 的绿 run 17:05 才开始，HEAD 的空 runner 不是那次事故。更像是私有仓库 Actions minutes 用尽（Windows 分钟按 2 倍计；push 与 pull_request 曾经各开五门）。workflow 仍在 push 上跑（只跑 pull_request 会让 HEAD 一次 run 都没有），但 concurrency 改成 `head_ref || ref_name`，同一分支的 push 与 PR 互取消，避免十门一起计费。请对 [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) **Re-run all jobs**，或恢复 minutes 后再推。那次绿的 package 工件早于 `9602b97`（NSIS 装进 Programs 而不是数据目录），**不能拿来做卸载 / `keys.dpapi` 的作者手动**。托盘文案已由 `shell_is_local_only` 钉成「打开 Soul」「退出 Soul」，图标是否出现在通知区仍只在 `scripts/author-manual-checklist.md` 上。UAC 盾牌、真机采集、WebView2 流量同左。CI 不能替，也不要在本文件假装过了。
 
 ## 进度
 
@@ -21,8 +21,8 @@
 | WP04 自传记忆 | 完成。见下节 |
 | WP05 人脉图 | 完成。见下节 |
 | WP06 导入 | 完成。见下节。问卷回退与 WP03 的入档路径已合并，`soul-profile` 实现 `UserStatedSink` |
-| WP07 前台采集 | 完成。见下节 |
-| WP09 桌面壳 | 四段都完成。见下节。壳里那一个 store 句柄由 WP13 第二段落地（遗留 8 消除），十一道题与最后四条功能视图是第三段（遗留 9 消除），`/import` 那一屏是第四段——在此之前装出来的 Soul 读不了任何导出文件 |
+| WP07 前台采集 | 完成。见下节。壳这一侧由 WP09 第五段接上——在那之前 crate 有门、产品没有开关 |
+| WP09 桌面壳 | 五段都完成。见下节。壳里那一个 store 句柄由 WP13 第二段落地（遗留 8 消除），十一道题与最后四条功能视图是第三段（遗留 9 消除），`/import` 那一屏是第四段——在此之前装出来的 Soul 读不了任何导出文件；`/collect` 那一屏是第五段——在此之前装出来的 Soul 打不开采集 |
 | WP10 起草与人事摘要 | 完成。见下节。本机路径与端点路径的确认屏都已接上（遗留 6 消除） |
 | WP11 文件计划 | 完成。见下节。`/files` 已接 `PlanPreview`，仍然没有执行按钮（遗留 8 消除） |
 | WP13 安装 smoke / CI / SBOM / 壳接库 | 两段都完成。见下节。剩下的是 Windows 真机手动那七条 |
@@ -430,7 +430,7 @@ CI 到此为止。下面每一条都要在 Windows 11 x64 真机上由作者过�
 2. **SBOM 里不放 URL，包括 crates.io 的。** CycloneDX 通常带 `externalReferences`（仓库地址、下载地址）。这里一个都不放，因为 `xtask e0-audit` 扫 URL 字面量，而一份把 URL 写进产物的生成器等于给自己开了个例外。crate 的身份靠 purl（`pkg:cargo/serde@1.0.219`）与 `Cargo.lock` 里的 sha256 校验和表达，两样都不是地址。
 3. **`soul-desktop` 那份 SBOM 是 `cargo metadata` 解出来的，不是 `tauri build` 产出的清单。** 它列的是「编 `soul.exe` 要用到的 crate」，不是「安装包里有哪些文件」。WebView2 运行时、NSIS 自己放进去的东西、图标资源都不在里面。要一份真正的安装包清单，得在打包之后对着 bundle 生成——那要先解决缺口 1。
 4. **`netwatch` 在非 Linux 上是 `Unsupported`，不是 0。** Windows 的等价物是 `GetExtendedTcpTable`，那要么引 `windows-sys` 要么写 `unsafe`，而 `soulcore` 是 `forbid(unsafe_code)`。选择是：Rust 侧诚实地说「这台机器上没看」，Windows 侧的观察交给 `install-smoke.ps1` 的 `Get-NetTCPConnection`。报告里 `egress.observed` 就是这个区别，别把它读成通过。
-5. **`collect-probe` 是仪器，不是产品面。** 没有任何 shell 命令到得了它，它只在 `soul-headless` 这个二进制里，而且要 `--i-consent`。这是有意的：界面上还没有采集开关（WP07 落的是 crate 与命令面，壳没接），在壳里现加一个只为了手动测试的开关，等于让测试需求决定产品形状。
+5. **`collect-probe` 是仪器，不是产品面。** 没有任何 shell 命令到得了它，它只在 `soul-headless` 这个二进制里，而且要 `--i-consent`。写这条的时候界面上还没有采集开关，理由是「在壳里现加一个只为了手动测试的开关，等于让测试需求决定产品形状」——那个理由至今成立，但它当初掩盖了另一件事：**壳里本来就该有一个开关，不是为了测试，是为了用户**。WP09 第五段补上了 `/collect`，探针原样保留：它仍然是唯一能做「撤销之后隔 1.2 秒读两次」这种定时两段测量的东西。
 6. **`collect-probe` 写的那条 `collect.start` 审计是探针自己补的。** `ConsentHandle::grant` 把审计条目交回给调用方，由拿着 store 的人写；平时那个人是壳，这里是探针。链里少一条「采集被打开过」的记录，不是 AC-23 要的那条链。
 7. **`ipc_roundtrip` 在 windows-latest 上仍然不跑，只编译。** 失败发生在测试进程启动阶段（`STATUS_ENTRYPOINT_NOT_FOUND` / 0xc0000139），runner 的 `WebView2Loader.dll` 没有导出 mock IPC runtime 要的符号，一条断言都还没跑到。加了 `--no-run` 之后，这个文件里的编译错误会当场红，而不是等作者本地跑才发现。它在 Linux 上 11 项全过（`just desktop-test`），AC-02 与 AC-22 另有 soulcore 与 vitest 覆盖。
 8. **`package` job 会编一次 Tauri 的 release，很慢。** 换来的是「装到用户机器上的那个 `soul.exe` 确实是 `asInvoker`」这句话有二进制层面的证据，而不只是配置字段。要是这个 job 的时间变成问题，先砍的应该是它的触发条件（比如只在 tag 上跑），不是砍掉从二进制里读清单那一步。
@@ -567,6 +567,40 @@ PRODUCT_LOCK v0.1 第二片要在一台干净的 Win11 上证「问卷 + `soul-i
 6. **`/graph` 那句空状态改了。** 原来写着「导入还没有接到界面上」，那句话现在是假的。改成指向「导入」页。
 7. **Win11 真机上还没有人用界面导过一次。** `scripts/author-manual-checklist.md` 第 8 节写了怎么用仓库里的 fixture 走一遍，**标成可选、没有标成过了**。CI 能证的是命令过得去 IPC、库里落的是密文、屏幕上渲染的是计数；证不了的是那个文件选择对话框在真机上长什么样。
 
+## WP09 完成情况（第五段：采集接到界面上）
+
+PRODUCT_LOCK v0.1 第七片是「可选的前台应用使用时长采集」，D23 要求同意是一个话题的闭环。AC-09 与 AC-10 早在 WP07 就由 `crates/soul-collect/tests/` 证过，用的是真后台线程、真加密库、真同意门。缺的不是证明，是路：`Session` 上没有同意账本也没有采集器，`commands.rs` 里没有命令，`core.ts` 里没有键，路由表里没有那一页。概览上那行「前台应用使用时长采集：关」读的是 `ConfigSnapshot.collect_enabled`，而那个字段在整个进程生命周期里恒为假——没有任何东西会在运行时写它，`config.json` 里也没有它的位置。**所以那行字是真的，但它是「这个功能没做」意义上的真。** 这和导入是同一类洞：crate 证过，产品够不着。
+
+本机 `just ci` 绿（`cargo fmt --check`、`clippy --workspace --all-targets --all-features -D warnings`、schema-freeze、e0-audit、denylist-audit、fixture 语料、`cargo test --workspace --all-targets`、install-smoke 脚本检查、sbom、`ui-lint`、`ui-test` 13 个文件 126 项）；`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets` 绿（`ipc_roundtrip` 从 23 长到 26，`command_surface` 从 4 长到 5）。没有加依赖，没有动 schema，没有动 `StoredConfig`（还是 `wizard_completed` + `authorized_roots` 两个字段、`deny_unknown_fields`），设置页没有多出采集开关。
+
+| 交付 | 证据 |
+|---|---|
+| `Session` 持同意账本与采集器 | `consent: ConsentHandle` 在 `Session::open` 里是 `ConsentHandle::closed()`，`collector: Option<RunningCollector>` 起始为 `None`。`from_ledger` 那个能从别处载入同意的构造器在产品里一次都没有被调用 |
+| `collect_status` 读的是账本与线程，不是配置字段 | `consent_granted` 来自 `ConsentHandle::is_granted`，`collector_running` 来自 `CollectorHandle::is_running`——**撤销会让线程自己停下而没有人调 `stop`**，所以「句柄还在」不等于「还在采」，这两个答案分开算。`collect.rs` 顶上那段注释说了为什么不能有第三份拷贝：配置文件里的那一份正是让用户看着「关」而底下还在写的那条路 |
+| AC-10 过 `Session`，不只过 crate | `crates/soulcore/tests/session_collect.rs::granting_collects_and_revoking_stops_within_the_second`：`grant_collect_consent_with_source` 塞一个 `FakeForegroundSource`，切应用直到库里出现事件（超时 10 秒判失败），然后 `revoke_collect_consent`，再切 20 次并等满 1 秒，事件数一条不变。撤销在停止之前发生，和探针同一个顺序 |
+| AC-09 过 `Session` | `a_session_nobody_consented_to_never_looks_at_the_desktop`：没人同意，切 10 次应用，事件是 0，而且 `samples_taken()` 也是 **0**——断言落在采样次数上而不是事件数上，因为「跑了但没写出来」和「根本没看」是两种不同的通过 |
+| AC-02：重启回到关，文件里没有那两个词 | `a_restart_reopens_a_closed_collection` 重开同一个目录，`consent_granted` 是假，`config.json` 仍然解析成两个字段的 `StoredConfig`。`the_configuration_file_never_learns_the_word` 更硬一层：授权一个目录、给出同意、采到事件、撤销，全套写完之后把文件按字节读回来搜 `collect` 与 `consent`，一个都不许有，键名列表也逐项比。`deny_unknown_fields` 挡的是**读**，这条挡的是写 |
+| 界面拿到的东西装不下应用名 | `CollectStatus` 是两个布尔、一个固定来源标签、一个计数和两句话。`the_status_the_interface_receives_carries_no_application_name` 把它序列化出来，搜四个真被采集过的应用名与 `.exe`，都搜不到；`ipc_roundtrip::the_collection_status_carries_no_name_of_anything` 在 IPC 那一侧把字段名列表逐项钉住 |
+| 没有前台来源时说实话 | Linux 与开发机上 `platform_source()` 返回 `Unsupported`，于是同意记下来、采集器不起、`source` 是 `unsupported`、notice 写明「这台机器上没有东西在采」。`a_grant_on_a_machine_with_no_foreground_source_says_so` 钉住这三样——报「采集已打开」而底下什么都没看，是这三种状态里最坏的一种 |
+| 壳不能自己换来源 | `command_surface.rs::the_shell_never_hands_the_collector_a_source_of_its_own` 回读 `commands.rs` 与 `lib.rs`，`_with_source` 与 `ForegroundSource` 一个字都不许出现。那个注入口是 `#[doc(hidden)]` 的，存在只为让 AC-09/AC-10 在没有桌面的机器上过得去 |
+| 那一屏 | `apps/desktop/src/routes/Collect.tsx` + `Collect.test.tsx` 9 项：页面上写着采什么（前台哪个应用、待了多久）与不采什么（窗口标题、文件内容、按键、剪贴板），两个按钮是「开始采集」「停止采集」，状态是三种读法之一。整页搜不到 `.exe`、搜不到盘符路径；按钮里没有发送 / 上传 / 导出 / 执行 / 同步；库没开时给的是理由码加核心那句话；整页过 denylist；全程 `forbidNetwork` 没有一次尝试 |
+| 概览那行字改看账本 | `Home.tsx` 自己调 `collect_status`，不再读 `snapshot.collect_enabled`。`App.test.tsx::概览上的采集那一行读的是同意账本，不是配置里的旧字段` 故意让两者不一致——快照说全关，账本说采集器在跑——那行字必须跟着账本 |
+| 设置页仍然只有云 | `App.test.tsx::设置页上没有采集开关`：那一页上只有一个 `role="switch"`，按钮文字里没有「采集」。设置是「尚未启用」的通知，采集是一个真有的能力，摆在一起会让人以为它们是同一种东西 |
+| 四句话是核心的话 | `contract.test.ts::采集那四句话都和核心里的常量一模一样` 读 `crates/soulcore/src/commands/session.rs` 的常量：一句是 PRODUCT_LOCK 对这一片的承诺（只记时长、不记标题），另三句是采集仅有的三种状态。「什么都没有在采」是关于一个账本和一条线程的断言，只有核心看得见 |
+| 两侧命令名仍是同一份 | `COMMANDS` 从 31 个长到 34 个，`command_surface.rs` 照旧比对两侧、照旧要求每个 wrapper 体只有一条语句 |
+
+落地内容：`crates/soulcore/src/commands/{collect,session}.rs`、`crates/soulcore/tests/session_collect.rs`；`apps/desktop/src-tauri/src/{commands,lib}.rs`、`tests/{command_surface,ipc_roundtrip}.rs`；`apps/desktop/src/` 的 `core.ts`、`router.tsx`、`App.tsx`、`routes/{Collect,Home}.tsx`、`test/fakeCore.ts` 与 `Collect.test.tsx` / `App.test.tsx` / `contract.test.ts`；`scripts/author-manual-checklist.md` 第 6 节。
+
+### WP09 第五段的取舍与遗留
+
+1. **同意不落盘，所以每次启动都要重按一次。** 这是 AC-02 的形状而不是一个待办：`StoredConfig` 没有地方放它，`ConsentHandle::from_ledger`（那个能从别处载入同意的构造器）在产品代码里一次都没被调用。代价是真心想一直开着采集的用户每次开 Soul 都要点一下「开始采集」。要改成能跨重启，改的不是这一页而是 AC-02，那是产品决定。页面上把这件事写明白了，不是让用户自己发现。
+2. **界面上没有采集间隔、没有选哪些应用、没有排除清单。** `CollectorConfig` 只有一个 `poll_interval`，产品面上连它都不给调：能配的东西越多，「采了什么」这个问题的答案就越依赖用户记得自己配过什么。v0.1 的答案是一句固定的话。
+3. **`Config.collect_enabled` 还在，而且还是恒假。** 没有删，因为 `soul-headless config` 的 AC-02 断言、`open_capabilities()` 和 `is_fully_closed()` 都读它，而那几条说的是「配置文件打不开任何能力」——这仍然是真的，也仍然值得断言。它现在的含义收窄成「配置能不能打开采集」，答案永远是不能；界面上没有一处再读它。
+4. **`collect_status` 每次都数一遍库里的前台事件。** 一次 `list_events` 加一次 `len()`，页面每次刷新都做。事件多起来之后这会变慢，正确的修法是给 `soul-store-api` 一个 count 入口，那是存储边界的改动。现在的行数下不值得。
+5. **撤销时的审计写在停止之前，而且写不进去也照样停。** 顺序是撤销 → 写链 → 停线程：撤销要第一个发生，因为线程是靠看账本自己停的；链写不进去（库没了）会记进 notice，但不构成把采集器留着跑的理由。这和 WP04 遗留 2「遗忘的审计写在销毁之后」是同一条取舍的两次应用——审计不能挡住用户收回授权。
+6. **`grant_collect_consent_with_source` 是一个 `#[doc(hidden)]` 的注入口。** 没有它，AC-09 与 AC-10 在 `Session` 这一层就只能在 Windows 上证。它不是命令、不在 `COMMAND_NAMES` 里，`command_surface.rs` 回读壳的源码保证壳不会长出一个自己的前台来源。
+7. **真机那一半还是没有。** 所有采集测试驱动的都是 `FakeForegroundSource`。`/collect` 现在是产品路径，`collect-probe` 仍然是那件能做定时两段测量的仪器，两者作者清单第 6 节都列了。**没有勾。**
+
 ## Goal 1 门禁对照（`2e72ddf` / run 32754617268；HEAD `8b856bd` hosted 未开跑）
 
 CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS Programs 目录与托盘文案钉死还没有 hosted package/test 跑过。作者手动那一半没有，所以 Goal 1 **还不能关**。
@@ -579,7 +613,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 | AC-04 / AC-05 | 导入 fixture + 无明文残留；Telegram 缺字段可读失败。**壳这一侧也接上了**：`session_import.rs`（过 `Session`、过真库、重开后仍在、数据目录里搜不到原文）、`ipc_roundtrip.rs` 走真的 `invoke_handler`、`Import.test.tsx` 用 fixture 自己的行断言 DOM 上没有正文 | 真机上用界面导一次（作者清单 8，可选，不是门禁项） |
 | AC-06 / AC-08 | 图谱边与推断解引用；≥3 节点 | — |
 | AC-07 | 纠正锁 + 起草 prompt 用用户值 | — |
-| AC-09 / AC-10 | `soul-collect` 假源：关=0；开≥1；撤销后 1s 无新事件 | 真机前台切换——作者清单 6 |
+| AC-09 / AC-10 | `soul-collect` 假源：关=0；开≥1；撤销后 1s 无新事件。**壳这一侧也接上了**：`session_collect.rs` 过 `Session`、过真库（关=0 且采样次数也是 0；开≥1；撤销后 1s 不变；重开目录同意回到关；`config.json` 字节里搜不到 `collect` / `consent`）、`ipc_roundtrip.rs` 走真的 `invoke_handler`、`Collect.test.tsx` 断言屏幕上只有条数没有应用名 | 真机前台切换——作者清单 6。现在有两条路可走：`/collect` 页上的两个按钮，或者 `collect-probe` |
 | AC-11–AC-13 | mock LLM 精确 origin、占位、单次豁免 | — |
 | AC-14 / AC-15 | 记忆 CRUD、CK 销毁、墓碑、审计无正文 | — |
 | AC-16 / AC-17 | 人事摘要有证据、无诊断词；无 key 走模板且无非回环连接 | — |
@@ -591,7 +625,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 | AC-25 | 导入 / 粘贴 / 文件名三路注入不进工具计划、不外连该 URL | — |
 | AC-26 | `2e72ddf` 同 run：lint、ubuntu `just ci`、windows workspace+壳、sbom、package。HEAD `8b856bd` 本地 `just ci` 绿；hosted [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) 五门空 runner | HEAD hosted 真正开跑并绿；真机 `tauri build` 拉 NSIS 仍是作者机器上的事 |
 
-十三个产品锁切片与上表同一条缝：灵魂层与只读代理层有测试；托盘外观与真机采集没有。
+十三个产品锁切片与上表同一条缝：灵魂层与只读代理层有测试；托盘外观与真机采集没有。缝的位置和上一版比只挪了一点——第七片（采集）此前是「crate 有测试，产品够不着」，现在是「产品够得着，真机没人按过」。
 
 ## 下一步
 
@@ -599,7 +633,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 1. ~~**向导还没有画那十一道题。**~~ **已完成**，见「WP09 完成情况（第三段）」。
 2. **HEAD hosted CI。** 请对 [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400) **Re-run all jobs**，或恢复 Actions minutes。空 runner 不是产品回归。在 HEAD package 绿之前，不要用 `2e72ddf` 的 `windows-binaries` 做卸载 / `keys.dpapi`——那次构建还把程序装进数据目录。
-3. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」（第 8 节的界面导入是可选的，不属于门禁）。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替。真装真卸从 `8b856bd`（或之后）在本机 `tauri build`，不要用过期工件。采集探针：`soul-headless collect-probe --i-consent --seconds 20`。
+3. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」（第 8 节的界面导入是可选的，不属于门禁）。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替。真装真卸从 `8b856bd`（或之后）在本机 `tauri build`，不要用过期工件。采集现在有产品路径：打开 `/collect`，按「开始采集」，切二十秒窗口，按「停止采集」。要一份带秒数的两段测量仍然用探针：`soul-headless collect-probe --i-consent --seconds 20`。
 4. ~~**DPAPI 要真的实现**~~ **已实现，且 windows-latest 已跑过。** 真机上仍要确认有登录用户配置文件时 `%LOCALAPPDATA%\Soul\keys.dpapi` 存在且 `/graph` 不再给拒绝。卸载脚本不能删这个文件。NTFS 不能同时放下 `Alpha` 和 `alpha`，授权扫描的第三目录因此只在 Unix 上种。AC-21 的套接字观察在 Linux CI 读 `/proc`，在 Windows CI 由 `scripts/install-smoke.ps1` 从进程外看 TCP 表。
 
 不要启动 Goal 2。文件写入仍是 v0.1.1（AC-27）：`/files` 有计划、有哈希、没有执行按钮，也没有可以绑执行按钮的命令。

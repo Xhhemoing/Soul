@@ -374,7 +374,10 @@ fn the_status_the_interface_receives_carries_no_application_name() {
             "`{app}` was collected and then handed to the interface: {json}",
         );
     }
-    assert!(!json.contains(".exe"), "an executable name reached the interface: {json}");
+    assert!(
+        !json.contains(".exe"),
+        "an executable name reached the interface: {json}"
+    );
     assert!(
         !json.to_lowercase().contains("title"),
         "the status has a field that sounds like a window title: {json}",
