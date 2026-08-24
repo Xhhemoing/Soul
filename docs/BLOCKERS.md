@@ -100,7 +100,7 @@ git merge origin/main
 
 **Bravo 无条件留在语料里。** 问文件系统，不要问 `cfg!(windows)`（APFS 会折、NTFS 可标大小写敏感）。不要为绿把守卫放宽成无条件 `>= 25`（Linux 会默默丢条目）。不要 `#[ignore]`。
 
-主干 `fc96e46`（「do not plant a case-twin of Alpha on NTFS」）**走了禁止路径**：decoy 用 `#[cfg(unix)]`、守卫无条件 `>= 25`、tripwire 按 `cfg!(windows)` 选路径。父代理 **不采纳** 这次为绿放宽。后续必须改回精确守卫 + 文件系统探针；该提交的「Windows 可能变绿」不构成 M3 关闭。
+主干 `fc96e46` **走了禁止路径**：decoy 用 `#[cfg(unix)]`、守卫无条件 `>= 25`、tripwire 按 `cfg!(windows)` 选路径。父代理 **不采纳**。`cfg(unix)` ≠ 大小写敏感（默认 APFS 仍会把 decoy 种进 `Alpha`）。后续必须改回精确守卫 + **运行时**文件系统探针；该提交的「Windows 可能变绿」不构成 M3 关闭。
 
 `test-windows` 里**每一次** `cargo test`（工作区 + desktop shell）建议带 `--no-fail-fast`，与夹具 **同一次推送**即可。它是可观测性，不是第二道 P0 门；夹具修好后默认也会跑完。desktop 步现在因工作区步失败从未开始，`one_store` / `ipc_roundtrip --no-run` 在尖端上零次执行。
 
@@ -130,7 +130,7 @@ A2：`soul-draft::points_for` 已读生效 `band`，没有第二套 3/10/3。换
 
 `soul-import` 把 owner 的一条群消息写成对「该会话全部历史发言人」的 Outgoing。这不是 DECISION §4.3 定价的「peer 还在群里所以关系没死」——那要的是 **peer 自己的**群聊行。伪造的 `last_contact` 会让 200 天无一对一的关系永远不降档。
 
-**不需要成员表。** 修复：owner 群消息不要对历史发言人写 Outgoing；incoming 仍记实际发送者。展示计数随之变诚实。不要在算法 crate 里加权重。去重仍是 P1（见 G4）。
+**不需要成员表。** 修复：owner 群消息不要对历史发言人写 Outgoing；incoming 仍记实际发送者。展示计数随之变诚实，是归因修复的副产品，**不是**另开的计数 P0。拒绝「保留伪造行、只对时钟过滤」：那要给冻结时钟加分支，且 Reciprocal 仍建立在假 Outgoing 上。不要在算法 crate 里加权重。去重仍是 P1（见 G4）。
 
 ### G2 — intake 绕过轴锁（P0）
 
@@ -172,9 +172,9 @@ A2：`soul-draft::points_for` 已读生效 `band`，没有第二套 3/10/3。换
 
 STATUS：「降低精度不是底线」（第三人 turn 整段占位 + shape scrub）。crate 边界的 AC-12 测试 **自带** `KnownIdentifiers`，所以「再写一条嵌中文名的夹具」在现有测试里红不了。升 P0 的条件是：在 **session 缝**（`closed_session` / headless 起草，今日空表）上加泄漏断言。图上解封姓名是另一件事。
 
-### S3 — AC-21 观察器（P2）
+### S3 — AC-21 观察器（**已落地** / 残余 P2）
 
-`EgressFindings` 已有 `observed`；`headless` 没拿它做 `require`。`install-smoke.ps1` 已经在采 `Get-NetTCPConnection`。补一行 Rust `require` 即可，不挡合入。
+`2e72ddf` 已让 `headless` 盯本进程套接字并对 `non_loopback_connections == 0` 做 `require`。Windows 上 `/proc` 不存在时仍是 `Unsupported`。不挡合入。
 
 ### S5 — 打包（措辞，非代码门禁）
 
