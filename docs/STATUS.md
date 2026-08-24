@@ -4,7 +4,7 @@
 
 ## 当前里程碑
 
-**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。批 1（WP01）与批 2（WP02 数据面 + WP08 权限面）已完成。Windows CI 在 schema freeze CRLF 修复后一度全绿；WP11 落地后 `test (windows-latest)` 因 `canonicalize` 的 `\\?\C:\...` 被当成 UNC 而红，筛查已改为只把本地盘的 extended-length 写法剥成盘符路径。WP13 第二段之后，桌面壳握着这个进程唯一的 `SqlCipherStore` 句柄，配置能读回来，`/files`、`/graph` 与起草的端点确认屏都不再是空路由。**DPAPI 已落地**（见「DPAPI 完成情况」）：Windows 上 KEK 由 `CryptProtectData` 用户级保护，DEK 包在它下面，`Session::open` 在那台机器上应当开得了库——前提是有一个登录用户的配置文件，这一条只有真机与 windows-latest 能证。
+**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。批 1（WP01）与批 2（WP02 数据面 + WP08 权限面）已完成。Windows CI 在 schema freeze CRLF 修复后一度全绿；WP11 落地后 `test (windows-latest)` 因 `canonicalize` 的 `\\?\C:\...` 被当成 UNC 而红，筛查已改为只把本地盘的 extended-length 写法剥成盘符路径。WP13 第二段之后，桌面壳握着这个进程唯一的 `SqlCipherStore` 句柄，配置能读回来，`/files`、`/graph` 与起草的端点确认屏都不再是空路由。WP09 第三段之后**一条空路由都不剩**，向导也真的把那十一道题画出来了（见「WP09 完成情况（第三段）」）：`router.tsx` 里没有 `ownedBy` 了，AC-03 从此在壳上也走得通，不只在 headless 里。**DPAPI 已落地**（见「DPAPI 完成情况」）：Windows 上 KEK 由 `CryptProtectData` 用户级保护，DEK 包在它下面，`Session::open` 在那台机器上应当开得了库——前提是有一个登录用户的配置文件，这一条只有真机与 windows-latest 能证。
 
 ## 进度
 
@@ -22,7 +22,7 @@
 | WP05 人脉图 | 完成。见下节 |
 | WP06 导入 | 完成。见下节。问卷回退与 WP03 的入档路径已合并，`soul-profile` 实现 `UserStatedSink` |
 | WP07 前台采集 | 完成。见下节 |
-| WP09 桌面壳 | 第一段（壳）完成。见下节。壳里那一个 store 句柄由 WP13 第二段落地（遗留 8 消除） |
+| WP09 桌面壳 | 三段都完成。见下节。壳里那一个 store 句柄由 WP13 第二段落地（遗留 8 消除），十一道题与最后四条功能视图是第三段（遗留 9 消除） |
 | WP10 起草与人事摘要 | 完成。见下节。本机路径与端点路径的确认屏都已接上（遗留 6 消除） |
 | WP11 文件计划 | 完成。见下节。`/files` 已接 `PlanPreview`，仍然没有执行按钮（遗留 8 消除） |
 | WP13 安装 smoke / CI / SBOM / 壳接库 | 两段都完成。见下节。剩下的是 Windows 真机手动那七条 |
@@ -129,8 +129,8 @@
 2. **`evidence_ids` 是替换不是累加。** 一条轴上的列表说的是「支持它**现在**这个位置的证据」。被取代的回答仍留在证据表与审计链里，只是不再被当作它已不支持的那个结论的依据。
 3. **denylist 抓到过一次真的。** 语气渲染里「用得少」原本写成「少量表情」，其中「量表」正是 D22 禁的刻度词。改词之后补了一条穷举测试，把 81 种语气组合全部渲染一遍再过断言——这类命中靠人眼复查是抓不住的。
 4. **语气问三题，不是两题也不是四题。** 原本只问直接程度与表情用量，理由是完成率。合并之后语域（`q.voice.register`）也进来了——WP06 那一侧本来就在问它，只是落成了一段没人读的散文；同一个问题问一遍并且让它真的钉住字段，比问一遍然后丢掉划算。温度（warmth）仍然不问，留在中性默认等用户在档案页自己改，`voice_question_id(Warmth)` 返回 `None` 而不是指向一道不存在的题。
-5. **`profile.voice` 是 schema 里的自由 JSON。** `VoiceProfile` 自己序列化进去，包含一份 `user_set` 名单。这意味着语气的锁定信息不在 `additionalProperties: false` 的保护范围内——档案 schema 没有为它定形状。若 WP09/WP10 要在 UI 上展示锁定态，先考虑把它提成正式字段。
-6. **散文题落进 `boundaries` / `values` 的是指针，不是话。** 契约里这两个字段是自由数组，正因为如此往里放什么要自己守规矩：落的是 `{origin, question_id, event_id, evidence_id}`，用户写的那句话留在录制方密封的那条事件里。SECURITY.md 把散文限定在 `sealedText`，`profiles` 表不是那个地方。代价是要读回这句话得开一次 blob，档案视图目前不做这件事——UI 要展示「你说过的边界」时才需要接。
+5. **`profile.voice` 是 schema 里的自由 JSON。** `VoiceProfile` 自己序列化进去，包含一份 `user_set` 名单。这意味着语气的锁定信息不在 `additionalProperties: false` 的保护范围内——档案 schema 没有为它定形状。`/profile` 现在确实在展示这个锁定态（WP09 第三段），它读的是 `VoiceProfile` 反序列化回来的那份名单，所以屏幕上的「你定的」正确与否仍然只由这个 crate 的测试保证，schema 那一层帮不上忙。提成正式字段仍然是对的，只是要动冻结的 schema，不是这一段能做的。
+6. **散文题落进 `boundaries` / `values` 的是指针，不是话。** 契约里这两个字段是自由数组，正因为如此往里放什么要自己守规矩：落的是 `{origin, question_id, event_id, evidence_id}`，用户写的那句话留在录制方密封的那条事件里。SECURITY.md 把散文限定在 `sealedText`，`profiles` 表不是那个地方。代价是要读回这句话得开一次 blob，档案视图不做这件事。WP09 第三段接 `/profile` 的时候顺着这条路走到了底：`StatedRow` 上没有一个字段能装那句话，屏幕上是题面和证据 id，`Profile.test.tsx` 把 fixture 里那句散文原文当关键词在整页 DOM 上搜一遍，搜到就红。要展示「你说过的边界」得先有人写开封那条路，那时该重新问一遍它值不值。
 7. **同一道题再答一次是替换，不是叠加。** 与轴上的 `evidence_ids` 同一个规矩：`boundaries` 里一道题只留一条指针，旧的那条事件与证据仍在库里、仍在链上，只是不再被当作现在这条边界的依据。
 
 ## WP04 完成情况
@@ -154,7 +154,7 @@
 2. **遗忘的审计条目写在销毁**之后**。** PRODUCT_LOCK 说审计链绝不能挡住遗忘，所以可能失败的那次写发生在第二步。
 3. **重复遗忘不报错，但也不是幂等的回执。** 第二次的 `content_key_ids` 仍列出那把钥匙（映射是墓碑的一部分），但 `sealed_blobs_destroyed` 变 0——真的没东西可销毁了。崩溃后重试因此是安全的。测试把这个语义写死了。
 4. **`MemoryDraft.subject` 只有 owner / third_party / mixed 三档，占位符按整条记忆走。** 一条 mixed 记忆里哪一句是别人说的，v0.1 不区分，整条带同一个占位符。要做到句级，得在 blob 层加结构，不是这个 crate 能单独决定的。
-5. **`preview_forget` 与 `forget` 之间没有令牌。** 用户看到的数字与实际销毁的数字由「回执必须等于预览」这条断言保证，但两次调用之间若有别的写入，数字会变而没人拦。WP09 接 UI 时若要严格，需要一个把预览钉住的短期令牌。
+5. ~~**`preview_forget` 与 `forget` 之间没有令牌。**~~ **已消除（WP09 第三段）。** crate 这一层照旧没有令牌——它不该有，`ForgetOps` 是个存储 trait，一次调用就是一次调用。令牌在会话层：`Session::preview_forget` 把它报出去的那份影响连同一个 `preview_id` 存下来，`forget_memory` 要求把那个 id 原样带回来，对不上就拒绝且什么都不销毁。所以「用户看到的数字就是被销毁的数字」现在是调用图上的性质，不再只是一条断言。
 
 ## WP05 完成情况
 
@@ -217,7 +217,7 @@ WP06 那八题的去向：`voice.directness` 与 `voice.register` 从文本框�
 
 **钉住题号的是 fixture，不是自觉。** `fixtures/questionnaire/v0_1.json` 列出每道题的题号、题型、选项与它动的档案字段。`soul-import/tests/questionnaire.rs` 核前三样，`soul-profile/tests/one_questionnaire.rs` 核最后一样并断言两侧的题号列表逐项相等。库里的证据 `source_refs` 指着这些题号，改一个就是让已经写下的证据指空，所以这条断言是硬的。
 
-**还没有人画这十一道题。** 桌面向导目前只做「确认默认全关」（WP09 第一段），命令面 `import::questions()` 与 `profile::questions()` 把题目和选项都备好了，`Answer::for_question(question_id, 选中的那个选项)` 是 UI 只需要知道的那一个调用。headless 主流程走的是编进二进制的那份答卷（`fixtures/questionnaire/answers_basic.json`），AC-03 在 CI 里绿的是这条路。真正的向导界面属于 WP09 的下一段。
+**这十一道题现在画出来了**（WP09 第三段）。向导第二页遍历 `profile::questions()` 渲染，题面、选项和「答了动什么」全部来自这张表：往 `QUESTIONS` 里加第十二题，向导上就多一道；往向导里加一道，它根本录不进去，因为 `Answer::for_question` 只认这张表里的题号。headless 主流程仍然走编进二进制的那份答卷（`fixtures/questionnaire/answers_basic.json`），但 AC-03 不再只有那一条路——`soulcore/tests/session_screens.rs` 从 `Session` 这一侧再走一遍，答的是 WebView 会送来的那种选项 token。
 
 ### WP06 的取舍与遗留
 
@@ -288,7 +288,7 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 3. **任务管理器里的进程名是 `soul.exe`。** 配置与 `[[bin]]` 有测试钉住，实际显示未看过。
 4. **`tauri build` 从来没有在任何 runner 上跑过。** Windows job 只跑 `cargo test`，没做 MSI/NSIS 打包——打包要下载 WiX/NSIS，那是出网。安装器的 asInvoker 与「不下载 WebView2」目前只由 `tauri.conf.json` 的字段保证。
 5. **WebView2 运行时。** `webviewInstallMode: "skip"` 意味着安装器不会去下载它。Windows 11 自带 Evergreen 运行时，但「在一台干净的 Windows 11 上双击就能开」要实测；万一开不了，正确的修法是在安装器里说清楚，不是改成让它自己下载。
-6. **中文在 WebView 里的字体与 DPI。** 缩放 150% 下向导那段长说明会不会截断，只能看。
+6. **中文在 WebView 里的字体与 DPI。** 缩放 150% 下向导那段长说明会不会截断，只能看。第三段之后要看的不止那一段了：向导第二页十一道题连着排下来是这个壳里最长的一屏，`/audit` 每条都带两个哈希，`/research` 是一张宽表，三处都是「在 1080p 上好看、在缩放过的笔记本上换行成一团」的典型。
 7. **点云开关时系统层面没有流量（AC-22）。** 测试证明的是代码里没有这条路径、JS 侧五个出网 API 一次都没被调、依赖图里走不到任何 HTTP client。用资源监视器看一眼进程的网络列是空的，是作者手动那一栏。
 
 ### WP09 的取舍与遗留
@@ -301,8 +301,8 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 6. **托盘装不上时窗口就正常关闭。** 关窗收进托盘只有在真有托盘时才成立；没有通知区域的桌面上，那会变成关不掉又退不出的窗口。`tray::install_or_report` 把这次会话有没有托盘记进 state，关窗处理读它。Windows 11 一定有托盘，这条是给别的环境和调试用的。
 7. **`soulcore/src/commands/shell.rs` 里的 `ConfigSnapshot` 是壳自己的视图，不是 `Config` 的序列化。** 它只带界面要显示的那几个布尔与计数，**不带 LLM 端点字符串**（`the_snapshot_carries_no_endpoint_string` 钉住）：界面没有理由拿到那个地址，而每一个跨进程边界的字符串都是一次泄漏机会。要显示端点内容，得先想清楚为什么。
 8. ~~**壳还没有连真的 store。**~~ **已消除（WP13 第二段）。** `run` 在 `lib.rs` 里造一个 `Session` 并 `manage` 起来，`configure` 把它当参数收，每个命令拿 `State<'_, SessionState>`。「一个进程一个句柄」因此是调用图上的性质，不是习惯：第二次 `configure` 得有人专门再造一个 session 递给它。
-9. **起草 / 文件计划 / 导入 / 记忆 / 人脉这些路由是空的，但不是白屏。** `components/Pending.tsx` 写明这一页归哪个 WP。`App.test.tsx` 里两条断言钉住空路由的形状：起草页没有输入框也没有发送按钮，文件计划页没有任何执行按钮——工作单禁止假实现，测试就是这条禁令的执行者。要在这些页面上加控件的人会先撞到它们。（WP10 已接起草页：那条断言现在读作「有输入框，没有发送按钮」，后半句一个字没改，这正是它当初的用途。）
-10. **前端只有 4 个测试文件，没有组件快照。** 断言全是「用户能看见什么」（`getByRole` / 可见文本），不是 DOM 结构。快照测试会在 WP10 改版式的时候整片变红，却挡不住把云开关文案改掉这种真问题。（WP10 加了第 5 个，同样的写法。）
+9. ~~**起草 / 文件计划 / 导入 / 记忆 / 人脉这些路由是空的，但不是白屏。**~~ **已消除（WP10 起草、WP13 第二段的 `/files` 与 `/graph`、WP09 第三段的其余四条）。** `router.tsx` 里已经没有 `ownedBy` 了，`components/Pending.tsx` 留着但没有人再引用它——留着是因为下一个空路由该长这样，删掉等于让下一个人自己发明一种空页面。那两条钉住形状的断言一条没删：起草页现在读作「有输入框，没有发送按钮」，文件计划页仍然是「没有任何执行按钮」，两条的后半句一个字没改，这正是它们当初的用途。
+10. **前端没有组件快照。** 断言全是「用户能看见什么」（`getByRole` / 可见文本），不是 DOM 结构。快照测试会在改版式的时候整片变红，却挡不住把云开关文案改掉这种真问题。测试文件从第一段的 4 个长到 11 个，写法一直是这一种。
 
 ## WP10 完成情况
 
@@ -378,7 +378,7 @@ D31 是这份工作单的边界：只读预览留在 Goal 1，写执行是 v0.1.
 3. **大小写是唯一不能到处一样的规则。** 折叠大小写会让包含性**更容易**成立，所以把 NTFS 的规则用在大小写敏感的文件系统上，会把 `/A/secret` 判进 `/a` 这个从没被授权的根里。`PathMatching` 因此是显式的两个变体，默认取平台真实行为，两个变体都在 Linux 上跑过。Windows 侧只有 `cfg!(windows)` 这一行没有被真机验过。
 4. **`ReasonCode` 借了 `CONSENT_MISSING`。** WP08 冻结的词表里没有 `PATH_NOT_AUTHORIZED`，而扩一个权限词表不是 WP11 该做的事。`CONSENT_MISSING` 对每一次授权类拒绝都是真话：用户从没同意过那个目录，这就是答案是「不」的全部原因。「读不到」和「不是目录」两种不是产品拒绝的情况记 `ROUTINE`。将来若要加词，`Refusal::reason_code` 是唯一要改的地方。
 5. **`refuse_execution` 把 HITL 的三步又写了一遍。** 为的是能不可变借用账本（见上表「不消费写文件令牌」那一行）。第二份拼写靠 `the_refusals_agree_with_the_policy_gate` 保持诚实：同一个请求，本面给的理由码必须等于 `soul_policy::hitl::check_action` 给的。
-6. **UI 视图没有接，`/files` 仍是 WP09 留的空路由。** 视图类型 `soulcore::commands::fileplan::PlanPreview` 已经就绪并有序列化形状测试（含 `deny_unknown_fields` 往返），接上去只差 `core.ts` / `commands.rs` / `router.tsx` 那几处注册。没有当场接的原因是本工作单与 WP10 起草 UI 在同一个工作树里并行，两边要改的正是同一批文件（`core.ts`、`contract.test.ts`、`src-tauri/src/commands.rs`、`router.tsx`、`App.test.tsx`），并发读改写会互相吞掉改动。`App.test.tsx::文件计划页没有任何执行按钮` 仍然是那条禁令的执行者，接视图的人会先撞到它——这正是它存在的意义。
+6. ~~**UI 视图没有接，`/files` 仍是 WP09 留的空路由。**~~ **已消除（WP13 第二段）。** `PlanPreview` 接到了 `/files` 上，那条留在这里的预言也应验了：`App.test.tsx::文件计划页没有任何执行按钮` 是接视图的人第一个撞到的东西，它现在守的是一个有内容的页面，而不是一个空页面。
 7. **没有加 `soulcore/tests/fileplan_commands.rs`。** 工作单允许的 soulcore 面只有 `src/commands/fileplan.rs`，所以命令面的六项测试写在模块内的 `#[cfg(test)]` 里。其中「本面没有执行入口」那条要把禁用的名字拼出来才能找它们，第一次跑的时候找到了自己，现在先把测试模块以下的部分切掉再搜。
 8. ~~**授权列表不落盘。**~~ **已消除（WP13 第二段）。** 授权的根写进库旁边的 `config.json`，重启之后 `FilePlanSession::from_config` 从它恢复；不再解析得开的根照旧当成拒绝报出来，出现在 `/files` 的「找不到的目录」一栏，而不是从名单里消失。
 9. **快照比的是 mtime 与长度，不是 atime。** 在挂了 atime 更新的文件系统上，`read_dir` 会动目录的访问时间。那是「读」的固有代价而不是写，快照要是把 atime 也算进去，每次扫描都会自己判自己失败。所以「磁盘没变」的准确含义是：没有条目增减、没有长度变化、没有修改时间变化。扫描不打开任何文件，所以文件的 atime 也不动。
@@ -503,13 +503,46 @@ Goal 1 剩下的三件事里的第三件：`DpapiKeyProvider` 不再是骨架。
 7. **`KeyError` 多了一个 `Corrupt` 变体。** 现有的 `Malformed` 说的是「文件长度不对」，对 `TestKeyProvider` 的定长种子文件够用，对一个有结构的 blob 不够。没有复用 `Unavailable`，因为这两种要给用户的话不一样：一个是「这台机器解不开」，一个是「这个文件不是这一版认得的形状」。
 8. **UI 上那句话没有改。** `KeyProtection::Dpapi.notice()` 一直写着「数据库密钥由 Windows 的用户级密钥保护接管。」——在这一单之前它是提前写好的，现在它是真的。屏幕上没有一个字需要动，这正好说明当初把 `KeyProtection` 分成两个变体是对的。
 
+## WP09 完成情况（第三段：那十一道题，与最后四条视图）
+
+Goal 1 剩下的三件事里的第一件：向导把十一道题画出来了，`/profile`、`/memory`、`/research`、`/audit` 四条空路由填上了，`router.tsx` 里一个 `ownedBy` 都不剩。本机 `cargo test --workspace --all-targets` 绿（87 个测试目标 490 项）、`just desktop-test` 绿（38 项）、`just ui-test` 绿（11 个文件 100 项）、`just ui-lint` 绿、`cargo fmt --all -- --check` 与 `cargo clippy --workspace --all-targets --all-features -D warnings` 绿、`xtask all`（e0-audit / denylist-audit / schema-freeze --check）绿。没有加依赖，没有动 schema，没有动产品定义，没有新 fixture。
+
+这一段之前，一个什么都不导入的用户走完向导会拿到一份空档案，而 AC-03 说他不该。核心那一侧早就准备好了——`profile::questions()` 有题、`profile::intake` 收答案——缺的是那一屏，以及四条能把库里已有的东西显示出来的路由。
+
+| 交付 | 证据 |
+|---|---|
+| AC-03 走壳，不只走 headless | 向导第二页遍历 `profile::questions()` 渲染，答案经 `answer_questionnaire` 落进 `profile::intake`。`Wizard.test.tsx` 从 5 项长到 11 项：题面与选项逐条对着核心发来的那一份、答三题之后回执写着「你自己说的」几条、屏幕上出现的是有方向的轴数与留白的轴数。`soulcore/tests/session_screens.rs::answering_the_questionnaire_leaves_a_profile_the_user_stated` 是同一条路的 Rust 那一半：一份只答了六题的问卷，过 `Session`、过真库、**关掉再开**，一条轴有方向、四条仍是 `unknown`、一个语气字段钉住、一条密封的边界还在 |
+| 部分作答不猜 | 同一个测试的后半段，与 `Wizard.test.tsx::跳过的题原样交回去，不替用户猜`：留白的题原样交回，核心把它丢掉，轴留在 `unknown`，`/profile` 上写的是「还看不出方向」。再按一下选项是收回，收回等于跳过——「答了又后悔」不该需要重启向导。空卷核心直接拒（`a_questionnaire_nobody_answered_is_refused`），向导那个按钮在零答的时候也是灰的，两道，因为界面的那道会被改版式的人拆掉 |
+| `/profile`：轴、语气、纠正锁 | `Profile.test.tsx` 10 项。纠正一条轴之后它锁住，**而机器那条不同意的推断仍留在屏幕上**——AC-07 说锁要挡住推断，可挡住这件事只有在用户看得见「它还是不这么想，但它不许动」的时候才成立。你写过的边界只显示题面和证据编号：`StatedRow` 上没有能装那句话的字段，测试把 fixture 里的原话当关键词在整页 DOM 上搜一遍 |
+| `/memory`：四种写，加两步的遗忘 | `Memory.test.tsx` 10 项。看影响面只是问价：`ForgetPreview.destroys_anything` 在 TypeScript 里是字面量 `false`，看完之后核心那边一次遗忘也没有发生。真要遗忘得把核心发的那个 `preview_id` 原样带回去，带错的会被挡下来且什么都不销毁（`session_screens.rs::a_forget_only_runs_on_the_preview_the_user_read` 在 Rust 那一侧连着查了三次「拒绝之后那条记忆还读得出来」）。已经遗忘的那一条打不开也遗忘不了第二次，它在列表里是墓碑 |
+| AC-20 `/research`：只在屏幕上 | `Research.test.tsx` 7 项。`written_to_disk` 与 `third_party_rows` 在 TypeScript 里的类型是字面量 `false` 与 `0`，想显示成别的值的组件编不过。行是计数与桶，没有一列能放正文或姓名。页面上没有导出按钮，而且不是靠藏：`core.ts` 列全了壳能调的 27 个命令，测试在那张表上搜写文件的动词。`session_screens.rs` 那一侧把数据目录在预览前后各列一遍——AC-20 承诺的是没写，一个不存在的文件比一条不存在的代码路径好查 |
+| `/audit`：链回放，没有正文 | `Audit.test.tsx` 7 项。每一条是序号、时间、动作、结论、理由码、几个编号和几个计数，加前后两个哈希与一个 `follows_previous`，所以链断了看得出断在哪一条，而不是只知道断了。`session_screens.rs` 先往库里写一条带正文的记忆，再把整条链格式化出来搜那段正文 |
+| 一条空路由都没有 | `App.test.tsx::没有一个路由还是空的` 直接遍历 `ROUTES` 断言没有 `ownedBy`，另有五条逐页确认屏幕上有内容。`components/Pending.tsx` 留着但已经没有人引用 |
+| 渲染出来的字过 denylist | `src/test/denylist.ts` 是 `Graph.test.tsx` 里那段内联检查提出来的，现在 `/profile`、`/research`、`/audit` 三页也各跑一遍，读的是 `fixtures/denylist/diagnostic_terms.txt`——和 `xtask denylist-audit` 同一个文件。源码那一遍扫的是字面量，这一遍扫的是渲染出来的 DOM：一份读起来像诊断的 fixture 必须在用户读到它的那个面上红 |
+| 两侧的命令名还是同一份 | `core.ts` 的 `COMMANDS` 从 14 个长到 27 个，`command_surface.rs` 照旧比对两侧并要求每个 wrapper 体只有一条语句。`contract.test.ts` 现在还把遗忘、研究、审计与空问卷四句话对着 Rust 常量核一遍，并把向导那份题表逐题对着 `soul_import::questionnaire::QUESTIONS` 核——测试用的那个 double 不能变成一个比真核心更好说话的核心 |
+
+落地内容：`crates/soulcore/src/commands/{profile,memory,store,session}.rs` 加十三个命令与它们的视图类型，`crates/soulcore/tests/session_screens.rs`；`crates/soul-profile/src/{axes,view,lib}.rs`（`AxisDefinition::direction`，以及让选项的字跟着 token 一起走）；`apps/desktop/src-tauri/src/{lib,commands}.rs`；`apps/desktop/src/` 的 `core.ts`、`App.tsx`、`router.tsx`、`refusal.tsx`、`routes/{Wizard,Profile,Memory,Research,Audit}.tsx`、`test/{fakeCore,denylist}.ts`、`styles.css` 与相应测试。
+
+### WP09 第三段的取舍与遗留
+
+1. **选项的字由核心给，不在 TypeScript 里再拼一遍。** `QuestionView.options`、`AxisRow.choices`、`VoiceFieldRow.options` 每一项都带 token 和它的中文读法。界面本来可以只拿 token 自己映射，那样少一次序列化；代价是「偏低 / 两边都有 / 偏高」这些词会有第二份拼写，而 D22 禁的刻度词正是从这类词里冒出来的，第二份拼写在 `xtask denylist-audit` 眼皮底下但不在任何 Rust 测试的断言里。`AxisDefinition::direction` 是 `describe` 去掉前面的轴名，给那两处已经把轴名写在旁边的地方用。
+2. **`preview_id` 活在 session 的内存里，不落盘。** 关掉 Soul 再打开，上一次看过的那份影响面就不算数了，得重看一遍。这是对的：那些数字是一次实时查询的结果，隔了一次重启它们本来就可能变了，而这个令牌的全部意义就是「你按的是你读过的那一份」。同一个形状起草那一侧已经用过（`preparation_id` + `plan_hash`），理由也是同一个。
+3. **`OWNER_PROFILE_ID` 是写死的常量，不是生成出来记在什么地方的 id。** 放 `config.json` 里，那个文件的全部说服力就是它只有两个字段；放库里，那么恰好在库打不开的时候它也读不出来。和 `soul-profile` 给 `axis_id` 选固定 UUID 是同一个理由：会变的标识符就是会分叉的历史。
+4. **`/memory` 上的遗忘是 v0.1 唯一会破坏东西的动作，这不违反 AC-27。** D15 把「删除」定义成销毁内容密钥，那不是文件写入，AC-27 管的是文件写入。所以这一页有一个真的会毁掉东西的按钮，而 `/files` 没有——两者的区别不是危险程度，是一个在库里、一个在用户的磁盘上。
+5. **`/audit` 一次把整条链读出来，没有分页。** 现在的链是几十条，装得下。真正到了装不下的时候，正确的修法不是截断显示——那会让「链是完整的」这句话变成一个没人能核的断言——而是给验证那一步一个能分段的入口，那时 `AuditChain.verified` 的含义也要跟着改。
+6. **session 的这批读命令仍然不写审计。** 看档案、看记忆列表、看研究预览、看审计链，四件事在冻结的 `audit.schema.json` 里都没有对应动作。和 WP13 第二段遗留 2 同一条理由：现编一个动作等于让审计条目声称一件契约没说过的事。真正有后果的两件——纠正一条轴、遗忘一条记忆——走的是 `soul-profile` 与 `soul-memory` 本来就有的那两条审计路径。
+7. **`fakeCore.ts` 里那份题表是手抄的，靠一条测试钉住。** vitest 跑不动 Rust，所以前端的 double 里有一份十一题的复本。`contract.test.ts::向导那份问卷和 soul-import 的正典清单是同一份` 读 `crates/soul-import/src/questionnaire.rs` 的源码，逐题比题号、题型与题数。少一题多一题都会红，题面的措辞不比——比措辞会让改一个错别字变成改两个文件。
+8. **`/research` 那一页在库里没有可聚合事件的时候是一句话，不是一张空表。** 空表和「这台机器上还没有产生过可以聚合的东西」长得一样，但意思差得远。`/graph` 当初分开「拒绝」与「空图」是同一件事的另一半。
+9. **`/profile` 的纠正每次都把整屏重读一遍。** 锁、证据带、整段读法三样是一起动的，局部更新意味着界面得自己知道纠正一条轴会不会影响别的轴的证据带——那正是核心该知道而界面不该知道的东西。代价是一次纠正一次往返。
+10. **前端的 refusal 处理提成了 `refusal.tsx`。** 三条路由各有一份复本，现在七条共用一个 `asRefusal` 加一个 `Refused`。它不判断任何东西，只是把「核心扔出来的东西不一定长得像 `Refusal`」这件事收在一处。
+
 ## 下一步
 
-批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集与 WP09 桌面壳第一段也已完成。批 5 的 WP10 起草与人事摘要、WP11 文件计划都已完成并接到界面上。WP13 两段都完成：安装 smoke / CI / SBOM 是第一段，一个 store 句柄、能读回的配置、`/files` 与 `/graph` 与端点确认屏是第二段。
+批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集与 WP09 桌面壳三段也已完成。批 5 的 WP10 起草与人事摘要、WP11 文件计划都已完成并接到界面上。WP13 两段都完成：安装 smoke / CI / SBOM 是第一段，一个 store 句柄、能读回的配置、`/files` 与 `/graph` 与端点确认屏是第二段。
 
-剩下的三件事，一件是界面，两件是人在真机前面：
+原先写在这里的三件事，两件已经做完，剩下的一件是人在真机前面：
 
-1. **向导还没有画那十一道题。** `profile::questions()` 给出题面、选项和形状，`profile::intake` 收答案，`fixtures/questionnaire/v0_1.json` 钉住题号。store 句柄这个挡路的东西已经没有了——向导现在有 session 可用，缺的只是那一屏。同一批里还有 `/profile`、`/memory`、`/research`、`/audit` 四条 WP09 功能视图的空路由，核心与命令面都在，接法和 `/files`、`/graph` 一样。
+1. ~~**向导还没有画那十一道题。**~~ **已完成**，见「WP09 完成情况（第三段）」。十一道题、四条视图、`router.tsx` 里最后一个 `ownedBy`，都在那一段里。跟着它来的是几条只有真人能答的问题，都记在那一节的遗留里：这些页面在 150% 缩放下的中文排版没人看过（WP09 手动缺口 6 现在多了六页要看），`/audit` 到底要不要分页取决于真实使用几个月之后链有多长，而「遗忘」这个真会毁东西的按钮长什么样、放在哪里，是产品该看一眼的事，不是测试能定的。
 2. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替，也不要在文档里假装它们过了。
 3. ~~**DPAPI 要真的实现**~~ **已实现**，见「DPAPI 完成情况」。剩下的是三件跟着它来的事：windows-latest 上那批 `cfg(windows)` 用例第一次跑出来的结果；真机上确认有登录用户配置文件时库确实打得开（检查清单可以在第 3 节旁边加一条「`%LOCALAPPDATA%\Soul\keys.dpapi` 存在且 `/graph` 不再给拒绝」）；以及「丢了这个 blob 就永久打不开库」要不要在 UI 上说、卸载时要不要保留它。
 
