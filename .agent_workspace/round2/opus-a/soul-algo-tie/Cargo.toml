@@ -1,0 +1,18 @@
+[package]
+name = "soul-algo-tie"
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.83"
+description = "Round 2 reference implementations of the surviving Soul tie-strength candidates T3 / T3R / T4, with T0 kept as a regression oracle (opus-a)."
+publish = false
+
+# Standalone on purpose: this package must build with `cargo test` on its own,
+# with no SQLCipher, Tauri or HTTP anywhere in the tree.
+[workspace]
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"

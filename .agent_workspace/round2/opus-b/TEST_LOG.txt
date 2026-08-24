@@ -1,0 +1,208 @@
+MODEL_SLUG: claude-opus-5-thinking-high-fast
+
+Round 2 / opus-b — soul-algo-trait v0.2.0 test log
+==================================================
+Date: 2026-08-24. Host: Linux, no network used during the run.
+Package: .agent_workspace/round2/opus-b/soul-algo-trait
+edition 2021, rust-version 1.83, zero dependencies, unsafe_code = "forbid".
+
+Summary: 81 tests, 81 passed, 0 failed, 0 ignored, 0 flaky.
+         cargo fmt --check clean. cargo clippy --all-targets -D warnings clean.
+         cargo doc --no-deps builds with #![deny(missing_docs)].
+
+  tests/a0_lock.rs           19  the correction lock on the intake path, LWW contract, NoDowngrade
+  tests/a0_vs_a1.rs           6  A0/A1 ablation, run rather than transcribed
+  tests/a1_independence.rs   22  (kind, utc_day) grouping, F16, F16b, EMPTY_ON_V01 evidence
+  tests/a2_render.rs         17  pure rendering, dormancy, the source scan
+  tests/a3_refusal.rs         6  A3 stays dead
+  tests/denylist_scan.rs     11  every user-facing string this crate can produce
+
+Red-line fixtures from EVAL_MATRIX.md:
+  F10  an inference never moves a locked axis          -> an_inference_never_moves_a_locked_axis_but_is_still_returned  PASS
+  F16  same-day questionnaire re-fill does not upgrade -> f16_five_refills_in_one_afternoon_do_not_upgrade               PASS
+       (and at 50 re-fills)                            -> f16_holds_however_many_times_the_questionnaire_is_refilled_in_a_day PASS
+  F16b three independent agreeing groups reach Strong  -> f16b_three_independent_agreeing_groups_reach_strong            PASS
+  F16c contradiction is mixed, never a majority vote   -> one_group_each_way_is_already_mixed
+                                                          a_majority_never_settles_a_disagreement                        PASS
+  F18  no diagnostic word in any output                -> every_a2_sentence_is_publishable_about_a_third_party
+                                                          every_a1_explanation_is_publishable
+                                                          every_axis_string_is_publishable                               PASS
+  F20  no bullet without resolvable evidence           -> every_bullet_cites_something
+                                                          empty_evidence_means_no_bullets_at_all                         PASS
+
+Negative control (the guard has teeth, not just a green tick)
+-------------------------------------------------------------
+`a2_defines_no_band_thresholds` reads src/a2.rs with include_str! and fails on
+"STRONG_MIN", "MODERATE_MIN", "MIN_INTERACTIONS", "MIN_ACTIVE_DAYS", ">= 10",
+">=10". To prove it is not vacuous, the following was appended to src/a2.rs and
+the test re-run:
+
+    const STRONG_MIN_INTERACTIONS: u32 = 10;
+    fn _mutant(n: u32) -> bool { n >= 10 && STRONG_MIN_INTERACTIONS > 0 }
+
+Result:
+    test a2_defines_no_band_thresholds ... FAILED
+    src/a2.rs contains "STRONG_MIN": A2 has started deciding bands again
+
+The mutation was reverted and src/a2.rs verified byte-identical to the original
+before the run below. No mutation is present in the shipped package.
+
+Determinism
+-----------
+No test reads a wall clock, a file at run time, an environment variable, a
+random number or a hash. Every timestamp is a fixture constant and `as_of` is a
+field on the input. `cargo test` was run repeatedly with identical output;
+`the_same_score_always_renders_the_same_summary` and
+`shifting_as_of_and_last_contact_together_changes_nothing` pin the property from
+inside.
+
+Full run
+========
+
+$ rustc --version
+rustc 1.83.0 (90b35a623 2024-11-26)
+
+$ cargo --version
+cargo 1.83.0 (5ffbef321 2024-10-29)
+
+$ cargo tree
+soul-algo-trait v0.2.0 (/workspace/.agent_workspace/round2/opus-b/soul-algo-trait)
+
+$ cargo fmt --check
+(no diff)
+
+$ cargo clippy --all-targets -- -D warnings
+    Checking soul-algo-trait v0.2.0 (/workspace/.agent_workspace/round2/opus-b/soul-algo-trait)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.28s
+
+$ cargo test
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running unittests src/lib.rs (target/debug/deps/soul_algo_trait-1707d9cc1dae0dc5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/a0_lock.rs (target/debug/deps/a0_lock-9c76bd5475d96aac)
+
+running 19 tests
+test a_later_correction_still_moves_a_locked_axis ... ok
+test a_lock_on_one_axis_does_not_freeze_the_others ... ok
+test a_skipped_answer_is_reported_rather_than_dropped ... ok
+test a0_ignores_the_timestamp_entirely ... ok
+test an_empty_log_leaves_every_axis_unknown ... ok
+test a_user_may_correct_an_axis_to_unknown ... ok
+test a_fully_forgotten_axis_returns_to_unknown ... ok
+test an_inference_never_moves_a_locked_axis_but_is_still_returned ... ok
+test evidence_for_another_axis_is_ignored ... ok
+test forgotten_rows_are_dropped_before_anything_is_aggregated ... ok
+test intake_does_not_move_an_axis_the_user_corrected ... ok
+test last_write_wins_is_the_a0_contract ... ok
+test intake_on_a_clean_profile_still_works ... ok
+test no_downgrade_lets_an_agreeing_row_join_the_citation_list ... ok
+test no_downgrade_never_overrides_the_lock ... ok
+test intake_matches_replay_on_every_fixture_and_mode ... ok
+test no_downgrade_still_lets_an_equally_supported_disagreement_through ... ok
+test the_answer_row_is_still_written_even_when_the_axis_will_not_move ... ok
+test no_downgrade_keeps_the_better_supported_position ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/a0_vs_a1.rs (target/debug/deps/a0_vs_a1-6c7c0eac8c9af335)
+
+running 6 tests
+test neither_algorithm_ever_moves_a_locked_axis ... ok
+test neither_algorithm_ever_claims_without_citing ... ok
+test only_a1_reaches_strong_without_a_correction ... ok
+test a1_is_the_path_that_does_not_clobber ... ok
+test a1_and_a0_agree_when_there_is_only_one_thing_to_say ... ok
+test the_ablation_table_is_what_the_report_says_it_is ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/a1_independence.rs (target/debug/deps/a1_independence-3b63c3f152a367aa)
+
+running 22 tests
+test a1_does_fire_on_v01_data_when_the_questionnaire_is_refilled_across_days ... ok
+test a_correction_to_unknown_locks_the_axis_at_unknown ... ok
+test a_correction_settles_the_axis_before_any_counting_happens ... ok
+test a_day_boundary_is_a_utc_day_boundary ... ok
+test a_forgotten_row_takes_its_group_with_it ... ok
+test a_majority_never_settles_a_disagreement ... ok
+test a_source_that_contradicts_itself_in_a_day_supports_neither_side ... ok
+test an_explicit_mixed_answer_is_a_statement_not_a_tie ... ok
+test every_explanation_is_countable_and_publishable ... ok
+test exactly_three_groups_is_the_upgrade_boundary ... ok
+test f16_five_refills_in_one_afternoon_do_not_upgrade ... ok
+test f16b_three_independent_agreeing_groups_reach_strong ... ok
+test f16_holds_however_many_times_the_questionnaire_is_refilled_in_a_day ... ok
+test nothing_at_all_is_unknown ... ok
+test one_row_cited_three_times_is_one_row ... ok
+test only_two_evidence_kinds_can_reach_an_axis_in_v01 ... ok
+test the_day_key_works_either_side_of_the_epoch ... ok
+test the_strict_variant_cannot_fire_on_v01_data ... ok
+test the_strict_variant_still_passes_f16b ... ok
+test the_upgrade_explanation_names_the_groups_days_and_sources ... ok
+test three_different_sources_on_one_day_are_three_groups ... ok
+test one_group_each_way_is_already_mixed ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/a2_render.rs (target/debug/deps/a2_render-0283ead0abdb907d)
+
+running 17 tests
+test a_last_contact_ahead_of_as_of_reads_as_today ... ok
+test a_one_way_edge_says_so_in_both_directions ... ok
+test an_edge_with_no_last_contact_says_nothing_about_recency ... ok
+test a_weak_band_never_reads_as_a_strong_relationship ... ok
+test counts_with_no_band_yet_still_render ... ok
+test a_group_only_edge_is_flagged_and_a_direct_one_is_not ... ok
+test dormancy_is_a_sentence_not_a_demotion ... ok
+test every_bullet_cites_something ... ok
+test empty_evidence_means_no_bullets_at_all ... ok
+test shifting_as_of_and_last_contact_together_changes_nothing ... ok
+test the_band_on_every_bullet_is_the_band_it_was_handed ... ok
+test the_counts_alone_never_change_the_band ... ok
+test the_dormancy_threshold_is_strictly_more_than_the_constant ... ok
+test the_recency_line_cites_the_one_row_it_rests_on ... ok
+test the_same_score_always_renders_the_same_summary ... ok
+test a2_defines_no_band_thresholds ... ok
+test no_band_ever_claims_a_relationship ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/a3_refusal.rs (target/debug/deps/a3_refusal-fcf4177166e4f624)
+
+running 6 tests
+test the_a3_identifier_is_registered_as_rejected ... ok
+test text_inference_always_refuses ... ok
+test no_live_algorithm_stamps_the_rejected_identifier ... ok
+test the_batch_form_refuses_too ... ok
+test the_refusal_reason_is_stable_and_holds_no_text ... ok
+test plenty_of_evidence_does_not_buy_a_text_inference ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/denylist_scan.rs (target/debug/deps/denylist_scan-865c2d11a8cc369e)
+
+running 11 tests
+test a_rating_is_caught_even_when_it_is_dressed_as_a_count ... ok
+test a_plain_count_is_not_a_rating ... ok
+test algorithm_ids_carry_no_forbidden_word ... ok
+test ascii_denylist_words_are_case_folded ... ok
+test every_band_and_position_word_is_publishable ... ok
+test the_brief_s_denylist_is_the_denylist ... ok
+test the_diagnostic_screen_catches_what_it_is_for ... ok
+test the_peer_screen_only_applies_to_peer_copy ... ok
+test every_axis_string_is_publishable ... ok
+test every_a1_explanation_is_publishable ... ok
+test every_a2_sentence_is_publishable_about_a_third_party ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests soul_algo_trait
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
