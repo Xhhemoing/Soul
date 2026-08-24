@@ -1,0 +1,16 @@
+[package]
+name = "soul-algo-tie"
+version = "0.3.0"
+edition = "2021"
+rust-version = "1.83"
+description = "Round 3 canonical Soul tie-strength rules: T4 (rollback) and T4D (default), with T0 kept as a test-only oracle (opus-a)."
+publish = false
+
+# No SQLCipher, Tauri or HTTP. Zero runtime dependencies.
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"

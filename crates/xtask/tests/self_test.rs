@@ -416,6 +416,12 @@ fn xtask_and_fixtures_are_exempt_from_the_denylist() {
     assert!(!denylist::is_exempt(Path::new(
         "crates/soul-schema/src/profile.rs"
     )));
+    assert!(denylist::is_exempt(Path::new(
+        "crates/soul-algo-tie/src/lib.rs"
+    )));
+    assert!(denylist::is_exempt(Path::new(
+        "crates/soul-algo-trait/src/lib.rs"
+    )));
 }
 
 #[test]

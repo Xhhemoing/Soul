@@ -16,6 +16,8 @@ members = [
   "crates/soul-collect",
   "crates/soul-draft",
   "crates/soul-fileplan",
+  "crates/soul-algo-tie",
+  "crates/soul-algo-trait",
 ]
 
 [workspace.package]

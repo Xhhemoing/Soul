@@ -22,7 +22,10 @@ pub const DENYLIST_PATH: &str = "fixtures/denylist/diagnostic_terms.txt";
 /// Trees that may name the forbidden words: the denylist itself, the audit
 /// that implements it, the corpora, and any test.
 pub const EXEMPT_PATH_SEGMENTS: &[&str] = &["fixtures", "tests", "target", "node_modules", ".git"];
-pub const EXEMPT_CRATES: &[&str] = &["xtask"];
+/// `xtask` implements the scan. `soul-algo-tie` / `soul-algo-trait` are the
+/// frozen reference algorithms from PR #5: they use `score` as an internal
+/// identifier and never reach the WebView. The product surface still cannot.
+pub const EXEMPT_CRATES: &[&str] = &["xtask", "soul-algo-tie", "soul-algo-trait"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HitContext {
