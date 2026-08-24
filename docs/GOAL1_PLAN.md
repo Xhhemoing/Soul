@@ -69,6 +69,32 @@ WP02 已完成，取舍与遗留见 `docs/STATUS.md`。
 4. [x] 审计内容无正文；崩溃后链可验证。
 5. [x] 外部内容进 `UntrustedText`，三路注入不能变成指令或外连。
 
+## WP10 完成定义
+
+1. [x] `crates/soul-draft` 纯逻辑：粘贴进 `UntrustedText`/`PastedTurn`、语气模板、人事摘要每条 claim 带可解引用的 `evidence_ids`。crate 不依赖 `soul-egress`，公开面无 send/submit/deliver。
+2. [x] `soulcore::commands::draft` 编排：每次现读 `read_voice`；顺序 `redact` → `e1_plan` → `PlanHash` → `issue_token(E1Generate)` → `e1_generate`。无 endpoint 返回确定性模板且零连接。跨 origin 302 是可读失败，不降级成模板。
+3. [x] AC-07 / 11 / 12 / 13 / 16 / 17 / 25 起草侧：`cargo test -p soul-draft --all-targets` 与 `cargo test -p soulcore --test draft_commands`。
+4. [x] 粘贴不落库；审计 `DraftCreate` 只有 id/计数/plan hash；默认 E1 body 过 LeakageChecker；一次性豁免按值消费。
+5. [ ] 起草 UI（WP09 功能视图）。`/draft` 仍无发送按钮。
+
+## WP11 完成定义
+
+1. [x] `crates/soul-fileplan`：根 canonicalize 后用 `Path::starts_with`（按路径分量，不是字符串前缀）授权；`walkdir` 只读扫描；计划预览 `written_to_disk` 构造级恒 false。
+2. [x] 源码级无写 API（运行时枚举 `src/` + 合成对照）。类型面无 execute/apply/undo。
+3. [x] AC-18：授权根扫描前后磁盘内容哈希不变；未授权矩阵（空根、穿越、symlink 逃逸、父目录、前缀撞名）全部 `PATH_NOT_AUTHORIZED`。
+4. [x] 计划 JSON 稳定排序后 `PlanHash::of`；改字段携旧 hash 拒 `PlanHashMismatch`。`FileWrite` 令牌买不来执行。
+5. [x] 审计只记扫描 uuid 与计数，不含路径/文件名/`root_fingerprint`。
+6. [ ] 文件页 UI（WP09 功能视图）。写执行是 v0.1.1（AC-27）。
+
+## 壳接真库完成定义
+
+1. [x] 桌面 `setup` 调 `open_store_for_session` 一次，句柄 `manage` 为 `Arc<Mutex<SqlCipherStore>>`。密钥选择在 soulcore：先问 `DpapiKeyProvider`，仅 `Unsupported` 回退 `TestKeyProvider::in_dir`。
+2. [x] 设置页逐字渲染 `KEY_FILE_NOT_PROTECTED_EXPLANATION`。全仓不宣称 KEK 已受 DPAPI 保护。
+3. [x] `authorize_root` / `authorized_roots` IPC：会话有效、不持久化、不进向导。AC-02 向导后置条件保持。
+4. [ ] `DpapiKeyProvider` Win32 实现（P1）。配置持久化（WP13）。档案/记忆/人脉/导入接到 UI（WP09 功能视图）。
+
+## WP01 允许 / 禁止（历史，WP01 关门后不再扩张）
+
 WP01 允许：根工装、`crates/{soul-schema,soul-store-api,soul-testkit,xtask,soulcore}`、`fixtures/`、`.github/workflows/ci.yml`、`justfile`、schema 仅 `$ref` 重接与收紧、`schemas.lock.json`、`SECURITY.md` 加密落地段、`STATUS.md`。
 
 WP01 禁止：产品定义文档、`apps/`、业务 crate、HTTP client 进 normal 依赖、实现导入/档案/采集/起草/文件计划。

@@ -26,9 +26,9 @@
 //! leave the audit to the crate underneath, which already writes it as part of
 //! the same call. `shell.rs` reaches neither the network nor the disk: it answers
 //! questions about this build's defaults, which is all a WebView is allowed to
-//! ask in WP09. `draft.rs` and `fileplan.rs` are declared but empty: the two
-//! crates underneath them are registered and the module names are taken, so
-//! WP10 and WP11 land as one file each rather than as a manifest change.
+//! ask in WP09. `draft.rs` and `fileplan.rs` orchestrate WP10 and WP11: the
+//! crates underneath them stay pure, and these two files hold the store, the
+//! policy session, and the audit entries those calls owe.
 
 pub mod collect;
 pub mod draft;

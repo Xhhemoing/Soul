@@ -1,7 +1,17 @@
 {
-  "description": "仅描述供 tempfile 现场创建的 harmless 样例树；这些路径不是仓库内的实体文件。",
+  "description": "仅描述供 tempfile 现场创建的 harmless 样例树；这些路径不是仓库内的实体文件。树的形状要同时触发三种建议：顶层散落文件（move）、扩展名大小写不整齐的文件（rename）、同一目录下同扩展名的两个文件（group）。",
   "authorized_root": "A",
   "entries": [
+    {
+      "relative_path": "loose-note.txt",
+      "kind": "file",
+      "content_utf8": "a harmless note that nothing has filed yet\n"
+    },
+    {
+      "relative_path": "NOTES.MD",
+      "kind": "file",
+      "content_utf8": "# harmless sample with an untidy extension\n"
+    },
     {
       "relative_path": "inbox",
       "kind": "directory"
@@ -15,6 +25,11 @@
       "relative_path": "inbox/budget.csv",
       "kind": "file",
       "content_utf8": "item,amount\nsample,1\n"
+    },
+    {
+      "relative_path": "inbox/expenses.csv",
+      "kind": "file",
+      "content_utf8": "item,amount\nsample,2\n"
     },
     {
       "relative_path": "reference",

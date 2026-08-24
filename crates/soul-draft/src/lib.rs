@@ -1,26 +1,44 @@
-//! WP10: drafting that never sends, and the people summary that informs it.
+//! WP10: drafting that never goes out, and the people summary that informs it.
 //!
-//! **This crate is empty on purpose.** ST-00 registered it as a workspace
-//! member with the dependency set WP10 was scoped against; ST-01 writes the
-//! logic. Nothing here pretends to work yet, so there is no `todo!()` waiting
-//! to be discovered at runtime and no type that looks implemented from the
-//! outside.
+//! Everything here is pure. There is no store handle, no clock, no socket and
+//! no HTTP client anywhere in this crate's dependency graph — the one
+//! generation request WP10 makes belongs to `soulcore::commands::draft`, which
+//! holds the `PolicySession` and calls `soul-egress` through it. A drafting
+//! crate that could reach the network would be a drafting crate that could put
+//! a draft on the wire, so this one cannot.
 //!
-//! What ST-01 puts here, and what it must keep out:
+//! What that leaves here:
 //!
-//! * pasted text turned into `soul_policy::redactor::Turn` values, a
-//!   `soul_profile::voice::VoiceProfile` turned into a deterministic tone
-//!   template, and the counting side of the people summary over
-//!   `soul-graph` ties — all pure, none of it touching the disk;
-//! * no request path. The one E1 call belongs to
-//!   `soulcore::commands::draft`, which holds the store handle and the
-//!   `PolicySession`. `soul-egress` is not a dependency of this crate, and the
-//!   public surface must not grow a name that suggests sending, submitting or
-//!   delivering anything.
+//! * [`PastedTurn`], the only way pasted prose enters, and the audit entries
+//!   the injection scan owes ([`turns`]);
+//! * [`template_draft`], the deterministic draft this product writes when no
+//!   endpoint is configured, and [`tone_turn`], the one line that carries the
+//!   user's voice into a request body ([`tone`]);
+//! * [`answer_text`], which reads an endpoint's answer as data ([`answer`]);
+//! * [`summarize`], the counting side of a people summary, where every claim
+//!   carries the evidence ids its edge cites ([`summary`]).
+//!
+//! The public surface has no method that hands a draft to anything, and no
+//! field that says a draft is ready to go out. `tests/no_send_api.rs` reads
+//! this crate's sources back and checks that it stays that way.
 
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]
 
-/// The work package this crate belongs to, so the module is not literally
-/// empty while it waits for ST-01.
+pub mod answer;
+pub mod error;
+pub mod summary;
+pub mod tone;
+pub mod turns;
+
+pub use answer::answer_text;
+pub use error::{DraftError, DraftResult};
+pub use summary::{summarize, PeopleSummary, ResolvedTie, SummaryClaim};
+pub use tone::{
+    check_draft, template_draft, tone_directive, tone_turn, voice_plan, DraftOutcome, DraftRoute,
+    DraftStats,
+};
+pub use turns::{injection_audit, injection_signals, turns_from, PastedTurn};
+
+/// The work package this crate belongs to.
 pub const WORK_PACKAGE: &str = "WP10";

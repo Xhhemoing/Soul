@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
-description = "WP11: a read-only walk of an authorized root and the tidy-up plan it suggests, which nothing applies. Registered empty; ST-02 fills it."
+description = "WP11: a read-only walk of an authorized root and the tidy-up plan it suggests, which nothing applies."
 
 # `walkdir` reads directories and nothing writes them; the crate has no
 # database, no HTTP client and no `soul-egress`. Authorization is decided by

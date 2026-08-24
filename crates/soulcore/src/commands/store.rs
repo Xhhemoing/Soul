@@ -124,10 +124,15 @@ pub fn open_store_for_session(directory: impl AsRef<Path>) -> StoreResult<Sessio
             handle: share(open_store(directory, &platform)?),
             key_protection: KeyProtection::PlatformKeyStore,
         }),
-        Err(_) => Ok(SessionStore {
+        // Only an honest "this platform cannot protect a KEK" falls back to
+        // a key file. An I/O or malformed-blob error is a real failure: treating
+        // it as Unsupported would write a fresh plaintext seed beside a
+        // database we could not open, and then claim that was the plan.
+        Err(KeyError::Unsupported(_)) => Ok(SessionStore {
             handle: share(open_store_with_test_file_keys(directory)?),
             key_protection: KeyProtection::UnprotectedKeyFile,
         }),
+        Err(error) => Err(soul_store_api::types::StoreError::Backend(error.to_string())),
     }
 }
 

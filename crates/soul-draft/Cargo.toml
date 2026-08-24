@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
-description = "WP10: drafting a reply in the user's own voice, and the people summary behind it. Registered empty; ST-01 fills it."
+description = "WP10: drafting a reply in the user's own voice, and the people summary behind it. Pure logic; the one E1 request lives in soulcore."
 
 # No database and no HTTP client, for the same reason `soul-profile` has
 # neither: the drafting logic is pure, so it runs against `FakeStore` in a unit

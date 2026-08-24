@@ -22,8 +22,11 @@
 | WP05 人脉图 | 完成。见下节 |
 | WP06 导入 | 完成。见下节 |
 | WP07 前台采集 | 完成。见下节 |
-| WP09 桌面壳 | 第一段（壳）完成。见下节。起草 UI 全文属 WP10，未开始 |
-| v0.1 其余 WP | 未开始 |
+| WP09 桌面壳 | 第一段（壳）完成。壳已接真库（见下「壳接真库」）。起草/文件页仍是 Pending |
+| WP10 起草 + 人事摘要 | 核心完成。见下节。UI 仍是 Pending |
+| WP11 只读文件计划 | 核心完成。见下节。UI 仍是 Pending |
+| 壳接真库 + 授权目录 | 完成。见下节 |
+| WP09 功能视图 / WP13 | 未开始 |
 
 ## WP01 完成情况
 
@@ -281,10 +284,62 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 5. **`e0-audit` 的 build output 豁免改成按标记文件认。** WP07 遗留 9 说 `apps/desktop/dist/` 会让本机 e0 红。修法不是把 `dist`/`gen` 加进 `EXEMPT_DIRS`（那样任何目录改个名字就能躲开审计），而是只在旁边有 `package.json` / `tauri.conf.json` 时才跳过。`xtask/tests/self_test.rs` 里有一条写了个手写的 `crates/pretend/src/gen/`，它仍然会被扫到。
 6. **托盘装不上时窗口就正常关闭。** 关窗收进托盘只有在真有托盘时才成立；没有通知区域的桌面上，那会变成关不掉又退不出的窗口。`tray::install_or_report` 把这次会话有没有托盘记进 state，关窗处理读它。Windows 11 一定有托盘，这条是给别的环境和调试用的。
 7. **`soulcore/src/commands/shell.rs` 里的 `ConfigSnapshot` 是壳自己的视图，不是 `Config` 的序列化。** 它只带界面要显示的那几个布尔与计数，**不带 LLM 端点字符串**（`the_snapshot_carries_no_endpoint_string` 钉住）：界面没有理由拿到那个地址，而每一个跨进程边界的字符串都是一次泄漏机会。要显示端点内容，得先想清楚为什么。
-8. **壳还没有连真的 store。** `SessionConfig` 目前握的是内存里的 `soulcore::Config`，没有打开 `SqlCipherStore`。WP07 遗留 8 说整个进程只能有一个 store 句柄；接线的时候在 `lib.rs` 的 setup 里开一次、`manage` 起来，不要在每个命令里开。
+8. **壳在 setup 里打开一次真 `SqlCipherStore`。** `install_store` 把句柄 `manage` 起来；密钥选择在 `soulcore::commands::store::open_store_for_session`：先问 `DpapiKeyProvider`，仅 `Unsupported` 时回退 `TestKeyProvider::in_dir`。设置页如实渲染「密钥文件未受 DPAPI 保护」。授权目录是会话内入口，不进向导、不持久化（WP13）。
 9. **起草 / 文件计划 / 导入 / 记忆 / 人脉这些路由是空的，但不是白屏。** `components/Pending.tsx` 写明这一页归哪个 WP。`App.test.tsx` 里两条断言钉住空路由的形状：起草页没有输入框也没有发送按钮，文件计划页没有任何执行按钮——工作单禁止假实现，测试就是这条禁令的执行者。要在这些页面上加控件的人会先撞到它们。
-10. **前端只有 4 个测试文件，没有组件快照。** 断言全是「用户能看见什么」（`getByRole` / 可见文本），不是 DOM 结构。快照测试会在 WP10 改版式的时候整片变红，却挡不住把云开关文案改掉这种真问题。
+10. **前端测试覆盖设置页授权入口。** 断言仍是「用户能看见什么」，不是 DOM 快照。
+
+## WP10 完成情况（核心，无起草 UI）
+
+`crates/soul-draft` 纯逻辑 + `soulcore::commands::draft` 编排。本机 `cargo test -p soul-draft --all-targets` 与 `cargo test -p soulcore --test draft_commands` 绿。
+
+| 交付 | 证据 |
+|---|---|
+| 永不发送 | `crates/soul-draft/tests/no_send_api.rs` 源码扫描 + 对照 |
+| AC-11 精确 origin / 跨 origin 拒绝 | `draft_commands.rs::configured_origin_is_the_only_wire_destination`、`a_cross_origin_redirect_is_a_readable_failure` |
+| AC-12 默认占位 | `the_default_wire_body_passes_the_leakage_checker` 对 MockLlm 原始 body |
+| AC-13 一次性豁免 | `one_exemption_one_original_then_clean_again` |
+| AC-17 无 endpoint 模板 | `no_endpoint_means_zero_connections` |
+| AC-07 语气立即变 | `set_voice_changes_the_very_next_draft_and_suggest_cannot` |
+| AC-16 人事摘要 | `soul-draft/tests/people_summary.rs` + `a_summary_cites_evidence_that_resolves_and_names_nobody` |
+| AC-25 粘贴是数据 | `pasted_injection_stays_data` |
+
+### WP10 取舍
+
+1. **E1 只发生在 soulcore。** `soul-draft` 不依赖 `soul-egress`。
+2. **本地人事摘要不写审计、不落 inference。**
+3. **粘贴不落库。** 要存走记忆入口。
+4. **起草 UI 未做。** `/draft` 仍是 Pending，禁止发送按钮的测试仍在。
+5. 审计链泄漏检查对中文用 4-gram、对 ASCII 用 ≥8，避免哈希假阳性。
+
+## WP11 完成情况（核心，无文件 UI）
+
+`crates/soul-fileplan` 只读扫描 + 计划预览。`cargo test -p soul-fileplan --all-targets` 与 `cargo test -p soulcore --test fileplan_commands` 绿。
+
+| 交付 | 证据 |
+|---|---|
+| AC-18 授权根扫描且磁盘不变 | `authorized_scan.rs` 递归内容哈希 |
+| AC-18 未授权 100% 拒绝 | `unauthorized_is_refused.rs` 矩阵（空根、穿越、symlink 逃逸、父目录、前缀撞名） |
+| 源码无写 API | `no_write_api.rs` |
+| 计划 hash | `fileplan_commands.rs::an_edited_plan_fails_the_approved_hash` |
+| 写令牌买不来执行 | `a_file_write_token_buys_no_execution` |
+| 审计无路径 | `the_audit_chain_carries_no_file_name` |
+
+### WP11 取舍
+
+1. **`written_to_disk` 构造级恒 false。**
+2. **计划 JSON 用目录指纹而不是把路径写进审计。** 扫描 id 是 uuid7。
+3. **Windows junction 逃逸** `cfg(windows)` 忽略，进手动清单。
+4. **文件页 UI 未做。** `/files` 仍无执行按钮。
+
+## 壳接真库与授权目录
+
+| 交付 | 证据 |
+|---|---|
+| setup 开库一次 | `apps/desktop/src-tauri/src/lib.rs::install_store`；`tests/store_session.rs` |
+| DPAPI 缺位如实 | `open_store_for_session` 仅 `KeyError::Unsupported` 回退；设置页渲染 `KEY_FILE_NOT_PROTECTED_EXPLANATION` |
+| 授权目录 | `shell::authorize_root` + IPC `authorize_root` / `authorized_roots`；会话有效、不持久化 |
+| AC-02 不回归 | 向导仍拒绝开着的配置；授权不进向导 |
 
 ## 下一步
 
-批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集与 WP09 桌面壳第一段也已完成。下一步是 WP10 起草 UI（空路由已就位）与把壳接上真的 `SqlCipherStore`。不要启动 Goal 2。文件写入仍是 v0.1.1。
+WP09 功能视图（档案/记忆/人脉/导入/起草/文件接到 UI）、DPAPI Win32、WP13 `tauri build` 与安装 smoke。不要启动 Goal 2。文件写执行仍是 v0.1.1。双问卷合并仍按契约重做，不是十行适配器。
