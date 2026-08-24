@@ -22,7 +22,10 @@
 use std::path::{Path, PathBuf};
 
 use soul_draft::brief::BRIEF_HEADING;
-use soul_policy::redactor::{ACCOUNT_PLACEHOLDER, THIRD_PARTY_PLACEHOLDER};
+use soul_policy::redactor::{ACCOUNT_PLACEHOLDER, NAME_PLACEHOLDER, THIRD_PARTY_PLACEHOLDER};
+use soul_schema::contact::ContactClass;
+use soul_store_api::{BlobStore, GraphStore};
+use soul_testkit::fixtures;
 use soul_testkit::mock_llm::MockLlm;
 use soulcore::commands::draft::Approval;
 use soulcore::commands::session::{
@@ -507,6 +510,231 @@ fn an_exemption_reaches_neither_the_configuration_file_nor_the_next_launch() {
     );
     assert_eq!(plan.placeheld_turns, 1);
     assert_eq!(endpoint.request_count(), 1, "one approval, one request");
+    drop(keep);
+}
+
+// -------------------------------- AC-12, with somebody in the store ---------
+
+/// The display name `fixtures/import/telegram/result_basic.json` seals.
+///
+/// Spelled with the space, because that is how the export writes it: the
+/// personal chat's `name` and the `from` on every message the peer sent are
+/// both `李 雷`, and `soul-import` seals what the file said. The identifier set
+/// is a set of stored labels and [`Redactor::scrub_identifiers`] is a `replace`
+/// over NFC-normalized strings, so the spelling in this constant has to be the
+/// spelling in the store — which
+/// [`the_label_this_export_sealed_is_the_one_the_paste_uses`] checks by opening
+/// the seal rather than by trusting the fixture.
+///
+/// [`Redactor::scrub_identifiers`]: soul_policy::redactor::Redactor::scrub_identifiers
+const IMPORTED_NAME: &str = "李 雷";
+
+/// A paste that names the person it came from, the way one does.
+///
+/// Nothing in it has an identifier's *shape*: no digits, no `@`, no address.
+/// Two Chinese characters and a space are what the shape scrub cannot see and
+/// the contact graph can.
+const PASTE_NAMING_A_CONTACT: &str = "李 雷 说周五的场地他已经订好了，你直接过来就行";
+
+fn telegram_export() -> String {
+    fixtures::read_text("import/telegram/result_basic.json").expect("fixture")
+}
+
+/// Every third-party display label in this session's store, opened.
+///
+/// The one place in these tests that unseals anything. It is here so the
+/// assertions below rest on what the database holds rather than on a string
+/// copied out of a fixture by hand.
+fn stored_third_party_labels(session: &Session) -> Vec<String> {
+    let store = session.store().expect("the store opened");
+    let store = store.lock().expect("nobody panicked holding the store");
+    store
+        .list_contacts()
+        .expect("the contact rows read back")
+        .into_iter()
+        .filter(|contact| contact.contact_class == ContactClass::ThirdParty)
+        .filter_map(|contact| contact.display_label_ref)
+        .map(|sealed| {
+            String::from_utf8(store.open(&sealed).expect("the label opens")).expect("utf-8")
+        })
+        .collect()
+}
+
+/// The paste and the store agree on how the name is spelled.
+#[test]
+fn the_label_this_export_sealed_is_the_one_the_paste_uses() {
+    let (keep, directory) = scratch();
+    let mut session = Session::open(&directory);
+    session
+        .commit_telegram(&telegram_export())
+        .expect("the export commits");
+
+    let labels = stored_third_party_labels(&session);
+    assert!(
+        labels.iter().any(|label| label == IMPORTED_NAME),
+        "the stored labels are {labels:?}, and the paste below names nobody in them",
+    );
+    assert!(
+        PASTE_NAMING_A_CONTACT.contains(IMPORTED_NAME),
+        "the paste has to carry the name for the next test to mean anything",
+    );
+    drop(keep);
+}
+
+/// AC-12's other half, from the product: a name Soul knows never travels.
+///
+/// `soul-draft`'s `an_exempted_body_still_placeholds_the_name_and_the_number`
+/// has proved this of the crate since WP10 by handing the redactor a
+/// `KnownIdentifiers` with the name already in it. On an installed Soul there
+/// was nothing to hand it one: `Session::open` started from
+/// `draft::closed_session`, whose set is empty, and nothing filled it — so a
+/// user who imported their Telegram export and then pressed 「这一条按原文带上」
+/// sent the contact's display name to their own endpoint. The shape scrub
+/// could not help: two Chinese characters and a space are not a shape.
+///
+/// The exemption is deliberately the *hardest* case. The whole turn travels
+/// verbatim because the user confirmed twice, so a placeholder in the bytes
+/// below can only have come from the identifier set.
+#[test]
+fn a_name_this_soul_imported_is_placeheld_even_in_a_body_the_user_confirmed() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut session = Session::open(&directory);
+
+    session
+        .commit_telegram(&telegram_export())
+        .expect("the export commits");
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let exempted = session
+        .prepare_draft(PASTE_NAMING_A_CONTACT, Some(true))
+        .expect("a plan");
+    assert!(exempted.carries_exempted_original);
+    assert_eq!(exempted.placeheld_turns, 0);
+    session
+        .generate_draft(&exempted.approval())
+        .expect("the endpoint answers");
+
+    let sent = endpoint.requests();
+    assert_eq!(sent.len(), 1, "one approval, one request");
+    assert!(
+        !sent[0].body.contains(IMPORTED_NAME),
+        "the contact's name reached the endpoint: {}",
+        sent[0].body,
+    );
+    assert!(
+        sent[0].body.contains(NAME_PLACEHOLDER),
+        "the name was dropped rather than placeheld: {}",
+        sent[0].body,
+    );
+    // And the confirmation still bought what it was for: the message itself
+    // travelled, so the placeholder above is one name rather than the turn.
+    assert!(
+        sent[0].body.contains("场地"),
+        "the confirmed message did not travel: {}",
+        sent[0].body,
+    );
+    assert!(!sent[0].body.contains(THIRD_PARTY_PLACEHOLDER));
+
+    // Names are read out of the store into a redactor and go nowhere else.
+    // The wizard is finished last so the file inspected is one written after
+    // the import and after the request went out.
+    finish_the_wizard(&mut session);
+    let text = config_text(&directory);
+    for word in [IMPORTED_NAME, "李", "雷", "contact", "name", "identifier"] {
+        assert!(
+            !text.contains(word),
+            "`{word}` reached config.json:\n{text}",
+        );
+    }
+    let value: serde_json::Value = serde_json::from_str(&text).expect("parse");
+    let object = value.as_object().expect("the file is a JSON object");
+    let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        ["authorized_roots", "wizard_completed"],
+        "config.json grew a field, and a contact's name is the last thing that may add one",
+    );
+
+    // Nor into the chain, which records that a request left and how much of it
+    // was placeheld — never a word of what was in it.
+    let played = format!("{:?}", session.audit().expect("the store opened"));
+    for prose in [IMPORTED_NAME, "场地"] {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
+    }
+    drop(keep);
+}
+
+/// The control: with nothing imported, that name is just a word.
+///
+/// Without this the test above would pass on a build whose identifier set is
+/// still empty — `NAME_PLACEHOLDER` would only have to appear once for any
+/// reason. Here the same paste and the same confirmation are sent by a session
+/// that has imported nothing, and the name arrives at the endpoint intact.
+/// That is not a bug being pinned; it is the shape scrub's limit, and it is
+/// exactly what the contact rows are for.
+#[test]
+fn with_nothing_imported_the_same_name_is_a_word_like_any_other() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let exempted = session
+        .prepare_draft(PASTE_NAMING_A_CONTACT, Some(true))
+        .expect("a plan");
+    assert!(exempted.carries_exempted_original);
+    session
+        .generate_draft(&exempted.approval())
+        .expect("the endpoint answers");
+
+    let sent = endpoint.requests();
+    assert_eq!(sent.len(), 1);
+    assert!(
+        sent[0].body.contains(IMPORTED_NAME),
+        "a session that imported nothing has no name to placehold, so the assertion \
+         above is about the contact graph rather than about the shape scrub: {}",
+        sent[0].body,
+    );
+    drop(keep);
+}
+
+/// The user's own name is not the third party's.
+///
+/// PRODUCT_LOCK's placeholder is 第三人姓名, and the owner row is skipped for a
+/// concrete reason: the fixture's account belongs to `Roy`, the drafting brief
+/// travels in the same body, and a set that included the owner would redact the
+/// user out of their own draft.
+#[test]
+fn the_owners_own_name_is_not_placeheld_out_of_their_draft() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut session = Session::open(&directory);
+    session
+        .commit_telegram(&telegram_export())
+        .expect("the export commits");
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let exempted = session
+        .prepare_draft("Roy 说这周先把方案定下来", Some(true))
+        .expect("a plan");
+    session
+        .generate_draft(&exempted.approval())
+        .expect("the endpoint answers");
+
+    let sent = endpoint.requests();
+    assert!(
+        sent[0].body.contains("Roy"),
+        "the account owner's own name was placeheld out of their draft: {}",
+        sent[0].body,
+    );
     drop(keep);
 }
 

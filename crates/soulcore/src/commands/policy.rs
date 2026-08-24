@@ -84,6 +84,25 @@ impl PolicySession {
         Ok(())
     }
 
+    /// Re-point the redactor at a set of identifiers the shell has just read.
+    ///
+    /// The twin of [`PolicySession::set_user_endpoint`], and the same argument
+    /// the other way round: that one swaps the guard and keeps the redactor,
+    /// this one swaps the redactor and keeps the guard — and the token ledger
+    /// with it, so a set that arrives while a plan is approved does not void
+    /// the token that plan was minted against. A caller that rebuilt the whole
+    /// session to change one of the two would take the address the user typed
+    /// away with it, which is the bug the endpoint form's own docs describe.
+    ///
+    /// The set has to be the one the drafter was given.
+    /// [`crate::commands::draft::known_identifiers`] builds it once and both
+    /// sessions are handed the same answer; two redactors that disagree about
+    /// who exists placehold different things, and the one that decides what
+    /// goes on the wire would not be the one the plan was described from.
+    pub fn set_identifiers(&mut self, identifiers: KnownIdentifiers) {
+        self.redactor = Redactor::new(identifiers);
+    }
+
     /// Take the endpoint away again, leaving the session where it started.
     ///
     /// `NetGuard::closed()` refuses every origin, loopback included, so this

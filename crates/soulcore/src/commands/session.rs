@@ -462,7 +462,7 @@ impl Session {
         };
 
         let (draft, policy) = draft::closed_session();
-        Session {
+        let mut session = Session {
             directory,
             store,
             key_protection,
@@ -478,7 +478,11 @@ impl Session {
             consent: ConsentHandle::closed(),
             collector: None,
             collect_problem: None,
-        }
+        };
+        // The pair starts from `closed_session`, which knows nobody. This is
+        // where a launch on a store that has people in it learns their names.
+        session.sync_identifiers();
+        session
     }
 
     /// Open the directory this machine keeps Soul's data in.
@@ -651,6 +655,10 @@ impl Session {
         pasted: &str,
         include_original: Option<bool>,
     ) -> Result<E1DraftPlan, SessionRefusal> {
+        // Read every time, for the reason `owner_brief` is: a cached set is a
+        // set that does not have the person imported five minutes ago in it,
+        // and their name is what this call is deciding whether to send.
+        self.sync_identifiers();
         let brief = self.owner_brief();
         Ok(draft::prepare_pasted(
             &mut self.draft,
@@ -685,6 +693,40 @@ impl Session {
         self.store()
             .and_then(|store| draft::brief(&hold(&store), OWNER_PROFILE_ID).ok())
             .unwrap_or_else(DraftBrief::neutral)
+    }
+
+    /// Give both redactors the names this store holds.
+    ///
+    /// WP10 left the shell's [`KnownIdentifiers`] empty and said why: filling
+    /// it needs the contact rows, and the contact rows need an open store. The
+    /// store is here now, so this is the other end of that. Without it AC-12's
+    /// 姓名同样占位 was true of `soul-draft` and false of an installed Soul —
+    /// the shape scrub covers `13800138000` and `@xiaoming`, and nothing
+    /// covered 李 雷.
+    ///
+    /// Both sessions are given the same value because both hold a
+    /// [`Redactor`]: the drafter's builds the body, the policy session's is
+    /// what `redact` would use, and `draft.rs` is explicit that two redactors
+    /// disagreeing about who exists placehold different things.
+    ///
+    /// A store that did not open leaves the sets as they were, which for a
+    /// session that has never had one is empty. That is the same answer AC-17
+    /// gets everywhere else: a database that will not open is not allowed to
+    /// be the reason drafting stops, and an empty set costs precision rather
+    /// than the floor — a third-party turn is placeheld whole either way.
+    /// A read that fails is treated the same way, and for the same reason.
+    ///
+    /// [`KnownIdentifiers`]: soul_policy::redactor::KnownIdentifiers
+    /// [`Redactor`]: soul_policy::redactor::Redactor
+    fn sync_identifiers(&mut self) {
+        let Some(store) = self.store() else {
+            return;
+        };
+        let Ok(identifiers) = draft::known_identifiers(&hold(&store)) else {
+            return;
+        };
+        self.draft.set_identifiers(identifiers.clone());
+        self.policy.set_identifiers(identifiers);
     }
 
     /// The honest answer to a user who read the plan and said no.
@@ -810,10 +852,17 @@ impl Session {
     ) -> Result<ImportReceiptView, SessionRefusal> {
         let at = now_unix_seconds();
         let store = self.opened_store()?;
-        let mut store = hold(&store);
-        let receipt = import_commands::commit(&mut store, staged, at)?;
-        let build = graph_commands::rebuild(&mut store, at)?;
-        Ok(ImportReceiptView::of(&receipt, build.edges_written.len()))
+        let view = {
+            let mut store = hold(&store);
+            let receipt = import_commands::commit(&mut store, staged, at)?;
+            let build = graph_commands::rebuild(&mut store, at)?;
+            ImportReceiptView::of(&receipt, build.edges_written.len())
+        };
+        // The people this file added are people whose names must not travel.
+        // The guard above is released first: `sync_identifiers` takes it again
+        // and a `std::sync::Mutex` is not reentrant.
+        self.sync_identifiers();
+        Ok(view)
     }
 
     // ------------------------------------------------------ WP03: profile ---

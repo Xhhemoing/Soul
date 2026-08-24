@@ -51,7 +51,11 @@ use soul_policy::redactor::{
 };
 use soul_policy::ReasonCode;
 use soul_profile::ProfileError;
+use soul_schema::contact::ContactClass;
+use soul_schema::memory::ForgetState;
 use soul_store::SqlCipherStore;
+use soul_store_api::types::StoreResult;
+use soul_store_api::{BlobStore, GraphStore};
 
 use crate::commands::policy::{e1_plan, E1Refusal, PolicySession, TokenRefused};
 
@@ -90,7 +94,9 @@ pub const UNNAMED_MODEL: &str = "unnamed-model";
 /// `identifiers` has to be the same set the [`PolicySession`] was built with:
 /// both hold a [`Redactor`], and two redactors that disagree about who exists
 /// would placehold different things. The shell builds one
-/// [`KnownIdentifiers`] from the contact graph and hands it to both.
+/// [`KnownIdentifiers`] with [`known_identifiers`] and hands it to both, which
+/// is what [`DraftSession::set_identifiers`] and
+/// [`PolicySession::set_identifiers`] are for.
 #[derive(Debug)]
 pub struct DraftSession {
     drafter: Drafter,
@@ -118,6 +124,24 @@ impl DraftSession {
 
     pub fn model(&self) -> &str {
         self.drafter.model()
+    }
+
+    /// Teach this session's redactor who exists, keeping the model name.
+    ///
+    /// `Redactor` holds its set by value and `Drafter` holds the redactor, so
+    /// the pair is rebuilt rather than reached into. Only the set changes: a
+    /// shell that has just read the contact rows has not changed which model
+    /// it is asking.
+    ///
+    /// Any prepared body is dropped. It was redacted under the previous set,
+    /// and a body built before Soul knew a name is exactly the one that must
+    /// not be what a later approval sends — the counts the user read would
+    /// still describe it, because a name placeheld inside a turn changes
+    /// neither `third_party_turns` nor `placeheld_turns`.
+    pub fn set_identifiers(&mut self, identifiers: KnownIdentifiers) {
+        let model = self.drafter.model().to_owned();
+        self.drafter = Drafter::new(Redactor::new(identifiers), model);
+        self.pending = None;
     }
 
     /// The plan hash the user is currently being asked about, if any.
@@ -312,15 +336,71 @@ pub struct Approval {
 /// Both are built here rather than separately because they have to agree:
 /// each holds a [`Redactor`], and two redactors that knew about different
 /// names would placehold different things. Nothing is configured, so nothing
-/// can leave; and there are no known identifiers, because the contact graph
-/// that supplies them needs an open store, which is WP13's question. The
-/// shape-based scrub still catches addresses, handles and long digit runs,
-/// and a third-party turn is placeheld whole regardless of who is in it.
+/// can leave; and the set is empty, because the contact rows that fill it need
+/// an open store and this is the constructor for a caller that has none. A
+/// caller that does have one calls [`known_identifiers`] and hands the answer
+/// to both sessions — `Session::sync_identifiers` is the one place in the
+/// product that does. The shape-based scrub still catches addresses, handles
+/// and long digit runs, and a third-party turn is placeheld whole regardless
+/// of who is in it.
 pub fn closed_session() -> (DraftSession, PolicySession) {
     (
         DraftSession::new(UNNAMED_MODEL, KnownIdentifiers::new()),
         PolicySession::closed(),
     )
+}
+
+/// The names in this store, as the one set both redactors are given.
+///
+/// The other end of what [`closed_session`] cannot do. Shape matching catches
+/// what looks like an identifier — an address, an `@handle`, a run of digits
+/// long enough to be a phone number — and nothing can make it catch 李雷,
+/// which is two characters that also occur in ordinary sentences. Only a list
+/// of the names this machine actually holds can, and the display labels on the
+/// contact rows are that list.
+///
+/// Four kinds of row are left out, and each omission is a decision:
+///
+/// * [`ContactClass::Owner`]. PRODUCT_LOCK's placeholder is for 第三人姓名;
+///   registering the user's own name would redact them out of their own
+///   drafts, and the brief that travels with every request is written in it.
+/// * anybody whose [`ForgetState`] is no longer `Active`. A name Soul has been
+///   told to forget is not a name it may keep in a set in memory.
+/// * a label whose content key has been destroyed. [`BlobStore::open`] answers
+///   `ContentKeyDestroyed`, and one unreadable label leaves that person out
+///   rather than costing the other names their placeholder.
+/// * a contact with no label at all, which is most of a `soul-import-v1`
+///   corpus: those lines carry a `sender_id` and no display name.
+///
+/// `identifiers` is not read. Those are digests — `soul-import` hashes a
+/// handle before it is written — and there is nothing here that tries to turn
+/// one back into a number. Numbers and handles are the shapes the scrub
+/// already covers.
+///
+/// Labels are opened, which is the reason this is here rather than in
+/// `graph.rs`: that module draws people and states that it opens no seal, and
+/// the view it builds still carries no name. What is opened here goes into a
+/// redactor and nowhere else — not to the interface, not into an audit entry,
+/// and not into `config.json`.
+pub fn known_identifiers(store: &SqlCipherStore) -> StoreResult<KnownIdentifiers> {
+    let mut identifiers = KnownIdentifiers::new();
+    for contact in store.list_contacts()? {
+        if contact.contact_class == ContactClass::Owner
+            || contact.forget_state != ForgetState::Active
+        {
+            continue;
+        }
+        let Some(sealed) = contact.display_label_ref.as_ref() else {
+            continue;
+        };
+        let Ok(opened) = store.open(sealed) else {
+            continue;
+        };
+        if let Ok(label) = String::from_utf8(opened) {
+            identifiers.add_name(label.trim());
+        }
+    }
+    Ok(identifiers)
 }
 
 /// Draft a reply to something a person pasted into the interface.
