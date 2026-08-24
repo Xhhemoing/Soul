@@ -59,6 +59,12 @@ pub use soul_draft::draft::{
 };
 pub use soul_draft::template::BODY_SLOT;
 
+// Re-exported so the desktop shell can name what it receives without taking
+// `soul-draft` and `soul-policy` as dependencies of its own. A forwarder that
+// had them would be a forwarder that could assemble a request body.
+pub use soul_draft::draft::Draft as DraftValue;
+pub use soul_policy::redactor::KnownIdentifiers as DraftIdentifiers;
+
 /// What the user is told before a generation request goes out.
 ///
 /// A constant rather than a sentence assembled in the interface, for the same
@@ -68,6 +74,14 @@ pub use soul_draft::template::BODY_SLOT;
 pub const E1_PLAN_NOTICE: &str = "确认之后，只有下面这些内容会发到你自己配置的模型端点，\
      用来生成草稿。第三人正文默认已占位。草稿生成之后仍然由你自己决定要不要发出去，\
      Soul 不会替你发送。";
+
+/// The model name a session uses until the user names one.
+///
+/// It only ever reaches anything once an endpoint is configured — the
+/// deterministic template does not consult it, and with no endpoint there is
+/// nobody to send a model name to. Naming it plainly beats an empty string
+/// that would look like a bug in a request log.
+pub const UNNAMED_MODEL: &str = "unnamed-model";
 
 /// The drafting state one Soul session carries.
 ///
@@ -289,6 +303,56 @@ impl E1DraftPlan {
 pub struct Approval {
     pub preparation_id: String,
     pub plan_hash: String,
+}
+
+/// The pair of sessions a shell with no store yet starts from.
+///
+/// Both are built here rather than separately because they have to agree:
+/// each holds a [`Redactor`], and two redactors that knew about different
+/// names would placehold different things. Nothing is configured, so nothing
+/// can leave; and there are no known identifiers, because the contact graph
+/// that supplies them needs an open store, which is WP13's question. The
+/// shape-based scrub still catches addresses, handles and long digit runs,
+/// and a third-party turn is placeheld whole regardless of who is in it.
+pub fn closed_session() -> (DraftSession, PolicySession) {
+    (
+        DraftSession::new(UNNAMED_MODEL, KnownIdentifiers::new()),
+        PolicySession::closed(),
+    )
+}
+
+/// Draft a reply to something a person pasted into the interface.
+///
+/// The one-call entry point a desktop shell binds, and the two small
+/// decisions in it are the ones a thin forwarder should not be making:
+///
+/// * the origin is [`RequestOrigin::User`], because a call arriving over the
+///   IPC is a click. A caller that derived the text from imported content has
+///   to go through [`DraftSession::draft_offline`] and say so;
+/// * the clock is read here. `soul-policy`'s clock module says nothing reads
+///   it except at the outermost edge, and a shell entry point is that edge.
+///
+/// The paste is one third-party turn by construction. Soul cannot tell from
+/// the text whose words they are, and the safe reading of "I pasted a message
+/// I received" is the one that keeps it off the wire.
+///
+/// This is the local path: no request body is built, so there is nothing for
+/// a bug to leak. The endpoint path is [`DraftSession::prepare`] and
+/// [`DraftSession::generate`], which need a screen for the person in between.
+pub fn draft_pasted(
+    drafting: &DraftSession,
+    policy: &mut PolicySession,
+    pasted: &str,
+) -> Result<Draft, DraftRefusal> {
+    let request = DraftRequest::from_paste(ProfileBrief::neutral(), pasted);
+    Ok(drafting
+        .draft_offline(
+            policy,
+            &request,
+            RequestOrigin::User,
+            soul_policy::clock::now_unix_millis(),
+        )?
+        .draft)
 }
 
 /// The profile a draft prompt is allowed to know about.

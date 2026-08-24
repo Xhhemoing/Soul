@@ -482,6 +482,47 @@ fn asking_for_a_summary_from_pasted_content_is_refused() {
     );
 }
 
+// -------------------------------------------------- what a shell binds ---
+
+/// The one call a desktop shell makes, on a session it did not configure.
+///
+/// Worth its own test because the shell has no arguments to get wrong: it
+/// passes a string and gets a draft, and every decision the earlier tests
+/// make explicit — origin, clock, third-party-by-default — is made in
+/// `draft_pasted` instead. If any of them changed, this is where it shows.
+#[test]
+fn the_shell_entry_point_drafts_a_paste_and_reaches_nothing() {
+    let listening = MockLlm::start().expect("something nobody configured");
+    let (drafting, mut policy) = soulcore::commands::draft::closed_session();
+
+    let draft = soulcore::commands::draft::draft_pasted(&drafting, &mut policy, PASTED)
+        .expect("a shell with nothing configured can still draft");
+
+    assert_eq!(draft.source, DraftSource::ToneTemplate);
+    assert_eq!(draft.not_sent_notice, NOT_SENT_NOTICE);
+    assert_eq!(listening.request_count(), 0);
+
+    // The paste was treated as somebody else's words without being read for
+    // clues about whose they are, and no body was built to carry them.
+    assert_eq!(draft.third_party_turns, 0);
+    assert!(!draft.carries_exempted_original);
+    leakage().assert_clean("the draft a shell shows", &draft.text);
+}
+
+/// A closed session cannot be talked into an endpoint by preparing one.
+#[test]
+fn the_pair_a_shell_starts_from_has_nowhere_to_send_anything() {
+    let (mut drafting, mut policy) = soulcore::commands::draft::closed_session();
+
+    let plan = drafting
+        .prepare(&mut policy, a_paste(), None, RequestOrigin::User, NOW_MS)
+        .expect("describing a request is not making one");
+    let refused = drafting
+        .generate(&mut policy, &plan.approval(), NOW_MS)
+        .expect_err("there is no endpoint to generate against");
+    assert_eq!(refused.reason_code(), ReasonCode::E1NotConfigured);
+}
+
 // ------------------------------------------------------ what the UI sees ---
 
 #[test]
