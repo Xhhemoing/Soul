@@ -24,4 +24,6 @@ thiserror = { workspace = true }
 reqwest = { workspace = true }
 
 [dev-dependencies]
+soul-schema = { workspace = true }
 soul-testkit = { workspace = true }
+uuid = { workspace = true }
