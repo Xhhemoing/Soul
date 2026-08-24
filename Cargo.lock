@@ -1479,6 +1479,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "soul-draft"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soul-egress",
+ "soul-graph",
+ "soul-policy",
+ "soul-profile",
+ "soul-schema",
+ "soul-store-api",
+ "soul-testkit",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
 name = "soul-egress"
 version = "0.1.0"
 dependencies = [
@@ -1505,6 +1522,7 @@ dependencies = [
  "soul-testkit",
  "tempfile",
  "thiserror 2.0.20",
+ "uuid",
 ]
 
 [[package]]
