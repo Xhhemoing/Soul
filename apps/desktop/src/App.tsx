@@ -21,6 +21,7 @@ import {
   type SessionStatus,
 } from "./core";
 import { Audit } from "./routes/Audit";
+import { Collect } from "./routes/Collect";
 import { Draft } from "./routes/Draft";
 import { Files } from "./routes/Files";
 import { Graph } from "./routes/Graph";
@@ -94,6 +95,7 @@ export function App(): React.JSX.Element {
         <h1 id="route-title">{route.title}</h1>
         {route.id === "home" ? <Home snapshot={snapshot} status={status} /> : null}
         {route.id === "import" ? <Import /> : null}
+        {route.id === "collect" ? <Collect /> : null}
         {route.id === "profile" ? <Profile /> : null}
         {route.id === "files" ? <Files /> : null}
         {route.id === "graph" ? <Graph /> : null}

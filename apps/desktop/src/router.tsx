@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 export type RouteId =
   | "home"
   | "import"
+  | "collect"
   | "profile"
   | "graph"
   | "memory"
@@ -36,6 +37,7 @@ export interface RouteDefinition {
 export const ROUTES: readonly RouteDefinition[] = [
   { id: "home", path: "/", title: "概览", ownedBy: null },
   { id: "import", path: "/import", title: "导入", ownedBy: null },
+  { id: "collect", path: "/collect", title: "采集", ownedBy: null },
   { id: "profile", path: "/profile", title: "灵魂档案", ownedBy: null },
   { id: "graph", path: "/graph", title: "人脉图", ownedBy: null },
   { id: "memory", path: "/memory", title: "自传记忆", ownedBy: null },

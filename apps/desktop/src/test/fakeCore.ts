@@ -14,6 +14,7 @@ import { vi } from "vitest";
 import type {
   AuditChain,
   CloudNotice,
+  CollectStatus,
   ConfigSnapshot,
   Draft,
   DraftNotices,
@@ -595,6 +596,48 @@ export function anAuditChain(overrides: Partial<AuditChain> = {}): AuditChain {
   };
 }
 
+/** `soulcore::commands::session::COLLECT_DURATION_ONLY_NOTICE`. */
+export const COLLECT_DURATION_ONLY_NOTICE =
+  "这一版的采集只记一样东西：哪个应用在前台，以及它在前台待了多久。窗口标题不记，文件内容不记，键盘和剪贴板连代码路径都没有。应用名和时长一起密封在库里，跟着这一次采集的内容密钥走。";
+
+/** `soulcore::commands::session::COLLECT_OFF_NOTICE`. */
+export const COLLECT_OFF_NOTICE = "采集现在是关的：没有给出同意，也没有采集线程在跑。";
+
+/** `soulcore::commands::session::COLLECT_RUNNING_NOTICE`. */
+export const COLLECT_RUNNING_NOTICE =
+  "采集正在进行：后台线程在按秒看前台是哪个应用，换了应用就把上一段的时长写成一条记录。按「停止采集」之后 1 秒内不会再有新的记录。";
+
+/** `soulcore::commands::session::COLLECT_NOT_OBSERVING_NOTICE`. */
+export const COLLECT_NOT_OBSERVING_NOTICE =
+  "同意已经记下来了，但这台机器上没有东西在采：v0.1 只在 Windows 上看前台，别的平台上给出的同意就只是同意，不会去看任何窗口。";
+
+/**
+ * Collection as a fresh launch finds it: nobody has consented, so nothing is
+ * running. `survives_restart` is the literal `false` in both the Rust type and
+ * the TypeScript one — a double that softened it would not compile.
+ */
+export const COLLECT_OFF: CollectStatus = {
+  consent_granted: false,
+  collector_running: false,
+  source: "windows.foreground_process",
+  events_collected: 0,
+  survives_restart: false,
+  duration_only_notice: COLLECT_DURATION_ONLY_NOTICE,
+  notice: COLLECT_OFF_NOTICE,
+};
+
+export function aCollectStatus(overrides: Partial<CollectStatus> = {}): CollectStatus {
+  return { ...COLLECT_OFF, ...overrides };
+}
+
+/** A collector that is actually running, the way a Windows machine reports it. */
+export const COLLECT_RUNNING: CollectStatus = aCollectStatus({
+  consent_granted: true,
+  collector_running: true,
+  events_collected: 3,
+  notice: COLLECT_RUNNING_NOTICE,
+});
+
 export const CLOSED_CLOUD: CloudNotice = {
   state: "not_yet_available",
   label: CLOUD_LABEL,
@@ -673,6 +716,39 @@ export interface FakeCoreOptions {
   }) => ForgetReceipt;
   readonly research?: () => ResearchPreview;
   readonly audit?: () => AuditChain;
+  /** The collection state this launch starts in. Nobody has consented yet. */
+  readonly collect?: CollectStatus;
+  /**
+   * How the double answers 开始采集 / 停止采集.
+   *
+   * Stateful by default, because the page's whole subject is a state that
+   * changes: the fallbacks below mirror what the core does — consent is
+   * recorded either way, and a collector only starts when there is a
+   * foreground source to feed it. Both can throw, which is how a refusal
+   * arrives.
+   */
+  readonly granting?: (current: CollectStatus) => CollectStatus;
+  readonly revoking?: (current: CollectStatus) => CollectStatus;
+}
+
+/** Consent recorded; a collector only where there is a desktop to watch. */
+function grantedFrom(current: CollectStatus): CollectStatus {
+  const observing = current.source !== "unsupported";
+  return {
+    ...current,
+    consent_granted: true,
+    collector_running: observing,
+    notice: observing ? COLLECT_RUNNING_NOTICE : COLLECT_NOT_OBSERVING_NOTICE,
+  };
+}
+
+function revokedFrom(current: CollectStatus): CollectStatus {
+  return {
+    ...current,
+    consent_granted: false,
+    collector_running: false,
+    notice: COLLECT_OFF_NOTICE,
+  };
 }
 
 export function installFakeCore(
@@ -685,6 +761,8 @@ export function installFakeCore(
   const drafting = options.drafting ?? (() => aTemplateDraft());
   const files = options.files ?? NO_ROOTS;
   const calls: RecordedCall[] = [];
+  /** The one piece of state the double keeps, because the core keeps it too. */
+  let collect = options.collect ?? COLLECT_OFF;
 
   mockIPC((cmd, payload) => {
     calls.push({ cmd, payload });
@@ -832,6 +910,14 @@ export function installFakeCore(
         return (options.research ?? (() => aResearchPreview()))();
       case "audit_chain":
         return (options.audit ?? (() => EMPTY_CHAIN))();
+      case "collect_status":
+        return collect;
+      case "grant_collect_consent":
+        collect = (options.granting ?? grantedFrom)(collect);
+        return collect;
+      case "revoke_collect_consent":
+        collect = (options.revoking ?? revokedFrom)(collect);
+        return collect;
       default:
         throw `the shell called a command the core does not have: ${cmd}`;
     }

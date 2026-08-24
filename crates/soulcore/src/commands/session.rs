@@ -60,7 +60,10 @@ use soul_policy::ReasonCode;
 use soul_store::SqlCipherStore;
 use soul_store_api::forget::ForgetImpact;
 
-use crate::commands::collect::share;
+use crate::commands::collect::{
+    self as collect_commands, share, CollectorConfig, CollectorHandle, ConsentHandle,
+    ForegroundSource, SourceError, COLLECTION_TOPIC,
+};
 use crate::commands::draft::{
     self, Approval, DraftRefusal, DraftSession, DraftValue, E1DraftPlan, PersonSummaryView,
 };
@@ -129,6 +132,36 @@ pub const NO_ANSWERS_NOTICE: &str = "这份问卷一道题都没有答，所以�
 /// What a forget is told when the preview it echoes is not the one on screen.
 pub const FORGET_NOT_PREVIEWED_NOTICE: &str = "这次遗忘对不上你刚才看过的那份影响面预览。\
     什么都没有销毁：先看一遍这条记忆现在的预览，再决定。";
+
+/// What collection is, stated once, on the page that offers it.
+///
+/// PRODUCT_LOCK's sentence for this slice — 仅前台应用使用时长，窗口标题不采 —
+/// as something the core says rather than something the interface promises on
+/// its behalf. It is here for the same reason [`READ_ONLY_NOTICE`] is in
+/// `fileplan.rs`: a promise kept in TypeScript is a promise no Rust test reads.
+pub const COLLECT_DURATION_ONLY_NOTICE: &str = "这一版的采集只记一样东西：\
+    哪个应用在前台，以及它在前台待了多久。窗口标题不记，文件内容不记，\
+    键盘和剪贴板连代码路径都没有。应用名和时长一起密封在库里，跟着这一次采集的内容密钥走。";
+
+/// What the collection page says while the gate is shut.
+pub const COLLECT_OFF_NOTICE: &str = "采集现在是关的：没有给出同意，也没有采集线程在跑。";
+
+/// And while it is open and a collector is running.
+pub const COLLECT_RUNNING_NOTICE: &str = "采集正在进行：后台线程在按秒看前台是哪个应用，\
+    换了应用就把上一段的时长写成一条记录。按「停止采集」之后 1 秒内不会再有新的记录。";
+
+/// Consent is granted and nothing is watching. On Linux and on a developer
+/// machine that is the normal outcome, and saying so is the answer: a build
+/// that reported "采集已打开" while sampling nothing would be the worst of the
+/// three states.
+pub const COLLECT_NOT_OBSERVING_NOTICE: &str = "同意已经记下来了，但这台机器上没有东西在采：\
+    v0.1 只在 Windows 上看前台，别的平台上给出的同意就只是同意，不会去看任何窗口。";
+
+/// The `source` a machine with no foreground collector reports.
+pub const NO_FOREGROUND_SOURCE: &str = "unsupported";
+
+/// A collector that would not wind down. Rare enough to be worth a sentence.
+pub const COLLECT_NOT_STOPPED_NOTICE: &str = "同意已经收回，但采集线程没有正常收尾：";
 
 /// Where this machine keeps Soul's data.
 pub fn data_directory() -> Result<PathBuf, DirectoryError> {
@@ -339,6 +372,32 @@ pub struct Session {
     /// value when the forget runs: the same shape the endpoint drafting path
     /// uses to make an approval describe what is actually about to happen.
     held_forget: Option<HeldForget>,
+    /// Whether collection may run, for this process and no longer.
+    ///
+    /// Opened closed at every launch and never read from disk. That is AC-02
+    /// stated as a field rather than as care: [`StoredConfig`] has nowhere to
+    /// put a granted consent, so there is no file a restart could read one out
+    /// of, and [`ConsentHandle::from_ledger`] — the one constructor that could
+    /// load one — is called nowhere in the product.
+    consent: ConsentHandle,
+    /// The collector, while one is running. Dropping the session stops it.
+    collector: Option<RunningCollector>,
+    /// Why nothing is being collected, when the user has said it may be.
+    ///
+    /// On anything that is not Windows the answer is that this build has no
+    /// foreground source, which is a fact about the build rather than a fault.
+    collect_problem: Option<String>,
+}
+
+/// One running collector, and the label of the source feeding it.
+///
+/// The label is kept beside the handle because [`ForegroundSource::describe`]
+/// belongs to a value the collector took ownership of, and asking the platform
+/// again would answer for a source that is not the one running.
+#[derive(Debug)]
+struct RunningCollector {
+    handle: CollectorHandle,
+    source: &'static str,
 }
 
 /// One forget the user has been quoted a price for.
@@ -401,6 +460,9 @@ impl Session {
             draft,
             policy,
             held_forget: None,
+            consent: ConsentHandle::closed(),
+            collector: None,
+            collect_problem: None,
         }
     }
 
@@ -806,6 +868,165 @@ impl Session {
         ))
     }
 
+    // ------------------------------------------------------- WP07: collect ---
+
+    /// Whether collection may run, whether it is running, and how much has
+    /// been written. Never what was collected.
+    ///
+    /// The two booleans are read off the consent ledger and the collector
+    /// thread, not off a configuration field. `collect.rs` says why in one
+    /// line: a third copy of the answer in a settings file is how a user ends
+    /// up being shown "off" by a switch while something is still writing.
+    pub fn collect_status(&self) -> CollectStatus {
+        let running = self.running_collector();
+        CollectStatus {
+            consent_granted: self.consent.is_granted(COLLECTION_TOPIC),
+            collector_running: running.is_some(),
+            source: running
+                .map(|running| running.source.to_owned())
+                .unwrap_or_else(available_source),
+            events_collected: self.count_collected(),
+            // Consent lives in this process. There is no field in
+            // `config.json` that could carry it to the next launch.
+            survives_restart: false,
+            duration_only_notice: COLLECT_DURATION_ONLY_NOTICE.to_owned(),
+            notice: self.collect_notice(),
+        }
+    }
+
+    /// The user said collection may run, and it starts if this machine has a
+    /// foreground source.
+    ///
+    /// Granting and collecting are two things, and they can come apart: on
+    /// Linux and on a developer machine `platform_source` has nothing to
+    /// return, so consent is recorded and the collector is not started. The
+    /// status says which of the two happened rather than reporting the grant
+    /// as if something were being watched.
+    pub fn grant_collect_consent(&mut self) -> Result<CollectStatus, SessionRefusal> {
+        self.grant_collection(collect_commands::platform_source(), CollectorConfig::default())
+    }
+
+    /// As [`Session::grant_collect_consent`], against a source the caller has.
+    ///
+    /// AC-09 and AC-10 are written about a Windows desktop, and a Linux CI host
+    /// has none. This is how they are proven through the session anyway: the
+    /// same consent ledger, the same collector, the same encrypted store, with
+    /// [`crate::commands::collect::FakeForegroundSource`] where
+    /// `GetForegroundWindow` would be. Nothing in the desktop shell calls it —
+    /// `apps/desktop/src-tauri/tests/command_surface.rs` reads the shell's own
+    /// sources back and fails if that ever changes.
+    #[doc(hidden)]
+    pub fn grant_collect_consent_with_source<F>(
+        &mut self,
+        source: F,
+        config: CollectorConfig,
+    ) -> Result<CollectStatus, SessionRefusal>
+    where
+        F: ForegroundSource + Send + 'static,
+    {
+        self.grant_collection(Ok(source), config)
+    }
+
+    /// The user took it back. Revoking comes first, so the collector thread
+    /// sees it whether or not the stop below gets a chance to run.
+    ///
+    /// `soul-collect` gives the two paths different meanings on purpose: a
+    /// revocation drops the session in flight, a stop writes it. Both stop
+    /// producing events inside `STOP_BUDGET`, which `soul-collect`'s own tests
+    /// measure.
+    pub fn revoke_collect_consent(&mut self) -> Result<CollectStatus, SessionRefusal> {
+        let at = now_unix_seconds();
+        let entry = self.consent.revoke(COLLECTION_TOPIC, at);
+
+        // Stopping is what the user asked for, and it happens whether or not
+        // the chain can be written to. A store that has gone away is reported
+        // in the notice; it is not a reason to leave a collector running.
+        self.collect_problem = match self.store() {
+            Some(store) => collect_commands::record_consent_change(&mut hold(&store), entry, at)
+                .err()
+                .map(|error| error.to_string()),
+            None => Some(STORE_UNAVAILABLE_NOTICE.to_owned()),
+        };
+
+        if let Some(running) = self.collector.take() {
+            if let Err(error) = collect_commands::stop(running.handle) {
+                self.collect_problem = Some(format!("{COLLECT_NOT_STOPPED_NOTICE}{error}"));
+            }
+        }
+        Ok(self.collect_status())
+    }
+
+    /// Record the grant, then try to start. The order matters: `runner::start`
+    /// refuses an ungranted ledger, and the audit entry the ledger handed back
+    /// is owed to the chain before anything begins writing events.
+    fn grant_collection<F>(
+        &mut self,
+        source: Result<F, SourceError>,
+        config: CollectorConfig,
+    ) -> Result<CollectStatus, SessionRefusal>
+    where
+        F: ForegroundSource + Send + 'static,
+    {
+        if self.running_collector().is_some() {
+            return Ok(self.collect_status());
+        }
+
+        let store = self.opened_store()?;
+        let at = now_unix_seconds();
+        let entry = self.consent.grant(COLLECTION_TOPIC, at);
+        collect_commands::record_consent_change(&mut hold(&store), entry, at)?;
+
+        self.collect_problem = match source {
+            Ok(source) => {
+                let label = source.describe();
+                match collect_commands::start(source, Arc::clone(&store), &self.consent, config) {
+                    Ok(handle) => {
+                        self.collector = Some(RunningCollector {
+                            handle,
+                            source: label,
+                        });
+                        None
+                    }
+                    Err(error) => Some(error.to_string()),
+                }
+            }
+            Err(error) => Some(error.to_string()),
+        };
+        Ok(self.collect_status())
+    }
+
+    /// The collector, if there is one and its thread has not already finished.
+    ///
+    /// A revocation stops the thread without anyone calling `stop`, so a handle
+    /// that is still held is not the same thing as a collector that is running.
+    fn running_collector(&self) -> Option<&RunningCollector> {
+        self.collector
+            .as_ref()
+            .filter(|running| running.handle.is_running())
+    }
+
+    /// Foreground events in the store, or `None` when there is no store to
+    /// count them in.
+    fn count_collected(&self) -> Option<usize> {
+        let store = self.store()?;
+        let store = hold(&store);
+        collect_commands::events_collected(&store).ok()
+    }
+
+    fn collect_notice(&self) -> String {
+        let state = if self.running_collector().is_some() {
+            COLLECT_RUNNING_NOTICE
+        } else if self.consent.is_granted(COLLECTION_TOPIC) {
+            COLLECT_NOT_OBSERVING_NOTICE
+        } else {
+            COLLECT_OFF_NOTICE
+        };
+        match &self.collect_problem {
+            Some(problem) => format!("{state}（{problem}）"),
+            None => state.to_owned(),
+        }
+    }
+
     // --------------------------------------- WP02: research, and the chain ---
 
     /// What the research track would see. AC-20: no third-party row, no file.
@@ -902,6 +1123,48 @@ pub struct SessionStatus {
     pub store_notice: String,
     /// Present when the configuration file could not be read or written.
     pub config_problem: Option<String>,
+}
+
+/// The collection screen's whole state.
+///
+/// Counts and booleans, and not one field that could hold an application name,
+/// a window title or a path. PRODUCT_LOCK puts window titles in the 不做
+/// column and `soul-collect` keeps them out of [`crate::commands::collect::AppIdentity`];
+/// what this type adds is that the interface is never sent one either, so "the
+/// screen does not show what you were doing" is a property of the shape rather
+/// than of the component that renders it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CollectStatus {
+    /// Whether the consent ledger has the collection topic open, right now.
+    pub consent_granted: bool,
+    /// Whether a collector thread is actually running. Not the same answer: a
+    /// grant on a machine with no foreground source leaves this false.
+    pub collector_running: bool,
+    /// `windows.foreground_process`, `fake.scripted_desktop`, or
+    /// [`NO_FOREGROUND_SOURCE`]. A fixed label, never a sample.
+    pub source: String,
+    /// Foreground events in the store, or `None` when it did not open.
+    pub events_collected: Option<usize>,
+    /// Always false. Consent is granted for this process, and the file beside
+    /// the store has no field that could carry it to the next launch.
+    pub survives_restart: bool,
+    /// What collection is, in the core's own words: duration only.
+    pub duration_only_notice: String,
+    /// What is true right now: off, running, or granted with nothing watching.
+    pub notice: String,
+}
+
+/// What this machine's foreground source is called, or that it has none.
+///
+/// Asked of the platform rather than remembered, because a build reporting
+/// `windows.foreground_process` on a host that has no such thing would be
+/// making exactly the claim `platform_source` exists to refuse to make.
+fn available_source() -> String {
+    match collect_commands::platform_source() {
+        Ok(source) => source.describe().to_owned(),
+        Err(_) => NO_FOREGROUND_SOURCE.to_owned(),
+    }
 }
 
 /// The file-plan screen's whole state before a scan.

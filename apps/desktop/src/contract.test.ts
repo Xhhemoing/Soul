@@ -17,6 +17,10 @@ import { COMMANDS } from "./core";
 import {
   AUDIT_CHAIN_NOTICE,
   CLOUD_LABEL,
+  COLLECT_DURATION_ONLY_NOTICE,
+  COLLECT_NOT_OBSERVING_NOTICE,
+  COLLECT_OFF_NOTICE,
+  COLLECT_RUNNING_NOTICE,
   E1_PLAN_NOTICE,
   FORGET_NOTICE,
   IMPORT_LOCAL_ONLY_NOTICE,
@@ -167,6 +171,25 @@ describe("壳与核心的边界", () => {
    * so it is the core's own words rather than something the page composed, and
    * the double these tests run against has to say the same thing.
    */
+  /**
+   * The four sentences the collection page renders. The first is
+   * PRODUCT_LOCK's promise about this slice — duration only, no window titles
+   * — and the other three are the only three states collection has. All four
+   * are the core's own words, because "什么都没有在采" is a claim about a
+   * consent ledger and a thread, and only the core can see either.
+   */
+  it("采集那四句话都和核心里的常量一模一样", () => {
+    const session = readFileSync(CORE_SESSION_RS, "utf8");
+    expect(rustConstant(session, "COLLECT_DURATION_ONLY_NOTICE")).toBe(
+      COLLECT_DURATION_ONLY_NOTICE,
+    );
+    expect(rustConstant(session, "COLLECT_OFF_NOTICE")).toBe(COLLECT_OFF_NOTICE);
+    expect(rustConstant(session, "COLLECT_RUNNING_NOTICE")).toBe(COLLECT_RUNNING_NOTICE);
+    expect(rustConstant(session, "COLLECT_NOT_OBSERVING_NOTICE")).toBe(
+      COLLECT_NOT_OBSERVING_NOTICE,
+    );
+  });
+
   it("导入那句话和核心里的常量一模一样", () => {
     expect(
       rustConstant(readFileSync(CORE_IMPORT_RS, "utf8"), "IMPORT_LOCAL_ONLY_NOTICE"),

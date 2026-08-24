@@ -23,7 +23,9 @@ use soulcore::commands::memory::{
     NewMemory,
 };
 use soulcore::commands::profile::{GivenAnswer, IntakeReceipt, ProfileScreen, QuestionView};
-use soulcore::commands::session::{FilesView, Session, SessionRefusal, SessionStatus};
+use soulcore::commands::session::{
+    CollectStatus, FilesView, Session, SessionRefusal, SessionStatus,
+};
 use soulcore::commands::shell::{CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
 use soulcore::commands::store::{AuditChainView, ResearchPreviewView};
 use tauri::State;
@@ -289,6 +291,29 @@ pub fn audit_chain(session: State<'_, SessionState>) -> Result<AuditChainView, S
     session.held().audit()
 }
 
+/// Whether collection may run, whether it is running, and how much it wrote.
+#[tauri::command]
+pub fn collect_status(session: State<'_, SessionState>) -> CollectStatus {
+    session.held().collect_status()
+}
+
+/// The user said foreground duration may be collected. This process only:
+/// there is no field in `config.json` that could carry it to the next launch.
+#[tauri::command]
+pub fn grant_collect_consent(
+    session: State<'_, SessionState>,
+) -> Result<CollectStatus, SessionRefusal> {
+    session.held().grant_collect_consent()
+}
+
+/// The user took it back. Nothing further is written within a second.
+#[tauri::command]
+pub fn revoke_collect_consent(
+    session: State<'_, SessionState>,
+) -> Result<CollectStatus, SessionRefusal> {
+    session.held().revoke_collect_consent()
+}
+
 /// What the drafting screen says before there is a draft on it.
 ///
 /// Read over the IPC rather than written in TypeScript, for the reason WP09
@@ -361,4 +386,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "forget_memory",
     "research_preview",
     "audit_chain",
+    "collect_status",
+    "grant_collect_consent",
+    "revoke_collect_consent",
 ];

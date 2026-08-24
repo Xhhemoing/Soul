@@ -1,9 +1,19 @@
 /**
  * The overview. One table of what is on, and an honest list of what this build
  * does not do yet.
+ *
+ * The collection line is read from `collect_status` rather than from the
+ * configuration snapshot. `ConfigSnapshot.collect_enabled` is the in-memory
+ * `Config` field, and that field is false for the whole life of the process:
+ * `config.json` has nowhere to put collection and nothing writes it at
+ * runtime. Consent lives in the ledger the collector actually reads, so the
+ * ledger is what this page asks — otherwise 概览 would go on saying 关 while
+ * /collect had a thread running.
  */
 
-import type { ConfigSnapshot, SessionStatus } from "../core";
+import { useEffect, useState } from "react";
+
+import { collectStatus, type CollectStatus, type ConfigSnapshot, type SessionStatus } from "../core";
 import { ROUTES } from "../router";
 
 export interface HomeProps {
@@ -11,8 +21,32 @@ export interface HomeProps {
   readonly status: SessionStatus;
 }
 
+function collectReading(collect: CollectStatus | null): string {
+  if (collect === null) return "读取中…";
+  if (collect.collector_running) return "正在采集";
+  return collect.consent_granted ? "已同意，但没有在采" : "关";
+}
+
 export function Home({ snapshot, status }: HomeProps): React.JSX.Element {
   const unfinished = ROUTES.filter((route) => route.ownedBy !== null);
+  const [collect, setCollect] = useState<CollectStatus | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    collectStatus().then(
+      (value) => {
+        if (live) setCollect(value);
+      },
+      () => {
+        // A machine whose store did not open still has an overview to show.
+        // The line stays at 读取中… rather than claiming collection is off,
+        // which is a claim only the ledger can make.
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
 
   return (
     <>
@@ -22,8 +56,11 @@ export function Home({ snapshot, status }: HomeProps): React.JSX.Element {
           {snapshot.fully_closed ? "全部能力默认关闭" : `已打开：${snapshot.open_capabilities.join("、")}`}
         </p>
         <ul className="facts">
-          <li>
-            前台应用使用时长采集：<strong>{snapshot.collect_enabled ? "开" : "关"}</strong>
+          <li data-testid="collect-fact">
+            前台应用使用时长采集：<strong>{collectReading(collect)}</strong>
+            <span className="muted">
+              （在 <a href="#/collect">采集</a> 一页开关，重启之后回到关）
+            </span>
           </li>
           <li>
             云端深度分析：<strong>{snapshot.cloud.label}</strong>

@@ -540,6 +540,31 @@ export interface AuditChain {
 }
 
 /**
+ * The collection screen's whole state, mirroring
+ * `soulcore::commands::session::CollectStatus`.
+ *
+ * Two booleans, a fixed source label, a count and two sentences. There is no
+ * field here that could hold an application name, a window title or a path, so
+ * "the screen never shows what you were doing" is a property of the type
+ * rather than a rule this shell follows. `survives_restart` is typed as the
+ * literal `false` because the core has no code path that sets it: consent
+ * lives in the running process, and `config.json` has nowhere to keep one.
+ */
+export interface CollectStatus {
+  readonly consent_granted: boolean;
+  /** Not the same as `consent_granted`: a build with no foreground source
+   *  records the consent and starts nothing. */
+  readonly collector_running: boolean;
+  /** `windows.foreground_process`, `fake.scripted_desktop` or `unsupported`. */
+  readonly source: string;
+  /** Foreground events in the store, or null when the store did not open. */
+  readonly events_collected: number | null;
+  readonly survives_restart: false;
+  readonly duration_only_notice: string;
+  readonly notice: string;
+}
+
+/**
  * Command names, spelled once.
  *
  * `apps/desktop/src-tauri/src/commands.rs` registers exactly these, and a test
@@ -578,6 +603,9 @@ export const COMMANDS = {
   forgetMemory: "forget_memory",
   researchPreview: "research_preview",
   auditChain: "audit_chain",
+  collectStatus: "collect_status",
+  grantCollectConsent: "grant_collect_consent",
+  revokeCollectConsent: "revoke_collect_consent",
 } as const;
 
 export function configSnapshot(): Promise<ConfigSnapshot> {
@@ -787,4 +815,33 @@ export function researchPreview(): Promise<ResearchPreview> {
 /** The audit chain, played back and checked by the store. */
 export function auditChain(): Promise<AuditChain> {
   return invoke<AuditChain>(COMMANDS.auditChain);
+}
+
+/**
+ * Whether collection may run, whether it is running, and how much it wrote.
+ *
+ * Read from the consent ledger and the collector thread, not from a
+ * configuration flag: `soulcore::commands::collect` says why, and the short
+ * version is that a third copy of the answer is how a user gets shown "off"
+ * while something is still writing.
+ */
+export function collectStatus(): Promise<CollectStatus> {
+  return invoke<CollectStatus>(COMMANDS.collectStatus);
+}
+
+/**
+ * The user said foreground duration may be collected.
+ *
+ * There is no argument, because there is nothing to configure: what gets
+ * collected is fixed by the build. The answer says whether a collector
+ * actually started — on a machine with no foreground source the consent is
+ * recorded and nothing is watched, and the notice says so.
+ */
+export function grantCollectConsent(): Promise<CollectStatus> {
+  return invoke<CollectStatus>(COMMANDS.grantCollectConsent);
+}
+
+/** The user took it back. Nothing further is written within a second. */
+export function revokeCollectConsent(): Promise<CollectStatus> {
+  return invoke<CollectStatus>(COMMANDS.revokeCollectConsent);
 }

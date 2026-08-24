@@ -630,6 +630,112 @@ fn the_paste_argument_is_required_and_spelled_the_way_the_webview_spells_it() {
     );
 }
 
+/// ------------------------------------------------------------- collect ---
+///
+/// Collection over the real handler, including the restart. This is the half
+/// `soulcore/tests/session_collect.rs` cannot reach: that one holds a
+/// `Session` directly, so it proves the gate but not that the gate is
+/// registered, spelled the way `core.ts` spells it, and answering with a JSON
+/// object the screen can read.
+///
+/// A CI host has no foreground source, so the grant here records consent and
+/// starts nothing — and the answer has to say both halves rather than the
+/// comfortable one.
+#[test]
+fn collection_can_be_granted_and_taken_back_over_the_ipc() {
+    let shell = Shell::on(scratch());
+
+    let off = shell.invoke("collect_status", json!({})).expect("a status");
+    assert_eq!(off["consent_granted"], json!(false));
+    assert_eq!(off["collector_running"], json!(false));
+    assert_eq!(off["survives_restart"], json!(false));
+
+    let granted = shell
+        .invoke("grant_collect_consent", json!({}))
+        .expect("the store opened, so consent can be recorded");
+    assert_eq!(granted["consent_granted"], json!(true));
+    assert_eq!(
+        granted["collector_running"],
+        json!(cfg!(windows)),
+        "only a machine with a foreground source may report a running collector",
+    );
+
+    let revoked = shell
+        .invoke("revoke_collect_consent", json!({}))
+        .expect("taking it back always works");
+    assert_eq!(revoked["consent_granted"], json!(false));
+    assert_eq!(revoked["collector_running"], json!(false));
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
+/// AC-02 over the IPC: the consent does not come back with the application.
+#[test]
+fn a_restart_finds_collection_off_again() {
+    let shell = Shell::on(scratch());
+    assert_eq!(
+        shell
+            .invoke("grant_collect_consent", json!({}))
+            .expect("consent is recorded")["consent_granted"],
+        json!(true),
+    );
+
+    let next_launch = shell.restart();
+    let status = next_launch
+        .invoke("collect_status", json!({}))
+        .expect("a status");
+    assert_eq!(
+        status["consent_granted"],
+        json!(false),
+        "a granted consent came back across a restart",
+    );
+
+    let config = std::fs::read_to_string(
+        next_launch
+            .directory
+            .join(soulcore::commands::session::CONFIG_FILE_NAME),
+    )
+    .unwrap_or_default();
+    for word in ["collect", "consent"] {
+        assert!(
+            !config.contains(word),
+            "`{word}` reached config.json: {config}",
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&next_launch.directory);
+}
+
+/// What crosses the IPC is counts and booleans. `CollectStatus` has no field
+/// that could hold an application name, and this is where that is checked
+/// against the JSON the WebView would actually receive.
+#[test]
+fn the_collection_status_carries_no_name_of_anything() {
+    let status = invoke("collect_status", json!({})).expect("a status");
+    let object = status.as_object().expect("an object");
+
+    let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        [
+            "collector_running",
+            "consent_granted",
+            "duration_only_notice",
+            "events_collected",
+            "notice",
+            "source",
+            "survives_restart",
+        ],
+        "the collection status grew a field, and there is no field it could grow \
+         that is not a name of something",
+    );
+    assert!(
+        object["events_collected"].is_number() || object["events_collected"].is_null(),
+        "the count is the only number the screen gets: {status}",
+    );
+}
+
 /// The screen's empty state is the core's sentence, and its answer about
 /// sending is fixed.
 #[test]

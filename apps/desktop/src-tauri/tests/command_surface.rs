@@ -87,6 +87,25 @@ fn no_command_exists_outside_the_list() {
     assert_eq!(declared.len(), COMMAND_NAMES.len());
 }
 
+/// `Session::grant_collect_consent_with_source` exists so AC-09 and AC-10 can
+/// be proven on a host with no desktop. It is a way to hand the collector a
+/// foreground source of the caller's choosing, and the shipped shell must not
+/// have one: a build that could substitute the source could collect from
+/// somewhere the user was never told about.
+#[test]
+fn the_shell_never_hands_the_collector_a_source_of_its_own() {
+    for (name, source) in [("commands.rs", COMMANDS_RS), ("lib.rs", LIB_RS)] {
+        assert!(
+            !source.contains("_with_source"),
+            "{name} injects a foreground source; only tests may do that",
+        );
+        assert!(
+            !source.contains("ForegroundSource"),
+            "{name} names a foreground source, which is the core's business",
+        );
+    }
+}
+
 /// WP09's brief: the shell forwards, it does not decide. A command body long
 /// enough to hold a decision is the signal that something moved into the UI
 /// layer that belongs in `soulcore`.

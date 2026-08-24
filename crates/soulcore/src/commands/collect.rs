@@ -17,8 +17,12 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 use soul_collect::runner;
+use soul_policy::audit::{append_or_store_error, AuditContent};
+use soul_schema::event::EventSource;
 use soul_store::SqlCipherStore;
 use soul_store_api::forget::ForgetUnit;
+use soul_store_api::types::{EventFilter, StoreResult};
+use soul_store_api::EventStore;
 
 pub use soul_collect::{
     AppIdentity, CollectError, CollectResult, Collector, CollectorConfig, CollectorHandle,
@@ -60,6 +64,33 @@ where
 /// within [`STOP_BUDGET`].
 pub fn stop(handle: CollectorHandle) -> CollectResult<CollectorReport> {
     handle.stop()
+}
+
+/// Write down that the user turned collection on, or off again.
+///
+/// [`ConsentHandle::grant`] and `revoke` hand the audit entry back rather than
+/// writing it, because the ledger has no store. Whoever holds the open one owes
+/// the chain that line — for the desktop that is the session, and for
+/// `collect-probe` it is the probe.
+pub fn record_consent_change(
+    store: &mut SqlCipherStore,
+    entry: AuditContent,
+    at_unix_seconds: i64,
+) -> StoreResult<Uuid> {
+    append_or_store_error(store, entry, at_unix_seconds)
+}
+
+/// How many foreground events this store holds.
+///
+/// A count read straight off the event table, which is a number the interface
+/// may show: the application names are sealed under the run's content key and
+/// nothing on this path opens them.
+pub fn events_collected(store: &SqlCipherStore) -> StoreResult<usize> {
+    Ok(store
+        .list_events(&EventFilter::with_source(
+            EventSource::CollectorForegroundApp,
+        ))?
+        .len())
 }
 
 /// What the user forgets when they ask to forget what a run collected.
