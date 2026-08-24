@@ -93,6 +93,8 @@ pub enum ReasonCode {
     WriteNotImplemented,
     /// The action arrived without a token that it requires.
     TokenRequired,
+    /// The path is outside every root the user has authorized.
+    PathNotAuthorized,
 
     // ---- provenance ----
     /// The request originated in external content, which is never authority.
@@ -131,6 +133,7 @@ impl ReasonCode {
             ReasonCode::TokenUnknown => "TOKEN_UNKNOWN",
             ReasonCode::WriteNotImplemented => "WRITE_NOT_IMPLEMENTED",
             ReasonCode::TokenRequired => "TOKEN_REQUIRED",
+            ReasonCode::PathNotAuthorized => "PATH_NOT_AUTHORIZED",
             ReasonCode::ExternalContentNotAuthority => "EXTERNAL_CONTENT_NOT_AUTHORITY",
             ReasonCode::InjectionMarkersFound => "INJECTION_MARKERS_FOUND",
             ReasonCode::ConsentGranted => "CONSENT_GRANTED",
@@ -158,6 +161,7 @@ impl ReasonCode {
         ReasonCode::TokenUnknown,
         ReasonCode::WriteNotImplemented,
         ReasonCode::TokenRequired,
+        ReasonCode::PathNotAuthorized,
         ReasonCode::ExternalContentNotAuthority,
         ReasonCode::InjectionMarkersFound,
         ReasonCode::ConsentGranted,

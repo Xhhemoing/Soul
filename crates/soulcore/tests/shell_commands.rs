@@ -5,10 +5,15 @@
 //! AC-02 (a finished wizard leaves everything off) and AC-22 (the cloud switch
 //! answers with a sentence and changes nothing).
 
+use std::path::PathBuf;
+
 use soulcore::commands::shell::{
-    cloud_toggle, complete_wizard, config_snapshot, CloudNotice, ConfigSnapshot, WizardAnswers,
-    WizardRefused, CLOUD_NOT_YET_AVAILABLE_LABEL, DESKTOP_BINARY_NAME,
+    authorize_root, authorized_roots, cloud_toggle, complete_wizard, config_snapshot, CloudNotice,
+    ConfigSnapshot, KeyProtection, RootRefusedReason, Session, WizardAnswers, WizardRefused,
+    CLOUD_NOT_YET_AVAILABLE_LABEL, DESKTOP_BINARY_NAME, KEY_FILE_NOT_PROTECTED_EXPLANATION,
+    NO_STORE_OPENED_EXPLANATION,
 };
+use soulcore::commands::store::open_store_for_session;
 use soulcore::{CloudState, Config};
 
 /// AC-02. The wizard's whole output is a configuration with nothing on.
@@ -138,6 +143,12 @@ fn the_snapshot_serializes_to_the_shape_the_webview_expects() {
         value["cloud"]["performs_network_request"],
         serde_json::json!(false),
     );
+    assert_eq!(value["kek_protected"], serde_json::json!(false));
+    assert_eq!(
+        value["key_protection"],
+        serde_json::json!(NO_STORE_OPENED_EXPLANATION),
+        "a snapshot taken without a store must say so, not describe one",
+    );
 
     let decoded: ConfigSnapshot = serde_json::from_value(value).expect("round trip");
     assert_eq!(decoded, snapshot);
@@ -176,4 +187,298 @@ fn a_notice_always_comes_from_a_configuration() {
     let notice: CloudNotice = cloud_toggle(&Config::default(), true);
     let json = serde_json::to_string(&notice).expect("serialize");
     assert!(json.contains("not_yet_available"));
+}
+
+// ------------------------------------------------------------- key material
+
+/// The flag is computed, not written down. Both directions are asserted, so a
+/// `kek_protected: false` that is really a hard-coded literal fails here.
+#[test]
+fn the_protection_flag_follows_the_provider_that_answered() {
+    assert!(!KeyProtection::NoStoreOpened.kek_protected());
+    assert!(!KeyProtection::UnprotectedKeyFile.kek_protected());
+    assert!(
+        KeyProtection::PlatformKeyStore.kek_protected(),
+        "if this is false too, the field is a constant and proves nothing",
+    );
+}
+
+/// No configuration, in any combination, can make the shell claim the key is
+/// held by the platform. The exhaustive form matters: the value must not be
+/// reachable from anything a user or a settings file can set.
+#[test]
+fn no_configuration_can_claim_the_key_is_protected() {
+    for collect_enabled in [false, true] {
+        for cloud_enabled in [false, true] {
+            for llm_endpoint in [None, Some("http://127.0.0.1:11434/v1".to_owned())] {
+                for authorized_roots in [Vec::new(), vec![PathBuf::from("/tmp")]] {
+                    let config = Config {
+                        collect_enabled,
+                        cloud_enabled,
+                        llm_endpoint: llm_endpoint.clone(),
+                        authorized_roots,
+                        ..Config::default()
+                    };
+                    for keys in [
+                        KeyProtection::NoStoreOpened,
+                        KeyProtection::UnprotectedKeyFile,
+                    ] {
+                        let snapshot = ConfigSnapshot::of_session(&config, keys);
+                        assert!(
+                            !snapshot.kek_protected,
+                            "{config:?} with {keys:?} claimed the key is protected",
+                        );
+                        assert_eq!(snapshot.key_protection, keys.explanation());
+                    }
+                    assert!(!ConfigSnapshot::of(&config).kek_protected);
+                }
+            }
+        }
+    }
+}
+
+/// The shell opens one store, the platform provider refuses, and the fallback
+/// is a key file the sentence can honestly describe.
+#[test]
+fn the_session_store_falls_back_to_a_key_file_and_says_so() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let session = open_store_for_session(dir.path()).expect("the store opens");
+
+    assert_eq!(session.key_protection(), KeyProtection::UnprotectedKeyFile);
+    assert!(!session.key_protection().kek_protected());
+    assert!(
+        dir.path().join("soul.db").exists(),
+        "the session is supposed to have opened a real database",
+    );
+    assert!(
+        dir.path().join("soul-test-keys.bin").exists(),
+        "the sentence names this file, so it had better be the one that appeared",
+    );
+
+    assert!(
+        std::sync::Arc::ptr_eq(&session.handle(), &session.handle()),
+        "every caller has to get the same handle; a second one is a second WAL",
+    );
+
+    // Reopening the same directory has to find the same key, or the fallback
+    // would lock the user out of their own database on the second launch.
+    drop(session);
+    let again = open_store_for_session(dir.path()).expect("the store reopens");
+    assert_eq!(again.key_protection(), KeyProtection::UnprotectedKeyFile);
+}
+
+/// `docs/SECURITY.md`: nothing may say the Windows KEK is protected until
+/// DPAPI is wired up. This is that rule, applied to the words themselves.
+#[test]
+fn the_key_sentence_never_claims_a_protection_that_does_not_exist() {
+    for claim in [
+        "已受 DPAPI 保护",
+        "已受保护",
+        "已加密保护",
+        "受到系统保护",
+        "由 Windows 保护",
+        "安全保管",
+    ] {
+        assert!(
+            !KEY_FILE_NOT_PROTECTED_EXPLANATION.contains(claim),
+            "the fallback sentence claims 「{claim}」",
+        );
+    }
+    assert!(KEY_FILE_NOT_PROTECTED_EXPLANATION.contains("DPAPI"));
+    assert!(KEY_FILE_NOT_PROTECTED_EXPLANATION.contains("明文"));
+    assert!(
+        KEY_FILE_NOT_PROTECTED_EXPLANATION.contains("soul-test-keys.bin"),
+        "naming the file is what makes the warning actionable",
+    );
+}
+
+#[test]
+fn the_session_reports_only_the_protection_it_was_told_about() {
+    let session = Session::new();
+    assert_eq!(
+        session.snapshot().key_protection,
+        NO_STORE_OPENED_EXPLANATION,
+    );
+
+    session.opened_store_with(KeyProtection::UnprotectedKeyFile);
+    let snapshot = session.snapshot();
+    assert_eq!(snapshot.key_protection, KEY_FILE_NOT_PROTECTED_EXPLANATION);
+    assert!(!snapshot.kek_protected);
+}
+
+// --------------------------------------------------------- authorised roots
+
+#[test]
+fn authorizing_a_directory_shows_up_in_the_snapshot() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let session = Session::new();
+    assert_eq!(session.snapshot().authorized_root_count, 0);
+    assert!(session.authorized_roots().is_empty());
+
+    let requested = dir.path().to_str().expect("a utf-8 temporary path");
+    let snapshot = session
+        .authorize_root(requested)
+        .expect("the path is a real directory");
+
+    assert_eq!(snapshot.authorized_root_count, 1);
+    assert!(!snapshot.fully_closed);
+    assert!(
+        snapshot
+            .open_capabilities
+            .contains(&"authorized_roots".to_owned()),
+        "an authorised directory is an open capability: {:?}",
+        snapshot.open_capabilities,
+    );
+
+    let canonical = dir.path().canonicalize().expect("canonical form");
+    assert_eq!(
+        session.authorized_roots(),
+        vec![canonical.display().to_string()],
+        "the list reads back the resolved path, which is what WP11 will compare against",
+    );
+}
+
+/// Resolution happens before comparison, so the same directory spelled another
+/// way is a duplicate. WP11 refuses everything outside this list; a list with
+/// four spellings of one directory in it is a list nobody can reason about.
+#[test]
+fn a_second_spelling_of_the_same_directory_is_not_a_second_root() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir
+        .path()
+        .to_str()
+        .expect("a utf-8 temporary path")
+        .to_owned();
+    let leaf = dir
+        .path()
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("a leaf name")
+        .to_owned();
+
+    let mut config = Config::default();
+    authorize_root(&mut config, &path).expect("the first spelling is authorised");
+
+    for spelling in [
+        format!("{path}/"),
+        format!("{path}/."),
+        format!("{path}/../{leaf}"),
+        format!("  {path}  "),
+    ] {
+        let refusal = authorize_root(&mut config, &spelling)
+            .expect_err("the same directory must not be authorised twice");
+        assert_eq!(
+            refusal.reason,
+            RootRefusedReason::AlreadyAuthorized,
+            "for {spelling:?}",
+        );
+    }
+
+    assert_eq!(config.authorized_roots.len(), 1);
+}
+
+#[test]
+fn a_path_that_is_not_a_readable_directory_is_refused_with_a_sentence() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let file = dir.path().join("notes.txt");
+    std::fs::write(&file, b"not a directory").expect("write the file");
+    let missing = dir.path().join("no-such-directory");
+
+    let cases = [
+        (String::new(), RootRefusedReason::Empty),
+        ("   ".to_owned(), RootRefusedReason::Empty),
+        (missing.display().to_string(), RootRefusedReason::NotFound),
+        (file.display().to_string(), RootRefusedReason::NotADirectory),
+    ];
+
+    let mut config = Config::default();
+    for (requested, reason) in cases {
+        let refusal = match authorize_root(&mut config, &requested) {
+            Ok(added) => panic!("{requested:?} was authorised as {}", added.display()),
+            Err(refusal) => refusal,
+        };
+        assert_eq!(refusal.reason, reason, "for {requested:?}");
+        assert!(
+            !refusal.message.trim().is_empty(),
+            "a refusal the user reads has to be a sentence: {refusal:?}",
+        );
+        assert_eq!(
+            refusal.to_string(),
+            refusal.message,
+            "the Display text and the text that crosses the IPC must be one string",
+        );
+    }
+
+    assert!(
+        config.authorized_roots.is_empty(),
+        "a refused path must not be authorised anyway",
+    );
+}
+
+/// The refusal crosses an IPC boundary, so its JSON shape is part of the
+/// contract with `apps/desktop/src/core.ts`.
+#[test]
+fn a_refusal_serializes_to_a_reason_and_a_sentence() {
+    let mut config = Config::default();
+    let refusal = authorize_root(&mut config, "/definitely/not/here")
+        .expect_err("a path that does not exist is refused");
+
+    let value = serde_json::to_value(&refusal).expect("serialize");
+    assert_eq!(value["reason"], serde_json::json!("not_found"));
+    assert_eq!(
+        value["message"],
+        serde_json::json!(refusal.message),
+        "the WebView renders this string; it must not have to build one",
+    );
+    assert_eq!(value.as_object().expect("an object").len(), 2);
+}
+
+/// AC-02 does not become a formality just because the settings page can write.
+#[test]
+fn a_finished_wizard_clears_a_directory_someone_authorised_first() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let session = Session::new();
+    session
+        .authorize_root(dir.path().to_str().expect("a utf-8 temporary path"))
+        .expect("the path is a real directory");
+    assert_eq!(session.snapshot().authorized_root_count, 1);
+
+    let snapshot = session
+        .complete_wizard(&WizardAnswers {
+            acknowledged_defaults_are_off: true,
+        })
+        .expect("the wizard finishes");
+
+    assert!(snapshot.fully_closed);
+    assert_eq!(snapshot.authorized_root_count, 0);
+    assert!(snapshot.open_capabilities.is_empty());
+    assert!(
+        session.authorized_roots().is_empty(),
+        "the snapshot said nothing is authorised, so nothing may be",
+    );
+}
+
+/// Authorising is reachable from one function and the wizard is not it.
+#[test]
+fn the_wizard_has_no_way_to_authorise_anything() {
+    let answers = WizardAnswers {
+        acknowledged_defaults_are_off: true,
+    };
+    assert_eq!(
+        serde_json::to_value(answers).expect("serialize"),
+        serde_json::json!({ "acknowledged_defaults_are_off": true }),
+        "one field, and it is not a path",
+    );
+    assert_eq!(
+        complete_wizard(&answers)
+            .expect("the wizard finishes")
+            .authorized_root_count,
+        0,
+    );
+}
+
+#[test]
+fn the_authorised_list_is_empty_until_someone_authorises_something() {
+    assert!(authorized_roots(&Config::default()).is_empty());
+    assert_eq!(config_snapshot().authorized_root_count, 0);
 }

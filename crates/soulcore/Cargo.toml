@@ -23,6 +23,8 @@ soul-import = { workspace = true }
 soul-profile = { workspace = true }
 soul-memory = { workspace = true }
 soul-collect = { workspace = true }
+soul-draft = { workspace = true }
+soul-fileplan = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

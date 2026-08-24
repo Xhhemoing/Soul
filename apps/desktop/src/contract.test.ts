@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { COMMANDS } from "./core";
-import { CLOUD_LABEL } from "./test/fakeCore";
+import { CLOUD_LABEL, KEY_PROTECTION } from "./test/fakeCore";
 
 const SRC = dirname(fileURLToPath(import.meta.url));
 const DESKTOP = join(SRC, "..");
@@ -37,6 +37,21 @@ function sourceFiles(root: string, extensions: readonly string[]): string[] {
 
 const isTestSupport = (path: string): boolean =>
   path.includes(`${join("src", "test")}`) || /\.test\.tsx?$/.test(path);
+
+/**
+ * The value of a `&str` constant in a Rust source file.
+ *
+ * Rust joins a backslash at the end of a line with the indentation that
+ * follows it, so a constant wrapped for readability is still one string. This
+ * undoes the wrapping, which means a reworded constant fails the comparison
+ * rather than failing to parse.
+ */
+function rustStringConstant(source: string, name: string): string {
+  const pattern = new RegExp(`${name}: &str =\\s*"((?:[^"\\\\]|\\\\[\\s\\S])*)"`);
+  const match = pattern.exec(source);
+  if (match?.[1] === undefined) throw new Error(`${name} is not declared as a &str constant`);
+  return match[1].replace(/\\\r?\n\s*/g, "");
+}
 
 describe("壳与核心的边界", () => {
   /**
@@ -72,6 +87,17 @@ describe("壳与核心的边界", () => {
     const match = /CLOUD_NOT_YET_AVAILABLE_LABEL: &str = "([^"]+)"/.exec(rust);
     expect(match?.[1]).toBe(CLOUD_LABEL);
   });
+
+  /**
+   * Where the database key lives is a claim about the operating system, and
+   * `docs/SECURITY.md` says it may not be made until DPAPI exists. So the
+   * sentence is a Rust constant and the shell renders it; this is the check
+   * that the two are still the same sentence.
+   */
+  it("密钥说明的文案和 soulcore 里的常量是同一句话", () => {
+    const rust = readFileSync(SHELL_RS, "utf8");
+    expect(rustStringConstant(rust, "KEY_FILE_NOT_PROTECTED_EXPLANATION")).toBe(KEY_PROTECTION);
+  });
 });
 
 describe("界面用词", () => {
@@ -100,6 +126,28 @@ describe("界面用词", () => {
           : null;
         const found = pattern === null ? text.includes(term) : pattern.test(text);
         if (found) hits.push(`${relative(DESKTOP, path)}: ${term}`);
+      }
+    }
+
+    expect(hits).toEqual([]);
+  });
+
+  /**
+   * `DpapiKeyProvider` refuses both of its accessors, so on the machines this
+   * product ships to the key that wraps every content key is sitting in a file
+   * next to the database. The UI tree may not say otherwise, and the way it
+   * stays unable to is that the only sentence on the subject comes from the
+   * core — so no hard-coded claim may appear here at all, reassuring or not.
+   */
+  it("界面自己不声称密钥受到任何保护", () => {
+    const claims = ["DPAPI", "已受保护", "已加密保护", "受到保护", "已经保护", "安全保管"];
+
+    const hits: string[] = [];
+    for (const path of sourceFiles(SRC, [".ts", ".tsx", ".css"])) {
+      if (isTestSupport(path)) continue;
+      const text = readFileSync(path, "utf8");
+      for (const claim of claims) {
+        if (text.includes(claim)) hits.push(`${relative(DESKTOP, path)}: ${claim}`);
       }
     }
 

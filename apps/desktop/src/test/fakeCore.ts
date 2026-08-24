@@ -15,6 +15,27 @@ import type { CloudNotice, ConfigSnapshot } from "../core";
 
 export const CLOUD_LABEL = "尚未启用";
 
+/**
+ * The sentence `KEY_FILE_NOT_PROTECTED_EXPLANATION` holds in
+ * `crates/soulcore/src/commands/shell.rs`, copied here so the shell's tests can
+ * assert the screen shows it word for word. `contract.test.ts` reads the Rust
+ * constant and fails if this copy drifts, which is what stops the double from
+ * quietly telling the user a kinder story than the build can back up.
+ */
+export const KEY_PROTECTION =
+  "数据库的密钥现在放在数据目录里的一个明文文件 soul-test-keys.bin，没有交给 Windows 的 DPAPI —— 那一段还没有实现。所以能读到这个目录的人，就能打开你的库：在 DPAPI 补上之前，这台电脑的登录口令是唯一的一道门。";
+
+/**
+ * A path the double refuses, and the words it refuses with.
+ *
+ * The real core refuses by looking at the disk. jsdom has no disk, so what is
+ * faked here is the *shape* of a refusal — a `reason` and a sentence the core
+ * wrote. Which paths are refusable is asserted in `crates/soulcore` and over
+ * the real IPC in `apps/desktop/src-tauri/tests/ipc_roundtrip.rs`.
+ */
+export const REFUSED_ROOT = "D:\\没有这个目录";
+export const REFUSED_ROOT_MESSAGE = `这个路径不存在：${REFUSED_ROOT}`;
+
 export const CLOSED_CLOUD: CloudNotice = {
   state: "not_yet_available",
   label: CLOUD_LABEL,
@@ -31,6 +52,8 @@ export const CLOSED_SNAPSHOT: ConfigSnapshot = {
   authorized_root_count: 0,
   fully_closed: true,
   open_capabilities: [],
+  kek_protected: false,
+  key_protection: KEY_PROTECTION,
 };
 
 export interface RecordedCall {
@@ -53,12 +76,34 @@ export interface FakeCore {
  */
 export function installFakeCore(snapshot: ConfigSnapshot = CLOSED_SNAPSHOT): FakeCore {
   const calls: RecordedCall[] = [];
+  const roots: string[] = [];
 
   mockIPC((cmd, payload) => {
     calls.push({ cmd, payload });
     switch (cmd) {
       case "config_snapshot":
-        return snapshot;
+        return { ...snapshot, authorized_root_count: roots.length };
+      case "authorized_roots":
+        return [...roots];
+      case "authorize_root": {
+        // The core resolves the path and answers with a whole snapshot. The
+        // double keeps both halves: a UI that ignored the answer and counted
+        // its own inputs would still pass if this returned nothing.
+        const path = String((payload as { path?: unknown }).path ?? "").trim();
+        if (path === "" || path === REFUSED_ROOT) {
+          throw {
+            reason: path === "" ? "empty" : "not_found",
+            message: path === "" ? "还没有填目录。" : REFUSED_ROOT_MESSAGE,
+          };
+        }
+        roots.push(path);
+        return {
+          ...snapshot,
+          authorized_root_count: roots.length,
+          fully_closed: false,
+          open_capabilities: ["authorized_roots"],
+        };
+      }
       case "complete_wizard": {
         const answers = (payload as { answers?: { acknowledged_defaults_are_off?: boolean } })
           .answers;

@@ -1,0 +1,30 @@
+[package]
+name = "soul-fileplan"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "WP11: a read-only walk of an authorized root and the tidy-up plan it suggests, which nothing applies. Registered empty; ST-02 fills it."
+
+# `walkdir` reads directories and nothing writes them; the crate has no
+# database, no HTTP client and no `soul-egress`. Authorization is decided by
+# `soul-policy` against roots handed in as arguments, so this crate holds no
+# configuration of its own.
+#
+# The dependency set is the one ST-02 was scoped against, written once so the
+# implementation of WP11 never has to touch a manifest.
+[dependencies]
+soul-schema = { workspace = true }
+soul-store-api = { workspace = true }
+soul-policy = { workspace = true }
+walkdir = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+soul-store = { workspace = true }
+soul-testkit = { workspace = true }
+tempfile = { workspace = true }

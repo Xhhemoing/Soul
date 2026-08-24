@@ -1,0 +1,29 @@
+{
+  "description": "仅描述供 tempfile 现场创建的 harmless 样例树；这些路径不是仓库内的实体文件。",
+  "authorized_root": "A",
+  "entries": [
+    {
+      "relative_path": "inbox",
+      "kind": "directory"
+    },
+    {
+      "relative_path": "inbox/meeting-notes.txt",
+      "kind": "file",
+      "content_utf8": "harmless fixture notes"
+    },
+    {
+      "relative_path": "inbox/budget.csv",
+      "kind": "file",
+      "content_utf8": "item,amount\nsample,1\n"
+    },
+    {
+      "relative_path": "reference",
+      "kind": "directory"
+    },
+    {
+      "relative_path": "reference/readme.md",
+      "kind": "file",
+      "content_utf8": "# harmless sample\n"
+    }
+  ]
+}

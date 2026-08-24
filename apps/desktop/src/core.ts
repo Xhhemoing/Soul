@@ -36,10 +36,25 @@ export interface ConfigSnapshot {
   readonly authorized_root_count: number;
   readonly fully_closed: boolean;
   readonly open_capabilities: readonly string[];
+  /** Whether a platform key store holds the key. False in every v0.1 build. */
+  readonly kek_protected: boolean;
+  /** The core's own sentence about the database key. Render it as it arrives. */
+  readonly key_protection: string;
 }
 
 export interface WizardAnswers {
   readonly acknowledged_defaults_are_off: boolean;
+}
+
+/** Why the core would not authorise a directory. The message is its words. */
+export interface RootRefused {
+  readonly reason:
+    | "empty"
+    | "not_found"
+    | "not_a_directory"
+    | "unreadable"
+    | "already_authorized";
+  readonly message: string;
 }
 
 /**
@@ -53,6 +68,8 @@ export const COMMANDS = {
   configSnapshot: "config_snapshot",
   completeWizard: "complete_wizard",
   cloudToggle: "cloud_toggle",
+  authorizeRoot: "authorize_root",
+  authorizedRoots: "authorized_roots",
 } as const;
 
 export function configSnapshot(): Promise<ConfigSnapshot> {
@@ -72,4 +89,37 @@ export function completeWizard(answers: WizardAnswers): Promise<ConfigSnapshot> 
  */
 export function cloudToggle(requestedOn: boolean): Promise<CloudNotice> {
   return invoke<CloudNotice>(COMMANDS.cloudToggle, { requestedOn });
+}
+
+/**
+ * Ask the core to authorise a directory for read-only scanning.
+ *
+ * The string goes over as typed. Whether it exists, whether it is a directory,
+ * what it resolves to and whether it is already on the list are four questions
+ * this file must not answer: they are decisions, they touch the filesystem,
+ * and the WebView is the one place in the product that cannot be tested
+ * against a real disk.
+ */
+export function authorizeRoot(path: string): Promise<ConfigSnapshot> {
+  return invoke<ConfigSnapshot>(COMMANDS.authorizeRoot, { path });
+}
+
+/** The directories authorised in this session, as the core resolved them. */
+export function authorizedRoots(): Promise<readonly string[]> {
+  return invoke<readonly string[]>(COMMANDS.authorizedRoots);
+}
+
+/**
+ * The core's own words for a refusal.
+ *
+ * Not a translation table: a refusal that reached the screen as
+ * `[object Object]` would be the shell losing the one sentence the core wrote
+ * for the user, and inventing a replacement here is how "the path is a file"
+ * becomes "无效路径".
+ */
+export function refusalText(error: unknown): string {
+  if (typeof error === "object" && error !== null && "message" in error) {
+    return String((error as { readonly message: unknown }).message);
+  }
+  return String(error);
 }

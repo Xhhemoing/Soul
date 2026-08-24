@@ -3382,6 +3382,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "soul-draft"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soul-graph",
+ "soul-policy",
+ "soul-profile",
+ "soul-schema",
+ "soul-store-api",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
 name = "soul-egress"
 version = "0.1.0"
 dependencies = [
@@ -3390,6 +3405,20 @@ dependencies = [
  "serde_json",
  "soul-policy",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "soul-fileplan"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soul-policy",
+ "soul-schema",
+ "soul-store-api",
+ "thiserror 2.0.20",
+ "uuid",
+ "walkdir",
 ]
 
 [[package]]
@@ -3513,7 +3542,9 @@ dependencies = [
  "serde",
  "serde_json",
  "soul-collect",
+ "soul-draft",
  "soul-egress",
+ "soul-fileplan",
  "soul-graph",
  "soul-import",
  "soul-memory",

@@ -82,7 +82,9 @@ export function App({ wizardDone = false }: AppProps): React.JSX.Element {
       <main className="content" aria-labelledby="route-title">
         <h1 id="route-title">{route.title}</h1>
         {route.id === "home" ? <Home snapshot={snapshot} /> : null}
-        {route.id === "settings" ? <Settings snapshot={snapshot} /> : null}
+        {route.id === "settings" ? (
+          <Settings snapshot={snapshot} onSnapshot={setSnapshot} />
+        ) : null}
         {route.ownedBy === null ? null : (
           <Pending title={route.title} ownedBy={route.ownedBy} detail={route.pending ?? ""} />
         )}
