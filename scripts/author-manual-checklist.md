@@ -44,11 +44,13 @@ pwsh -File scripts/install-smoke.ps1 `
 - [ ] 退出码是 0，末行是 `N check(s), 0 failed`。
 - [ ] 安装期间**没有弹出 UAC 对话框**。（脚本测不到这个：UAC 弹窗是给人看的。屏幕暗一下就是失败。）
 - [ ] 安装期间没有任何窗口弹出来（`/S` 是静默）。
-- [ ] 卸载之后 `%LOCALAPPDATA%\Soul` 没有了，`程序和功能` 里也没有了。
+- [ ] 卸载之后 `%LOCALAPPDATA%\Programs\Soul` 没有了，`程序和功能` 里也没有了。
+- [ ] 若安装后曾运行过 Soul，`%LOCALAPPDATA%\Soul` **仍在**（`keys.dpapi` / `soul.db` 还在）。数据目录消失不是成功，是 Goal 1 缺陷。
 
 脚本查的是：安装器返回 0、卸载项在 HKCU（不是 HKLM，说明是按用户装的）、
-装出来的可执行文件叫 `soul.exe` 且清单是 `asInvoker`、`soul-headless smoke` 退出 0
-且报告干净、卸载返回 0 且 `soul.exe` 与注册项都消失。失败会打印是哪一项。
+装出来的可执行文件在 `%LOCALAPPDATA%\Programs\Soul\soul.exe` 且清单是 `asInvoker`、
+`soul-headless smoke` 退出 0 且报告干净、卸载返回 0 且安装目录里的 `soul.exe` 与注册项都消失
+（不删 `%LOCALAPPDATA%\Soul`）。失败会打印是哪一项。
 
 **已知缺口**：安装包里没有 `soul-headless.exe`（Tauri bundle 只放 `mainBinaryName`），
 所以 `-Headless` 指的是同一个 commit 编出来的那个，不是安装器放上去的那个。
@@ -88,7 +90,7 @@ CI 编译 `apps/desktop/src-tauri/src/tray.rs`，但没有 runner 有通知区�
 `tauri.conf.json` 的 `mainBinaryName` 与 `[[bin]] name` 都有测试钉住，但显示出来是另一回事。
 
 - [ ] 任务管理器 → 详细信息里，那一行叫 `soul.exe`，不是 `app.exe` 也不是 `Soul.exe`。
-- [ ] `%LOCALAPPDATA%\Soul\soul.exe` 存在。
+- [ ] `%LOCALAPPDATA%\Programs\Soul\soul.exe` 存在（不是 `%LOCALAPPDATA%\Soul\soul.exe`）。
 - [ ] 属性 → 详细信息：产品名 `Soul`，版本 `0.1.0`。
 
 ---
@@ -159,8 +161,7 @@ while ($true) {
       正确的修法是在安装器与文档里说清楚要装什么，**不是**改成让它自己下载。
 - [ ] **中文字体与 DPI**：显示缩放 150% 下，向导那段长说明有没有被截断；
       正文里的中文是不是回退到了别的字体。
-- [ ] **卸载之后用户数据还在不在**：卸载完看 `%LOCALAPPDATA%\Soul`（以及真库所在目录）。
-      记下实际行为——「卸载会不会删掉我的记忆」是用户会问的第一个问题，答案得是查过的。
+- [ ] **卸载之后用户数据还在不在（Goal 1 必过项）**：卸载完看 `%LOCALAPPDATA%\Soul`。`keys.dpapi` 与 `soul.db` **必须仍在**（前提是安装后曾运行过）。若它们被删，记成 Goal 1 bug，不是「记一下行为」。
 - [ ] **杀毒软件**：Defender 有没有拦下未签名的安装器（SmartScreen 大概率会拦一次）。
       记下来，那是发布前要处理的事，不是这次要绕过的事。
 

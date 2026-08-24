@@ -15,17 +15,22 @@
 
       1. The bundle installs without a dialog and without a UAC prompt.
          tauri.conf.json builds an NSIS package in currentUser mode, so the
-         silent switch is /S and the target is under LOCALAPPDATA; an .msi is
-         accepted too, in case a WiX target is ever added, and then it is
-         msiexec /qn. Nothing is downloaded either way: if the bundle needs a
-         WebView2 runtime it is not this script's job to fetch one, and a smoke
-         test that installs extra software is not testing what shipped.
+         silent switch is /S and the per-user install dir is
+         %LOCALAPPDATA%\Programs\Soul (user data stays in
+         %LOCALAPPDATA%\Soul). An .msi is accepted too, in case a WiX target
+         is ever added, and then it is msiexec /qn. Nothing is downloaded
+         either way: if the bundle needs a WebView2 runtime it is not this
+         script's job to fetch one, and a smoke test that installs extra
+         software is not testing what shipped.
       2. The installed soul.exe is inspected: it has to be named soul.exe and
          its embedded manifest has to say asInvoker.
       3. soul-headless.exe runs the AC-21 main flow while this script watches
          the operating system's own TCP table for that process. Exit 0, a clean
          report, and zero non-loopback connections, or the run fails.
-      4. The uninstaller runs silently and the install directory has to go.
+      4. The uninstaller runs silently. The install directory
+         (%LOCALAPPDATA%\Programs\Soul) must go; user data under
+         %LOCALAPPDATA%\Soul must not be removed by this script or the
+         uninstaller.
 
 .NOTES
     Run this unelevated. That is the AC-01 check: phase 1 asserts the script's
@@ -95,8 +100,8 @@ $ErrorActionPreference = 'Stop'
 $script:ExecutableName = 'soul.exe'
 $script:HeadlessName = 'soul-headless.exe'
 
-# What tauri.conf.json calls the product, which is also the directory an NSIS
-# currentUser install creates under LOCALAPPDATA.
+# What tauri.conf.json calls the product. NSIS installs to
+# %LOCALAPPDATA%\Programs\Soul; encrypted data stays in %LOCALAPPDATA%\Soul.
 $script:ProductName = 'Soul'
 
 # Addresses that are not egress. Anything else the installed process connects
@@ -271,7 +276,7 @@ function Invoke-SilentUninstaller {
         if (Test-Path -LiteralPath $candidate) { $uninstaller = $candidate }
     }
     if (-not $uninstaller) {
-        $candidate = Join-Path (Join-Path $env:LOCALAPPDATA $script:ProductName) 'uninstall.exe'
+        $candidate = Join-Path (Join-Path (Join-Path $env:LOCALAPPDATA 'Programs') $script:ProductName) 'uninstall.exe'
         if (Test-Path -LiteralPath $candidate) { $uninstaller = $candidate }
     }
     if (-not $uninstaller) {
@@ -420,7 +425,9 @@ try {
         if ($null -ne $entry -and -not [string]::IsNullOrWhiteSpace($entry.InstallLocation)) {
             $searched += $entry.InstallLocation
         }
-        foreach ($base in @($env:LOCALAPPDATA, $env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+        $programsInstall = Join-Path (Join-Path $env:LOCALAPPDATA 'Programs') $script:ProductName
+        $searched += $programsInstall
+        foreach ($base in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
             if ([string]::IsNullOrWhiteSpace($base)) { continue }
             $searched += (Join-Path $base $script:ProductName)
         }

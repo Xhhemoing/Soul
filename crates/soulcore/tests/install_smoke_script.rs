@@ -194,3 +194,38 @@ fn the_script_looks_for_the_binaries_this_build_makes() {
         "the script does not ask for the main flow by name",
     );
 }
+
+/// The install fallback must not treat the data directory as the install dir.
+#[test]
+fn the_script_finds_the_installer_under_programs_not_the_data_directory() {
+    assert!(
+        SCRIPT.contains("'Programs'") || SCRIPT.contains("\"Programs\""),
+        "install-smoke.ps1 must fall back to %LOCALAPPDATA%\\Programs\\Soul for soul.exe",
+    );
+    assert!(
+        !SCRIPT.contains("Join-Path $env:LOCALAPPDATA $script:ProductName)"),
+        "install-smoke.ps1 must not search %LOCALAPPDATA%\\Soul as the install location",
+    );
+}
+
+/// Uninstall must remove only the install tree, never the DPAPI/database directory.
+#[test]
+fn the_script_does_not_delete_the_data_directory() {
+    for pattern in ["Remove-Item", "Remove–Item", "RMDir", "RmDir"] {
+        if !SCRIPT.contains(pattern) {
+            continue;
+        }
+        for line in SCRIPT.lines() {
+            if !line.contains(pattern) {
+                continue;
+            }
+            assert!(
+                !line.contains("Join-Path $env:LOCALAPPDATA $script:ProductName")
+                    && !line.contains("%LOCALAPPDATA%\\Soul")
+                    && !line.contains("\\Soul'")
+                    && !line.contains("\\Soul\""),
+                "install-smoke.ps1 must not delete the data directory: {line}",
+            );
+        }
+    }
+}

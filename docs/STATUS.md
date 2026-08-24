@@ -4,7 +4,7 @@
 
 ## 当前里程碑
 
-**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。WP01–WP11、WP13 与 DPAPI 均已落地。**`2e72ddf` 上 GitHub Actions run [`32754617268`](https://github.com/Xhhemoing/Soul/actions/runs/32754617268) 五门全绿**：lint、ubuntu `just ci`、sbom、windows-latest `cargo test --workspace --all-targets`（含 NTFS 文件计划、`cfg(windows)` DPAPI、`one_store` 运行时那一半）、桌面壳 `command_surface` / `no_egress_path` / `one_store` / `shell_is_local_only`、`ipc_roundtrip --no-run`、以及 package（`soul.exe` 内嵌 `asInvoker`、`install-smoke.ps1 -SkipInstall` 15 项 0 失败）。AC-01 托盘外观、UAC 盾牌、真机采集、WebView2 流量、卸载与 `keys.dpapi` 仍只在 `scripts/author-manual-checklist.md` 上，CI 不能替，也不要在本文件假装过了。
+**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。WP01–WP11、WP13 与 DPAPI 均已落地。**NSIS 安装目录与数据目录碰撞已在代码里关闭**（`installer-hooks.nsh` 强制 `%LOCALAPPDATA%\Programs\Soul`，`shell_is_local_only` 与 `install_smoke_script` 测试钉住；真机 NSIS 仍待作者手动）。**`2e72ddf` 上 GitHub Actions run [`32754617268`](https://github.com/Xhhemoing/Soul/actions/runs/32754617268) 五门全绿**：lint、ubuntu `just ci`、sbom、windows-latest `cargo test --workspace --all-targets`（含 NTFS 文件计划、`cfg(windows)` DPAPI、`one_store` 运行时那一半）、桌面壳 `command_surface` / `no_egress_path` / `one_store` / `shell_is_local_only`、`ipc_roundtrip --no-run`、以及 package（`soul.exe` 内嵌 `asInvoker`、`install-smoke.ps1 -SkipInstall` 15 项 0 失败）。AC-01 托盘外观、UAC 盾牌、真机采集、WebView2 流量、卸载与 `keys.dpapi` 仍只在 `scripts/author-manual-checklist.md` 上，CI 不能替，也不要在本文件假装过了。
 
 ## 进度
 
@@ -422,7 +422,7 @@ CI 到此为止。下面每一条都要在 Windows 11 x64 真机上由作者过�
 4. **`Get-NetTCPConnection` 只看 TCP。** Windows 的 UDP 端点表没有远端地址，所以脚本看不见 UDP 对端。Linux 侧的 `netwatch` 两个都读，两边合起来才是覆盖。检查清单第 5 节让作者手动看一眼 `Get-NetUDPEndpoint`。
 5. **WebView2 的进程不是 `soul.exe`。** `msedgewebview2.exe` 有它自己的网络行为。云开关那一节明确要求把它单独记一条，不要含糊地算进「Soul 出网了」或者「没事」。
 6. **AC-09 / AC-10 的真机那一半。** 所有采集测试都驱动 `FakeForegroundSource`，因为 runner 没有桌面。`collect-probe` 是给这一半准备的工具，但它要一个人在键盘前切二十秒窗口，所以结果只能手填回来。
-7. **卸载会不会删掉用户数据、Defender/SmartScreen 会不会拦未签名的安装器。** 两条都要实测并记录，都是发布前要处理的事。
+7. **卸载会不会删掉用户数据、Defender/SmartScreen 会不会拦未签名的安装器。** NSIS 安装目录与 `%LOCALAPPDATA%\Soul` 数据目录的碰撞已在 `installer-hooks.nsh` + 测试里关闭；真机上仍要确认卸载后 `keys.dpapi` / `soul.db` 仍在（作者清单 §1 与 §7）。Defender/SmartScreen 两条都要实测并记录，都是发布前要处理的事。
 
 ### WP13 的取舍与遗留
 

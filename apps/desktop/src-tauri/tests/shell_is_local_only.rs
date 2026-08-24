@@ -9,8 +9,11 @@ use serde_json::Value;
 
 const CONFIG: &str = include_str!("../tauri.conf.json");
 const MANIFEST: &str = include_str!("../windows/soul.exe.manifest");
+const INSTALLER_HOOKS: &str = include_str!("../windows/installer-hooks.nsh");
 const BUILD_RS: &str = include_str!("../build.rs");
 const CAPABILITY: &str = include_str!("../capabilities/default.json");
+
+const WINDOWS_INSTALL_DIR: &str = r"$LOCALAPPDATA\Programs\Soul";
 
 fn config() -> Value {
     serde_json::from_str(CONFIG).expect("tauri.conf.json is valid JSON")
@@ -174,6 +177,77 @@ fn the_installer_neither_elevates_nor_downloads() {
         windows["webviewInstallMode"]["type"],
         Value::String("skip".into())
     );
+}
+
+/// NSIS lines that are not comment-only. A `StrCpy` tucked into a comment would
+/// not run at install time, so the check ignores lines whose first token is `;`.
+fn nsis_executable_lines(content: &str) -> Vec<&str> {
+    content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with(';'))
+        .collect()
+}
+
+/// PRODUCT_LOCK keeps soul.db and keys.dpapi under `%LOCALAPPDATA%\Soul`.
+/// Tauri currentUser NSIS defaults to the same folder as the install dir;
+/// these hooks force `%LOCALAPPDATA%\Programs\Soul` so uninstall cannot
+/// RMDir the data directory by accident.
+#[test]
+fn the_installer_ships_into_programs_not_the_data_directory() {
+    let value = config();
+    let hooks_path = value["bundle"]["windows"]["nsis"]["installerHooks"]
+        .as_str()
+        .filter(|path| !path.is_empty())
+        .expect("bundle.windows.nsis.installerHooks must be a non-empty path");
+    assert!(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(hooks_path.strip_prefix("./").unwrap_or(hooks_path))
+            .is_file(),
+        "installer hooks file must exist relative to src-tauri: {hooks_path}",
+    );
+
+    let executable = nsis_executable_lines(INSTALLER_HOOKS);
+    let joined = executable.join("\n");
+    assert!(
+        joined.contains(&format!(r#"StrCpy $INSTDIR "{WINDOWS_INSTALL_DIR}""#)),
+        "PREINSTALL must force the Programs install directory, not the data dir",
+    );
+
+    let instdir_copy = executable
+        .iter()
+        .position(|line| line.contains(r#"StrCpy $INSTDIR "#) && line.contains(WINDOWS_INSTALL_DIR))
+        .expect("PREINSTALL must StrCpy $INSTDIR to Programs\\Soul");
+    assert!(
+        executable
+            .iter()
+            .skip(instdir_copy + 1)
+            .any(|line| line.contains("SetOutPath $INSTDIR")),
+        "SetOutPath must follow the StrCpy because Tauri already SetOutPath once",
+    );
+
+    for line in &executable {
+        let upper = line.to_ascii_uppercase();
+        if upper.contains("RMDIR /R") {
+            assert!(
+                !line.contains(r"$LOCALAPPDATA\Soul")
+                    && !line.contains(r"$LOCALAPPDATA\${PRODUCTNAME}"),
+                "installer hooks must not recursively remove the data directory: {line}",
+            );
+        }
+    }
+
+    assert_eq!(
+        soulcore::commands::session::WINDOWS_DIRECTORY_NAME,
+        "Soul",
+        "the data directory leaf is still Soul",
+    );
+    assert_ne!(
+        soulcore::commands::session::WINDOWS_DIRECTORY_NAME,
+        "Programs\\Soul",
+        "install dir and data dir must not be the same path",
+    );
+    assert_ne!(WINDOWS_INSTALL_DIR, r"$LOCALAPPDATA\Soul");
 }
 
 /// Tauri's permission system is the other place an egress path could be
