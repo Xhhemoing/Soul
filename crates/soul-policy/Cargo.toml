@@ -1,0 +1,28 @@
+[package]
+name = "soul-policy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Soul's permission surface: consent, prose-free audit content, the third-party redactor, human-in-the-loop tokens, and the egress guard."
+
+# No HTTP client, direct or transitive. This crate decides whether a request
+# may leave the machine; the crate that performs it (`soul-egress`) depends on
+# this one, never the other way round.
+[dependencies]
+soul-schema = { workspace = true }
+soul-store-api = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+unicode-normalization = { workspace = true }
+
+[dev-dependencies]
+soul-store = { workspace = true }
+soul-testkit = { workspace = true }
+tempfile = { workspace = true }
+fail = { workspace = true, features = ["failpoints"] }

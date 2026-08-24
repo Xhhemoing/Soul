@@ -1,0 +1,27 @@
+[package]
+name = "soul-egress"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "The only crate in the workspace that owns an HTTP client. It speaks to the user's own E1 endpoint and to nothing else."
+
+# This is the single sanctioned exception to the workspace-wide HTTP client
+# ban. `deny.toml` scopes it with a `wrappers` entry and `xtask e0-audit`
+# treats this crate as the one gateway, so adding reqwest anywhere else still
+# fails CI. Nothing here is reachable without an `EgressPermit`, which only
+# `soul-policy`'s net guard can mint.
+[dependencies]
+soul-policy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+# rustls rather than the platform TLS stack: one code path on Windows and
+# Linux, and no OpenSSL beyond the one SQLCipher already vendors. Default
+# features are off, which drops native-tls, HTTP/2 and the macOS system
+# configuration hook.
+reqwest = { workspace = true }
+
+[dev-dependencies]
+soul-testkit = { workspace = true }
