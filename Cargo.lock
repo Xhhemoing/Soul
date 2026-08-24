@@ -1603,6 +1603,8 @@ dependencies = [
  "serde",
  "serde_json",
  "soul-egress",
+ "soul-graph",
+ "soul-import",
  "soul-policy",
  "soul-schema",
  "soul-store",

@@ -18,6 +18,8 @@ soul-store-api = { workspace = true }
 soul-store = { workspace = true }
 soul-policy = { workspace = true }
 soul-egress = { workspace = true }
+soul-graph = { workspace = true }
+soul-import = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
