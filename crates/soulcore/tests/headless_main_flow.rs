@@ -49,15 +49,39 @@ fn the_main_flow_runs_end_to_end_and_holds_no_non_loopback_connection() {
     );
     assert!(!report.egress.endpoint_configured);
     assert!(
-        report.egress.observed,
-        "the sockets were not read on this host: {:?}",
-        report.egress.observation_note,
-    );
-    assert!(
         report.egress.samples > 1,
         "the watcher took {} sample(s), so it barely looked",
         report.egress.samples,
     );
+
+    // Socket observation is a /proc read. Linux CI is the place that can do
+    // it in-process. Windows CI watches the same binary from outside, in
+    // `scripts/install-smoke.ps1`, because this crate forbids `unsafe` and
+    // the Windows TCP table is an unsafe binding. Claiming Observed here on
+    // Windows would be a fabricated pass; claiming a clean zero because we
+    // did not look would be the other one. Each platform asserts the half
+    // it can actually see.
+    if cfg!(target_os = "linux") {
+        assert!(
+            report.egress.observed,
+            "the sockets were not read on this host: {:?}",
+            report.egress.observation_note,
+        );
+    } else {
+        assert!(
+            !report.egress.observed,
+            "this crate reads /proc; Observed on a machine without it is a fabricated pass",
+        );
+        let note = report
+            .egress
+            .observation_note
+            .as_deref()
+            .expect("an unobserved run has to say why");
+        assert!(
+            note.contains("/proc"),
+            "the note has to name the reason, not be an empty apology: {note}",
+        );
+    }
 
     // The closed guard was asked about three places that cannot exist, and
     // refused all three with a reason rather than a panic.

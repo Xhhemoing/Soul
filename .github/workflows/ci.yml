@@ -144,9 +144,11 @@ jobs:
       # by soulcore + vitest. Do not use --all-targets here: that still
       # *loads* ipc_roundtrip.exe.
       # one_store is named here rather than skipped: it does not touch the mock
-      # runtime, and its runtime half is the Windows case — DPAPI refuses, so
-      # there is no handle to compare and the session has to say so instead of
-      # passing by accident.
+      # runtime, and its runtime half is the Windows case. DPAPI now protects
+      # the KEK, so both handles should be Some and pointer-equal. The None
+      # arm remains for a runner whose user profile is not loaded; that has
+      # to be a session that says the store is closed, not one that opened
+      # something else.
       - name: cargo test (desktop shell)
         run: >
           cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
