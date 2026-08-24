@@ -14,21 +14,38 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { COMMANDS } from "./core";
-import { CLOUD_LABEL, NOT_SENT_NOTICE, TEMPLATE_NOTICE } from "./test/fakeCore";
+import {
+  CLOUD_LABEL,
+  E1_PLAN_NOTICE,
+  NOT_SENT_NOTICE,
+  READ_ONLY_NOTICE,
+  TEMPLATE_NOTICE,
+  WORKING_HYPOTHESIS_NOTICE,
+} from "./test/fakeCore";
 
 const SRC = dirname(fileURLToPath(import.meta.url));
 const DESKTOP = join(SRC, "..");
 const REPO = join(DESKTOP, "..", "..");
 const SHELL_RS = join(REPO, "crates", "soulcore", "src", "commands", "shell.rs");
 const DRAFT_RS = join(REPO, "crates", "soul-draft", "src", "draft.rs");
+const CORE_DRAFT_RS = join(REPO, "crates", "soulcore", "src", "commands", "draft.rs");
+const CORE_FILEPLAN_RS = join(REPO, "crates", "soulcore", "src", "commands", "fileplan.rs");
+const CLINICAL_RS = join(REPO, "crates", "soul-policy", "src", "clinical.rs");
 const TAURI_COMMANDS_RS = join(DESKTOP, "src-tauri", "src", "commands.rs");
 
-/** A `pub const NAME: &str = "…";`, including one broken across lines. */
+/**
+ * A `pub const NAME: &str = "…";`, including one broken across lines.
+ *
+ * A `\` at the end of a line inside a Rust string literal swallows the newline
+ * *and* the indentation of the line after it, so the continuations are
+ * left-trimmed here for the same reason: otherwise every wrapped constant in
+ * the repository would look like a mismatch.
+ */
 function rustConstant(source: string, name: string): string {
-  const pattern = new RegExp(`${name}: &str =\\s*((?:"[^"]*"\\s*\\\\?\\s*)+);`);
+  const pattern = new RegExp(`${name}: &str =\\s*"([\\s\\S]*?)";`);
   const match = pattern.exec(source);
   expect(match, `${name} is not declared the way this test reads constants`).not.toBeNull();
-  return [...(match?.[1] ?? "").matchAll(/"([^"]*)"/g)].map((part) => part[1]).join("");
+  return (match?.[1] ?? "").replace(/\\\r?\n\s*/g, "");
 }
 
 function sourceFiles(root: string, extensions: readonly string[]): string[] {
@@ -92,6 +109,26 @@ describe("壳与核心的边界", () => {
     const rust = readFileSync(DRAFT_RS, "utf8");
     expect(rustConstant(rust, "NOT_SENT_NOTICE")).toBe(NOT_SENT_NOTICE);
     expect(rustConstant(rust, "TEMPLATE_NOTICE")).toBe(TEMPLATE_NOTICE);
+  });
+
+  /**
+   * The three sentences WP13's second slice put on screen. Each one is a
+   * promise the Rust tests hold — v0.1 writes no files, a generation request
+   * is described before it runs, and nothing here is a clinical conclusion —
+   * and each reaches the user through the double these tests run against. A
+   * double that softened one of them would let every UI test pass while the
+   * screen said something the core never agreed to.
+   */
+  it("只读、确认与非临床三句话都和核心里的常量一模一样", () => {
+    expect(rustConstant(readFileSync(CORE_FILEPLAN_RS, "utf8"), "READ_ONLY_NOTICE")).toBe(
+      READ_ONLY_NOTICE,
+    );
+    expect(rustConstant(readFileSync(CORE_DRAFT_RS, "utf8"), "E1_PLAN_NOTICE")).toBe(
+      E1_PLAN_NOTICE,
+    );
+    expect(
+      rustConstant(readFileSync(CLINICAL_RS, "utf8"), "WORKING_HYPOTHESIS_NOTICE"),
+    ).toBe(WORKING_HYPOTHESIS_NOTICE);
   });
 });
 

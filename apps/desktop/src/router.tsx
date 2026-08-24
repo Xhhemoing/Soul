@@ -1,9 +1,11 @@
 /**
  * A hash router, hand-rolled because the shell needs about forty lines of one.
  *
- * Most of WP09's routes are deliberately empty: the views behind them are
- * other work packages, and an empty route that says whose it is beats a
- * placeholder screen that looks like a feature.
+ * Some of WP09's routes are still deliberately empty: the views behind them
+ * are other work packages, and an empty route that says whose it is beats a
+ * placeholder screen that looks like a feature. `ownedBy` goes to null the day
+ * the real view lands, which is also the day `App.tsx` stops rendering
+ * `Pending` over it.
  */
 
 import { useEffect, useState } from "react";
@@ -38,13 +40,7 @@ export const ROUTES: readonly RouteDefinition[] = [
     ownedBy: "WP09 功能视图",
     pending: "特质轴、语气与纠正锁定已经在核心里落地，这个视图还没有接上去。",
   },
-  {
-    id: "graph",
-    path: "/graph",
-    title: "人脉图",
-    ownedBy: "WP09 功能视图",
-    pending: "节点与边由核心从证据推导，这个视图还没有接上去。",
-  },
+  { id: "graph", path: "/graph", title: "人脉图", ownedBy: null },
   {
     id: "memory",
     path: "/memory",
@@ -53,14 +49,7 @@ export const ROUTES: readonly RouteDefinition[] = [
     pending: "记忆的增删改与遗忘影响面预览还没有接上去。",
   },
   { id: "draft", path: "/draft", title: "起草", ownedBy: null },
-  {
-    id: "files",
-    path: "/files",
-    title: "文件计划",
-    ownedBy: "WP11",
-    pending:
-      "v0.1 只做授权目录的只读扫描与计划预览。这里不会出现「执行」按钮：文件写入是 v0.1.1 的事。",
-  },
+  { id: "files", path: "/files", title: "文件计划", ownedBy: null },
   {
     id: "research",
     path: "/research",

@@ -3,14 +3,15 @@
  * does not do yet.
  */
 
-import type { ConfigSnapshot } from "../core";
+import type { ConfigSnapshot, SessionStatus } from "../core";
 import { ROUTES } from "../router";
 
 export interface HomeProps {
   readonly snapshot: ConfigSnapshot;
+  readonly status: SessionStatus;
 }
 
-export function Home({ snapshot }: HomeProps): React.JSX.Element {
+export function Home({ snapshot, status }: HomeProps): React.JSX.Element {
   const unfinished = ROUTES.filter((route) => route.ownedBy !== null);
 
   return (
@@ -34,6 +35,21 @@ export function Home({ snapshot }: HomeProps): React.JSX.Element {
             已授权目录：<strong>{snapshot.authorized_root_count} 个</strong>
           </li>
         </ul>
+      </section>
+
+      <section className="panel" aria-labelledby="store-heading">
+        <h2 id="store-heading">本机的加密库</h2>
+        <p className="badge" data-testid="store-state">
+          {status.store_opened ? "已打开" : "没有打开"}
+        </p>
+        <p className="muted" data-testid="store-notice">
+          {status.store_notice}
+        </p>
+        {status.config_problem === null ? null : (
+          <p className="muted" data-testid="config-problem">
+            {status.config_problem}
+          </p>
+        )}
       </section>
 
       <section className="panel" aria-labelledby="unfinished-heading">

@@ -1,5 +1,5 @@
 /**
- * 起草. A box to paste into, a button that writes, and no way to send.
+ * 起草. A box to paste into, two buttons that write, and no way to send.
  *
  * The absence is the feature, so it is worth saying where it comes from. This
  * screen cannot send because there is no command to send with: `core.ts` names
@@ -8,6 +8,17 @@
  * the word by `crates/soulcore/tests/draft_commands.rs`. Hiding a button would
  * be a promise; having nothing to bind one to is a fact.
  *
+ * ## The two paths, and the screen between them
+ *
+ * 写一版草稿 is the local one: `soulcore` builds no request body at all, so
+ * there is nothing for a bug to leak. The other button prepares a request
+ * against the endpoint the user configured and stops — what comes back is a
+ * description of it, and until somebody presses 确认 nothing has left. The
+ * approval is the core's own value echoed back unchanged, both halves of it;
+ * `soulcore` refuses one that does not match the preparation it is holding,
+ * which is what keeps "the plan you read is the plan that runs" true rather
+ * than merely likely.
+ *
  * Everything the user reads about sending comes from the core rather than from
  * this file. What is decided here is layout.
  */
@@ -15,11 +26,15 @@
 import { useEffect, useState } from "react";
 
 import {
+  discardDraft,
   draftNotices,
   draftReply,
+  generateDraft,
+  prepareDraft,
   type Draft as DraftValue,
   type DraftNotices,
-  type DraftRefusalView,
+  type E1DraftPlan,
+  type Refusal,
 } from "../core";
 
 /** What the core said, in the shape the screen renders it. */
@@ -27,11 +42,11 @@ type Outcome =
   | { readonly kind: "none" }
   | { readonly kind: "working" }
   | { readonly kind: "draft"; readonly draft: DraftValue }
-  | { readonly kind: "refused"; readonly refusal: DraftRefusalView };
+  | { readonly kind: "refused"; readonly refusal: Refusal };
 
 /** A refusal that did not arrive as one — the core is not answering at all. */
-function asRefusal(error: unknown): DraftRefusalView {
-  const shaped = error as Partial<DraftRefusalView> | null;
+function asRefusal(error: unknown): Refusal {
+  const shaped = error as Partial<Refusal> | null;
   return typeof shaped?.reason_code === "string" && typeof shaped.explanation === "string"
     ? { reason_code: shaped.reason_code, explanation: shaped.explanation }
     : { reason_code: "unavailable", explanation: String(error) };
@@ -47,6 +62,8 @@ export function Draft(): React.JSX.Element {
   const [pasted, setPasted] = useState("");
   const [outcome, setOutcome] = useState<Outcome>({ kind: "none" });
   const [notices, setNotices] = useState<DraftNotices | null>(null);
+  /** The request the user is being asked about, if there is one. */
+  const [plan, setPlan] = useState<E1DraftPlan | null>(null);
   /** Keys [`Result`], so a second draft arrives in a box that was reset. */
   const [attempt, setAttempt] = useState(0);
 
@@ -69,6 +86,7 @@ export function Draft(): React.JSX.Element {
 
   const write = (): void => {
     setOutcome({ kind: "working" });
+    setPlan(null);
     setAttempt((previous) => previous + 1);
     draftReply(pasted).then(
       (draft) => setOutcome({ kind: "draft", draft }),
@@ -76,13 +94,47 @@ export function Draft(): React.JSX.Element {
     );
   };
 
+  /** Step one: ask the core what it would send, and show that. */
+  const describe = (): void => {
+    setOutcome({ kind: "working" });
+    setPlan(null);
+    prepareDraft(pasted).then(
+      (prepared) => {
+        setPlan(prepared);
+        setOutcome({ kind: "none" });
+      },
+      (error: unknown) => setOutcome({ kind: "refused", refusal: asRefusal(error) }),
+    );
+  };
+
+  /** Step two: hand back the value that was on screen, unchanged. */
+  const approve = (approved: E1DraftPlan): void => {
+    setOutcome({ kind: "working" });
+    setPlan(null);
+    setAttempt((previous) => previous + 1);
+    generateDraft({
+      preparation_id: approved.preparation_id,
+      plan_hash: approved.plan_hash,
+    }).then(
+      (draft) => setOutcome({ kind: "draft", draft }),
+      (error: unknown) => setOutcome({ kind: "refused", refusal: asRefusal(error) }),
+    );
+  };
+
+  const abandon = (): void => {
+    setPlan(null);
+    setOutcome({ kind: "none" });
+    void discardDraft();
+  };
+
   return (
     <>
       <section className="panel" aria-labelledby="paste-heading">
         <h2 id="paste-heading">你收到的消息</h2>
         <p className="muted">
-          贴进来的内容一律当作别人的话。这一版没有接你自己的模型端点，草稿由本机的确定性语气模板写，
-          全程没有任何内容离开这台机器。
+          贴进来的内容一律当作别人的话。写一版草稿走本机的确定性语气模板，不构造任何请求；
+          用你自己配置的模型端点写会先把「这一次要发出去什么」摆给你看，你不点确认就不会发出去。
+          两条路都不会替你把草稿发给任何人。
         </p>
         <label className="field" htmlFor="pasted">
           原文
@@ -104,6 +156,13 @@ export function Draft(): React.JSX.Element {
           >
             写一版草稿
           </button>
+          <button
+            type="button"
+            onClick={describe}
+            disabled={pasted.trim() === "" || outcome.kind === "working"}
+          >
+            用你自己的模型端点写
+          </button>
           {notices === null ? null : (
             <span className="muted" data-testid="not-sent-notice">
               {notices.not_sent}
@@ -111,6 +170,10 @@ export function Draft(): React.JSX.Element {
           )}
         </div>
       </section>
+
+      {plan === null ? null : (
+        <Confirm plan={plan} onApprove={approve} onAbandon={abandon} />
+      )}
 
       {outcome.kind === "refused" ? (
         <section className="panel refusal" role="alert" aria-labelledby="refused-heading">
@@ -122,6 +185,64 @@ export function Draft(): React.JSX.Element {
 
       {outcome.kind === "draft" ? <Result key={attempt} draft={outcome.draft} /> : null}
     </>
+  );
+}
+
+interface ConfirmProps {
+  readonly plan: E1DraftPlan;
+  readonly onApprove: (plan: E1DraftPlan) => void;
+  readonly onAbandon: () => void;
+}
+
+/**
+ * The screen between the two steps: what would go out, as counts.
+ *
+ * The third party's words are not here, and their absence is the design. The
+ * plan the core hashes carries counts and a model name precisely so that
+ * approving it cannot mean approving prose nobody re-read; showing the text
+ * here would put back the thing the hash was kept clean of. What the user is
+ * being asked is whether a request of this shape may run.
+ *
+ * The two identifiers are shown because they are what gets echoed back. A
+ * mismatch is refused by `soulcore` and nothing leaves, so they are also the
+ * one part of this panel a person could check against a refusal message.
+ */
+function Confirm({ plan, onApprove, onAbandon }: ConfirmProps): React.JSX.Element {
+  return (
+    <section className="panel" aria-labelledby="confirm-heading">
+      <h2 id="confirm-heading">确认这一次要生成什么</h2>
+      <p data-testid="e1-notice">{plan.notice}</p>
+      <ul className="facts">
+        <li data-testid="e1-model">
+          模型：<code>{plan.model}</code>
+        </li>
+        <li data-testid="e1-counts">
+          别人的话 {plan.third_party_turns} 段，其中已占位 {plan.placeheld_turns} 段。
+        </li>
+        <li data-testid="e1-exempted">
+          {plan.carries_exempted_original
+            ? "有一段是你二次确认过、按原文带上的。"
+            : "没有任何一段按原文带上。"}
+        </li>
+        <li data-testid="e1-plan-hash">
+          计划哈希：<code>{plan.plan_hash}</code>
+        </li>
+        <li data-testid="e1-preparation-id">
+          这次准备的编号：<code>{plan.preparation_id}</code>
+        </li>
+      </ul>
+      <div className="switch-row">
+        <button type="button" className="primary" onClick={() => onApprove(plan)}>
+          确认，开始生成
+        </button>
+        <button type="button" onClick={onAbandon}>
+          不了，丢掉这次准备
+        </button>
+      </div>
+      <p className="muted" data-testid="e1-not-sent">
+        {plan.not_sent_notice}
+      </p>
+    </section>
   );
 }
 

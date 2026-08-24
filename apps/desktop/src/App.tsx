@@ -1,43 +1,48 @@
 /**
- * The shell: fetch the configuration once, show the wizard until it is done,
- * then show whichever route the address bar names.
+ * The shell: ask the core what this session is, show the wizard until it has
+ * been through, then show whichever route the address bar names.
  *
  * There is no state here that means anything on its own. Every value on screen
  * came out of `core.ts`, and the only thing this component decides is which
- * component gets to render it.
+ * component gets to render it. That now includes whether the wizard is behind
+ * us: it used to be a prop, which meant a real installation asked the same
+ * question on every launch. The answer lives beside the store, and the core
+ * reads it.
  */
 
 import { useEffect, useState } from "react";
 
 import { NavRail } from "./components/NavRail";
 import { Pending } from "./components/Pending";
-import { configSnapshot, type ConfigSnapshot } from "./core";
+import {
+  configSnapshot,
+  sessionStatus,
+  type ConfigSnapshot,
+  type SessionStatus,
+} from "./core";
 import { Draft } from "./routes/Draft";
+import { Files } from "./routes/Files";
+import { Graph } from "./routes/Graph";
 import { Home } from "./routes/Home";
 import { Settings } from "./routes/Settings";
 import { Wizard } from "./routes/Wizard";
 import { useRoute } from "./router";
 
-export interface AppProps {
-  /**
-   * Skip the first-run wizard. Only the tests for other routes pass this;
-   * whether a real installation has finished the wizard is a configuration
-   * question, and the file that answers it belongs to WP13.
-   */
-  readonly wizardDone?: boolean;
-}
-
-export function App({ wizardDone = false }: AppProps): React.JSX.Element {
+export function App(): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<ConfigSnapshot | null>(null);
+  const [status, setStatus] = useState<SessionStatus | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  const [finished, setFinished] = useState(wizardDone);
+  /** Set when the wizard finishes, so this launch does not wait for a reread. */
+  const [justFinished, setJustFinished] = useState(false);
   const route = useRoute();
 
   useEffect(() => {
     let live = true;
-    configSnapshot().then(
-      (value) => {
-        if (live) setSnapshot(value);
+    Promise.all([configSnapshot(), sessionStatus()]).then(
+      ([snapshot, status]) => {
+        if (!live) return;
+        setSnapshot(snapshot);
+        setStatus(status);
       },
       (error: unknown) => {
         if (live) setFailure(String(error));
@@ -57,7 +62,7 @@ export function App({ wizardDone = false }: AppProps): React.JSX.Element {
     );
   }
 
-  if (snapshot === null) {
+  if (snapshot === null || status === null) {
     return (
       <main className="panel" aria-busy="true">
         <p>正在读取本机配置…</p>
@@ -65,13 +70,13 @@ export function App({ wizardDone = false }: AppProps): React.JSX.Element {
     );
   }
 
-  if (!finished) {
+  if (!status.wizard_completed && !justFinished) {
     return (
       <Wizard
         snapshot={snapshot}
         onComplete={(completed) => {
           setSnapshot(completed);
-          setFinished(true);
+          setJustFinished(true);
         }}
       />
     );
@@ -82,7 +87,9 @@ export function App({ wizardDone = false }: AppProps): React.JSX.Element {
       <NavRail current={route} />
       <main className="content" aria-labelledby="route-title">
         <h1 id="route-title">{route.title}</h1>
-        {route.id === "home" ? <Home snapshot={snapshot} /> : null}
+        {route.id === "home" ? <Home snapshot={snapshot} status={status} /> : null}
+        {route.id === "files" ? <Files /> : null}
+        {route.id === "graph" ? <Graph /> : null}
         {route.id === "draft" ? <Draft /> : null}
         {route.id === "settings" ? <Settings snapshot={snapshot} /> : null}
         {route.ownedBy === null ? null : (

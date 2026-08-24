@@ -15,7 +15,9 @@ import { describe, expect, it } from "vitest";
 
 import { Draft } from "./Draft";
 import {
+  anE1Plan,
   aTemplateDraft,
+  E1_PLAN_NOTICE,
   forbidNetwork,
   installFakeCore,
   NOT_SENT_NOTICE,
@@ -33,6 +35,17 @@ async function write(pasted: string, options: FakeCoreOptions = {}) {
   await user.type(await screen.findByLabelText("原文"), pasted);
   await user.click(screen.getByRole("button", { name: "写一版草稿" }));
   return core;
+}
+
+/** The other path: prepare against the endpoint and stop at the confirmation. */
+async function describe_(pasted: string, options: FakeCoreOptions = {}) {
+  const core = installFakeCore(options);
+  const user = userEvent.setup();
+  render(<Draft />);
+
+  await user.type(await screen.findByLabelText("原文"), pasted);
+  await user.click(screen.getByRole("button", { name: "用你自己的模型端点写" }));
+  return { core, user };
 }
 
 describe("起草页", () => {
@@ -152,6 +165,89 @@ describe("起草页", () => {
       "external_content_not_authority",
     );
     expect(alert).toHaveTextContent("拒绝的理由");
+    expect(screen.queryByRole("heading", { name: "草稿" })).toBeNull();
+  });
+
+  /**
+   * WP10's endpoint path stops here on purpose. `prepare_draft` answers with a
+   * description of a request; nothing has left, and the screen has to make
+   * that the obvious reading rather than looking like a draft that failed.
+   */
+  it("走端点的时候先摆出这一次要发什么，counts 而不是别人的原话", async () => {
+    const { core } = await describe_(PASTED);
+
+    await screen.findByRole("heading", { name: "确认这一次要生成什么" });
+    expect(core.callsTo("prepare_draft")[0]?.payload).toEqual({ pasted: PASTED });
+    expect(core.callsTo("generate_draft")).toHaveLength(0);
+
+    expect(screen.getByTestId("e1-notice")).toHaveTextContent(E1_PLAN_NOTICE);
+    expect(screen.getByTestId("e1-counts")).toHaveTextContent("别人的话 1 段");
+    expect(screen.getByTestId("e1-counts")).toHaveTextContent("已占位 1 段");
+    expect(screen.getByTestId("e1-exempted")).toHaveTextContent("没有任何一段按原文带上");
+    expect(screen.getByTestId("e1-not-sent")).toHaveTextContent(NOT_SENT_NOTICE);
+
+    // The paste is what the counts are about, and it is not on the panel. A
+    // confirmation carrying the third party's words would be asking the user
+    // to approve prose rather than a shape.
+    const panel = screen.getByRole("heading", { name: "确认这一次要生成什么" }).parentElement;
+    expect(panel?.textContent ?? "").not.toContain("场地");
+    expect(screen.queryByRole("heading", { name: "草稿" })).toBeNull();
+  });
+
+  it("确认之后回传的是屏幕上那两个值，一字不改", async () => {
+    const plan = anE1Plan();
+    const { core, user } = await describe_(PASTED, { preparing: () => plan });
+
+    expect(await screen.findByTestId("e1-plan-hash")).toHaveTextContent(plan.plan_hash);
+    expect(screen.getByTestId("e1-preparation-id")).toHaveTextContent(plan.preparation_id);
+
+    await user.click(screen.getByRole("button", { name: "确认，开始生成" }));
+    await screen.findByRole("heading", { name: "草稿" });
+
+    expect(core.callsTo("generate_draft")[0]?.payload).toEqual({
+      approval: { preparation_id: plan.preparation_id, plan_hash: plan.plan_hash },
+    });
+    // The confirmation is spent: there is nothing left on screen to press twice.
+    expect(screen.queryByRole("button", { name: "确认，开始生成" })).toBeNull();
+  });
+
+  it("说不了之后，这次准备被丢掉，也没有草稿冒出来", async () => {
+    const { core, user } = await describe_(PASTED);
+
+    await screen.findByRole("heading", { name: "确认这一次要生成什么" });
+    await user.click(screen.getByRole("button", { name: "不了，丢掉这次准备" }));
+
+    expect(core.callsTo("discard_draft")).toHaveLength(1);
+    expect(core.callsTo("generate_draft")).toHaveLength(0);
+    expect(screen.queryByRole("heading", { name: "确认这一次要生成什么" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "草稿" })).toBeNull();
+  });
+
+  it("确认这一步上也没有一个按钮是发送", async () => {
+    const { user } = await describe_(PASTED);
+
+    await screen.findByRole("heading", { name: "确认这一次要生成什么" });
+    for (const button of screen.queryAllByRole("button")) {
+      expect(button.textContent ?? "").not.toMatch(/发送|发出|发给|替我发|回复对方/);
+    }
+
+    await user.click(screen.getByRole("button", { name: "确认，开始生成" }));
+    await screen.findByRole("heading", { name: "草稿" });
+    for (const button of screen.queryAllByRole("button")) {
+      expect(button.textContent ?? "").not.toMatch(/发送|发出|发给|替我发|回复对方/);
+    }
+  });
+
+  it("端点这一步被拒的时候，屏幕上只有理由，没有半张确认单", async () => {
+    await describe_(PASTED, {
+      preparing: () => {
+        throw { reason_code: "E1_NOT_CONFIGURED", explanation: "你还没有配置自己的模型端点。" };
+      },
+    });
+
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByTestId("refusal-code")).toHaveTextContent("E1_NOT_CONFIGURED");
+    expect(screen.queryByRole("heading", { name: "确认这一次要生成什么" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "草稿" })).toBeNull();
   });
 
