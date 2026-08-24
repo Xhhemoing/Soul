@@ -4,7 +4,7 @@
 
 ## 当前里程碑
 
-**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。WP01–WP11、WP13 与 DPAPI 均已落地。**产品锁第二片的导入那一半已经接到界面上**（WP09 第四段）：`/import` 一页、`Session` 上四个方法、四条 IPC 命令，装出来的 Soul 现在读得了 `soul-import-v1` JSONL 与 Telegram Desktop 的 `result.json`；在这之前只有 headless 冒烟走得通，用户拿不到。真机上用界面导一次仍然没人做过，作者清单第 8 节标着可选。**产品锁第七片（前台采集）也接上了界面**（WP09 第五段）：`/collect` 一页、`Session` 上一个同意账本加一个采集器、三条 IPC 命令。在这之前 `soul-collect` 有门、`soulcore::commands::collect` 有管道，而唯一开得了它们的是 `soul-headless collect-probe`——一件仪器，不是产品面；装了 Soul 的 Windows 用户没有任何办法把采集打开。`config.json` 一个字段都没有多：同意活在进程里，重启回到关，`session_collect.rs` 把这份文件的字节读回来搜 `collect` / `consent` 两个词。真机上按下「开始采集」再切二十秒窗口仍然没人做过，作者清单第 6 节。**E1（用户自备端点）也接上了界面**（WP09 第六段）：设置页多了一个地址输入框与「保存端点 / 清除端点」，`Session` 上多了设与清两个方法，两条 IPC 命令。在这之前 `Origin::parse` 与 `PolicySession::with_user_endpoint` 都在，而产品这一侧没有任何开关，所以装出来的 Soul 上那行「语言模型端点」永远是「未填写」，起草页的确认屏假设了一个没人配得了的端点。地址只活在这次运行里：`config.json` 仍然是两个字段，`session_e1.rs` 把字节读回来搜端口号与 `llm` / `endpoint` / `http`，重开目录之后批准一次生成拿到的是 `E1_NOT_CONFIGURED`。填写不访问地址——那台 `MockLlm` 一直在监听，`request_count()` 是 0。没有 key 输入框，因为 `soul-egress` 还没有 `Authorization` 头（见第六段遗留 1）。真机上填一个本机端点再按生成没有人做过，作者清单第 9 节标着可选。**AC-13 的二次确认也接到了确认屏上**（WP09 第七段）：起草页的确认屏多了一个「这一条按原文带上」，`Session::prepare_draft` 与 IPC 的 `prepare_draft` 多了一个可选的 `include_original`。在这之前 `soulcore::commands::draft::prepare_pasted` 硬写 `None`，确认屏上那句「有一段是你二次确认过、按原文带上的。」用户按不出来——`DraftSession` 那一层的 AC-13 早就是绿的，产品这一侧没有第二次确认的地方。**默认没有变**：不按那个按钮，第三人正文照旧占位；豁免只覆盖这一次准备，下一次又回到占位（`session_e1.rs` 断言的是那台回环 mock 收到的两次请求体）；姓名、账号、手机号在带原文的那一次里仍然占位；`config.json` 还是两个字段。真机上按一次这个按钮同样没有人做过（作者清单第 9 节，可选）。**NSIS 安装目录与数据目录碰撞已在代码里关闭**（`installer-hooks.nsh` 强制 `%LOCALAPPDATA%\Programs\Soul`，`shell_is_local_only` 与 `install_smoke_script` 测试钉住；真机 NSIS 仍待作者手动）。**`2e72ddf` 上 GitHub Actions run [`32754617268`](https://github.com/Xhhemoing/Soul/actions/runs/32754617268) 五门全绿**：lint、ubuntu `just ci`、sbom、windows-latest `cargo test --workspace --all-targets`（含 NTFS 文件计划、`cfg(windows)` DPAPI、`one_store` 运行时那一半）、桌面壳 `command_surface` / `no_egress_path` / `one_store` / `shell_is_local_only`、`ipc_roundtrip --no-run`、以及 package（`soul.exe` 内嵌 `asInvoker`、`install-smoke.ps1 -SkipInstall` 15 项 0 失败）。**HEAD 的 hosted CI 没有跑起来**（已知最新一次是 `c2ac11e` 上的空 run [32776887362](https://github.com/Xhhemoing/Soul/actions/runs/32776887362)，五门约 5 秒、0 step、空 `runner_name`；再往前 [32773901867](https://github.com/Xhhemoing/Soul/actions/runs/32773901867)，最早同形态 [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400)）。本段这次改动的 run 还没有结果，**不要把本地绿写成 hosted 绿**。同一账户上 `agent/dev-sota` 的 run 也是 0 step、空 runner，所以这不是本仓库 workflow 写坏了。GitHub Status 在 2026-08-24 14:34 UTC 那次 Actions 事故已经恢复，而 `2e72ddf` 的绿 run 17:05 才开始，HEAD 的空 runner 不是那次事故。更像是私有仓库 Actions minutes 用尽（Windows 分钟按 2 倍计；push 与 pull_request 曾经各开五门）。workflow 仍在 push 上跑（只跑 pull_request 会让 HEAD 一次 run 都没有），但 concurrency 改成 `head_ref || ref_name`，同一分支的 push 与 PR 互取消，避免十门一起计费。请对 [32776887362](https://github.com/Xhhemoing/Soul/actions/runs/32776887362) **Re-run all jobs**，或恢复 minutes 后再推。那次绿的 package 工件早于 `9602b97`（NSIS 装进 Programs 而不是数据目录），**不能拿来做卸载 / `keys.dpapi` 的作者手动**。托盘文案已由 `shell_is_local_only` 钉成「打开 Soul」「退出 Soul」，图标是否出现在通知区仍只在 `scripts/author-manual-checklist.md` 上。UAC 盾牌、真机采集、WebView2 流量同左。CI 不能替，也不要在本文件假装过了。
+**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。WP01–WP11、WP13 与 DPAPI 均已落地。**产品锁第二片的导入那一半已经接到界面上**（WP09 第四段）：`/import` 一页、`Session` 上四个方法、四条 IPC 命令，装出来的 Soul 现在读得了 `soul-import-v1` JSONL 与 Telegram Desktop 的 `result.json`；在这之前只有 headless 冒烟走得通，用户拿不到。真机上用界面导一次仍然没人做过，作者清单第 8 节标着可选。**产品锁第七片（前台采集）也接上了界面**（WP09 第五段）：`/collect` 一页、`Session` 上一个同意账本加一个采集器、三条 IPC 命令。在这之前 `soul-collect` 有门、`soulcore::commands::collect` 有管道，而唯一开得了它们的是 `soul-headless collect-probe`——一件仪器，不是产品面；装了 Soul 的 Windows 用户没有任何办法把采集打开。`config.json` 一个字段都没有多：同意活在进程里，重启回到关，`session_collect.rs` 把这份文件的字节读回来搜 `collect` / `consent` 两个词。真机上按下「开始采集」再切二十秒窗口仍然没人做过，作者清单第 6 节。**E1（用户自备端点）也接上了界面**（WP09 第六段）：设置页多了一个地址输入框与「保存端点 / 清除端点」，`Session` 上多了设与清两个方法，两条 IPC 命令。在这之前 `Origin::parse` 与 `PolicySession::with_user_endpoint` 都在，而产品这一侧没有任何开关，所以装出来的 Soul 上那行「语言模型端点」永远是「未填写」，起草页的确认屏假设了一个没人配得了的端点。地址只活在这次运行里：`config.json` 仍然是两个字段，`session_e1.rs` 把字节读回来搜端口号与 `llm` / `endpoint` / `http`，重开目录之后批准一次生成拿到的是 `E1_NOT_CONFIGURED`。填写不访问地址——那台 `MockLlm` 一直在监听，`request_count()` 是 0。没有 key 输入框，因为 `soul-egress` 还没有 `Authorization` 头（见第六段遗留 1）。真机上填一个本机端点再按生成没有人做过，作者清单第 9 节标着可选。**AC-13 的二次确认也接到了确认屏上**（WP09 第七段）：起草页的确认屏多了一个「这一条按原文带上」，`Session::prepare_draft` 与 IPC 的 `prepare_draft` 多了一个可选的 `include_original`。在这之前 `soulcore::commands::draft::prepare_pasted` 硬写 `None`，确认屏上那句「有一段是你二次确认过、按原文带上的。」用户按不出来——`DraftSession` 那一层的 AC-13 早就是绿的，产品这一侧没有第二次确认的地方。**默认没有变**：不按那个按钮，第三人正文照旧占位；豁免只覆盖这一次准备，下一次又回到占位（`session_e1.rs` 断言的是那台回环 mock 收到的两次请求体）；姓名、账号、手机号在带原文的那一次里仍然占位；`config.json` 还是两个字段。真机上按一次这个按钮同样没有人做过（作者清单第 9 节，可选）。**AC-07 与 AC-23 的产品那一侧也接上了**（WP09 第八段）：`Session::draft_pasted` 与 `prepare_draft` 现在从档案里读用户钉住的语气（`draft::brief(&store, OWNER_PROFILE_ID)`，读不出来才回中性），在这之前两条路都硬写 `ProfileBrief::neutral()`——装出来的 Soul 上，档案页把「温度」设成「热络」之后起草页写出来的字一个都不会变，那四项语气在产品里只是显示；同时 `draft_pasted` / `generate_draft` / `preview` 把手里的审计条目真的写进链（`append_or_store_error`，和导入 / 采集 / 图谱同一条路），在这之前 `Drafted.audit` 与 `Preview::audit()` 都被丢掉，`/audit` 上永远看不到 起草 / E1 / 文件计划 三种动作。**AC-07 因此不再只是 crate 级的**：`session_screens.rs` 断言的是 `Session::draft_pasted` 回来的那串字里有 `热络` 对应的那句话，`session_e1.rs` 断言的是那台回环 mock 实际收到的字节里有 `【本机档案，供起草参考】` 与 `热络`。`config.json` 仍然是两个字段，没有加命令、没有加依赖、没有动 schema。真机上没有人按过，hosted 也没跑过。**NSIS 安装目录与数据目录碰撞已在代码里关闭**（`installer-hooks.nsh` 强制 `%LOCALAPPDATA%\Programs\Soul`，`shell_is_local_only` 与 `install_smoke_script` 测试钉住；真机 NSIS 仍待作者手动）。**`2e72ddf` 上 GitHub Actions run [`32754617268`](https://github.com/Xhhemoing/Soul/actions/runs/32754617268) 五门全绿**：lint、ubuntu `just ci`、sbom、windows-latest `cargo test --workspace --all-targets`（含 NTFS 文件计划、`cfg(windows)` DPAPI、`one_store` 运行时那一半）、桌面壳 `command_surface` / `no_egress_path` / `one_store` / `shell_is_local_only`、`ipc_roundtrip --no-run`、以及 package（`soul.exe` 内嵌 `asInvoker`、`install-smoke.ps1 -SkipInstall` 15 项 0 失败）。**HEAD 的 hosted CI 没有跑起来**（已知最新一次是 `c2ac11e` 上的空 run [32776887362](https://github.com/Xhhemoing/Soul/actions/runs/32776887362)，五门约 5 秒、0 step、空 `runner_name`；再往前 [32773901867](https://github.com/Xhhemoing/Soul/actions/runs/32773901867)，最早同形态 [32761795400](https://github.com/Xhhemoing/Soul/actions/runs/32761795400)）。本段这次改动的 run 还没有结果，**不要把本地绿写成 hosted 绿**。同一账户上 `agent/dev-sota` 的 run 也是 0 step、空 runner，所以这不是本仓库 workflow 写坏了。GitHub Status 在 2026-08-24 14:34 UTC 那次 Actions 事故已经恢复，而 `2e72ddf` 的绿 run 17:05 才开始，HEAD 的空 runner 不是那次事故。更像是私有仓库 Actions minutes 用尽（Windows 分钟按 2 倍计；push 与 pull_request 曾经各开五门）。workflow 仍在 push 上跑（只跑 pull_request 会让 HEAD 一次 run 都没有），但 concurrency 改成 `head_ref || ref_name`，同一分支的 push 与 PR 互取消，避免十门一起计费。请对 [32776887362](https://github.com/Xhhemoing/Soul/actions/runs/32776887362) **Re-run all jobs**，或恢复 minutes 后再推。那次绿的 package 工件早于 `9602b97`（NSIS 装进 Programs 而不是数据目录），**不能拿来做卸载 / `keys.dpapi` 的作者手动**。托盘文案已由 `shell_is_local_only` 钉成「打开 Soul」「退出 Soul」，图标是否出现在通知区仍只在 `scripts/author-manual-checklist.md` 上。UAC 盾牌、真机采集、WebView2 流量同左。CI 不能替，也不要在本文件假装过了。
 
 ## 进度
 
@@ -22,9 +22,9 @@
 | WP05 人脉图 | 完成。见下节 |
 | WP06 导入 | 完成。见下节。问卷回退与 WP03 的入档路径已合并，`soul-profile` 实现 `UserStatedSink` |
 | WP07 前台采集 | 完成。见下节。壳这一侧由 WP09 第五段接上——在那之前 crate 有门、产品没有开关 |
-| WP09 桌面壳 | 七段都完成。见下节。壳里那一个 store 句柄由 WP13 第二段落地（遗留 8 消除），十一道题与最后四条功能视图是第三段（遗留 9 消除），`/import` 那一屏是第四段——在此之前装出来的 Soul 读不了任何导出文件；`/collect` 那一屏是第五段——在此之前装出来的 Soul 打不开采集；设置页的端点表单是第六段——在此之前那行「语言模型端点」永远是「未填写」；确认屏上的「这一条按原文带上」是第七段——在此之前 AC-13 的二次确认没有地方按 |
-| WP10 起草与人事摘要 | 完成。见下节。本机路径与端点路径的确认屏都已接上（遗留 6 消除）。端点本身要到 WP09 第六段才有地方填，二次确认要到第七段才有地方按 |
-| WP11 文件计划 | 完成。见下节。`/files` 已接 `PlanPreview`，仍然没有执行按钮（遗留 8 消除） |
+| WP09 桌面壳 | 七段都完成。见下节。壳里那一个 store 句柄由 WP13 第二段落地（遗留 8 消除），十一道题与最后四条功能视图是第三段（遗留 9 消除），`/import` 那一屏是第四段——在此之前装出来的 Soul 读不了任何导出文件；`/collect` 那一屏是第五段——在此之前装出来的 Soul 打不开采集；设置页的端点表单是第六段——在此之前那行「语言模型端点」永远是「未填写」；确认屏上的「这一条按原文带上」是第七段——在此之前 AC-13 的二次确认没有地方按；起草读用户钉住的语气、起草 / E1 / 文件计划的审计落链是第八段——在此之前档案页的语气到不了任何写字的地方，`/audit` 上也没有这三种动作 |
+| WP10 起草与人事摘要 | 完成。见下节。本机路径与端点路径的确认屏都已接上（遗留 6 消除）。端点本身要到 WP09 第六段才有地方填，二次确认要到第七段才有地方按，用户钉住的语气要到第八段才真的进 prompt |
+| WP11 文件计划 | 完成。见下节。`/files` 已接 `PlanPreview`，仍然没有执行按钮（遗留 8 消除）。预览写 `file.plan` 审计是 WP09 第八段 |
 | WP13 安装 smoke / CI / SBOM / 壳接库 | 两段都完成。见下节。剩下的是 Windows 真机手动那七条 |
 | DPAPI（WP13 遗留） | 完成。见「DPAPI 完成情况」。`unsafe` 隔离在 `crates/soul-win-dpapi`。windows-latest 已跑过 `cfg(windows)` 往返、`dpapi_key_chain`、桌面 `one_store`（`one_session_hands_out_one_store` 过） |
 | v0.1 其余 WP | 无。Goal 1 代码门禁在 `2e72ddf` 上绿；HEAD `7005683` 另有 NSIS Programs 目录、托盘文案钉死、导入/采集/E1 产品面，hosted 五门尚未真正开跑。剩下的是 HEAD hosted 绿，以及作者 Win11 手动清单 |
@@ -665,6 +665,43 @@ PRODUCT_LOCK 对 E1 正文的说法有两半：默认占位是一半，**「二�
 5. **豁免的审计仍然只记事实。** 审计条目里从来没有正文，这一段没有给它加字段；`session_e1.rs` 把 `Session::audit()` 回放出来的整串也搜了一遍那段正文。
 6. **真机那一半没有。** Windows 真机上按一次「这一条按原文带上」再看本机模型收到什么，没有人做过。作者清单第 9 节加了一行，仍然是可选、不是门禁项。**没有勾。**
 
+## WP09 完成情况（第八段：钉住的语气接到起草上，起草 / E1 / 文件计划的审计落链）
+
+两个洞，同一类，都是「crate 里是真的，产品路径上不是」。
+
+**AC-07 的起草那一半。** 档案侧的锁早就是真的：`soul-profile::correction_lock.rs` 证过用户设过的字段挡得住更强的推断，`soul-draft` 的 `the_prompt_carries_the_users_value_and_not_the_inferred_one` 证过渲染出来的简报里是用户的值。缺的是路——`soulcore::commands::draft::draft_pasted` 与 `prepare_pasted` 都硬写 `ProfileBrief::neutral()`，而同一个文件里的 `draft::brief(store, profile_id)` 一次都没有被调用过。后果很直白：装出来的 Soul 上，用户在档案页把「温度」从「平和」改成「热络」，起草页写出来的字**一个都不会变**；`set_voice` 这条命令写进了库、锁住了字段、然后没有任何东西读它。语气那四项在产品里只是显示。
+
+**AC-23 的三种动作。** `docs/schemas/audit.schema.json` 里有 `draft.create`、`egress.request`、`file.plan`，crate 这一层也确实把条目交了出来（`Drafted.audit`、`E1Outcome::audit()`、`Preview::audit()`）——「谁拿着打开的库谁来写」是 `import.rs` / `graph.rs` / `collect.rs` 一直在用的形状。但 `Session` 这一层三条路都把它们丢在地上：`draft_pasted` 只回 `Draft`，`generate_draft` 回的是 `?.draft`，`preview` 根本没看过 `preview.audit()`。所以装出来的 Soul 的 `/audit` 上，起草过多少次、往自己的端点发过几次请求、扫过几次目录，一条记录都没有。
+
+本机绿：`cargo test -p soulcore`（全部测试二进制无失败，其中 `session_screens` 8、`session_e1` 11、`draft_commands` 17、`session_commands` 16）、`cargo test --workspace`（无失败）、`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --test ipc_roundtrip --test command_surface`（30 + 6）、`cargo fmt --all`、`cargo clippy --workspace --all-targets`。**hosted 没有跑过，见「当前里程碑」。** 没有加命令（`COMMANDS` 仍是 36 条），没有加依赖，没有动 schema，没有动 `StoredConfig`（还是两个字段、`deny_unknown_fields`）。
+
+| 交付 | 证据 |
+|---|---|
+| 本机起草读的是用户钉住的语气 | `session_screens.rs::the_voice_the_user_pinned_is_the_voice_a_local_draft_is_written_in`：同一段粘贴，`set_voice("warmth","warm")` 之前后写出来的字**不一样**，之后那份里是 `先谢谢你专门说一声。`；再设成 `cool` 是 `直接说重点。`，与 warm 那份也不一样。断言落在 `Session::draft_pasted` 回来的 `text` 上，因为那是用户读到的那串字 |
+| 语气跨重启还在 | 同一个测试的末尾：重开目录再起草一次，拿到的还是 `克制` 那份。语气活在档案里，不在起草会话里 |
+| 端点路径上，钉住的语气进了真的请求体 | `session_e1.rs::the_pinned_voice_reaches_the_endpoint_and_the_chain_records_the_request`：设 `warm` → 设端点 → `prepare_draft` → `generate_draft`，那台 `MockLlm` 收到的字节里有 `【本机档案，供起草参考】` 与 `热络`，**没有** `克制`，第三人正文仍然是占位符。简报走的是请求的材料槽，不是指令槽 |
+| 本机起草落进链 | `session_screens.rs::a_local_draft_lands_in_the_audit_chain_as_counts_and_a_code`：起草一次，链正好长一条，动作是 `draft.create`，链可验证、每条 `follows_previous`；整串回放里搜不到粘贴的内容，也搜不到模板写出来的那两句 |
+| E1 落进链 | 上面那个 E1 测试的后半段：链里同时有 `egress.request` 与 `draft.create`，`egress.request` 那条的 `egress_class` 是 `E1`、带 `capability_token_id`；回放里搜不到 `场地`、`热络` 与那行简报抬头 |
+| 文件计划落进链 | `session_commands.rs::previewing_a_plan_writes_file_plan_into_the_chain_and_no_path`：授权一个目录、预览一次，链正好长一条 `file.plan`，`plan_hash` 与屏幕上那份一致、`items` 等于提议的移动条数；回放里搜不到目录路径，也搜不到那三个文件名 |
+| 库没打开仍然能起草 | `append_audit` 在 `StoreHandle::Unavailable` 上直接返回：没有链可写，`Session::audit()` 本来也是拒绝。AC-17 说没有 key 也要能起草，一次读不出来的档案不该是它停下来的理由——`the_local_drafting_path_needs_nothing_configured` 与 headless 主流程照旧 |
+| 库开着但写不进去就是拒绝 | 同一个函数把 `append_or_store_error` 的错误按 `SessionRefusal` 抬出来。这与「遗忘」和「撤销采集」那两条相反（那两条是不可逆的用户主张，审计不许挡），起草可以重来，一份没人记得住的草稿不值得换掉一条链 |
+| 中性仍然是回退 | `brief()` 的文档本来就说空档案回中性；`draft::brief` 读不出来（库没开、档案读不动）也回中性，不是拒绝。`closed_session()` 那条 headless 路径原样保持中性 |
+| 壳一个字没改 | `apps/desktop/src-tauri/src/commands.rs` 三个 wrapper 还是各一条语句，`the_command_layer_stays_thin` 照旧；`includeOriginal` 仍然是 Tauri 那边的驼峰。签名长在 `soulcore` 这一侧，壳看不见 `ProfileBrief` |
+| AC-13 的那几条没有被碰坏 | `a_second_confirmation_sends_this_ones_words_and_the_next_preparation_is_placeheld_again` 与 `an_exemption_reaches_neither_the_configuration_file_nor_the_next_launch` 原样过：一次性原文只走一次、下一次回到占位、姓名与账号两次都占位、`config.json` 还是两个键 |
+| 配置文件仍然是两个字段 | 新的 E1 测试自己再读一次字节：搜不到端口号，也搜不到 `llm` / `endpoint` / `http` / `warmth` / `voice`，键名列表仍然只有 `authorized_roots` 与 `wizard_completed`。语气写在库里的档案上，不写在这份文件里 |
+
+落地内容：`crates/soulcore/src/commands/{draft,session}.rs`、`crates/soulcore/src/headless.rs`、`crates/soulcore/tests/{session_screens,session_e1,session_commands,draft_commands}.rs`、`scripts/author-manual-checklist.md` 第 10 节。桌面壳、UI、schema、`StoredConfig` 一个字节都没有动。
+
+### WP09 第八段的取舍与遗留
+
+1. **`draft_pasted` 现在回 `Drafted` 而不是 `Draft`。** 少了这一步，`Session` 就没有条目可写——`.draft` 那一下正是洞本身。代价是签名变了，`headless.rs` 与 `draft_commands.rs` 两个调用点跟着改；`Session::draft_pasted` 对外仍然回 `DraftValue`，IPC 与界面完全没有感觉。没有再包一层「只回草稿」的便利函数：那个函数会被下一个人调，洞就长回来了。
+2. **简报是参数，不是从 store 里就地读的。** `draft.rs` 这一层没有 store 句柄，也不该有：拿着打开的库的是 `Session`。所以 `draft_pasted` / `prepare_pasted` 收一个 `ProfileBrief`，谁有库谁去建。headless 那条路自己传中性——它手里有库，但它测的是套接字（AC-21），语气那件事由 `session_screens.rs` 证。
+3. **每次起草都读一次档案。** 一次 `profile_view`，没有缓存。缓存意味着「用户刚改的语气这一次还没生效」，那正是这一段要修的那种 bug；行数下不值得。
+4. **`preview` 写不进链就整条拒绝，哪怕扫描已经做完了。** 屏幕上不会出现一份链里没有记录的计划。反过来（先给计划、把写失败记进 notice）也说得通，但文件计划不是不可逆动作，没有「审计不许挡」的理由。
+5. **`file.plan` 只记成功的那次。** `Refusal::audit()` 也能产出一条被拒的 `file.plan`，这一段没有接：那要在 `Session::preview` 的错误路径上再写一次链，而拒绝的原因（没授权、路径读不了）本来就在屏幕上。要接是另一件事，不是顺手。
+6. **`summarize_person` 仍然不写审计。** `draft.rs` 的模块注释说过为什么：它只读，`audit.schema.json` 里没有给它的动作，这一段没有替它发明一个。
+7. **真机那一半没有。** Windows 真机上把语气设成「热络」再起草一次、再去审计页看那三行，没有人做过。作者清单加了第 10 节写这件事（不需要模型端点，本机模板就够），仍然是可选、不是门禁项。**没有勾。**
+
 ## Goal 1 门禁对照（`2e72ddf` / run 32754617268；HEAD hosted 未开跑）
 
 CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS Programs 目录、托盘文案钉死、导入 / 采集 / E1 产品面与 AC-13 的二次确认都还没有 hosted package/test 跑过（已知最新一次是 `c2ac11e` 上的空 run 32776887362）。作者手动那一半没有，所以 Goal 1 **还不能关**。
@@ -676,7 +713,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 | AC-03 | 问卷 intake 与 `session_screens` / Wizard 测试 | — |
 | AC-04 / AC-05 | 导入 fixture + 无明文残留；Telegram 缺字段可读失败。**壳这一侧也接上了**：`session_import.rs`（过 `Session`、过真库、重开后仍在、数据目录里搜不到原文）、`ipc_roundtrip.rs` 走真的 `invoke_handler`、`Import.test.tsx` 用 fixture 自己的行断言 DOM 上没有正文 | 真机上用界面导一次（作者清单 8，可选，不是门禁项） |
 | AC-06 / AC-08 | 图谱边与推断解引用；≥3 节点 | — |
-| AC-07 | 纠正锁 + 起草 prompt 用用户值 | — |
+| AC-07 | 纠正锁 + 起草 prompt 用用户值。**产品这一侧也接上了**（WP09 第八段）：在这之前 `draft_pasted` / `prepare_pasted` 硬写 `ProfileBrief::neutral()`，档案页设的语气到不了任何写字的地方，AC-07 只有 crate 级证据。现在 `session_screens.rs` 断言 `Session::draft_pasted` 写出来的字随 `set_voice` 变（`热络` → `先谢谢你专门说一声。`，`克制` → `直接说重点。`），`session_e1.rs` 断言那台回环 mock 收到的字节里有 `【本机档案，供起草参考】` 与 `热络` | 真机上设一次语气再起草——作者清单第 10 节（可选，不是门禁项） |
 | AC-09 / AC-10 | `soul-collect` 假源：关=0；开≥1；撤销后 1s 无新事件。**壳这一侧也接上了**：`session_collect.rs` 过 `Session`、过真库（关=0 且采样次数也是 0；开≥1；撤销后 1s 不变；重开目录同意回到关；`config.json` 字节里搜不到 `collect` / `consent`）、`ipc_roundtrip.rs` 走真的 `invoke_handler`、`Collect.test.tsx` 断言屏幕上只有条数没有应用名 | 真机前台切换——作者清单 6。现在有两条路可走：`/collect` 页上的两个按钮，或者 `collect-probe` |
 | AC-11–AC-13 | mock LLM 精确 origin、占位、单次豁免。**壳这一侧也接上了**：`session_e1.rs`（过 `Session`——填写不访问、批准之后确实到那台 mock、重开目录回到 `E1_NOT_CONFIGURED`、`config.json` 字节里搜不到地址）、`ipc_roundtrip.rs` 走真的 `invoke_handler`、`Settings.test.tsx` 断言地址只在输入框里。**AC-13 的二次确认现在有产品路径**（WP09 第七段）：确认屏上的「这一条按原文带上」→ `prepare_draft(pasted, include_original)` → 那台 mock 收到的第一次请求体里是原文、第二次回到占位，姓名与账号两次都占位，`config.json` 仍是两个字段 | 真机上填一个本机端点再按生成、并按一次「这一条按原文带上」——作者清单 9（可选，不是门禁项） |
 | AC-14 / AC-15 | 记忆 CRUD、CK 销毁、墓碑、审计无正文 | — |
@@ -685,11 +722,11 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 | AC-20 | 研究预览第三人行=0、`written_to_disk=false` | — |
 | AC-21 | Linux 读 `/proc` 且 `observed`；Windows smoke 进程外 TCP 表 0 条非回环；源码 e0-audit | WebView2 子系统流量——作者清单 5 |
 | AC-22 | 云开关 UI + 核心恒「尚未启用」；依赖图无 E0 | 资源监视器那一眼——作者清单 5 |
-| AC-23 / AC-24 | 审计回放无正文；崩溃最多丢 1 条且链可验证 | — |
+| AC-23 / AC-24 | 审计回放无正文；崩溃最多丢 1 条且链可验证。**产品链现在也覆盖 起草 / E1 / 文件计划**（WP09 第八段）：在这之前 `Session` 把 `Drafted.audit` 与 `Preview::audit()` 丢掉，装出来的 Soul 的 `/audit` 上这三种动作一条都没有。现在 `session_screens.rs` 断言本机起草落一条 `draft.create`，`session_e1.rs` 断言一次批准过的生成落 `egress.request` + `draft.create`（带 `E1` 与凭据 id），`session_commands.rs` 断言一次预览落一条 `file.plan`（带计划哈希与移动条数），三处都回放整串搜过正文与路径 | — |
 | AC-25 | 导入 / 粘贴 / 文件名三路注入不进工具计划、不外连该 URL | — |
-| AC-26 | `2e72ddf` 同 run：lint、ubuntu `just ci`、windows workspace+壳、sbom、package。HEAD 本地测试绿（`session_e1` 10、`session_commands` 15、`draft_commands` 17、`ipc_roundtrip` 30、`command_surface` 6、UI 14 文件 139 项）；hosted 已知最新一次 [32776887362](https://github.com/Xhhemoing/Soul/actions/runs/32776887362) 五门空 runner | HEAD hosted 真正开跑并绿；真机 `tauri build` 拉 NSIS 仍是作者机器上的事 |
+| AC-26 | `2e72ddf` 同 run：lint、ubuntu `just ci`、windows workspace+壳、sbom、package。HEAD 本地测试绿（`cargo test --workspace` 无失败；`session_e1` 11、`session_commands` 16、`session_screens` 8、`draft_commands` 17、`ipc_roundtrip` 30、`command_surface` 6、UI 14 文件 139 项）；hosted 已知最新一次 [32776887362](https://github.com/Xhhemoing/Soul/actions/runs/32776887362) 五门空 runner | HEAD hosted 真正开跑并绿；真机 `tauri build` 拉 NSIS 仍是作者机器上的事 |
 
-十三个产品锁切片与上表同一条缝：灵魂层与只读代理层有测试；托盘外观与真机采集没有。缝的位置和上一版比又挪了一格——E1 此前是「crate 有守卫，产品没有开关」，现在是「产品有开关，真机没人填过」；AC-13 的二次确认此前是「crate 有豁免，产品没有第二次确认的地方」，现在同样落到「有按钮，真机没人按过」。同一句话对第七片（采集）也成立。
+十三个产品锁切片与上表同一条缝：灵魂层与只读代理层有测试；托盘外观与真机采集没有。缝的位置和上一版比又挪了一格——E1 此前是「crate 有守卫，产品没有开关」，现在是「产品有开关，真机没人填过」；AC-13 的二次确认此前是「crate 有豁免，产品没有第二次确认的地方」，现在同样落到「有按钮，真机没人按过」。同一句话对第七片（采集）也成立。AC-07 与 AC-23 这一次挪的是另一格：此前是「crate 有证据，产品路径上根本没有那条线」——语气读不到起草、审计条目建了没人写；现在两条线都接上了，落到的仍然是「真机没人看过」。
 
 ## 下一步
 
@@ -697,7 +734,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 1. ~~**向导还没有画那十一道题。**~~ **已完成**，见「WP09 完成情况（第三段）」。
 2. **HEAD hosted CI。** 请对 [32776887362](https://github.com/Xhhemoing/Soul/actions/runs/32776887362) **Re-run all jobs**，或恢复 Actions minutes。空 runner 不是产品回归。在 HEAD package 绿之前，不要用 `2e72ddf` 的 `windows-binaries` 做卸载 / `keys.dpapi`——那次构建还把程序装进数据目录。
-3. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」（第 8 节的界面导入、第 9 节的本机端点是可选的，不属于门禁）。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替。真装真卸从 `8b856bd`（或之后）在本机 `tauri build`，不要用过期工件。采集现在有产品路径：打开 `/collect`，按「开始采集」，切二十秒窗口，按「停止采集」。要一份带秒数的两段测量仍然用探针：`soul-headless collect-probe --i-consent --seconds 20`。端点现在有产品路径：打开 `/settings`，填地址，按「保存端点」，再去起草页生成。AC-13 的二次确认也有了：在起草页的确认屏上按「这一条按原文带上」，再按「确认，开始生成」，看本机模型这一次收到的是原文、下一次又回到占位。
+3. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」（第 8 节的界面导入、第 9 节的本机端点是可选的，不属于门禁）。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替。真装真卸从 `8b856bd`（或之后）在本机 `tauri build`，不要用过期工件。采集现在有产品路径：打开 `/collect`，按「开始采集」，切二十秒窗口，按「停止采集」。要一份带秒数的两段测量仍然用探针：`soul-headless collect-probe --i-consent --seconds 20`。端点现在有产品路径：打开 `/settings`，填地址，按「保存端点」，再去起草页生成。AC-13 的二次确认也有了：在起草页的确认屏上按「这一条按原文带上」，再按「确认，开始生成」，看本机模型这一次收到的是原文、下一次又回到占位。语气与审计这两条顺带一起看：先去 `/profile` 把「温度」设成「热络」，回起草页按「写一版草稿」，屏幕上应当出现「先谢谢你专门说一声。」；再去 `/audit`，那次起草、那次生成、那次目录预览应当各留下 `draft.create` / `egress.request` / `file.plan`。
 4. ~~**DPAPI 要真的实现**~~ **已实现，且 windows-latest 已跑过。** 真机上仍要确认有登录用户配置文件时 `%LOCALAPPDATA%\Soul\keys.dpapi` 存在且 `/graph` 不再给拒绝。卸载脚本不能删这个文件。NTFS 不能同时放下 `Alpha` 和 `alpha`，授权扫描的第三目录因此只在 Unix 上种。AC-21 的套接字观察在 Linux CI 读 `/proc`，在 Windows CI 由 `scripts/install-smoke.ps1` 从进程外看 TCP 表。
 
 不要启动 Goal 2。文件写入仍是 v0.1.1（AC-27）：`/files` 有计划、有哈希、没有执行按钮，也没有可以绑执行按钮的命令。
