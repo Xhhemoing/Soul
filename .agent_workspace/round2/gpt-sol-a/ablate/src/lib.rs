@@ -39,13 +39,9 @@ pub const fn civil_to_unix(
         month as i64 + 9
     };
     let day_of_year = (153 * shifted_month + 2) / 5 + day as i64 - 1;
-    let day_of_era =
-        year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
     let unix_day = era * 146_097 + day_of_era - 719_468;
-    unix_day * SECONDS_PER_DAY
-        + hour as i64 * 3_600
-        + minute as i64 * 60
-        + second as i64
+    unix_day * SECONDS_PER_DAY + hour as i64 * 3_600 + minute as i64 * 60 + second as i64
 }
 
 pub const FIXTURE_AS_OF_UNIX: i64 = civil_to_unix(2026, 8, 24, 14, 0, 0);
@@ -177,7 +173,8 @@ impl RawTally {
             Direction::Outgoing => self.outgoing += 1,
             Direction::Incoming => self.incoming += 1,
         }
-        self.active_days.insert(utc_day(interaction.occurred_at_unix));
+        self.active_days
+            .insert(utc_day(interaction.occurred_at_unix));
         self.any_direct |= interaction.venue == Venue::Direct;
         if self
             .last_contact_unix
@@ -363,11 +360,7 @@ pub fn score_all_t4(interactions: &[Interaction], as_of: i64) -> BTreeMap<String
         .collect()
 }
 
-fn score_peer(
-    all_scores: BTreeMap<String, TieScore>,
-    peer_id: &str,
-    weighted: bool,
-) -> TieScore {
+fn score_peer(all_scores: BTreeMap<String, TieScore>, peer_id: &str, weighted: bool) -> TieScore {
     all_scores.get(peer_id).cloned().unwrap_or_else(|| {
         let mut empty = TieScore::empty();
         if weighted {
@@ -441,13 +434,7 @@ pub fn fixture_burst() -> Fixture {
                     Direction::Incoming
                 },
                 Venue::Direct,
-                at(
-                    2026,
-                    8,
-                    24,
-                    10 + index as u32 / 10,
-                    (index as u32 % 10) * 6,
-                ),
+                at(2026, 8, 24, 10 + index as u32 / 10, (index as u32 % 10) * 6),
             )
         })
         .collect();
@@ -496,7 +483,7 @@ pub fn fixture_group() -> Fixture {
                     Direction::Incoming
                 },
                 Venue::Group,
-                at(2026, 8, day, 12, slot as u32 * 5),
+                at(2026, 8, day, 12, slot * 5),
             ));
         }
     }
@@ -515,13 +502,7 @@ pub fn fixture_oneside() -> Fixture {
                 "oneside-peer",
                 Direction::Outgoing,
                 Venue::Direct,
-                at(
-                    2026,
-                    8,
-                    (index % 20 + 1) as u32,
-                    (index % 24) as u32,
-                    0,
-                ),
+                at(2026, 8, (index % 20 + 1) as u32, (index % 24) as u32, 0),
             )
         })
         .collect();
@@ -617,24 +598,9 @@ mod tests {
 
     fn bands(fixture: &Fixture) -> (Band, Band, Band) {
         (
-            score_t3(
-                &fixture.interactions,
-                fixture.primary_peer,
-                fixture.as_of,
-            )
-            .band,
-            score_t3r(
-                &fixture.interactions,
-                fixture.primary_peer,
-                fixture.as_of,
-            )
-            .band,
-            score_t4(
-                &fixture.interactions,
-                fixture.primary_peer,
-                fixture.as_of,
-            )
-            .band,
+            score_t3(&fixture.interactions, fixture.primary_peer, fixture.as_of).band,
+            score_t3r(&fixture.interactions, fixture.primary_peer, fixture.as_of).band,
+            score_t4(&fixture.interactions, fixture.primary_peer, fixture.as_of).band,
         )
     }
 
@@ -662,8 +628,10 @@ mod tests {
     #[test]
     fn computes_and_verifies_fixture_as_of() {
         assert_eq!(civil_to_unix(1970, 1, 1, 0, 0, 0), 0);
-        assert_eq!(civil_to_unix(2000, 2, 29, 0, 0, 0) + SECONDS_PER_DAY,
-            civil_to_unix(2000, 3, 1, 0, 0, 0));
+        assert_eq!(
+            civil_to_unix(2000, 2, 29, 0, 0, 0) + SECONDS_PER_DAY,
+            civil_to_unix(2000, 3, 1, 0, 0, 0)
+        );
         assert_eq!(FIXTURE_AS_OF_UNIX, 1_787_580_000);
     }
 
@@ -680,15 +648,9 @@ mod tests {
     fn fixture_ablation_matrix_matches_spec() {
         let expected = [
             ("F_LILEI", (Band::Strong, Band::Strong, Band::Strong)),
-            (
-                "F_BURST",
-                (Band::Moderate, Band::Moderate, Band::Moderate),
-            ),
+            ("F_BURST", (Band::Moderate, Band::Moderate, Band::Moderate)),
             ("F_OLD", (Band::Strong, Band::Weak, Band::Weak)),
-            (
-                "F_GROUP",
-                (Band::Moderate, Band::Moderate, Band::Moderate),
-            ),
+            ("F_GROUP", (Band::Moderate, Band::Moderate, Band::Moderate)),
             ("F_ONESIDE", (Band::Weak, Band::Weak, Band::Weak)),
             ("F_EMPTY", (Band::Weak, Band::Weak, Band::Weak)),
             (
@@ -724,11 +686,7 @@ mod tests {
     #[test]
     fn t3_group_only_is_never_strong() {
         let fixture = fixture_group();
-        let score = score_t3(
-            &fixture.interactions,
-            fixture.primary_peer,
-            fixture.as_of,
-        );
+        let score = score_t3(&fixture.interactions, fixture.primary_peer, fixture.as_of);
         assert_eq!(score.interaction_count, 50);
         assert_eq!(score.active_day_count, 10);
         assert!(!score.any_direct);
@@ -778,11 +736,7 @@ mod tests {
     #[test]
     fn t3r_single_day_burst_fails_strong_day_gate() {
         let fixture = fixture_burst();
-        let score = score_t3r(
-            &fixture.interactions,
-            fixture.primary_peer,
-            fixture.as_of,
-        );
+        let score = score_t3r(&fixture.interactions, fixture.primary_peer, fixture.as_of);
         assert_eq!(score.event_milli, Some(80));
         assert_eq!(score.day_milli, Some(4));
         assert_eq!(score.band, Band::Moderate);
@@ -791,11 +745,7 @@ mod tests {
     #[test]
     fn t3r_dormant_all_zero_is_weak() {
         let fixture = fixture_old();
-        let score = score_t3r(
-            &fixture.interactions,
-            fixture.primary_peer,
-            fixture.as_of,
-        );
+        let score = score_t3r(&fixture.interactions, fixture.primary_peer, fixture.as_of);
         assert_eq!(score.event_milli, Some(0));
         assert_eq!(score.day_milli, Some(0));
         assert_eq!(score.band, Band::Weak);
@@ -804,11 +754,7 @@ mod tests {
     #[test]
     fn t3r_group_only_is_not_strong() {
         let fixture = fixture_group();
-        let score = score_t3r(
-            &fixture.interactions,
-            fixture.primary_peer,
-            fixture.as_of,
-        );
+        let score = score_t3r(&fixture.interactions, fixture.primary_peer, fixture.as_of);
         assert_eq!(score.event_milli, Some(200));
         assert_eq!(score.day_milli, Some(40));
         assert!(!score.any_direct);

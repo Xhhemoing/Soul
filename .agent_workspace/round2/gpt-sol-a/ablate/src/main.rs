@@ -34,25 +34,11 @@ fn time_t3r(interactions: &[ablate::Interaction], as_of: i64) -> Duration {
 }
 
 fn main() {
-    println!(
-        "AS_OF {FIXTURE_AS_OF_RFC3339} unix={FIXTURE_AS_OF_UNIX}"
-    );
+    println!("AS_OF {FIXTURE_AS_OF_RFC3339} unix={FIXTURE_AS_OF_UNIX}");
     for fixture in ablation_fixtures() {
-        let t3 = score_t3(
-            &fixture.interactions,
-            fixture.primary_peer,
-            fixture.as_of,
-        );
-        let t3r = score_t3r(
-            &fixture.interactions,
-            fixture.primary_peer,
-            fixture.as_of,
-        );
-        let t4 = score_t4(
-            &fixture.interactions,
-            fixture.primary_peer,
-            fixture.as_of,
-        );
+        let t3 = score_t3(&fixture.interactions, fixture.primary_peer, fixture.as_of);
+        let t3r = score_t3r(&fixture.interactions, fixture.primary_peer, fixture.as_of);
+        let t4 = score_t4(&fixture.interactions, fixture.primary_peer, fixture.as_of);
         println!(
             "FIXTURE {} interactions={} T3={} T3R={} T4={} event_milli={} day_milli={}",
             fixture.id,
