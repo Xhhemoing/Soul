@@ -11,6 +11,7 @@ const CONFIG: &str = include_str!("../tauri.conf.json");
 const MANIFEST: &str = include_str!("../windows/soul.exe.manifest");
 const INSTALLER_HOOKS: &str = include_str!("../windows/installer-hooks.nsh");
 const BUILD_RS: &str = include_str!("../build.rs");
+const TRAY: &str = include_str!("../src/tray.rs");
 const CAPABILITY: &str = include_str!("../capabilities/default.json");
 
 const WINDOWS_INSTALL_DIR: &str = r"$LOCALAPPDATA\Programs\Soul";
@@ -54,6 +55,16 @@ fn the_windows_manifest_asks_for_no_elevation() {
 fn the_build_script_embeds_that_manifest() {
     assert!(BUILD_RS.contains(r#"include_str!("windows/soul.exe.manifest")"#));
     assert!(BUILD_RS.contains("app_manifest"));
+}
+
+/// AC-01's other half a file can prove: the labels the author-manual checklist
+/// will look for. No runner has a notification area; this stops the strings
+/// drifting from what that checklist names.
+#[test]
+fn the_tray_menu_is_the_one_the_manual_checklist_names() {
+    assert!(TRAY.contains(r#"MenuItem::with_id(app, MENU_OPEN, "打开 Soul""#));
+    assert!(TRAY.contains(r#"MenuItem::with_id(app, MENU_QUIT, "退出 Soul""#));
+    assert!(TRAY.contains(r#".tooltip("Soul")"#));
 }
 
 /// PRODUCT_LOCK names the process. `soulcore` holds the name; the `[[bin]]`
