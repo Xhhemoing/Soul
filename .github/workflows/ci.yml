@@ -119,5 +119,17 @@ jobs:
       # this is where the shell, the tray code and the asInvoker manifest get
       # compiled. The tray icon itself is still author-manual: no runner has a
       # notification area to look at.
+      #
+      # ipc_roundtrip links WebView2. On windows-latest the test harness
+      # process fails to start with STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)
+      # before any assertion runs — the runner's WebView2Loader.dll does not
+      # export what the mock IPC runtime imports. AC-02 and AC-22 stay covered
+      # by soulcore + vitest. Do not use --all-targets here: that still
+      # *loads* ipc_roundtrip.exe.
       - name: cargo test (desktop shell)
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets
+        run: >
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+          --lib --bins
+          --test command_surface
+          --test no_egress_path
+          --test shell_is_local_only
