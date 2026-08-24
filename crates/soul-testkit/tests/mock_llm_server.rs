@@ -36,7 +36,10 @@ fn records_the_raw_request_body_and_then_shuts_down() {
     let server = MockLlm::start().expect("start the mock endpoint");
     let addr = server.addr();
     assert!(addr.ip().is_loopback(), "the mock must bind loopback only");
-    assert_eq!(server.base_url(), format!("http://127.0.0.1:{}", addr.port()));
+    assert_eq!(
+        server.base_url(),
+        format!("http://127.0.0.1:{}", addr.port())
+    );
     assert_eq!(server.request_count(), 0);
 
     let body = r#"{"model":"local","messages":[{"role":"user","content":"[第三人正文已占位]"}]}"#;

@@ -49,9 +49,8 @@ fn sqlcipher_is_available_and_actually_encrypts() {
     reopened.close().expect("close");
 
     let unkeyed = Connection::open(&path).expect("opening the file itself always succeeds");
-    let attempt = unkeyed.query_row::<String, _, _>("SELECT body FROM sealed_probe", [], |row| {
-        row.get(0)
-    });
+    let attempt =
+        unkeyed.query_row::<String, _, _>("SELECT body FROM sealed_probe", [], |row| row.get(0));
     assert!(
         attempt.is_err(),
         "reading without the key must fail; got {attempt:?}",

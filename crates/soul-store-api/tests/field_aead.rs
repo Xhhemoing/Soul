@@ -13,8 +13,12 @@ const PROSE: &str = "第一次去北京，站台上风很大 café 🙂";
 
 #[test]
 fn xchacha20poly1305_binds_row_and_field() {
-    let row: Uuid = "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4050".parse().expect("uuid");
-    let other_row: Uuid = "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4052".parse().expect("uuid");
+    let row: Uuid = "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4050"
+        .parse()
+        .expect("uuid");
+    let other_row: Uuid = "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4052"
+        .parse()
+        .expect("uuid");
 
     let key = XChaCha20Poly1305::generate_key(&mut OsRng);
     let cipher = XChaCha20Poly1305::new(&key);

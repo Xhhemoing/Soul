@@ -130,8 +130,8 @@ pub fn audit(repo_root: &Path) -> Result<DenylistReport> {
         if is_exempt(path) {
             continue;
         }
-        let text = std::fs::read_to_string(path)
-            .with_context(|| format!("reading {}", path.display()))?;
+        let text =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         report.files_scanned += 1;
         report.hits.extend(scan_source(path, &text, &terms));
     }
@@ -262,7 +262,7 @@ pub fn split_identifier(identifier: &str) -> Vec<String> {
 /// A multi-word term must appear as a contiguous run of identifier words.
 fn identifier_matches(words: &[String], term: &str) -> bool {
     let needle: Vec<&str> = term
-        .split(|c: char| c == ' ' || c == '-' || c == '_')
+        .split([' ', '-', '_'])
         .filter(|w| !w.is_empty())
         .collect();
     if needle.is_empty() || needle.len() > words.len() {

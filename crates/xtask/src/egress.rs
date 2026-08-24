@@ -216,9 +216,10 @@ pub fn audit_dependencies_from_roots(
                 // Only normal and build edges ship. Dev edges are how the test
                 // instruments stay out of the product.
                 let ships = dep.dep_kinds.is_empty()
-                    || dep.dep_kinds.iter().any(|k| {
-                        matches!(k.kind, DependencyKind::Normal | DependencyKind::Build)
-                    });
+                    || dep
+                        .dep_kinds
+                        .iter()
+                        .any(|k| matches!(k.kind, DependencyKind::Normal | DependencyKind::Build));
                 if !ships || !seen.insert(&dep.pkg) {
                     continue;
                 }

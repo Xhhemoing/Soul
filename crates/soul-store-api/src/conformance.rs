@@ -188,7 +188,13 @@ fn graph_edges_are_reachable_from_either_end<S: SoulStore>(mk: &impl Fn() -> S) 
         .put_relationship(relationship("70", left, right, &[uuid7("a10")]))
         .expect("edge");
 
-    assert_eq!(store.get_relationship(edge_id).expect("read back").relationship_id, edge_id);
+    assert_eq!(
+        store
+            .get_relationship(edge_id)
+            .expect("read back")
+            .relationship_id,
+        edge_id
+    );
     assert_eq!(store.relationships_for(left).expect("from side").len(), 1);
     assert_eq!(store.relationships_for(right).expect("to side").len(), 1);
     assert_eq!(store.list_contacts().expect("contacts").len(), 2);
@@ -233,8 +239,7 @@ fn forget_destroys_the_key_and_orphans_derived_inference<S: SoulStore>(mk: &impl
     let memory = store.get_memory(memory_id).expect("memory");
     let summary = memory.summary_ref.clone().expect("sealed summary");
     assert_eq!(
-        String::from_utf8(store.open(&summary).expect("readable before forget"))
-            .expect("utf-8"),
+        String::from_utf8(store.open(&summary).expect("readable before forget")).expect("utf-8"),
         SUMMARY_TEXT,
     );
 
@@ -254,7 +259,10 @@ fn forget_destroys_the_key_and_orphans_derived_inference<S: SoulStore>(mk: &impl
         "the prose must be unreadable once its key is destroyed",
     );
     assert_eq!(
-        store.get_memory(memory_id).expect("row remains").forget_state,
+        store
+            .get_memory(memory_id)
+            .expect("row remains")
+            .forget_state,
         ForgetState::Forgotten,
         "the row remains as a tombstone so the user can see the memory existed",
     );
@@ -280,7 +288,11 @@ fn audit_survives_a_forget<S: SoulStore>(mk: &impl Fn() -> S) {
         .expect("execute forget");
     let after = store.list_audit().expect("audit after");
 
-    assert_eq!(after.len(), before, "forgetting must not delete audit entries");
+    assert_eq!(
+        after.len(),
+        before,
+        "forgetting must not delete audit entries"
+    );
     assert_eq!(
         receipt.impact.audit_entries_retained, 1,
         "the preview must be honest that the audit entry is kept",

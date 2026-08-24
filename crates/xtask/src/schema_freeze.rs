@@ -68,8 +68,7 @@ pub fn digest_schema_dir(repo_root: &Path) -> Result<BTreeMap<String, String>> {
         .expect("LOCK_FILE has a file name");
 
     let mut digests = BTreeMap::new();
-    let entries = std::fs::read_dir(&dir)
-        .with_context(|| format!("listing {}", dir.display()))?;
+    let entries = std::fs::read_dir(&dir).with_context(|| format!("listing {}", dir.display()))?;
     for entry in entries {
         let entry = entry.with_context(|| format!("reading an entry of {}", dir.display()))?;
         let path = entry.path();
@@ -91,8 +90,8 @@ pub fn digest_schema_dir(repo_root: &Path) -> Result<BTreeMap<String, String>> {
 
 pub fn read_lock(repo_root: &Path) -> Result<SchemaLock> {
     let path = repo_root.join(LOCK_FILE);
-    let text = std::fs::read_to_string(&path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let text =
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
     serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))
 }
 

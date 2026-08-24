@@ -15,9 +15,7 @@
 //!   uncommitted one did not, and the database is not corrupt.
 
 use rusqlite::Connection;
-use soul_testkit::crash::{
-    self, failpoints, run_crashing_subprocess, CrashOutcome, CrashScenario,
-};
+use soul_testkit::crash::{self, failpoints, run_crashing_subprocess, CrashOutcome, CrashScenario};
 
 const DB_PATH_ENV: &str = "SOUL_CRASH_DEMO_DB";
 const CHILD_TEST: &str = "child_writer_aborts_mid_transaction";

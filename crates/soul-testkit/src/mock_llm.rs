@@ -70,14 +70,13 @@ impl MockLlm {
                     }
                 };
                 runtime.block_on(async move {
-                    let listener =
-                        match tokio::net::TcpListener::bind(("127.0.0.1", 0)).await {
-                            Ok(listener) => listener,
-                            Err(error) => {
-                                let _ = addr_tx.send(Err(error.to_string()));
-                                return;
-                            }
-                        };
+                    let listener = match tokio::net::TcpListener::bind(("127.0.0.1", 0)).await {
+                        Ok(listener) => listener,
+                        Err(error) => {
+                            let _ = addr_tx.send(Err(error.to_string()));
+                            return;
+                        }
+                    };
                     let bound = match listener.local_addr() {
                         Ok(bound) => bound,
                         Err(error) => {

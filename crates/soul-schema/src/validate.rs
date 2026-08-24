@@ -104,16 +104,13 @@ impl fmt::Display for SchemaId {
 pub struct LocalRetriever;
 
 impl Retrieve for LocalRetriever {
-    fn retrieve(
-        &self,
-        uri: &Uri<&str>,
-    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    fn retrieve(&self, uri: &Uri<&str>) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         let raw = uri.as_str();
         let file = raw
             .strip_prefix(SCHEMA_BASE)
             .ok_or_else(|| format!("refusing to resolve non-local schema reference: {raw}"))?;
-        let id = SchemaId::from_file_name(file)
-            .ok_or_else(|| format!("unknown Soul schema: {file}"))?;
+        let id =
+            SchemaId::from_file_name(file).ok_or_else(|| format!("unknown Soul schema: {file}"))?;
         Ok(serde_json::from_str(id.source())?)
     }
 }
@@ -208,11 +205,8 @@ impl SchemaSet {
 }
 
 fn compile(id: SchemaId) -> Result<Validator, SchemaSetError> {
-    let document: Value =
-        serde_json::from_str(id.source()).map_err(|source| SchemaSetError::Parse {
-            schema: id,
-            source,
-        })?;
+    let document: Value = serde_json::from_str(id.source())
+        .map_err(|source| SchemaSetError::Parse { schema: id, source })?;
     jsonschema::options()
         .with_draft(Draft::Draft202012)
         .with_retriever(LocalRetriever)

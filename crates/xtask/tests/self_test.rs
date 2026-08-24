@@ -216,7 +216,9 @@ fn multi_word_terms_match_across_identifier_words() {
 
 #[test]
 fn xtask_and_fixtures_are_exempt_from_the_denylist() {
-    assert!(denylist::is_exempt(Path::new("crates/xtask/src/denylist.rs")));
+    assert!(denylist::is_exempt(Path::new(
+        "crates/xtask/src/denylist.rs"
+    )));
     assert!(denylist::is_exempt(Path::new(
         "crates/soul-schema/tests/roundtrip.rs"
     )));
@@ -266,7 +268,9 @@ fn the_lock_covers_every_frozen_document() {
     for digest in lock.schemas.values() {
         assert_eq!(digest.len(), 64, "sha256 renders as 64 hex characters");
         assert!(
-            digest.chars().all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()),
+            digest
+                .chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()),
             "digests are lowercase hex: {digest}",
         );
     }

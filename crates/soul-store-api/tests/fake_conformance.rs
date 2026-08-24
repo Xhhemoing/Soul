@@ -15,8 +15,12 @@ fn fake_store_passes_the_conformance_suite() {
 #[test]
 fn destroying_a_content_key_removes_its_blobs() {
     let mut store = FakeStore::new();
-    let key: Uuid = "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4051".parse().expect("uuid");
-    let row: Uuid = "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4050".parse().expect("uuid");
+    let key: Uuid = "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4051"
+        .parse()
+        .expect("uuid");
+    let row: Uuid = "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4050"
+        .parse()
+        .expect("uuid");
 
     let sealed = store
         .seal(SealRequest::new(
@@ -45,7 +49,9 @@ fn destroying_a_content_key_removes_its_blobs() {
 #[test]
 fn forgetting_something_that_does_not_exist_is_a_no_op() {
     let mut store = FakeStore::new();
-    let unknown: Uuid = "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f40ff".parse().expect("uuid");
+    let unknown: Uuid = "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f40ff"
+        .parse()
+        .expect("uuid");
 
     let impact = store
         .preview_impact(ForgetUnit::Memory(unknown))

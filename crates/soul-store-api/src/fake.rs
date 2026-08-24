@@ -102,7 +102,10 @@ impl FakeStore {
             ForgetUnit::Memory(id) => {
                 if let Some(memory) = self.memories.get(&id) {
                     keys.insert(memory.content_key_id);
-                    for sealed in [&memory.title_ref, &memory.summary_ref].into_iter().flatten() {
+                    for sealed in [&memory.title_ref, &memory.summary_ref]
+                        .into_iter()
+                        .flatten()
+                    {
                         keys.insert(sealed.content_key_id);
                     }
                 }
@@ -175,7 +178,10 @@ impl FakeStore {
                     .copied()
                     .unwrap_or(InferenceState::Live)
                     == InferenceState::Live
-                    && inference.evidence_ids.iter().any(|id| evidence.contains(id))
+                    && inference
+                        .evidence_ids
+                        .iter()
+                        .any(|id| evidence.contains(id))
             })
             .map(|inference| inference.inference_id)
             .collect()

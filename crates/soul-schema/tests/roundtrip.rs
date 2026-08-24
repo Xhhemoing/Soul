@@ -9,13 +9,11 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use soul_schema::audit::{
-    AuditAction, AuditCounts, AuditDecision, EgressClass, SoulAuditEntry,
-};
+use soul_schema::audit::{AuditAction, AuditCounts, AuditDecision, EgressClass, SoulAuditEntry};
 use soul_schema::common::{
     field_aad, ActorSubject, Derivation, E1Disposition, EgressPolicy, EvidenceBand,
-    NotAClinicalClaim, Privacy, Purpose, ResearchDisposition, Retention, SchemaVersion,
-    SealAlg, SealedSubject, SealedText, Sha256Hex, Subject, SupportedBand, Timestamp,
+    NotAClinicalClaim, Privacy, Purpose, ResearchDisposition, Retention, SchemaVersion, SealAlg,
+    SealedSubject, SealedText, Sha256Hex, Subject, SupportedBand, Timestamp,
 };
 use soul_schema::contact::{ContactClass, ContactIdentifier, IdentifierKind, SoulContact};
 use soul_schema::event::{EventKind, EventSource, SoulEvent};

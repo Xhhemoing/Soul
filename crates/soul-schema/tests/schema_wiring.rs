@@ -31,7 +31,11 @@ fn fixture_dir(kind: &str, id: SchemaId) -> PathBuf {
         .file_name()
         .strip_suffix(".schema.json")
         .expect("every schema file name ends in .schema.json");
-    repo_root().join("fixtures").join("schemas").join(kind).join(stem)
+    repo_root()
+        .join("fixtures")
+        .join("schemas")
+        .join(kind)
+        .join(stem)
 }
 
 fn load_fixtures(kind: &str, id: SchemaId) -> Vec<(String, Value)> {
@@ -59,7 +63,11 @@ fn load_fixtures(kind: &str, id: SchemaId) -> Vec<(String, Value)> {
 #[test]
 fn every_schema_compiles() {
     let set = SchemaSet::load().expect("all eleven contracts compile as draft 2020-12");
-    assert_eq!(SchemaId::ALL.len(), 11, "the frozen set is eleven documents");
+    assert_eq!(
+        SchemaId::ALL.len(),
+        11,
+        "the frozen set is eleven documents"
+    );
     for &id in SchemaId::ALL {
         let _ = set.validator(id);
     }
@@ -116,8 +124,9 @@ fn named_negative_cases_are_present_and_rejected() {
     ];
     for (id, file) in cases {
         let path = fixture_dir("invalid", id).join(file);
-        let text = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("missing required negative fixture {}: {e}", path.display()));
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!("missing required negative fixture {}: {e}", path.display())
+        });
         let value: Value = serde_json::from_str(&text).expect("fixture parses");
         assert!(
             set.validate(id, &value).is_err(),

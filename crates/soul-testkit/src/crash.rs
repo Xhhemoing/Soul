@@ -121,9 +121,13 @@ pub fn run_crashing_subprocess(scenario: &CrashScenario) -> Result<CrashOutcome>
         command.env(key, value);
     }
 
-    let output = command
-        .output()
-        .with_context(|| format!("re-executing {} for {}", binary.display(), scenario.test_name))?;
+    let output = command.output().with_context(|| {
+        format!(
+            "re-executing {} for {}",
+            binary.display(),
+            scenario.test_name
+        )
+    })?;
 
     Ok(CrashOutcome {
         status: output.status,

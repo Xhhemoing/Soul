@@ -108,7 +108,10 @@ impl LeakageChecker {
 
     /// Lower the threshold to catch short replies that the `≥8` rule misses.
     pub fn with_min_ngram(mut self, min_ngram: usize) -> Self {
-        assert!(min_ngram >= 1, "an n-gram threshold of zero matches everything");
+        assert!(
+            min_ngram >= 1,
+            "an n-gram threshold of zero matches everything"
+        );
         self.min_ngram = min_ngram;
         self
     }

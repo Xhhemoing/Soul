@@ -23,7 +23,5 @@ pub mod relationship;
 pub mod soul_import_v1;
 pub mod validate;
 
-pub use common::{
-    EvidenceBand, Privacy, SchemaVersion, SealedText, Sha256Hex, Subject, Timestamp,
-};
+pub use common::{EvidenceBand, Privacy, SchemaVersion, SealedText, Sha256Hex, Subject, Timestamp};
 pub use validate::{SchemaId, SchemaSet, ValidationFailure};
