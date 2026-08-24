@@ -54,6 +54,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use soul_fileplan::{Refusal, ScanLimits};
+use soul_policy::audit::{append_or_store_error, AuditContent};
 use soul_policy::clock::{now_unix_millis, now_unix_seconds, rfc3339_utc};
 use soul_policy::hitl::{RequestOrigin, TokenIssuer};
 use soul_policy::ReasonCode;
@@ -65,7 +66,8 @@ use crate::commands::collect::{
     ForegroundSource, SourceError, COLLECTION_TOPIC,
 };
 use crate::commands::draft::{
-    self, Approval, DraftRefusal, DraftSession, DraftValue, E1DraftPlan, PersonSummaryView,
+    self, Approval, DraftBrief, DraftRefusal, DraftSession, DraftValue, E1DraftPlan,
+    PersonSummaryView,
 };
 use crate::commands::fileplan::{
     AuthorizedRootView, FilePlanSession, PlanPreview, READ_ONLY_NOTICE,
@@ -571,6 +573,13 @@ impl Session {
     /// Read-only, all the way down: `soul-fileplan` has no write API and this
     /// build has no `execute`. The origin is [`RequestOrigin::User`] because a
     /// call arriving over the IPC is a click.
+    ///
+    /// The scan is what the chain hears about: [`Preview::audit`] carries the
+    /// plan hash and how many moves it proposes, and not one file name or the
+    /// directory it walked. Without this append, `file.plan` was an action the
+    /// matrix named and no installed Soul could produce.
+    ///
+    /// [`Preview::audit`]: soul_fileplan::Preview::audit
     pub fn preview(&mut self, path: &str) -> Result<PlanPreview, SessionRefusal> {
         let preview = self.fileplan.preview(
             &mut self.issuer,
@@ -579,6 +588,7 @@ impl Session {
             ScanLimits::default(),
             now_unix_millis(),
         )?;
+        self.append_audit(&[preview.audit()])?;
         Ok(PlanPreview::of(&preview))
     }
 
@@ -610,8 +620,17 @@ impl Session {
     }
 
     /// AC-17: a draft written on this machine, with no request body built.
+    ///
+    /// AC-07 as well, which is the half that had no product path: the brief
+    /// comes off the owner's profile, so a user who set 温度 to 热络 on the
+    /// profile page reads it back in the template's own words. A store that
+    /// did not open leaves the neutral voice, which is what a blank profile
+    /// would have said anyway.
     pub fn draft_pasted(&mut self, pasted: &str) -> Result<DraftValue, SessionRefusal> {
-        Ok(draft::draft_pasted(&self.draft, &mut self.policy, pasted)?)
+        let brief = self.owner_brief();
+        let drafted = draft::draft_pasted(&self.draft, &mut self.policy, brief, pasted)?;
+        self.append_audit(&drafted.audit)?;
+        Ok(drafted.draft)
     }
 
     /// Step one of the endpoint path: describe what would be sent.
@@ -632,17 +651,40 @@ impl Session {
         pasted: &str,
         include_original: Option<bool>,
     ) -> Result<E1DraftPlan, SessionRefusal> {
+        let brief = self.owner_brief();
         Ok(draft::prepare_pasted(
             &mut self.draft,
             &mut self.policy,
+            brief,
             pasted,
             include_original == Some(true),
         )?)
     }
 
     /// Step two: the user approved the plan they were shown.
+    ///
+    /// Two entries are owed here rather than one — the request that left and
+    /// the draft that came back — and both are written before the draft is
+    /// handed over, so a chain that could not be appended to is a refusal
+    /// rather than a draft nobody can account for.
     pub fn generate_draft(&mut self, approval: &Approval) -> Result<DraftValue, SessionRefusal> {
-        Ok(draft::generate_prepared(&mut self.draft, &mut self.policy, approval)?.draft)
+        let drafted = draft::generate_prepared(&mut self.draft, &mut self.policy, approval)?;
+        self.append_audit(&drafted.audit)?;
+        Ok(drafted.draft)
+    }
+
+    /// The voice and the axis readings a draft prompt may know about.
+    ///
+    /// Neutral when there is no store, and neutral when the profile will not
+    /// resolve: `draft::brief` already treats a blank profile as the neutral
+    /// voice, and a machine whose database did not open is in the same
+    /// position as one nobody has answered a question on. Drafting is the one
+    /// thing AC-17 says keeps working with nothing configured, so a profile
+    /// read is not allowed to be the reason it stops.
+    fn owner_brief(&self) -> DraftBrief {
+        self.store()
+            .and_then(|store| draft::brief(&hold(&store), OWNER_PROFILE_ID).ok())
+            .unwrap_or_else(DraftBrief::neutral)
     }
 
     /// The honest answer to a user who read the plan and said no.
@@ -1136,6 +1178,32 @@ impl Session {
         let store = self.opened_store()?;
         let store = hold(&store);
         Ok(store_commands::audit_view(&store)?)
+    }
+
+    /// Write what a command handed back into the chain, when there is one.
+    ///
+    /// The same shape `import.rs`, `graph.rs` and `collect.rs` already use:
+    /// the crate below builds the entries and the holder of the open store
+    /// appends them. Drafting and file planning were the two surfaces that
+    /// built entries nobody wrote, which is why `/audit` never showed 起草、E1
+    /// 或文件计划 on an installed Soul.
+    ///
+    /// A store that did not open is not an error here. There is no chain to
+    /// append to and no chain to read back — [`Session::audit`] refuses on the
+    /// same session — so a refusal would only mean the user cannot draft on a
+    /// machine whose database is the thing that failed, which is the one thing
+    /// AC-17 says must still work. A store that *is* open and refuses the
+    /// write is the opposite case, and it is returned.
+    fn append_audit(&self, entries: &[AuditContent]) -> Result<(), SessionRefusal> {
+        let StoreHandle::Open(store) = &self.store else {
+            return Ok(());
+        };
+        let at = now_unix_seconds();
+        let mut store = hold(store);
+        for content in entries {
+            append_or_store_error(&mut *store, content.clone(), at)?;
+        }
+        Ok(())
     }
 
     fn opened_store(&self) -> Result<Arc<Mutex<SqlCipherStore>>, SessionRefusal> {

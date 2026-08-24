@@ -15,6 +15,16 @@ use soulcore::commands::memory::{ForgetConfirmation, MemoryChange, NewMemory};
 use soulcore::commands::profile::GivenAnswer;
 use soulcore::commands::session::Session;
 
+/// Something a person pasted, for the drafting tests below.
+const PASTED: &str = "周五那个方案你还改吗？我这边可以等到下午三点。";
+
+/// What the local template says when the user has pinned 温度 to 热络, and to
+/// 克制. Both are `soul-draft`'s `template::stance`, spelled out here because a
+/// test that asked the template what it says would pass whatever it answered.
+const WARM_STANCE: &str = "先谢谢你专门说一声。";
+const COOL_STANCE: &str = "直接说重点。";
+const EVEN_STANCE: &str = "我这边的想法是这样：";
+
 fn scratch() -> (tempfile::TempDir, PathBuf) {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let canonical = std::fs::canonicalize(directory.path()).expect("canonical temp dir");
@@ -221,6 +231,87 @@ fn correcting_an_axis_locks_it_and_setting_a_voice_field_locks_that() {
     session
         .set_voice("warmth", "sparing")
         .expect_err("that is not a value this field takes");
+    drop(keep);
+}
+
+/// AC-07 on the page it is about: the voice the user pinned is the voice the
+/// draft is written in.
+///
+/// `soul-draft`'s `voice_and_template.rs` already pins each fragment to a voice
+/// value, and the test above already proves `set_voice` locks the field in the
+/// store. Neither of them can see the path between the two, and until now there
+/// was none: `draft_pasted` built its request from `ProfileBrief::neutral()`, so
+/// every draft an installed Soul produced read identically no matter what the
+/// profile page said. The assertions are on the text the session hands back,
+/// because that is the string the user reads.
+#[test]
+fn the_voice_the_user_pinned_is_the_voice_a_local_draft_is_written_in() {
+    let (keep, directory) = scratch();
+    let mut session = Session::open(&directory);
+
+    let neutral = session.draft_pasted(PASTED).expect("a draft").text;
+    assert!(
+        neutral.contains(EVEN_STANCE),
+        "a profile nobody has touched drafts in the neutral voice: {neutral}",
+    );
+
+    session.set_voice("warmth", "warm").expect("热络");
+    let warm = session.draft_pasted(PASTED).expect("a draft").text;
+    assert_ne!(
+        warm, neutral,
+        "pinning a voice field changed nothing about what Soul writes",
+    );
+    assert!(warm.contains(WARM_STANCE), "{warm}");
+    assert!(!warm.contains(EVEN_STANCE));
+
+    session.set_voice("warmth", "cool").expect("克制");
+    let cool = session.draft_pasted(PASTED).expect("a draft").text;
+    assert!(cool.contains(COOL_STANCE), "{cool}");
+    assert_ne!(cool, warm, "两个取值写出同一份草稿");
+
+    // The voice survives a restart, because it lives in the profile rather
+    // than in the session that drafted with it.
+    drop(session);
+    let mut next_launch = Session::open(&directory);
+    let after = next_launch.draft_pasted(PASTED).expect("a draft").text;
+    assert_eq!(after, cool);
+    drop(keep);
+}
+
+/// AC-23 for drafting: a draft on the local path is a thing the chain heard
+/// about.
+///
+/// `draft_commands.rs` proves the entry is built and carries no prose. What is
+/// only checkable here is that somebody writes it: `Session::draft_pasted`
+/// returned `Drafted.draft` and dropped `Drafted.audit`, so `/audit` on an
+/// installed Soul never showed 起草 at all.
+#[test]
+fn a_local_draft_lands_in_the_audit_chain_as_counts_and_a_code() {
+    let (keep, directory) = scratch();
+    let mut session = Session::open(&directory);
+
+    let before = session.audit().expect("the chain").entries.len();
+    session.draft_pasted(PASTED).expect("a draft");
+
+    let chain = session.audit().expect("the chain");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    assert_eq!(chain.entries.len(), before + 1, "one draft, one entry");
+    assert!(chain.entries.iter().all(|entry| entry.follows_previous));
+    assert!(
+        chain
+            .entries
+            .iter()
+            .any(|entry| entry.action == "draft.create"),
+        "drafting is a thing that happened: {:?}",
+        chain.entries,
+    );
+
+    // And it is still counts and codes: the paste is not in the chain, and
+    // neither is the draft that was written from it.
+    let played = format!("{chain:?}");
+    for prose in ["周五那个方案", "下午三点", WARM_STANCE, EVEN_STANCE] {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
+    }
     drop(keep);
 }
 

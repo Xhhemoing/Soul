@@ -21,6 +21,7 @@
 
 use std::path::{Path, PathBuf};
 
+use soul_draft::brief::BRIEF_HEADING;
 use soul_policy::redactor::{ACCOUNT_PLACEHOLDER, THIRD_PARTY_PLACEHOLDER};
 use soul_testkit::mock_llm::MockLlm;
 use soulcore::commands::draft::Approval;
@@ -506,6 +507,106 @@ fn an_exemption_reaches_neither_the_configuration_file_nor_the_next_launch() {
     );
     assert_eq!(plan.placeheld_turns, 1);
     assert_eq!(endpoint.request_count(), 1, "one approval, one request");
+    drop(keep);
+}
+
+// ------------------------------------------- AC-07, on the endpoint path ---
+
+/// The voice the user pinned is in the bytes the endpoint receives.
+///
+/// The local template is `session_screens.rs`'s half of AC-07. This is the
+/// other one: the brief travels in the request's material slot, above the
+/// conversation, so a model asked to write a reply is told 语气：…热络… rather
+/// than the neutral four. Until `prepare_pasted` took a brief, it was told the
+/// neutral four on every machine — a profile page whose answers reached nothing
+/// that writes.
+///
+/// The assertions are on `endpoint.requests()[0].body`, which is what a real
+/// loopback server actually received.
+#[test]
+fn the_pinned_voice_reaches_the_endpoint_and_the_chain_records_the_request() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut session = Session::open(&directory);
+
+    session
+        .set_voice("warmth", "warm")
+        .expect("the user sets 温度 to 热络 on the profile page");
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    // No exemption: this is the ordinary path, and the third party's words are
+    // placeheld in the body the brief travels with.
+    draft_through_the_endpoint(&mut session).expect("the endpoint answers");
+
+    let sent = endpoint.requests();
+    assert_eq!(sent.len(), 1, "one approval, one request");
+    assert!(
+        sent[0].body.contains(BRIEF_HEADING),
+        "the profile material never reached the request: {}",
+        sent[0].body,
+    );
+    assert!(
+        sent[0].body.contains("热络"),
+        "the pinned voice never reached the request: {}",
+        sent[0].body,
+    );
+    assert!(
+        !sent[0].body.contains("克制"),
+        "the request describes a voice the user did not set: {}",
+        sent[0].body,
+    );
+    assert!(sent[0].body.contains(THIRD_PARTY_PLACEHOLDER));
+
+    // AC-23 for this path: one request that left, one draft that came back.
+    let chain = session.audit().expect("the store opened");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    for action in ["egress.request", "draft.create"] {
+        assert!(
+            chain.entries.iter().any(|entry| entry.action == action),
+            "`{action}` is missing from the chain: {:?}",
+            chain.entries,
+        );
+    }
+    let request = chain
+        .entries
+        .iter()
+        .find(|entry| entry.action == "egress.request")
+        .expect("the entry is there");
+    assert_eq!(request.egress_class.as_deref(), Some("E1"));
+    assert!(request.capability_token_id.is_some());
+    assert!(
+        chain.entries.iter().all(|entry| entry.follows_previous),
+        "{:?}",
+        chain.entries,
+    );
+    let played = format!("{chain:?}");
+    for prose in ["场地", "热络", BRIEF_HEADING] {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
+    }
+
+    // And none of it is written down. The wizard is finished last so that the
+    // file under inspection is one written after the voice was pinned and the
+    // address entered.
+    finish_the_wizard(&mut session);
+    let text = config_text(&directory);
+    let port = endpoint.port().to_string();
+    for word in ["llm", "endpoint", "http", "warmth", "voice", port.as_str()] {
+        assert!(
+            !text.contains(word),
+            "`{word}` reached config.json:\n{text}",
+        );
+    }
+    let value: serde_json::Value = serde_json::from_str(&text).expect("parse");
+    let object = value.as_object().expect("the file is a JSON object");
+    let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        ["authorized_roots", "wizard_completed"],
+        "config.json grew a field, and a voice is the last thing that may add one",
+    );
     drop(keep);
 }
 

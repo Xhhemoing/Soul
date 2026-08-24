@@ -265,6 +265,46 @@ fn the_plan_the_shell_receives_is_a_preview_and_only_that() {
     drop((keep_data, keep_folder));
 }
 
+/// AC-23 for the file-plan screen: a scan the user asked for is a thing the
+/// chain heard about.
+///
+/// `soul-fileplan` builds the entry and `audit.schema.json` has had `file.plan`
+/// in it from the start, but nothing on the product path appended one — the
+/// preview was rendered and the entry it carried was dropped. So the matrix
+/// named an action no installed Soul could produce.
+#[test]
+fn previewing_a_plan_writes_file_plan_into_the_chain_and_no_path() {
+    let (keep_data, directory) = scratch();
+    let (keep_folder, folder) = scratch();
+    let shown = a_folder_worth_tidying(&folder);
+
+    let mut session = Session::open(&directory);
+    session.authorize(&shown).expect("authorize");
+    let before = session.audit().expect("the chain").entries.len();
+
+    let preview = session.preview(&shown).expect("a plan");
+
+    let chain = session.audit().expect("the chain");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    assert_eq!(chain.entries.len(), before + 1, "one scan, one entry");
+    let entry = chain
+        .entries
+        .iter()
+        .find(|entry| entry.action == "file.plan")
+        .expect("previewing a plan is a thing that happened");
+    assert_eq!(entry.decision, "allowed");
+    assert_eq!(entry.plan_hash.as_deref(), Some(preview.plan_hash.as_str()));
+    assert_eq!(entry.items, Some(preview.moves.len() as u64));
+    assert!(entry.follows_previous);
+
+    // Counts and a hash. Not the directory, and not one file name in it.
+    let played = format!("{chain:?}");
+    for prose in [shown.as_str(), "budget.csv", "photo.jpg", "mystery.qqq"] {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
+    }
+    drop((keep_data, keep_folder));
+}
+
 /// AC-17 through the session: no endpoint, no request body, a draft anyway.
 #[test]
 fn the_local_drafting_path_needs_nothing_configured() {

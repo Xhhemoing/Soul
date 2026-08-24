@@ -63,6 +63,7 @@ pub use soul_draft::template::BODY_SLOT;
 // Re-exported so the desktop shell can name what it receives without taking
 // `soul-draft` and `soul-policy` as dependencies of its own. A forwarder that
 // had them would be a forwarder that could assemble a request body.
+pub use soul_draft::brief::ProfileBrief as DraftBrief;
 pub use soul_draft::draft::Draft as DraftValue;
 pub use soul_policy::redactor::KnownIdentifiers as DraftIdentifiers;
 
@@ -337,23 +338,33 @@ pub fn closed_session() -> (DraftSession, PolicySession) {
 /// the text whose words they are, and the safe reading of "I pasted a message
 /// I received" is the one that keeps it off the wire.
 ///
+/// The brief is a parameter rather than [`ProfileBrief::neutral`], because
+/// AC-07 is about the voice the user pinned reaching the thing that writes:
+/// a caller with a store open builds one with [`brief`], and a caller with no
+/// store — the headless smoke, a session whose database did not open — passes
+/// the neutral one and gets the voice a blank profile would have given anyway.
+///
+/// What comes back is [`Drafted`], not the draft alone. The entries are the
+/// caller's to append for the reason the type says: whoever holds the open
+/// store is the one that can write them, and a draft whose `draft.create`
+/// entry was dropped on the floor is a draft `/audit` never heard about.
+///
 /// This is the local path: no request body is built, so there is nothing for
 /// a bug to leak. The endpoint path is [`DraftSession::prepare`] and
 /// [`DraftSession::generate`], which need a screen for the person in between.
 pub fn draft_pasted(
     drafting: &DraftSession,
     policy: &mut PolicySession,
+    brief: ProfileBrief,
     pasted: &str,
-) -> Result<Draft, DraftRefusal> {
-    let request = DraftRequest::from_paste(ProfileBrief::neutral(), pasted);
-    Ok(drafting
-        .draft_offline(
-            policy,
-            &request,
-            RequestOrigin::User,
-            soul_policy::clock::now_unix_millis(),
-        )?
-        .draft)
+) -> Result<Drafted, DraftRefusal> {
+    let request = DraftRequest::from_paste(brief, pasted);
+    drafting.draft_offline(
+        policy,
+        &request,
+        RequestOrigin::User,
+        soul_policy::clock::now_unix_millis(),
+    )
 }
 
 /// Step one of the endpoint path, for something a person pasted.
@@ -378,13 +389,19 @@ pub fn draft_pasted(
 ///
 /// A paste is one third-party turn by construction, so there is exactly one
 /// id an exemption could name.
+///
+/// The brief travels in the body's material slot, so the voice the user
+/// pinned is part of what the plan's counts describe and part of what the
+/// endpoint is asked to write like. See [`draft_pasted`] for why it is a
+/// parameter.
 pub fn prepare_pasted(
     drafting: &mut DraftSession,
     policy: &mut PolicySession,
+    brief: ProfileBrief,
     pasted: &str,
     include_original: bool,
 ) -> Result<E1DraftPlan, DraftRefusal> {
-    let request = DraftRequest::from_paste(ProfileBrief::neutral(), pasted);
+    let request = DraftRequest::from_paste(brief, pasted);
     let exemption = match include_original {
         true => request
             .third_party_turn_ids()

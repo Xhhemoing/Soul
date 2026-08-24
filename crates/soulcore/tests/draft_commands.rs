@@ -495,8 +495,14 @@ fn the_shell_entry_point_drafts_a_paste_and_reaches_nothing() {
     let listening = MockLlm::start().expect("something nobody configured");
     let (drafting, mut policy) = soulcore::commands::draft::closed_session();
 
-    let draft = soulcore::commands::draft::draft_pasted(&drafting, &mut policy, PASTED)
-        .expect("a shell with nothing configured can still draft");
+    let drafted = soulcore::commands::draft::draft_pasted(
+        &drafting,
+        &mut policy,
+        ProfileBrief::neutral(),
+        PASTED,
+    )
+    .expect("a shell with nothing configured can still draft");
+    let draft = drafted.draft;
 
     assert_eq!(draft.source, DraftSource::ToneTemplate);
     assert_eq!(draft.not_sent_notice, NOT_SENT_NOTICE);
@@ -507,6 +513,11 @@ fn the_shell_entry_point_drafts_a_paste_and_reaches_nothing() {
     assert_eq!(draft.third_party_turns, 0);
     assert!(!draft.carries_exempted_original);
     leakage().assert_clean("the draft a shell shows", &draft.text);
+
+    // The entry the chain is owed comes back with it, so a caller holding an
+    // open store has something to append. `Session::draft_pasted` is that
+    // caller; `session_screens.rs` is where the write is proved.
+    assert_eq!(drafted.audit.len(), 1);
 }
 
 /// A closed session cannot be talked into an endpoint by preparing one.

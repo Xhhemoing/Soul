@@ -486,11 +486,21 @@ fn flow(scratch: &Path) -> Flow<FlowOutcome> {
     );
 
     // --- AC-17: a draft with no key, and no request body at all ------------
+    // The neutral brief, and not the profile written a few steps above: this
+    // flow holds the store itself rather than a `Session`, and what AC-21 is
+    // watching is the socket. `session_screens.rs` is where the pinned voice
+    // reaching the template is proved.
     let (drafting, mut policy) = draft_commands::closed_session();
     let draft = at(
         "draft",
-        draft_commands::draft_pasted(&drafting, &mut policy, PASTED_MESSAGE),
-    )?;
+        draft_commands::draft_pasted(
+            &drafting,
+            &mut policy,
+            draft_commands::DraftBrief::neutral(),
+            PASTED_MESSAGE,
+        ),
+    )?
+    .draft;
     require(
         "draft",
         !draft.text.trim().is_empty(),
