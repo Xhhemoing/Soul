@@ -4,7 +4,7 @@
 
 ## 当前里程碑
 
-**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。批 1（WP01）与批 2（WP02 数据面 + WP08 权限面）已完成。Windows CI 在 schema freeze CRLF 修复后一度全绿；WP11 落地后 `test (windows-latest)` 因 `canonicalize` 的 `\\?\C:\...` 被当成 UNC 而红，筛查已改为只把本地盘的 extended-length 写法剥成盘符路径。
+**`PLAN_FROZEN`**。Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应用代码。Goal 2 在 Goal 1 关闭前不要启动。批 1（WP01）与批 2（WP02 数据面 + WP08 权限面）已完成。Windows CI 在 schema freeze CRLF 修复后一度全绿；WP11 落地后 `test (windows-latest)` 因 `canonicalize` 的 `\\?\C:\...` 被当成 UNC 而红，筛查已改为只把本地盘的 extended-length 写法剥成盘符路径。WP13 第二段之后，桌面壳握着这个进程唯一的 `SqlCipherStore` 句柄，配置能读回来，`/files`、`/graph` 与起草的端点确认屏都不再是空路由；Windows 上库仍然打不开，因为 DPAPI 还是骨架。
 
 ## 进度
 
@@ -22,10 +22,10 @@
 | WP05 人脉图 | 完成。见下节 |
 | WP06 导入 | 完成。见下节。问卷回退与 WP03 的入档路径已合并，`soul-profile` 实现 `UserStatedSink` |
 | WP07 前台采集 | 完成。见下节 |
-| WP09 桌面壳 | 第一段（壳）完成。见下节。起草路由已由 WP10 接上 |
-| WP10 起草与人事摘要 | 完成。见下节。`/draft` 已接本机路径；端点路径的确认屏留给 WP13 |
-| WP11 文件计划 | 核心与命令面完成。见下节。UI 视图未接，`/files` 仍是空路由 |
-| WP13 安装 smoke / CI / SBOM | 第一段完成。见下节。壳接 store 与配置那一段未做 |
+| WP09 桌面壳 | 第一段（壳）完成。见下节。壳里那一个 store 句柄由 WP13 第二段落地（遗留 8 消除） |
+| WP10 起草与人事摘要 | 完成。见下节。本机路径与端点路径的确认屏都已接上（遗留 6 消除） |
+| WP11 文件计划 | 完成。见下节。`/files` 已接 `PlanPreview`，仍然没有执行按钮（遗留 8 消除） |
+| WP13 安装 smoke / CI / SBOM / 壳接库 | 两段都完成。见下节。剩下的是 Windows 真机手动那七条 |
 | v0.1 其余 WP | 未开始 |
 
 ## WP01 完成情况
@@ -256,7 +256,7 @@ WP06 那八题的去向：`voice.directness` 与 `voice.register` 从文本框�
 5. **`AppIdentity` 要求可执行后缀（`.exe` / `.com` / `.scr`）。** 这是把「不采标题」从习惯变成规则的那一条：窗口标题几乎不会以 `.exe` 结尾。代价是没有这类后缀的前台进程会被拒（计入 `source_errors`，不写事件）。v0.3 的 Android 是包名不是映像名，要另加构造器，**不要**靠放松这条来支持它。
 6. **打不开的进程记为「前台无内容」。** 提权或受保护的进程 `OpenProcess` 会失败，这时返回 `Ok(None)`，那段时长就丢了。反过来从窗口去猜名字，等于放弃「只采应用」的承诺。
 7. **时长用墙钟，不是单调钟。** 事件的 `ts` 必须是墙钟，两头用同一个时钟才不会自相矛盾；NTP 回拨时 `duration_ms` 走 `saturating_sub` 记 0，`session.rs` 有测试钉住。
-8. **采集线程与调用方共享 `Arc<Mutex<SqlCipherStore>>`。** `soulcore::commands::collect::share` 是那个包装。WP09 接 UI 时整个进程只能有一个 store 句柄，否则两个连接会各写各的 WAL。
+8. **采集线程与调用方共享 `Arc<Mutex<SqlCipherStore>>`。** `soulcore::commands::collect::share` 是那个包装。整个进程只能有一个 store 句柄，否则两个连接会各写各的 WAL。**WP13 第二段落地：** `soulcore::commands::session::Session` 是唯一开库的地方，`Session::store()` 发出去的是同一个 `Arc` 的克隆；`apps/desktop/src-tauri/tests/one_store.rs` 回读壳自己的源码，壳里出现 `open_store` 就红。
 9. **`e0-audit` 在本机会被 `apps/desktop/dist/` 命中。** 那是 WP09 的构建产物，`.gitignore` 里有它，但 `xtask` 的 `EXEMPT_DIRS` 没有 `dist`，所以本机跑会报 20 条 URL。干净检出（我在 `/tmp` 克隆 HEAD 验过）三项全绿，CI 也是干净检出。要不要给 `EXEMPT_DIRS` 加 `dist` 由 WP09 或 WP13 决定，本工作单不动 `xtask`。
 10. **没有加 `soulcore/tests/collect_commands.rs`。** 工作单允许的 soulcore 面只有 `src/commands/collect.rs`，验收测试因此全部放在 `crates/soul-collect/tests/`，它们本来也需要真库与后台线程。
 
@@ -299,7 +299,7 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 5. **`e0-audit` 的 build output 豁免改成按标记文件认。** WP07 遗留 9 说 `apps/desktop/dist/` 会让本机 e0 红。修法不是把 `dist`/`gen` 加进 `EXEMPT_DIRS`（那样任何目录改个名字就能躲开审计），而是只在旁边有 `package.json` / `tauri.conf.json` 时才跳过。`xtask/tests/self_test.rs` 里有一条写了个手写的 `crates/pretend/src/gen/`，它仍然会被扫到。
 6. **托盘装不上时窗口就正常关闭。** 关窗收进托盘只有在真有托盘时才成立；没有通知区域的桌面上，那会变成关不掉又退不出的窗口。`tray::install_or_report` 把这次会话有没有托盘记进 state，关窗处理读它。Windows 11 一定有托盘，这条是给别的环境和调试用的。
 7. **`soulcore/src/commands/shell.rs` 里的 `ConfigSnapshot` 是壳自己的视图，不是 `Config` 的序列化。** 它只带界面要显示的那几个布尔与计数，**不带 LLM 端点字符串**（`the_snapshot_carries_no_endpoint_string` 钉住）：界面没有理由拿到那个地址，而每一个跨进程边界的字符串都是一次泄漏机会。要显示端点内容，得先想清楚为什么。
-8. **壳还没有连真的 store。** `SessionConfig` 目前握的是内存里的 `soulcore::Config`，没有打开 `SqlCipherStore`。WP07 遗留 8 说整个进程只能有一个 store 句柄；接线的时候在 `lib.rs` 的 setup 里开一次、`manage` 起来，不要在每个命令里开。
+8. ~~**壳还没有连真的 store。**~~ **已消除（WP13 第二段）。** `run` 在 `lib.rs` 里造一个 `Session` 并 `manage` 起来，`configure` 把它当参数收，每个命令拿 `State<'_, SessionState>`。「一个进程一个句柄」因此是调用图上的性质，不是习惯：第二次 `configure` 得有人专门再造一个 session 递给它。
 9. **起草 / 文件计划 / 导入 / 记忆 / 人脉这些路由是空的，但不是白屏。** `components/Pending.tsx` 写明这一页归哪个 WP。`App.test.tsx` 里两条断言钉住空路由的形状：起草页没有输入框也没有发送按钮，文件计划页没有任何执行按钮——工作单禁止假实现，测试就是这条禁令的执行者。要在这些页面上加控件的人会先撞到它们。（WP10 已接起草页：那条断言现在读作「有输入框，没有发送按钮」，后半句一个字没改，这正是它当初的用途。）
 10. **前端只有 4 个测试文件，没有组件快照。** 断言全是「用户能看见什么」（`getByRole` / 可见文本），不是 DOM 结构。快照测试会在 WP10 改版式的时候整片变红，却挡不住把云开关文案改掉这种真问题。（WP10 加了第 5 个，同样的写法。）
 
@@ -339,9 +339,9 @@ PRODUCT_LOCK 的「出站消息 v0.1 只起草，不发送」是这份工作单�
 3. **批准要对上两样东西，不只是 `plan_hash`。** 计划里只有计数没有正文（这是故意的），所以两条各含一个第三人 turn 的粘贴哈希一模一样。光靠哈希，用户对 A 的批准能把 B 发出去。`Pending` 因此带一个 `preparation_id`，`Approval` 两样都要echo回来。这条是写测试的时候撞出来的，不是设计时想到的。
 4. **`summarize_person` 不写审计。** `docs/schemas/audit.schema.json` 是冻结的，里面没有一个属于人事摘要的动作。它读图和图已经引用的证据行，什么都不改；在这里现编一个动作等于让审计条目声称一件契约没说过的事。要不要加是改 schema 的事。
 5. **端点回复不能用时降级，不报错。** 读不出来、空的、或者带了这个产品不说的词，都退回本机模板并在 `Draft::degraded` 里说清楚是哪一种。那是内容问题不是权限问题，用户还是该拿到一份草稿。跨 origin 被拒这类**是**权限问题，照样往上抛——AC-11 要的是它可见，不是被兜住。
-6. **桌面壳只接了本机那一半。** `draft_reply` 走的是不构造请求体的那条路，所以「这个壳到不了任何端点」比「按钮藏起来了」是更强的一句话。端点路径要一屏给人看计数并按确认，那需要壳先能读到配置——是 WP13 的问题。`E1_PLAN_NOTICE` 和 `E1DraftPlan` 已经就绪，接上去只差那一屏。
+6. ~~**桌面壳只接了本机那一半。**~~ **已消除（WP13 第二段）。** 端点路径的确认屏接上去了：`prepare_draft` 给一屏计数与两个标识，`generate_draft` 要把那两样原样 echo 回来。屏上没有第三人的正文——计划里本来就只有计数，把正文放回去等于让人批准一段没有重读过的话。本机路径没有变。
 7. **壳里的 `KnownIdentifiers` 是空的。** 填它要通讯录，通讯录要一个打开的 store，那还是 WP13。按形状的清洗照常抓地址、handle 和长数字串，第三人 turn 无论里面是谁都整条占位，所以空名单降低的是精度不是底线。`closed_session()` 把两个 session 一起造出来，就是为了不会有人给它们两份不一样的名单。
-8. **人事摘要的视图没有接到界面上。** `soulcore::commands::draft::summarize_person` 与 `PersonSummaryView` 就绪且有测试（含走真 `SqlCipherStore` 的那条），但 `/graph` 仍是 WP09 功能视图的空路由，而且摘要要一个打开的 store。接上去的人要一起处理 store 句柄，见 WP07 遗留第 8 条。
+8. ~~**人事摘要的视图没有接到界面上。**~~ **已消除（WP13 第二段）。** `/graph` 画节点、边与每条边背后的证据条数，摘要按核心写的那几句原样渲染。屏上没有名字：标签在库里是密封的，这条路径不打开它，人靠标识摘要的前几位区分。`Graph.test.tsx` 把 `xtask` 那份 denylist 跑在**渲染出来的 DOM** 上。
 9. **`Draft.test.tsx` 里的注入地址没有写 scheme。** `xtask e0-audit` 扫这棵树的 URL 字面量，豁免的是 `tests/` 目录，而 TypeScript 的测试是贴着源文件放的 `.test.tsx`，不在豁免里。带真 scheme 的语料在 `crates/soul-draft/tests/injection.rs`（那里是 `tests/` 目录）。本工作单不动 `xtask`；要不要给 `.test.ts(x)` 也豁免，由拿到 `xtask` 的工作单决定。
 10. **`ReasonCode` 借了 `PLAN_HASH_MISMATCH`。** `NothingPrepared` 和 `NotThePreparedRequest` 在冻结的词表里没有自己的词，而这两种情况说的都是同一句话：你批准的那份东西不是现在要发的这份。和 WP11 借 `CONSENT_MISSING` 是同一个取舍。
 11. **人事摘要的档位来自交互计数，不是判断。** `soul-graph` 的 `MODERATE_MIN_INTERACTIONS` / `STRONG_MIN_INTERACTIONS` 是它的全部内容，每条点条目都把自己的计数写在句子里。这很笨，但一份人跟不上的推理不是可以被同意的东西——和 WP11 整理规则故意很笨是同一条理由。
@@ -379,7 +379,7 @@ D31 是这份工作单的边界：只读预览留在 Goal 1，写执行是 v0.1.
 5. **`refuse_execution` 把 HITL 的三步又写了一遍。** 为的是能不可变借用账本（见上表「不消费写文件令牌」那一行）。第二份拼写靠 `the_refusals_agree_with_the_policy_gate` 保持诚实：同一个请求，本面给的理由码必须等于 `soul_policy::hitl::check_action` 给的。
 6. **UI 视图没有接，`/files` 仍是 WP09 留的空路由。** 视图类型 `soulcore::commands::fileplan::PlanPreview` 已经就绪并有序列化形状测试（含 `deny_unknown_fields` 往返），接上去只差 `core.ts` / `commands.rs` / `router.tsx` 那几处注册。没有当场接的原因是本工作单与 WP10 起草 UI 在同一个工作树里并行，两边要改的正是同一批文件（`core.ts`、`contract.test.ts`、`src-tauri/src/commands.rs`、`router.tsx`、`App.test.tsx`），并发读改写会互相吞掉改动。`App.test.tsx::文件计划页没有任何执行按钮` 仍然是那条禁令的执行者，接视图的人会先撞到它——这正是它存在的意义。
 7. **没有加 `soulcore/tests/fileplan_commands.rs`。** 工作单允许的 soulcore 面只有 `src/commands/fileplan.rs`，所以命令面的六项测试写在模块内的 `#[cfg(test)]` 里。其中「本面没有执行入口」那条要把禁用的名字拼出来才能找它们，第一次跑的时候找到了自己，现在先把测试模块以下的部分切掉再搜。
-8. **授权列表不落盘。** `FilePlanSession` 只活在内存里；`Config.authorized_roots` 已经有这个字段，`from_config` 能从它恢复并把**不再解析得开的根当成拒绝报出来**而不是从列表里悄悄消失。配置文件本身住在哪里是 WP13 的问题，在它回答之前重启一次就要重新授权——这是错也要往安全那一边错的方向。
+8. ~~**授权列表不落盘。**~~ **已消除（WP13 第二段）。** 授权的根写进库旁边的 `config.json`，重启之后 `FilePlanSession::from_config` 从它恢复；不再解析得开的根照旧当成拒绝报出来，出现在 `/files` 的「找不到的目录」一栏，而不是从名单里消失。
 9. **快照比的是 mtime 与长度，不是 atime。** 在挂了 atime 更新的文件系统上，`read_dir` 会动目录的访问时间。那是「读」的固有代价而不是写，快照要是把 atime 也算进去，每次扫描都会自己判自己失败。所以「磁盘没变」的准确含义是：没有条目增减、没有长度变化、没有修改时间变化。扫描不打开任何文件，所以文件的 atime 也不动。
 10. **泄漏检查用了两把尺子。** 中文短名用 4 个 scalar，英文名用产品自己的 `≥8`。原因是 `ctio` 是 `injection.blocked` 的片段而不是用户的内容，`prev` 是审计链自己的 `prev_hash`——在英文上把阈值压到 4，抓到的是契约的字段名。姓名/账号那条规则对两边都是任意长度生效，`李雷` 靠的是它。
 11. **整理规则故意很笨。** 只把散在最外层的文件按扩展名分进一层分类文件夹，目录不动、子目录里的不动、认不出的不动、目标已被占用的不动。理由是预览是给人批准的，一个人跟不上的推理不是可以被同意的东西。扩展名是猜测，所以 `kind.rs` 只按名字判断，一个字节都不读——一个仍然会打开每个文件的只读承诺比听上去要小。
@@ -391,7 +391,7 @@ D31 是这份工作单的边界：只读预览留在 Goal 1，写执行是 v0.1.
 
 本机 `just ci` 全绿（`lint / schema / e0 / denylist / fixtures-verify / test / smoke-lint / sbom / ui-lint / ui-test`；workspace 79 个测试目标 444 项，vitest 5 个文件 31 项），`just desktop-test` 绿（25 项，含 `ipc_roundtrip` 11 项——它在 Linux 上跑得起来，红的是 windows-latest，见下）。
 
-这一段做的是**证据链的最后一环**：AC-21 到目前为止只有「每个 crate 各自不出网」，AC-01 与 AC-26 的打包那一栏一直是空的。WP13 的另一半（壳接 `SqlCipherStore` 与配置、`/files` 与 `/graph` 接视图、起草端点的确认屏）**没有做**，仍在「下一步」里。
+这一段做的是**证据链的最后一环**：AC-21 到目前为止只有「每个 crate 各自不出网」，AC-01 与 AC-26 的打包那一栏一直是空的。WP13 的另一半（壳接 `SqlCipherStore` 与配置、`/files` 与 `/graph` 接视图、起草端点的确认屏）见下一节。
 
 | 交付 | 证据 |
 |---|---|
@@ -438,6 +438,43 @@ CI 到此为止。下面每一条都要在 Windows 11 x64 真机上由作者过�
 11. **`headless::run` 用固定时钟（`AT_UNIX_SECONDS`），`collect_probe` 用墙钟。** 前者是为了两次运行写出同一条审计链，后者不行：它写的是「刚才这一次采集」，时间戳编一个出来就成了假话。`headless::now_unix_seconds` 是这条分界。
 12. **主流程用的是编进二进制的 fixture。** `fixtures/` 是仓库目录，装好的 Soul 没有仓库，所以导入语料与问卷答案用 `include_str!` 编进去。它们和 `just fixtures-verify` 检查的是同一批字节。代价是这两个文件改了，`soulcore` 要重编。
 
+## WP13 完成情况（第二段：一个 store 句柄、能读回的配置、三条路由）
+
+本机 `cargo test --workspace --all-targets` 绿（83 个测试目标 472 项），`just desktop-test` 绿（38 项），`just ui-test` 绿（7 个文件 53 项），`just ui-lint`、`cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets --all-features -D warnings`、`e0-audit`、`denylist-audit`、`schema-freeze --check` 都过。没有加依赖。
+
+这一段之前，这个壳每次启动都是第一次启动：配置是内存里现造的 `Config`，向导的答案活在一个 React prop 里，`/files` 与 `/graph` 是空路由，因为没有行可画。补的就是中间缺的那一块。
+
+| 交付 | 证据 |
+|---|---|
+| 一个进程一个 store 句柄（WP07 遗留 8、WP09 遗留 8） | `soulcore::commands::session::Session` 是产品里唯一调 `store::open_store` 的地方，`Session::store()` 发出去的是同一个 `Arc<Mutex<SqlCipherStore>>` 的克隆。`apps/desktop/src-tauri/tests/one_store.rs` 三项：回读壳自己的四个源文件，`open_store` / `open_test_store` / `SqlCipherStore::open` / `Connection::open` 一个都不许出现；每个命令的签名里必须有 `State<'_, SessionState>`；两次 `Session::store()` 做指针相等。回读源码那一半是重点——运行时只能证明「我要到的两个句柄是同一个」，要排掉的却是**没人看的地方冒出第二次开库** |
+| 配置落盘，而且落不下能力（AC-02） | 库旁边的 `config.json` 只有两个字段：向导有没有走完、授权过哪些目录。`StoredConfig` 是 `deny_unknown_fields`，所以一份写着采集或端点的文件**根本读不进来**——session 把问题报出来并按全关运行。「重启打不开任何能力」因此是文件形状的性质，不是读文件那段代码的谨慎。写走 `.partial` 再 rename，写到一半断电读到的是上一次的答案。`session_commands.rs` 14 项覆盖首次启动不落盘、向导跨重启、授权跨重启、自定义字段不生效、根目录消失要报出来 |
+| 向导只问一次 | `session_status` 从盘上读 `wizard_completed`，`App` 不再拿 prop。`ipc_roundtrip::a_finished_wizard_is_still_finished_after_a_restart` 是真的重启：第一个应用退出，第二个在同一个目录上起来，中间只有那个文件在传话 |
+| 密钥来源不含糊 | Windows 上是 `DpapiKeyProvider`，而 SECURITY.md 说它现在仍然是拒绝而不是编一个 key 出来——所以那台机器上库打不开，`SessionStatus.store_notice` 就直说这件事。其它平台是库旁边的种子文件，`KeyProtection::DeveloperKeyFile` 把这一点带到界面上，屏幕没法声称一个这个构建没有的保护 |
+| `/files` 接 `PlanPreview`（WP11 遗留 8） | 授权目录、看计划、移动清单 / 原地不动清单 / 计数 / 两个哈希。**没有执行按钮**，而且不是靠藏：`core.ts` 列全了壳能调的命令，没有一个写文件；`PlanPreview.executable_in_this_version` 在 TypeScript 里的类型是字面量 `false`，想分支到执行路径的组件编不过。`Files.test.tsx` 7 项，在**有计划摆在屏幕上**的那一刻搜执行 / 应用 / 移动 / 重命名 / 删除 / 撤销 |
+| `/graph` 接 `PersonSummaryView`（WP10 遗留 8） | 节点、边、每条边背后的证据条数，摘要按核心写的那几句原样渲染。屏上没有名字。`Graph.test.tsx` 7 项，其中一项把 `fixtures/denylist/diagnostic_terms.txt` 跑在渲染出来的 DOM 上；库没打开时给的是带理由码的拒绝，不是一张空的图——两者不能长得一样 |
+| 起草端点的确认屏（WP10 遗留 6） | `prepare_draft` → 一屏计数 → `generate_draft`，批准要把 `preparation_id` 与 `plan_hash` 两样原样 echo 回来。屏上没有第三人的正文。`Draft.test.tsx` 加了 5 项（共 13），`ipc_roundtrip` 加了 5 项：计划不含粘贴的任何片段、对不上的批准什么都不生成且不留下能批第二次的东西、丢掉之后原来那份批准也失效 |
+| 两边的命令名还是同一份 | `core.ts` 的 `COMMANDS` 从 5 个长到 14 个，`command_surface.rs` 四项照旧比对两侧并要求每个命令体只有一条语句。`contract.test.ts` 现在还把只读、确认、非临床三句话对着 Rust 常量核一遍——测试用的那个 double 不能变成一个比真核心更好说话的核心 |
+
+落地内容：`crates/soulcore/src/commands/session.rs` 与两个测试文件（`session_commands` / `session_directory`）；`crates/soulcore/src/commands/graph.rs` 加 `PeopleGraphView`；`apps/desktop/src-tauri/src/{lib,commands}.rs` 与 `tests/{one_store,ipc_roundtrip}.rs`；`apps/desktop/src/` 的 `core.ts`、`App.tsx`、`router.tsx`、`routes/{Files,Graph}.tsx`、`routes/{Draft,Home}.tsx` 与相应测试。没有动 schema，没有动产品定义，没有新 fixture。
+
+### WP13 第二段的取舍与遗留
+
+1. **Windows 上库仍然打不开。** `DpapiKeyProvider` 是 SECURITY.md 里写着的骨架，`KeyError::Unsupported`。session 不去替它兜底：那台机器上 `store_opened` 是 false，`/graph` 给拒绝，`/files` 照常工作（文件计划不碰库）。**要它变绿得先实现 DPAPI**，那是安全面的工作单，不是这里现编一个 key 派生。
+2. **session 的命令不写审计。** 授权目录、看计划、看摘要这三件事里，只有文件计划本来就有自己的审计条目（`FilePlanSession` 写）。「用户授权了一个目录」在冻结的 `audit.schema.json` 里没有对应动作，和 WP10 遗留 4 是同一条理由：现编一个动作等于让审计条目声称一件契约没说过的事。
+3. **`config.json` 是明文。** 它只有一个布尔和一串路径，没有一个字节是内容。把它放进库里意味着「读配置」要先「开库」，而库开不开正是配置要报告的事情之一——那是个环。路径本身算不算隐私是可以讨论的，讨论的结果如果是「算」，那要改的是把它挪进库并接受首次启动读不到它。
+4. **`SOUL_DATA_DIR` 是一个真的环境变量，不是只在测试里生效。** 它在平台规则**之前**读，所以一个测试没法半躲开平台规则。代价是任何人都能用它把 Soul 指到别处；这和「数据目录在哪里得看得见」是同一件事的两面，且它不会打开任何能力。
+5. **`Home` 上的「已授权目录」计数在这次会话里可能过期。** 那个数来自启动时读的一次 `config_snapshot`，授权一个新目录之后 `/files` 会更新，概览不会。`/files` 才是那份名单的现场视图。
+6. **`ipc_roundtrip` 的每个用例都新起一个应用。** Tauri 的 mock runtime 便宜，但这意味着「重启」和「同一个 session 上的两步」得分开表达——`Shell` 这个小结构体就是那条分界，`Shell::restart` 是前者，同一个 `Shell` 上调两次是后者。
+7. **`soul-headless` 没有接 `Session`。** 它照旧用 `open_test_store` 走临时库，因为它证明的是 AC-21 的主流程，不是安装后的那个目录。两条路都只经过 `store::open_store`，但它们不是同一个句柄，也不该是。
+
 ## 下一步
 
-批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集与 WP09 桌面壳第一段也已完成。批 5 的 WP10 起草与人事摘要已完成（`/draft` 接了本机路径），WP11 核心与命令面已完成、视图未接。WP13 的第一段（安装 smoke、CI、SBOM）已完成。下一步有三件，都卡在同一个地方：`/files` 接 `PlanPreview`、`/graph` 接 `PersonSummaryView`、起草的端点路径接 `prepare` / `generate` 的确认屏——后两件都要一个打开的 `SqlCipherStore` 与一份能读的配置，也就是 WP13 剩下的那一段（配置文件住在哪里、谁在进程里开那一个 store 句柄，见 WP07 遗留 8 与 WP11 遗留 8）。另外 `scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍，结果填回上面的「WP13 的 Windows 手动缺口」。WP03/WP06 的双问卷遗留已经消掉——一套题、一个 sink、一份 fixture 钉住题号；剩下的是**没有界面画它**：向导要把 `profile::questions()` 的十一道题画出来，选择题给三个选项、文本框可留白，答完调 `profile::intake`，与 `/files`、`/graph` 一样都在等 WP13 那个打开的 store 句柄。不要启动 Goal 2。文件写入仍是 v0.1.1。
+批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集与 WP09 桌面壳第一段也已完成。批 5 的 WP10 起草与人事摘要、WP11 文件计划都已完成并接到界面上。WP13 两段都完成：安装 smoke / CI / SBOM 是第一段，一个 store 句柄、能读回的配置、`/files` 与 `/graph` 与端点确认屏是第二段。
+
+剩下的三件事，一件是界面，两件是人在真机前面：
+
+1. **向导还没有画那十一道题。** `profile::questions()` 给出题面、选项和形状，`profile::intake` 收答案，`fixtures/questionnaire/v0_1.json` 钉住题号。store 句柄这个挡路的东西已经没有了——向导现在有 session 可用，缺的只是那一屏。同一批里还有 `/profile`、`/memory`、`/research`、`/audit` 四条 WP09 功能视图的空路由，核心与命令面都在，接法和 `/files`、`/graph` 一样。
+2. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替，也不要在文档里假装它们过了。
+3. **DPAPI 要真的实现**，否则 Windows 上库打不开、`/graph` 只会给拒绝。这是 Goal 1 在目标平台上能不能读自己数据的前提。
+
+不要启动 Goal 2。文件写入仍是 v0.1.1（AC-27）：`/files` 有计划、有哈希、没有执行按钮，也没有可以绑执行按钮的命令。
