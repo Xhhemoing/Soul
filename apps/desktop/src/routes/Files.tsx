@@ -100,7 +100,10 @@ export function Files(): React.JSX.Element {
             </thead>
             <tbody>
               {view.entries.map((entry) => (
-                <tr key={`${entry.action}:${entry.source_rel}`}>
+                <tr
+                  key={`${entry.action}:${entry.source_rel}`}
+                  data-testid="fileplan-row"
+                >
                   <td>{entry.action_label}</td>
                   <td>{entry.source_rel}</td>
                   <td>{entry.target_rel ?? ""}</td>
