@@ -42,11 +42,13 @@ WP01 独占先行。其后 WP02–WP06、WP08 面向 `soul-store-api` 可并行�
 
 ## WP01 完成定义
 
-1. `just ci` 本地绿；CI lint / test-linux / test-windows 绿（AC-26 骨架）。
-2. `schema_wiring` 证明九份 `$ref` 接到 `_defs`；`docs/schemas/schemas.lock.json` 已钉。
-3. crash harness demo 绿（子进程真死）；leakage 检查器对 Unicode fixture 全过。
-4. `SECURITY.md` 加密落地小节与 CI 实证一致。
-5. xtask `self_test` 绿（断言器非空转）。
+1. [x] `just ci` 本地绿；CI lint / test-linux / test-windows 绿（AC-26 骨架）。
+2. [x] `schema_wiring` 证明九份 `$ref` 接到 `_defs`；`docs/schemas/schemas.lock.json` 已钉。
+3. [x] crash harness demo 绿（子进程真死）；leakage 检查器对 Unicode fixture 全过。
+4. [x] `SECURITY.md` 加密落地小节与 CI 实证一致。
+5. [x] xtask `self_test` 绿（断言器非空转）。
+
+WP01 已完成，取舍与遗留见 `docs/STATUS.md`。
 
 WP01 允许：根工装、`crates/{soul-schema,soul-store-api,soul-testkit,xtask,soulcore}`、`fixtures/`、`.github/workflows/ci.yml`、`justfile`、schema 仅 `$ref` 重接与收紧、`schemas.lock.json`、`SECURITY.md` 加密落地段、`STATUS.md`。
 
