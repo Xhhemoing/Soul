@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soul.local/schemas/audit.schema.json",
+  "title": "SoulAuditEntry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "seq", "entry_id", "ts", "prev_hash", "entry_hash", "action", "decision"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "seq": { "type": "integer", "minimum": 0 },
+    "entry_id": { "type": "string" },
+    "ts": { "type": "string", "format": "date-time" },
+    "prev_hash": { "type": "string" },
+    "entry_hash": { "type": "string" },
+    "action": { "type": "string" },
+    "decision": { "enum": ["allowed", "denied", "deferred", "n/a"] },
+    "reason_code": { "type": ["string", "null"] },
+    "subject_refs": { "type": "array" },
+    "counts": { "type": "object" },
+    "plan_hash": { "type": ["string", "null"] },
+    "capability_token_id": { "type": ["string", "null"] },
+    "egress_class": { "enum": ["none", "E0", "E1", "loopback"] }
+  }
+}

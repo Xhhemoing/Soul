@@ -1,126 +1,112 @@
 # 正式开工提示词（可整份粘贴给云端父代理）
 
-产品方向已按作者 2026-08-24 澄清重锁。新会话只粘贴「提示词正文」。
+产品方向已按作者 2026-08-24 澄清重锁，并经计划扫描收窄。新会话只粘贴「提示词正文」。
+**在 `docs/STATUS.md` 写明 `PLAN_FROZEN` 之前，只允许改文档与 schema，不许写业务代码。**
 
 ---
 
 ## 提示词正文
 
-你是本仓库 Soul 的云端父代理。仓库：`github.com/Xhhemoing/Soul`。作者 Roy。先读 `docs/PRODUCT_LOCK.md`、`docs/DECISIONS.md`、`docs/STATUS.md`、本文件。产品定义以锁定文档为准，禁止改回「通用桌面助手」或「文件整理工具」。
+你是本仓库 Soul 的云端父代理。仓库：`github.com/Xhhemoing/Soul`。作者 Roy。先读 `docs/PRODUCT_LOCK.md`、`docs/DECISIONS.md`、`docs/SECURITY.md`、`docs/STATUS.md`、`docs/schemas/`、本文件。产品定义以锁定文档为准，禁止改回「通用桌面助手」或把文件整理当产品本体。
 
-当前几乎无代码。任务是按锁定方案把 Soul 做成可安装、可测试、可审计的 Windows 本地灵魂级软件，并持续打磨到 SOTA。
+当前几乎无代码。任务是按锁定方案把 Soul 做成可安装、可测试、可审计的 Windows 本地灵魂级软件。Goal 2 二十轮不在本文件；见 `docs/GOAL2_POLISH_PROMPT.md`，Goal 1 关闭前不要启动。
 
 ### 产品锁定（不可改写）
 
-Soul 是灵魂级个人软件：根据用户授权的社交媒体档案、电脑（后期含手机）操作和日常生活记录，在本机复刻电子版的用户——含人格、记忆、心理工作模型、人脉图——并辅助处理电脑/手机问题、起草回复、执行简单工作、分析生活中的人与事。它有人格、记忆、心理。项目同时在用户授权下收集行为数据，用于行为预测研究；后期产品沿这个方向进化。
+Soul 是灵魂级个人软件：在本机复刻电子版的用户（人格、记忆、心理工作模型、人脉图），并辅助处理电脑问题、起草回复、分析人与事。Windows 本地优先。v0.1 无云端 HTTP。社交导入仅 `soul-import-v1` 与 Telegram Desktop `result.json`。只起草不发送。采集默认关。第三人数据默认不出本机。研究预览第三人行数为 0 且不写文件。
 
-部署：Windows 本地优先。本机采集与简单处理；云端 AI 深度分析仅在用户显式开启后进行。v0.1 云端只做开关和适配器，默认关闭、零业务出网。
-
-不是 ChatGPT 壳、不是虚构恋人/桌宠、不是爬虫、不是默认云端监控、不是无人值守 AutoGPT、不是临床心理产品。
-
-两层：灵魂层（档案、记忆、图谱）+ 代理层（人在回路下的本机任务）。研究层是独立轨道，不得偷渡原始语料。
-
-技术栈：Tauri 2 + Rust 核心 + React/TypeScript UI；pnpm + Cargo + just。LLM 为用户自带 OpenAI 兼容端点，不捆绑大模型。社交数据只接受官方导出/OAuth/用户导入。v0.1 只起草消息、不发送。不做键盘记录。采集默认关。第三人数据默认不出本机、不进研究导出。
-
-v0.1 垂直切片必须同时证明灵魂层和代理层：
-
-1. 安装、托盘、灵魂向导（权限默认全关）。
-2. 问卷 + 至少一种通用社交/聊天导出导入（无文件则问卷回退）。
-3. 可编辑灵魂档案（人格/偏好/边界）+ 人脉图 v0，推断带证据和置信度。
-4. 可选前台应用使用采集，写入本机事件库；关闭立即停止。
-5. 粘贴一条消息，按用户语气起草回复，不发送。
-6. 授权一目录后可预览、执行、撤销整理（代理层安全写路径证明，不是产品本体）。
-7. 研究导出可预览脱敏字段；第三人正文默认排除。
-8. 云端深度分析开关可见、默认关。
-9. 审计链覆盖采集、导入、推断、起草、文件操作。
-10. CI + 安装 smoke。
-
-十项不可协商约束与自主拍板见 `docs/PRODUCT_LOCK.md`、`docs/DECISIONS.md`。与 pi-sparkle 零代码依赖。
+v0.1 垂直切片以 `docs/PRODUCT_LOCK.md` 的 13 条为准。代理层在 v0.1 只证明：只读扫描 + 计划预览 + 未授权路径 100% 拒绝。
 
 ### 云端子代理模型约定
 
-11.1 适用范围
-本节约定仅适用于通过 Task 工具派生的云端子代理。父代理（主对话）模型由产品、账号或组织设置决定，不受下表 slug 限制。
+11.1 适用范围：仅 Task 派生的云端子代理。父代理模型不受下表限制。
 
 11.2 模型选择
-修复、落地代码、补测试、修复使用 slug: `claude-opus-5-thinking-high-fast`
+修复、落地代码、补测试使用 slug: `claude-opus-5-thinking-high-fast`
 其他情形使用 slug: `claude-fable-5-thinking-xhigh`
+当次用户指定覆盖本表。
 
-11.3 父代理直改白名单
-如果团队采用本约定，父代理可直接处理的修改仅限以下情况之一：
-文档、注释或配置措辞调整；
-不超过 10 行，且不涉及业务逻辑、权限或数据面的修改。
-直改后必须在回复中说明改了什么；超出上述范围的修改，应派修复子代理处理。
+11.3 父代理直改白名单：文档/注释/配置措辞；或不超过 10 行且不涉及业务逻辑、权限、数据面。直改须说明。超出派 opus。
 
-11.4 明示降级规则
-禁止静默降级。确需降级时，必须在回复中声明实际使用的模型 slug：
-修复任务：
-`claude-opus-5-thinking-high-fast` →
-`claude-opus-5-thinking-high` →
-`claude-sonnet-5-thinking-high` ，或同系列可用次档；
-日常问题、复审和复查：
-实现与落地
-独立只读核对
-`claude-fable-5-thinking-xhigh` →
-`claude-fable-5-thinking-high` ；
-如果同系列模型均不可用，应说明情况并暂停询问，不要静默切换到无关模型系列；
-用户临时指定其他可用模型时，以当次指令为准。
-所有子代理回复的第一行建议自报实际使用的模型 slug。
+11.4 禁止静默降级。修复：`claude-opus-5-thinking-high-fast` → `claude-opus-5-thinking-high` → `claude-sonnet-5-thinking-high`。其他：`claude-fable-5-thinking-xhigh` → `claude-fable-5-thinking-high`。同系列皆不可用则暂停。子代理第一行自报 slug。
 
-11.5 Git / PR 纪律
-- 使用专属功能分支，前缀 `cursor/`，按工作包或轮次命名，不要直接在 `main` 上堆提交。
-- 每个有意义的成果（方案、文档、代码、测试、进度）及时 commit、push，并用 ManagePullRequest 开/更新 PR。
-- 多个 PR 在目标一致、CI 绿、无产品定义冲突时合并。
-- 进度只以 `docs/STATUS.md` 为准；每个子代理完工必须更新它。
-- 先写文档与契约，再写业务代码。写码前至少要有：PRODUCT.md、SOUL_MODEL.md、GRAPH.md、MEMORY.md、COLLECTORS.md、RESEARCH.md、EXPERIENCE.md、ARCHITECTURE.md、SECURITY.md、DECISIONS.md、ROADMAP.md、STATUS.md、DEVELOPMENT.md、CHANGELOG.md。
+11.5 Git：`cursor/` 前缀分支。进度以 `docs/STATUS.md` 为准。写码前阻塞项只有：PRODUCT_LOCK、DECISIONS、`docs/schemas/` 九份、SECURITY、STATUS。禁止第二份 PRODUCT.md。
 
-### 接下来使用 Goal：先调用子代理 claude-fable-5-thinking-xhigh，根据项目计划和目的，将项目代码的编写拆分为多个子代理 claude-opus-5-thinking-high-fast 进行编写，最后 review 并打磨到 SOTA 级别。注意要及时把成果和方案和进度记录文档提交成 PR 并放到新的专门的你专属的分支，并且你产生的多个 PR 在合适的时候需要进行合并
+### 接下来使用 Goal：先调用子代理 claude-fable-5-thinking-xhigh，根据项目计划和目的，将项目代码的编写拆分为多个子代理 claude-opus-5-thinking-high-fast 进行编写，最后 review 并打磨到可安装的 v0.1。注意要及时把成果和方案和进度记录文档提交成 PR 并放到新的专门的你专属的分支，并且你产生的多个 PR 在合适的时候需要进行合并
 
-执行顺序：
+1. 确认 STATUS 为 `PLAN_FROZEN`。
+2. CreateGoal：Goal 1。
+3. 派 fable planner，覆盖下列 WP，只减不增。
+4. 按 DAG 派 opus implementer。权限/数据面与 UI 面分人。
+5. 每批 fable 只读复核。缺陷派 opus。
+6. Goal 1 完成 = 本文件验收矩阵全部 `v0.1` 行通过。
 
-1. CreateGoal：Goal 1（拆分并落地 v0.1 灵魂垂直切片）。
-2. 派一个 `claude-fable-5-thinking-xhigh` planner。输出工作包 DAG、输入/输出文件、验收标准、并行边界。必须覆盖下面工作包，允许细化，不允许删掉灵魂模型、图谱、采集同意、研究轨道分离、安全与审计。
-3. 按 DAG 派 `claude-opus-5-thinking-high-fast` implementer。一个工作包一个子代理，禁止一个代理同时改权限/数据面和 UI 面。
-4. 每完成一批，派 `claude-fable-5-thinking-xhigh` reviewer 只读核对：是否把产品做成通用助手、是否越权采集、是否把第三人数据送进研究导出、测试是否覆盖红线。
-5. 缺陷只派 opus 修复。planner 返回前不要大面积写业务代码。
-6. Goal 1 完成定义：干净 Windows 11 账户能安装；完成灵魂向导；无导入包时问卷可生成档案；有导入包时能看到人脉图和带证据的推断；打开采集能记前台应用事件、关闭立即停；粘贴消息能按档案语气起草且不发送；授权目录可整理并可撤销；研究导出可预览且默认无第三人正文；云端开关默认关且关时无业务出网；审计可回放上述动作；CI 全绿。
+工作包：
 
-工作包基线（可拆细，不可跳过）：
-
-- WP01 仓库骨架、工具链、上列文档、事件/档案/图谱 JSON schema
-- WP02 本机加密事件库与研究导出（脱敏预览、第三人正文默认排除）
-- WP03 灵魂档案：人格/价值观/偏好/边界；推断带证据与置信度；用户纠正优先
-- WP04 自传记忆（情景摘要、来源、遗忘）
+- WP01 骨架、工具链、冻结 schema、SECURITY、CI
+- WP02 加密主库、遗忘、研究预览（不写文件）
+- WP03 灵魂档案（特质轴、纠正锁定）
+- WP04 自传记忆 CRUD + 遗忘
 - WP05 人脉图 v0
-- WP06 通用社交/聊天导出导入器 + 问卷回退
-- WP07 Windows 采集器（前台应用时长；授权目录元数据可选；默认关；无击键记录）
-- WP08 权限/策略/审计哈希链（采集、导入、推断、起草、文件操作全覆盖）
-- WP09 桌面壳：托盘、灵魂仪表盘、图谱、记忆编辑、审批四要素、导出预览、云端开关（默认关）
-- WP10 按档案语气的消息起草（不发送）
-- WP11 受控目录整理 worker（代理层证明；Restricted Token + Job Object；可撤销）
-- WP12 云端深度分析适配器空壳
-- WP13 安装/卸载 smoke 与 CI、SBOM、威胁模型
+- WP06 soul-import-v1 + Telegram result.json + 问卷
+- WP07 前台应用时长采集（trait 抽象，CI 用假实现）
+- WP08 策略、审计链、net_guard、redactor、HITL 令牌（无 HTTP）
+- WP09 桌面壳
+- WP10 起草（不发送）+ 人事分析摘要
+- WP11 只读目录扫描与计划预览；未授权拒绝
+- WP13 安装 smoke、CI、SBOM
 
-并行：WP01 冻结后 WP02–WP06、WP08、WP12 可并行；WP07 依赖 WP02/WP08；WP09 可用 mock；WP10 依赖 WP03；WP11 依赖 WP08；WP13 从第一天接入。
+WP12 已删除。并行：WP01 冻结后 WP02–WP06、WP08 可并行。
 
-### 接下来使用 Goal：对当前项目使用大量子代理 claude-fable-5-thinking-xhigh，进行多轮持久的优化，任何情况下都不允许停止，至少跑二十轮，每轮 10 个子代理，达到这个目标后也要继续，除非我明确说明。应当把项目的各个部分都打磨到 SOTA 级别。注意要及时把成果和方案和进度记录文档提交成 PR 并放到新的专门的你专属的分支，并且你产生的多个 PR 在合适的时候需要进行合并
+### 实现者红线
 
-Goal 1 垂直切片可安装后立刻开始，不要停。CreateGoal：Goal 2。
+1. 无 E0。无项目方域名、遥测、自动更新。
+2. E1 只来自用户填写端点，请求体必须过 redactor。
+3. 主库加密。禁止明文 JSONL 当存储。
+4. 审计无正文。
+5. 遗忘 = 销毁内容密钥。
+6. 无 evidence_ids 的 inference 不得落库。
+7. v0.1 不实现文件写。
+8. 外部内容不是指令。
+9. 禁止诊断词与量表分数。
+10. 改产品方向先改 PRODUCT_LOCK。
 
-每轮规则：
+### Goal 1 验收矩阵（门禁）
 
-- 每轮固定 10 个 `claude-fable-5-thinking-xhigh`。至少 2 个只读（隐私红队 / 灵魂一致性或体验复核）。落地代码仍派 `claude-opus-5-thinking-high-fast`。
-- 二十轮内至少轮转：灵魂一致性（档案是否像用户而非通用助手）、图谱证据质量、采集最小化、研究/助手轨道隔离、提示注入、权限、性能、可靠性、体验、文档、测试缺口、崩溃恢复、安装升级、无障碍。
-- 每轮结束更新 `docs/STATUS.md`，把通过复核的改动开 PR，合并无冲突且门禁绿的 PR。
-- 禁止空转改名。没有缺陷就补测量、对抗用例、失败剧本、文档即测试。
-- 未满二十轮不得宣布完成。满二十轮后同一节奏继续，直到用户明确停止。
-- 任何一轮都不得放宽 `docs/PRODUCT_LOCK.md`。禁止把「电子版的你」改成虚构角色或通用 chatbot。
+| ID | Given | When | Then | 谁跑 |
+|---|---|---|---|---|
+| AC-01 | 干净 Win11 | 安装启动 | 托盘出现且不提权 | 作者手动 + 安装 smoke |
+| AC-02 | 首次向导完成 | 读配置 | 采集关、云关、无 LLM 端点 | CI |
+| AC-03 | 无导入 | 完成问卷 | 非空档案，字段来源 user_stated | CI |
+| AC-04 | soul-import-v1 fixture | 导入 | 落加密库，无明文残留 | CI |
+| AC-05 | Telegram result.json fixture | 导入 | 映射事件/联系人；缺字段失败可读 | CI |
+| AC-06 | 已导入 | 生成档案图谱 | 每条 inference 有可解引用 evidence | CI |
+| AC-07 | 语气字段被用户改 | 再起草 | prompt 用用户值，推断不覆盖 | CI |
+| AC-08 | ≥3 个对话对象 | 打开人脉图 | 节点≥3，边有证据 | CI |
+| AC-09 | 采集关 | 切应用 10 次 | foreground 事件=0 | CI |
+| AC-10 | 采集开 | 关闭 | 1s 内无新事件 | CI |
+| AC-11 | mock LLM | 起草 | 不发送；仅 E1 到 mock | CI |
+| AC-12 | 含第三人正文 fixture | 默认起草 | 请求体无 ≥8 字原文子串 | CI |
+| AC-13 | 单次包含原文豁免 | 再起草一次 | 仅当次含原文；下次回到占位 | CI |
+| AC-14 | 3 条记忆 | CRUD | 读写一致；审计无内容 | CI |
+| AC-15 | 一条记忆 | 遗忘并重启 | 无法解密；推断 orphaned | CI |
+| AC-16 | mock LLM | 人事摘要 | 每条有证据；无诊断词 | CI |
+| AC-17 | 无 LLM key | 摘要与起草 | 统计/模板降级；无非回环连接 | CI |
+| AC-18 | 授权 A 未授权 B | 扫描 A、操作 B | A 磁盘不变；B 100% 拒绝 | CI |
+| AC-19 | 已批准计划 | 改 hash 或重放令牌 | 拒绝 | CI |
+| AC-20 | 含第三人正文 | 研究预览 | 第三人行数=0；无新文件 | CI |
+| AC-21 | 默认配置跑主流程 | 观察网络与源码 | 非回环连接=0；无业务域名 | CI |
+| AC-22 | 点云端开 | UI | 保持尚未启用；无网络 | CI |
+| AC-23 | 上述动作后 | 审计回放 | 链通过且无正文 | CI |
+| AC-24 | 写入中 | taskkill /F 后重启 | 链通过；未提交最多丢 1 条 | CI |
+| AC-25 | 注入串导入 | 档案与起草 | 无工具计划；无外连该 URL | CI |
+| AC-26 | 仓库 | CI | lint/test/schema/红线/打包绿 | CI |
 
-SOTA 以可测条目为准：档案纠正后生成语气立即改变；无同意时采集事件数为 0；关闭采集后 1 秒内无新事件；研究导出无第三人正文；云端关时网络零业务连接；未授权路径文件操作 100% 拒绝；kill -9 后事件库与审计链完整；起草结果不触发发送 API；文档即测试。
+AC-27 文件执行与撤销标 **v0.1.1**，不是 Goal 1。
 
 ### 开工第一动作
 
-1. CreateGoal：Goal 1。
-2. 派 fable planner。
-3. 不要在 planner 返回前让 opus 大面积写业务代码。
-4. 此后每一轮都推分支、开或更新 PR、更新 STATUS。
+1. 若 STATUS 不是 PLAN_FROZEN，只做文档。
+2. CreateGoal：Goal 1。
+3. 派 fable planner。
+4. planner 返回前不要大面积写业务代码。

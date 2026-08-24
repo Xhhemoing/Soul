@@ -4,28 +4,22 @@
 
 ## 当前里程碑
 
-计划验证 / 规范冻结（三轮双模型）。尚未写应用代码。尚未 `PLAN_FROZEN`。
+计划验证 / 规范冻结（三轮双模型）。R2 文档已落盘。尚未 `PLAN_FROZEN`。尚未写应用代码。
 
 ## 进度
 
 | 项 | 状态 |
 |---|---|
-| 空仓库现状确认 | 完成 |
-| 第一轮助手向设计（已作废为产品本体） | 完成，仅保留权限/审计/沙箱思想 |
-| 作者澄清：电子版的你 + 人脉 + 辅助 + 行为预测 | 完成 |
 | 产品重锁与自主拍板 | 完成 |
-| 正式开工提示词（实现用） | `docs/FORMAL_WORK_PROMPT.md` |
-| 三轮双模型扫描模板 | `docs/templates/THREE_ROUND_DUAL_SCAN.md` |
-| 计划验证提示词 | `docs/PLAN_VERIFY_PROMPT.md` |
-| R1 双模型扫描 | 完成，见 `docs/scan-rounds/R1-SYNTHESIS.md`，结论 `PLAN_BLOCKED` |
-| R2 规范修复 | 进行中 |
-| R3 复核冻结 | 未开始 |
+| R1 双模型扫描 | 完成，`PLAN_BLOCKED`，见 `docs/scan-rounds/R1-SYNTHESIS.md` |
+| R2 规范修复 | 父代理已落盘，见 `docs/scan-rounds/R2-SYNTHESIS.md` |
+| R3 复核冻结 | 进行中 |
 | v0.1 实现 | 未开始 |
 
 ## 阻塞
 
-计划尚未冻结。在 `PLAN_FROZEN` 之前不要按 Goal 1 写业务代码。
+等 R3 给出 `PLAN_FROZEN` 或残留 P0。
 
 ## 下一步
 
-R2 正在按 `docs/scan-rounds/R1-SYNTHESIS.md` 出规范补丁。R3 结论为 `PLAN_FROZEN` 前不要写业务代码。
+R3 只读核对落盘文档与 schema 是否闭合 R1 P0。

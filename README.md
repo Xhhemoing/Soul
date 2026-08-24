@@ -8,5 +8,8 @@
 - 自主拍板：[`docs/DECISIONS.md`](docs/DECISIONS.md)
 - 进度：[`docs/STATUS.md`](docs/STATUS.md)
 - 正式开工提示词：[`docs/FORMAL_WORK_PROMPT.md`](docs/FORMAL_WORK_PROMPT.md)
+- 安全规范：[`docs/SECURITY.md`](docs/SECURITY.md)
+- Schema：[`docs/schemas/`](docs/schemas/)
+- Goal 2（Goal 1 关闭后）：[`docs/GOAL2_POLISH_PROMPT.md`](docs/GOAL2_POLISH_PROMPT.md)
 - 计划验证提示词：[`docs/PLAN_VERIFY_PROMPT.md`](docs/PLAN_VERIFY_PROMPT.md)
 - 三轮双模型模板：[`docs/templates/THREE_ROUND_DUAL_SCAN.md`](docs/templates/THREE_ROUND_DUAL_SCAN.md)

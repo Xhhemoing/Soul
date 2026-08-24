@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soul.local/schemas/event.schema.json",
+  "title": "SoulEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "ts", "source", "kind", "actor_subject", "privacy"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "event_id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "ts": { "type": "string", "format": "date-time" },
+    "source": {
+      "enum": [
+        "collector.foreground_app",
+        "import.soul_import_v1",
+        "import.telegram_desktop",
+        "ui.questionnaire",
+        "ui.paste",
+        "core.memory",
+        "core.forget"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "app.foreground",
+        "message.observed",
+        "import.item",
+        "questionnaire.answer",
+        "memory.write",
+        "forget.execute"
+      ]
+    },
+    "actor_subject": { "enum": ["self", "third_party", "system"] },
+    "consent_id": { "type": ["string", "null"] },
+    "privacy": { "type": "object" },
+    "body_ref": { "type": ["object", "null"] }
+  }
+}
