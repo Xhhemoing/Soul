@@ -21,6 +21,7 @@
 
 use std::path::{Path, PathBuf};
 
+use soul_policy::redactor::{ACCOUNT_PLACEHOLDER, THIRD_PARTY_PLACEHOLDER};
 use soul_testkit::mock_llm::MockLlm;
 use soulcore::commands::draft::Approval;
 use soulcore::commands::session::{
@@ -52,7 +53,7 @@ fn config_text(directory: &Path) -> String {
 /// socket. Returns whatever the session answered.
 fn draft_through_the_endpoint(session: &mut Session) -> Result<(), SessionRefusal> {
     let plan = session
-        .prepare_draft("周五的场地我已经订好了，你直接过来就行")
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
         .expect("a paste can always be described");
     session.generate_draft(&Approval {
         preparation_id: plan.preparation_id,
@@ -309,6 +310,202 @@ fn a_refused_address_leaves_the_one_that_was_there() {
     assert!(session.snapshot().llm_endpoint_configured);
     draft_through_the_endpoint(&mut session).expect("the first address is still the one");
     assert_eq!(endpoint.request_count(), 1);
+    drop(keep);
+}
+
+// ------------------------------------------------- AC-13, from the product ---
+
+/// The paste the exemption tests send.
+///
+/// Somebody else's message, with a number and a handle in it that nobody
+/// registered as a contact. A fresh [`Session`] starts from
+/// `draft::closed_session`, so its [`KnownIdentifiers`] set is empty and what
+/// placeholds these two is the shape scrub rather than the contact graph —
+/// which is the interesting case, because it is the one a user who has
+/// imported nothing is in. A registered name being placeheld inside an
+/// exempted body is `soul-draft`'s
+/// `an_exempted_body_still_placeholds_the_name_and_the_number`.
+///
+/// [`KnownIdentifiers`]: soul_policy::redactor::KnownIdentifiers
+const CONFIRMED_PASTE: &str =
+    "周五的场地我已经订好了，你直接过来就行，到了打 13800138000 或者找 @xiaoming";
+
+/// AC-13 with the screens in it: one confirmed message travels, the next does
+/// not.
+///
+/// `draft_commands.rs` already proves this of [`DraftSession`] directly. What
+/// it cannot show is that a running Soul can reach the state at all: for as
+/// long as `prepare_pasted` passed `None`, the confirmation panel's 「有一段是你
+/// 二次确认过、按原文带上的。」 was a sentence no user could make true. So the
+/// assertions here are on the bytes a real loopback endpoint received, through
+/// the same object the desktop shell holds.
+///
+/// [`DraftSession`]: soulcore::commands::draft::DraftSession
+#[test]
+fn a_second_confirmation_sends_this_ones_words_and_the_next_preparation_is_placeheld_again() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+    assert_eq!(
+        endpoint.request_count(),
+        0,
+        "filling in the address contacted it",
+    );
+
+    // The user read a placeheld plan and pressed 「这一条按原文带上」.
+    let exempted = session
+        .prepare_draft(CONFIRMED_PASTE, Some(true))
+        .expect("a plan");
+    assert!(exempted.carries_exempted_original);
+    assert_eq!(exempted.third_party_turns, 1);
+    assert_eq!(exempted.placeheld_turns, 0);
+    assert_eq!(
+        endpoint.request_count(),
+        0,
+        "an exemption is not a generation",
+    );
+    session
+        .generate_draft(&exempted.approval())
+        .expect("the endpoint answers");
+
+    // Nobody cleared anything, and the next preparation is placeheld again.
+    let after = session
+        .prepare_draft(CONFIRMED_PASTE, None)
+        .expect("a plan");
+    assert!(!after.carries_exempted_original);
+    assert_eq!(after.placeheld_turns, 1);
+    assert_ne!(
+        after.plan_hash, exempted.plan_hash,
+        "a differently redacted body is a different plan",
+    );
+    session
+        .generate_draft(&after.approval())
+        .expect("the endpoint answers");
+
+    let sent = endpoint.requests();
+    assert_eq!(sent.len(), 2, "two approvals, two requests");
+    assert!(
+        sent[0].body.contains("场地"),
+        "the confirmed message did not travel, so the confirmation bought nothing: {}",
+        sent[0].body,
+    );
+    assert!(!sent[0].body.contains(THIRD_PARTY_PLACEHOLDER));
+    assert!(
+        !sent[1].body.contains("场地"),
+        "the exemption was remembered into the next request: {}",
+        sent[1].body,
+    );
+    assert!(sent[1].body.contains(THIRD_PARTY_PLACEHOLDER));
+
+    // The exemption is for one message's prose and nothing else. Confirming to
+    // send what somebody wrote is not confirming to publish how to reach them.
+    for body in [&sent[0].body, &sent[1].body] {
+        assert!(
+            !body.contains("13800138000"),
+            "the number travelled: {body}"
+        );
+        assert!(!body.contains("@xiaoming"), "the handle travelled: {body}");
+    }
+    assert!(
+        sent[0].body.contains(ACCOUNT_PLACEHOLDER),
+        "the exempted body dropped them rather than placeholding them: {}",
+        sent[0].body,
+    );
+
+    // And what the interface holds about all this is still counts and
+    // identifiers: the plan the user approved carries no prose, and neither
+    // does the chain or the snapshot beside it.
+    for (what, rendered) in [
+        (
+            "the exempted plan",
+            serde_json::to_string(&exempted).expect("serialize the plan"),
+        ),
+        (
+            "the snapshot",
+            serde_json::to_string(&session.snapshot()).expect("serialize the snapshot"),
+        ),
+        (
+            "the audit chain",
+            serde_json::to_string(&session.audit().expect("the store opened"))
+                .expect("serialize the chain"),
+        ),
+    ] {
+        assert!(
+            !rendered.contains("场地"),
+            "{what} carries the third party's words: {rendered}",
+        );
+    }
+    drop(keep);
+}
+
+/// The second confirmation is an answer, not a setting.
+///
+/// `config.json` is written after the exempted request has gone out — by an
+/// authorization, which is one of the two things that write it — so the file
+/// read below is one that was written while the exemption was in flight. It
+/// still has two keys, and the launch after it prepares a placeheld request
+/// without anything having to remember to clear one.
+#[test]
+fn an_exemption_reaches_neither_the_configuration_file_nor_the_next_launch() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    {
+        let mut session = Session::open(&directory);
+        finish_the_wizard(&mut session);
+        session
+            .set_user_endpoint(&endpoint.base_url())
+            .expect("the address is taken");
+
+        let exempted = session
+            .prepare_draft(CONFIRMED_PASTE, Some(true))
+            .expect("a plan");
+        assert!(exempted.carries_exempted_original);
+        session
+            .generate_draft(&exempted.approval())
+            .expect("the endpoint answers");
+        session
+            .authorize(&directory.to_string_lossy())
+            .expect("a directory that exists");
+    }
+
+    let text = config_text(&directory);
+    for word in ["original", "exempt", "include", "carries", "场地"] {
+        assert!(
+            !text.contains(word),
+            "`{word}` reached config.json:\n{text}"
+        );
+    }
+    let value: serde_json::Value = serde_json::from_str(&text).expect("parse");
+    let object = value.as_object().expect("the file is a JSON object");
+    let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        ["authorized_roots", "wizard_completed"],
+        "config.json grew a field, and an exemption is the last thing that may add one",
+    );
+    let stored = read_stored_config(&directory).expect("the file still parses as a StoredConfig");
+    assert_eq!(
+        stored,
+        StoredConfig {
+            wizard_completed: true,
+            authorized_roots: stored.authorized_roots.clone(),
+        },
+    );
+
+    let mut next_launch = Session::open(&directory);
+    let plan = next_launch
+        .prepare_draft(CONFIRMED_PASTE, None)
+        .expect("a plan");
+    assert!(
+        !plan.carries_exempted_original,
+        "a restart carried an exemption across",
+    );
+    assert_eq!(plan.placeheld_turns, 1);
+    assert_eq!(endpoint.request_count(), 1, "one approval, one request");
     drop(keep);
 }
 

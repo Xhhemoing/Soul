@@ -615,11 +615,28 @@ impl Session {
     }
 
     /// Step one of the endpoint path: describe what would be sent.
-    pub fn prepare_draft(&mut self, pasted: &str) -> Result<E1DraftPlan, SessionRefusal> {
+    ///
+    /// `include_original` is the one-shot exemption AC-13 is about, and the
+    /// session keeps no note of it: it is forwarded, spent while the body is
+    /// built, and gone. Anything but `Some(true)` — which is every call the
+    /// confirmation screen makes until somebody presses the second button —
+    /// describes a placeheld request, and there is no field on this type or in
+    /// `config.json` that could say otherwise.
+    ///
+    /// It is an [`Option`] because the interface may leave it out, and the
+    /// answer to a caller who said nothing is decided here rather than in the
+    /// shell: an absent second confirmation is not a confirmation, and that is
+    /// the sort of thing `soulcore` should be the one to say.
+    pub fn prepare_draft(
+        &mut self,
+        pasted: &str,
+        include_original: Option<bool>,
+    ) -> Result<E1DraftPlan, SessionRefusal> {
         Ok(draft::prepare_pasted(
             &mut self.draft,
             &mut self.policy,
             pasted,
+            include_original == Some(true),
         )?)
     }
 

@@ -129,12 +129,17 @@ pub fn draft_reply(
 }
 
 /// Step one of the endpoint path: describe the request, and stop.
+///
+/// `include_original` is the user's second confirmation, and it is optional so
+/// that a call which does not mention it is the placeheld one. What an absent
+/// answer means is the core's to decide, so it is forwarded as it arrived.
 #[tauri::command]
 pub fn prepare_draft(
     session: State<'_, SessionState>,
     pasted: String,
+    include_original: Option<bool>,
 ) -> Result<E1DraftPlan, SessionRefusal> {
-    session.held().prepare_draft(&pasted)
+    session.held().prepare_draft(&pasted, include_original)
 }
 
 /// Step two: the user read the counts on screen and approved this exact

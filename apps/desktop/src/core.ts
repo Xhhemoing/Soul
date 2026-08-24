@@ -688,9 +688,18 @@ export function draftNotices(): Promise<DraftNotices> {
  *
  * Nothing has left when this resolves. What comes back is what the user is
  * being asked to approve.
+ *
+ * `includeOriginal` is the second confirmation PRODUCT_LOCK asks for before
+ * one message's own words may travel: false unless the user pressed
+ * 「这一条按原文带上」 on the confirmation panel, and false again on the next
+ * call, because it is an argument and not a setting. Nothing on this side
+ * remembers it — the core spends it while building the body.
  */
-export function prepareDraft(pasted: string): Promise<E1DraftPlan> {
-  return invoke<E1DraftPlan>(COMMANDS.prepareDraft, { pasted });
+export function prepareDraft(
+  pasted: string,
+  includeOriginal = false,
+): Promise<E1DraftPlan> {
+  return invoke<E1DraftPlan>(COMMANDS.prepareDraft, { pasted, includeOriginal });
 }
 
 /**

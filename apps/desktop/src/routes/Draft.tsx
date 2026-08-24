@@ -87,11 +87,18 @@ export function Draft(): React.JSX.Element {
     );
   };
 
-  /** Step one: ask the core what it would send, and show that. */
-  const describe = (): void => {
+  /**
+   * Step one: ask the core what it would send, and show that.
+   *
+   * `includeOriginal` is the user's second confirmation, and it is passed per
+   * call rather than kept in state: pressing 「这一条按原文带上」 re-prepares this
+   * same paste with it set, and every later preparation starts from false
+   * again because there is no variable here that survives one.
+   */
+  const describe = (includeOriginal = false): void => {
     setOutcome({ kind: "working" });
     setPlan(null);
-    prepareDraft(pasted).then(
+    prepareDraft(pasted, includeOriginal).then(
       (prepared) => {
         setPlan(prepared);
         setOutcome({ kind: "none" });
@@ -151,7 +158,7 @@ export function Draft(): React.JSX.Element {
           </button>
           <button
             type="button"
-            onClick={describe}
+            onClick={() => describe()}
             disabled={pasted.trim() === "" || outcome.kind === "working"}
           >
             用你自己的模型端点写
@@ -165,7 +172,12 @@ export function Draft(): React.JSX.Element {
       </section>
 
       {plan === null ? null : (
-        <Confirm plan={plan} onApprove={approve} onAbandon={abandon} />
+        <Confirm
+          plan={plan}
+          onApprove={approve}
+          onCarryOriginal={() => describe(true)}
+          onAbandon={abandon}
+        />
       )}
 
       {outcome.kind === "refused" ? (
@@ -180,6 +192,8 @@ export function Draft(): React.JSX.Element {
 interface ConfirmProps {
   readonly plan: E1DraftPlan;
   readonly onApprove: (plan: E1DraftPlan) => void;
+  /** The second confirmation: prepare this same paste again, unplaceheld. */
+  readonly onCarryOriginal: () => void;
   readonly onAbandon: () => void;
 }
 
@@ -195,8 +209,26 @@ interface ConfirmProps {
  * The two identifiers are shown because they are what gets echoed back. A
  * mismatch is refused by `soulcore` and nothing leaves, so they are also the
  * one part of this panel a person could check against a refusal message.
+ *
+ * ## Where the second confirmation lives
+ *
+ * 「这一条按原文带上」 is the exemption PRODUCT_LOCK describes, and this panel is
+ * the only place it can be reached from: the user has already read a plan
+ * saying the other person's words are placeheld, and pressing it prepares the
+ * same paste again with that one turn unplaceheld. It is a second preparation
+ * and not a send — 确认，开始生成 is still the only button that spends one — so
+ * the plan on screen after it is a plan the user still has to approve.
+ *
+ * It disappears once the plan already carries the original, because a plan
+ * cannot be exempted twice: there is one third-party turn in a paste, and the
+ * counts above say what happened to it.
  */
-function Confirm({ plan, onApprove, onAbandon }: ConfirmProps): React.JSX.Element {
+function Confirm({
+  plan,
+  onApprove,
+  onCarryOriginal,
+  onAbandon,
+}: ConfirmProps): React.JSX.Element {
   return (
     <section className="panel" aria-labelledby="confirm-heading">
       <h2 id="confirm-heading">确认这一次要生成什么</h2>
@@ -224,10 +256,21 @@ function Confirm({ plan, onApprove, onAbandon }: ConfirmProps): React.JSX.Elemen
         <button type="button" className="primary" onClick={() => onApprove(plan)}>
           确认，开始生成
         </button>
+        {plan.carries_exempted_original ? null : (
+          <button type="button" data-testid="e1-carry-original" onClick={onCarryOriginal}>
+            这一条按原文带上
+          </button>
+        )}
         <button type="button" onClick={onAbandon}>
           不了，丢掉这次准备
         </button>
       </div>
+      {plan.carries_exempted_original ? null : (
+        <p className="muted" data-testid="e1-carry-original-notice">
+          按原文带上只对这一次准备有效，按下之后会重新准备一次给你看，仍然要你按确认才会生成；
+          下一次准备又回到占位。姓名和账号在任何一种情况下都还是占位的。
+        </p>
+      )}
       <p className="muted" data-testid="e1-not-sent">
         {plan.not_sent_notice}
       </p>

@@ -701,7 +701,16 @@ export interface FakeCoreOptions {
   /** As `graph`, but able to throw the way a refusal arrives — as a value. */
   readonly graphing?: () => PeopleGraph;
   readonly summarizing?: (contactId: string) => PersonSummary;
-  readonly preparing?: (pasted: string) => E1DraftPlan;
+  /**
+   * How the double answers 用你自己的模型端点写.
+   *
+   * `includeOriginal` is the user's second confirmation, and the double is
+   * handed it so a test can answer the way the core would: a placeheld plan
+   * until it is set, and one that carries the original after. A double that
+   * ignored it could not tell the two apart, which is the whole of AC-13 on
+   * this side.
+   */
+  readonly preparing?: (pasted: string, includeOriginal: boolean) => E1DraftPlan;
   readonly generating?: (approval: { preparation_id: string; plan_hash: string }) => Draft;
   /** Able to throw: a file that does not parse arrives as a refusal value. */
   readonly readingImport?: (format: string, text: string) => ImportPreview;
@@ -857,8 +866,13 @@ export function installFakeCore(
         return DRAFT_NOTICES;
       case "draft_reply":
         return drafting((payload as { pasted?: string }).pasted ?? "");
-      case "prepare_draft":
-        return (options.preparing ?? (() => anE1Plan()))((payload as { pasted?: string }).pasted ?? "");
+      case "prepare_draft": {
+        const asked = payload as { pasted?: string; includeOriginal?: boolean };
+        return (options.preparing ?? (() => anE1Plan()))(
+          asked.pasted ?? "",
+          asked.includeOriginal ?? false,
+        );
+      }
       case "generate_draft":
         return (options.generating ?? (() => aTemplateDraft({ source: "user_endpoint" })))(
           (payload as { approval: { preparation_id: string; plan_hash: string } }).approval,

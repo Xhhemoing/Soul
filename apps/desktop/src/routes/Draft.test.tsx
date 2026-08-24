@@ -177,7 +177,10 @@ describe("起草页", () => {
     const { core } = await describe_(PASTED);
 
     await screen.findByRole("heading", { name: "确认这一次要生成什么" });
-    expect(core.callsTo("prepare_draft")[0]?.payload).toEqual({ pasted: PASTED });
+    expect(core.callsTo("prepare_draft")[0]?.payload).toEqual({
+      pasted: PASTED,
+      includeOriginal: false,
+    });
     expect(core.callsTo("generate_draft")).toHaveLength(0);
 
     expect(screen.getByTestId("e1-notice")).toHaveTextContent(E1_PLAN_NOTICE);
@@ -209,6 +212,91 @@ describe("起草页", () => {
     });
     // The confirmation is spent: there is nothing left on screen to press twice.
     expect(screen.queryByRole("button", { name: "确认，开始生成" })).toBeNull();
+  });
+
+  /**
+   * AC-13 as a screen: the second confirmation PRODUCT_LOCK asks for.
+   *
+   * The user has already read a plan saying the other person's words are
+   * placeheld — that reading *is* the first confirmation — and this button is
+   * the second. What it does is prepare the same paste again, so the value on
+   * screen afterwards is a plan the user still has to approve; the assertion
+   * that `generate_draft` has not been called is the one that says pressing it
+   * is not pressing 生成.
+   */
+  it("二次确认之后，这一次按原文带上，屏幕上说的也是这句话", async () => {
+    const exempted = anE1Plan({
+      preparation_id: "0192f000-0000-7000-8000-0000000000f2",
+      plan_hash: "e6".repeat(32),
+      placeheld_turns: 0,
+      carries_exempted_original: true,
+    });
+    const { core, user } = await describe_(PASTED, {
+      preparing: (_pasted, includeOriginal) => (includeOriginal ? exempted : anE1Plan()),
+    });
+
+    await screen.findByRole("heading", { name: "确认这一次要生成什么" });
+    expect(screen.getByTestId("e1-exempted")).toHaveTextContent("没有任何一段按原文带上");
+
+    await user.click(screen.getByRole("button", { name: "这一条按原文带上" }));
+    await screen.findByText("有一段是你二次确认过、按原文带上的。");
+
+    // The same paste, prepared again with the confirmation on it. The screen
+    // sends the text it already had rather than asking for it a second time.
+    expect(core.callsTo("prepare_draft")).toHaveLength(2);
+    expect(core.callsTo("prepare_draft")[1]?.payload).toEqual({
+      pasted: PASTED,
+      includeOriginal: true,
+    });
+    expect(screen.getByTestId("e1-counts")).toHaveTextContent("已占位 0 段");
+    expect(screen.getByTestId("e1-plan-hash")).toHaveTextContent(exempted.plan_hash);
+
+    // A plan cannot be exempted twice, so there is nothing left to press.
+    expect(screen.queryByRole("button", { name: "这一条按原文带上" })).toBeNull();
+
+    // Nothing has been generated, and the panel still carries no prose of
+    // anybody's — least of all the words the exemption is about.
+    expect(core.callsTo("generate_draft")).toHaveLength(0);
+    const panel = screen.getByRole("heading", { name: "确认这一次要生成什么" }).parentElement;
+    expect(panel?.textContent ?? "").not.toContain("场地");
+    for (const button of screen.queryAllByRole("button")) {
+      expect(button.textContent ?? "").not.toMatch(/发送|发出|发给|替我发|回复对方/);
+    }
+
+    // The user still has to say yes, and what goes back is the second plan.
+    await user.click(screen.getByRole("button", { name: "确认，开始生成" }));
+    await screen.findByRole("heading", { name: "草稿" });
+    expect(core.callsTo("generate_draft")[0]?.payload).toEqual({
+      approval: {
+        preparation_id: exempted.preparation_id,
+        plan_hash: exempted.plan_hash,
+      },
+    });
+  });
+
+  /**
+   * The one-shot half. The core is what makes this true — the exemption is
+   * consumed while the body is built — but the screen must not be the thing
+   * that quietly re-asserts it, so what is checked here is that going back to
+   * the paste box and preparing again sends `false`.
+   */
+  it("再准备一次的时候，界面不会自己把上一次的二次确认带上", async () => {
+    const exempted = anE1Plan({ placeheld_turns: 0, carries_exempted_original: true });
+    const { core, user } = await describe_(PASTED, {
+      preparing: (_pasted, includeOriginal) => (includeOriginal ? exempted : anE1Plan()),
+    });
+
+    await user.click(await screen.findByRole("button", { name: "这一条按原文带上" }));
+    await screen.findByText("有一段是你二次确认过、按原文带上的。");
+
+    await user.click(screen.getByRole("button", { name: "用你自己的模型端点写" }));
+    await screen.findByText("没有任何一段按原文带上。");
+
+    expect(core.callsTo("prepare_draft")).toHaveLength(3);
+    expect(core.callsTo("prepare_draft")[2]?.payload).toEqual({
+      pasted: PASTED,
+      includeOriginal: false,
+    });
   });
 
   it("说不了之后，这次准备被丢掉，也没有草稿冒出来", async () => {

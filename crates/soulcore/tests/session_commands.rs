@@ -289,7 +289,7 @@ fn an_approval_that_does_not_match_the_plan_reaches_no_endpoint() {
     let (keep, directory) = scratch();
     let mut session = Session::open(&directory);
 
-    let plan = session.prepare_draft(PASTED).expect("a plan to read");
+    let plan = session.prepare_draft(PASTED, None).expect("a plan to read");
     assert_eq!(plan.third_party_turns, 1);
     assert_eq!(plan.placeheld_turns, 1);
     assert!(!plan.carries_exempted_original);
@@ -323,7 +323,7 @@ fn approving_a_plan_with_no_endpoint_configured_is_refused_and_sends_nothing() {
     let (keep, directory) = scratch();
     let mut session = Session::open(&directory);
 
-    let plan = session.prepare_draft(PASTED).expect("a plan to read");
+    let plan = session.prepare_draft(PASTED, None).expect("a plan to read");
     let refusal = session
         .generate_draft(&plan.approval())
         .expect_err("there is nowhere to send it");
@@ -338,7 +338,7 @@ fn discarding_a_prepared_request_throws_it_away() {
     let (keep, directory) = scratch();
     let mut session = Session::open(&directory);
 
-    session.prepare_draft(PASTED).expect("a plan");
+    session.prepare_draft(PASTED, None).expect("a plan");
     assert!(session.discard_draft());
     assert!(!session.discard_draft(), "there was only one");
     drop(keep);

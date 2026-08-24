@@ -46,7 +46,9 @@ use soul_policy::audit::AuditContent;
 use soul_policy::hitl::{
     ActionKind, ActionRequest, CapabilityScope, HitlDenial, PlanHash, RequestOrigin,
 };
-use soul_policy::redactor::{KnownIdentifiers, OneShotExemption, RedactedBody, Redactor};
+use soul_policy::redactor::{
+    ExemptionRequest, KnownIdentifiers, OneShotExemption, RedactedBody, Redactor,
+};
 use soul_policy::ReasonCode;
 use soul_profile::ProfileError;
 use soul_store::SqlCipherStore;
@@ -364,19 +366,36 @@ pub fn draft_pasted(
 /// What comes back is a description, not a draft. Nothing has left: the body
 /// is built and held so that the counts the user is about to read are the
 /// counts of the request that would go out, and [`generate_prepared`] is the
-/// only thing that can spend it. There is no exemption argument, because the
-/// second confirmation an exemption needs is a screen this build does not
-/// have; a paste stays placeheld.
+/// only thing that can spend it.
+///
+/// `include_original` is the second confirmation PRODUCT_LOCK asks for, and
+/// the screen it comes from is the confirmation panel: the user has already
+/// read a plan saying every third-party turn is placeheld, and pressing
+/// 「这一条按原文带上」 prepares the same paste again with this set. It is an
+/// argument rather than state for the reason [`OneShotExemption`] is consumed
+/// by value — a later call that does not pass `true` is placeheld again,
+/// because there is nowhere for the permission to have been kept.
+///
+/// A paste is one third-party turn by construction, so there is exactly one
+/// id an exemption could name.
 pub fn prepare_pasted(
     drafting: &mut DraftSession,
     policy: &mut PolicySession,
     pasted: &str,
+    include_original: bool,
 ) -> Result<E1DraftPlan, DraftRefusal> {
     let request = DraftRequest::from_paste(ProfileBrief::neutral(), pasted);
+    let exemption = match include_original {
+        true => request
+            .third_party_turn_ids()
+            .first()
+            .and_then(|turn_id| ExemptionRequest::for_turn(*turn_id).confirm(true)),
+        false => None,
+    };
     drafting.prepare(
         policy,
         request,
-        None,
+        exemption,
         RequestOrigin::User,
         soul_policy::clock::now_unix_millis(),
     )

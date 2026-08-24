@@ -331,6 +331,57 @@ fn preparing_a_generation_describes_the_request_without_quoting_it() {
     );
 }
 
+/// AC-13 over the IPC: the second confirmation is one more field on the same
+/// command, and a call that does not mention it is the placeheld one.
+///
+/// The field is optional so that `{ pasted }` — every invoke this shell made
+/// before the confirmation panel had a second button — still means what it
+/// used to. What the exemption changes is the request body the core is
+/// holding; what crosses back is still counts, so the paste does not follow
+/// its own permission onto the confirmation screen.
+#[test]
+fn a_second_confirmation_crosses_the_ipc_and_the_paste_does_not_follow_it() {
+    let shell = Shell::on(scratch());
+    let pasted = "周五的场地我已经订好了，你直接过来就行";
+
+    let placeheld = shell
+        .invoke("prepare_draft", json!({ "pasted": pasted }))
+        .expect("an invoke that predates the second button still describes a request");
+    assert_eq!(placeheld["carries_exempted_original"], json!(false));
+    assert_eq!(placeheld["placeheld_turns"], json!(1));
+
+    let exempted = shell
+        .invoke(
+            "prepare_draft",
+            json!({ "pasted": pasted, "includeOriginal": true }),
+        )
+        .expect("the user confirmed twice");
+    assert_eq!(exempted["carries_exempted_original"], json!(true));
+    assert_eq!(exempted["third_party_turns"], json!(1));
+    assert_eq!(
+        exempted["placeheld_turns"],
+        json!(0),
+        "the plan says the turn is exempted and placeheld at the same time: {exempted}",
+    );
+
+    let rendered = exempted.to_string();
+    assert!(
+        !rendered.contains(pasted) && !rendered.contains("场地"),
+        "the exempted plan quotes the paste back at the confirmation screen: {exempted}",
+    );
+
+    // Saying so out loud is the same as not saying it, and the preparation
+    // after an exempted one is placeheld: the permission was spent.
+    let after = shell
+        .invoke(
+            "prepare_draft",
+            json!({ "pasted": pasted, "includeOriginal": false }),
+        )
+        .expect("a plan");
+    assert_eq!(after["carries_exempted_original"], json!(false));
+    assert_eq!(after["placeheld_turns"], json!(1));
+}
+
 /// A confirmation the user did not give sends nothing.
 ///
 /// The preparation is real and the approval echoes the wrong hash, which is the
@@ -475,7 +526,10 @@ fn the_endpoint_argument_is_required_and_an_address_that_is_not_one_is_refused()
     );
 
     let refusal = shell
-        .invoke("set_user_endpoint", json!({ "url": "user:hunter2@nowhere" }))
+        .invoke(
+            "set_user_endpoint",
+            json!({ "url": "user:hunter2@nowhere" }),
+        )
         .expect_err("that is not an address");
     assert_eq!(refusal["reason_code"], json!("EGRESS_TARGET_UNPARSABLE"));
     assert!(
@@ -498,11 +552,17 @@ fn the_endpoint_argument_is_required_and_an_address_that_is_not_one_is_refused()
 fn a_restart_finds_the_endpoint_unconfigured_again() {
     let shell = Shell::on(scratch());
     shell
-        .invoke("complete_wizard", json!({ "answers": { "acknowledged_defaults_are_off": true } }))
+        .invoke(
+            "complete_wizard",
+            json!({ "answers": { "acknowledged_defaults_are_off": true } }),
+        )
         .expect("the wizard finishes");
     assert_eq!(
         shell
-            .invoke("set_user_endpoint", json!({ "url": "http://127.0.0.1:11434/v1" }))
+            .invoke(
+                "set_user_endpoint",
+                json!({ "url": "http://127.0.0.1:11434/v1" })
+            )
             .expect("the address is taken")["llm_endpoint_configured"],
         json!(true),
     );
