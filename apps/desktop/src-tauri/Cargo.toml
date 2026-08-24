@@ -38,6 +38,7 @@ serde_json = "1"
 soulcore = { path = "../../../crates/soulcore" }
 
 [features]
-# Tauri's own default set, restated so nothing arrives implicitly.
-default = ["custom-protocol"]
+# Embeds `../dist` into the executable. `tauri build` turns it on; a plain
+# `cargo check` leaves it off so the Rust side stays buildable on a machine
+# that has not run the frontend build yet.
 custom-protocol = ["tauri/custom-protocol"]
