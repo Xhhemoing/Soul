@@ -87,6 +87,33 @@ fn no_command_exists_outside_the_list() {
     assert_eq!(declared.len(), COMMAND_NAMES.len());
 }
 
+/// v0.1 has no code path that sends a draft or carries out a file plan, so it
+/// also has no command whose name would make a caller think otherwise. The
+/// synthetic name proves the scan can fail: without it, an empty list of
+/// commands would pass this silently.
+#[test]
+fn no_command_name_looks_like_sending_or_executing() {
+    const BANNED: &[&str] = &[
+        "send", "submit", "deliver", "execute", "apply", "write", "move", "rename", "remove",
+        "delete",
+    ];
+    for name in COMMAND_NAMES {
+        for word in BANNED {
+            assert!(
+                !name.contains(word),
+                "{name} contains {word}; a command that sounds like sending or executing \
+                 is a command this build promised not to register",
+            );
+        }
+    }
+
+    let synthetic = "send_draft";
+    assert!(
+        BANNED.iter().any(|word| synthetic.contains(word)),
+        "the scanner has to be able to fail: {synthetic} contains a banned word",
+    );
+}
+
 /// WP09's brief: the shell forwards, it does not decide. A command body long
 /// enough to hold a decision is the signal that something moved into the UI
 /// layer that belongs in `soulcore`.

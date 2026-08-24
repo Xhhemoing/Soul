@@ -3,7 +3,8 @@
  *
  * Most of WP09's routes are deliberately empty: the views behind them are
  * other work packages, and an empty route that says whose it is beats a
- * placeholder screen that looks like a feature.
+ * placeholder screen that looks like a feature. Draft and file-plan are the
+ * exceptions this round: they render what soulcore already decided.
  */
 
 import { useEffect, useState } from "react";
@@ -56,16 +57,13 @@ export const ROUTES: readonly RouteDefinition[] = [
     id: "draft",
     path: "/draft",
     title: "起草",
-    ownedBy: "WP10",
-    pending: "起草只写不发，本工作包不实现。这里现在没有输入框，也没有发送按钮。",
+    ownedBy: null,
   },
   {
     id: "files",
     path: "/files",
     title: "文件计划",
-    ownedBy: "WP11",
-    pending:
-      "v0.1 只做授权目录的只读扫描与计划预览。这里不会出现「执行」按钮：文件写入是 v0.1.1 的事。",
+    ownedBy: null,
   },
   {
     id: "research",

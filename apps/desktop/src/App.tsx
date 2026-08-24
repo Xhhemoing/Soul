@@ -12,6 +12,8 @@ import { useEffect, useState } from "react";
 import { NavRail } from "./components/NavRail";
 import { Pending } from "./components/Pending";
 import { configSnapshot, type ConfigSnapshot } from "./core";
+import { Draft } from "./routes/Draft";
+import { Files } from "./routes/Files";
 import { Home } from "./routes/Home";
 import { Settings } from "./routes/Settings";
 import { Wizard } from "./routes/Wizard";
@@ -85,6 +87,8 @@ export function App({ wizardDone = false }: AppProps): React.JSX.Element {
         {route.id === "settings" ? (
           <Settings snapshot={snapshot} onSnapshot={setSnapshot} />
         ) : null}
+        {route.id === "draft" ? <Draft /> : null}
+        {route.id === "files" ? <Files /> : null}
         {route.ownedBy === null ? null : (
           <Pending title={route.title} ownedBy={route.ownedBy} detail={route.pending ?? ""} />
         )}

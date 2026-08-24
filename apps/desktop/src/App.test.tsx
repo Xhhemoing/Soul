@@ -8,7 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { App } from "./App";
-import { CLOUD_LABEL, forbidNetwork, installFakeCore } from "./test/fakeCore";
+import { CLOUD_LABEL, DRAFT_NEVER_SENT_EXPLANATION, forbidNetwork, installFakeCore } from "./test/fakeCore";
 
 async function startAtRoute(path: string) {
   window.location.hash = path;
@@ -39,26 +39,39 @@ describe("桌面壳", () => {
     expect(screen.getByRole("navigation", { name: "主导航" })).toBeVisible();
   });
 
-  it("起草页是空路由，没有输入框也没有发送按钮", async () => {
-    await startAtRoute("#/draft");
+  it("起草页可以粘贴生成草稿，没有发送按钮", async () => {
+    const attempts = forbidNetwork();
+    const core = await startAtRoute("#/draft");
 
-    expect(screen.getByTestId("pending-owner")).toHaveTextContent("WP10 未落地");
-    expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.queryByRole("button", { name: /发送/ })).toBeNull();
+    expect(screen.queryByTestId("pending-owner")).toBeNull();
+    expect(screen.getByRole("textbox")).toBeVisible();
+    expect(screen.queryByRole("button", { name: /发送|send|submit|deliver/i })).toBeNull();
+    expect(screen.getByRole("button", { name: "生成草稿" })).toBeVisible();
+
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox"), "周末有空一起吃饭吗");
+    await user.click(screen.getByRole("button", { name: "生成草稿" }));
+
+    expect(await screen.findByTestId("draft-notice")).toHaveTextContent(DRAFT_NEVER_SENT_EXPLANATION);
+    expect(core.callsTo("draft_view")).toHaveLength(1);
+    expect(attempts).toEqual([]);
   });
 
   /**
-   * v0.1 promises not to execute a file move. The route that will one day show
-   * the plan must therefore not carry a button that looks like it does — this
-   * asserts the absence, because absence is the requirement.
+   * v0.1 promises not to execute a file move. The route that shows the plan
+   * must therefore not carry a button that looks like it does — this asserts
+   * the absence, because absence is the requirement.
    */
   it("文件计划页没有任何执行按钮", async () => {
+    const attempts = forbidNetwork();
     await startAtRoute("#/files");
 
-    expect(screen.getByTestId("pending-owner")).toHaveTextContent("WP11 未落地");
+    expect(screen.queryByTestId("pending-owner")).toBeNull();
+    expect(screen.getByRole("button", { name: "扫描并预览" })).toBeVisible();
     for (const button of screen.queryAllByRole("button")) {
       expect(button.textContent ?? "").not.toMatch(/执行|应用|移动|重命名|删除/);
     }
+    expect(attempts).toEqual([]);
   });
 
   it("设置页里有云端开关，且仍然尚未启用", async () => {

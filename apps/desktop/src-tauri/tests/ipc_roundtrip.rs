@@ -262,6 +262,45 @@ fn the_authorisation_command_needs_the_path_it_is_given() {
     assert!(invoke("authorize_root", json!({})).is_err());
 }
 
+/// Mock runtime never reaches `setup`, so the store slot is empty. A view that
+/// needs the database has to come back as the core's own sentence, not as a
+/// panic inside the command.
+#[test]
+fn a_view_without_a_store_is_refused_in_the_core_s_own_words() {
+    for (command, body) in [
+        ("draft_view", json!({ "pasted": ["一段话"] })),
+        ("fileplan_view", json!({ "target": "/tmp" })),
+    ] {
+        let refusal = invoke(command, body).expect_err("the mock runtime opens no store");
+        assert_eq!(refusal["reason"], json!("no_store_opened"), "for {command}");
+        assert_eq!(
+            refusal["message"],
+            json!(soulcore::commands::shell::NO_STORE_FOR_VIEW_EXPLANATION),
+            "for {command}: {refusal}",
+        );
+    }
+}
+
+/// `pasted` and `target` are what `core.ts` sends. A command that tolerated a
+/// missing argument, or accepted a renamed one, would hide the typo.
+#[test]
+fn the_view_commands_need_the_arguments_they_are_given() {
+    for (command, body) in [
+        ("draft_view", json!({})),
+        ("draft_view", json!({ "paste": ["一段话"] })),
+        ("fileplan_view", json!({})),
+        ("fileplan_view", json!({ "path": "/tmp" })),
+    ] {
+        let refusal = invoke(command, body).expect_err("the argument name is part of the contract");
+        assert_ne!(
+            refusal.get("reason"),
+            Some(&json!("no_store_opened")),
+            "a missing or renamed argument must fail at the IPC, not as a view refusal: \
+             {command} → {refusal}",
+        );
+    }
+}
+
 /// Nothing but the application's own page may reach the commands. The WebView
 /// loads no remote page, so this is a second lock on a door that is already
 /// shut — but it is the lock that would matter if the first one ever opened.
@@ -276,6 +315,8 @@ fn a_call_claiming_a_different_origin_is_refused() {
             "authorize_root",
             json!({ "path": dir.display().to_string() }),
         ),
+        ("draft_view", json!({ "pasted": ["一段话"] })),
+        ("fileplan_view", json!({ "target": "/tmp" })),
     ] {
         let refusal = invoke_from(command, body, Some("https://example.invalid/page"))
             .expect_err("a foreign origin gets nothing");

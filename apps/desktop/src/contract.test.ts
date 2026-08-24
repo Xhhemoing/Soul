@@ -14,12 +14,19 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { COMMANDS } from "./core";
-import { CLOUD_LABEL, KEY_PROTECTION } from "./test/fakeCore";
+import {
+  CLOUD_LABEL,
+  DRAFT_NEVER_SENT_EXPLANATION,
+  KEY_PROTECTION,
+  PLAN_PREVIEW_ONLY_EXPLANATION,
+} from "./test/fakeCore";
 
 const SRC = dirname(fileURLToPath(import.meta.url));
 const DESKTOP = join(SRC, "..");
 const REPO = join(DESKTOP, "..", "..");
 const SHELL_RS = join(REPO, "crates", "soulcore", "src", "commands", "shell.rs");
+const DRAFT_RS = join(REPO, "crates", "soulcore", "src", "commands", "draft.rs");
+const FILEPLAN_RS = join(REPO, "crates", "soulcore", "src", "commands", "fileplan.rs");
 const TAURI_COMMANDS_RS = join(DESKTOP, "src-tauri", "src", "commands.rs");
 
 function sourceFiles(root: string, extensions: readonly string[]): string[] {
@@ -97,6 +104,20 @@ describe("壳与核心的边界", () => {
   it("密钥说明的文案和 soulcore 里的常量是同一句话", () => {
     const rust = readFileSync(SHELL_RS, "utf8");
     expect(rustStringConstant(rust, "KEY_FILE_NOT_PROTECTED_EXPLANATION")).toBe(KEY_PROTECTION);
+  });
+
+  it("起草说明的文案和 soulcore 里的常量是同一句话", () => {
+    const rust = readFileSync(DRAFT_RS, "utf8");
+    expect(rustStringConstant(rust, "DRAFT_NEVER_SENT_EXPLANATION")).toBe(
+      DRAFT_NEVER_SENT_EXPLANATION,
+    );
+  });
+
+  it("文件计划说明的文案和 soulcore 里的常量是同一句话", () => {
+    const rust = readFileSync(FILEPLAN_RS, "utf8");
+    expect(rustStringConstant(rust, "PLAN_PREVIEW_ONLY_EXPLANATION")).toBe(
+      PLAN_PREVIEW_ONLY_EXPLANATION,
+    );
   });
 });
 

@@ -8,9 +8,9 @@
  * "call the core" a thing that happens in exactly one module, where every call
  * is visible in one screenful.
  *
- * The types below mirror `crates/soulcore/src/commands/shell.rs`. They are
- * snake_case because that is what crosses the IPC; renaming them here would
- * mean transforming values, and a transform is a place for a bug to live.
+ * The types below mirror `crates/soulcore/src/commands/{shell,draft,fileplan}.rs`.
+ * They are snake_case because that is what crosses the IPC; renaming them here
+ * would mean transforming values, and a transform is a place for a bug to live.
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -57,6 +57,60 @@ export interface RootRefused {
   readonly message: string;
 }
 
+/** Why a view would not run. The message is the core's, rendered as it arrives. */
+export interface ViewRefused {
+  readonly reason: "no_store_opened" | "empty_paste" | "refused";
+  readonly code: string | null;
+  readonly message: string;
+}
+
+/**
+ * One draft, as the core shaped it.
+ *
+ * `never_sent` is the literal `true`: there is no code path that sends one,
+ * and a type that accepted `false` would let the screen claim otherwise.
+ */
+export interface DraftView {
+  readonly text: string;
+  readonly route: string;
+  readonly route_label: string;
+  readonly turns: number;
+  readonly third_party_turns: number;
+  readonly placeheld_turns: number;
+  readonly carries_exempted_original: boolean;
+  readonly never_sent: true;
+  readonly notice: string;
+}
+
+/** One suggestion in a file plan. The page renders `action_label` as given. */
+export interface FilePlanEntryView {
+  readonly source_rel: string;
+  readonly action: string;
+  readonly action_label: string;
+  readonly target_rel: string | null;
+}
+
+/**
+ * A scan and the plan it produced.
+ *
+ * `written_to_disk` is the literal `false`: v0.1 has no execute path, and a
+ * type that accepted `true` would let the screen claim a write that cannot
+ * have happened.
+ */
+export interface FilePlanView {
+  readonly scan_id: string;
+  readonly file_count: number;
+  readonly dir_count: number;
+  readonly skipped_escaping_links: number;
+  readonly entry_count: number;
+  readonly group_count: number;
+  readonly move_count: number;
+  readonly rename_count: number;
+  readonly entries: readonly FilePlanEntryView[];
+  readonly written_to_disk: false;
+  readonly notice: string;
+}
+
 /**
  * Command names, spelled once.
  *
@@ -70,6 +124,8 @@ export const COMMANDS = {
   cloudToggle: "cloud_toggle",
   authorizeRoot: "authorize_root",
   authorizedRoots: "authorized_roots",
+  draftView: "draft_view",
+  fileplanView: "fileplan_view",
 } as const;
 
 export function configSnapshot(): Promise<ConfigSnapshot> {
@@ -107,6 +163,26 @@ export function authorizeRoot(path: string): Promise<ConfigSnapshot> {
 /** The directories authorised in this session, as the core resolved them. */
 export function authorizedRoots(): Promise<readonly string[]> {
   return invoke<readonly string[]>(COMMANDS.authorizedRoots);
+}
+
+/**
+ * Ask the core to draft a reply from what was pasted.
+ *
+ * The strings go over as typed. Empty, whitespace-only, and everything that
+ * happens after that are questions this file must not answer: they are
+ * decisions, they touch the store, and the WebView cannot be tested against
+ * a real one.
+ */
+export function draftView(pasted: readonly string[]): Promise<DraftView> {
+  return invoke<DraftView>(COMMANDS.draftView, { pasted });
+}
+
+/**
+ * Ask the core to scan one directory and show the plan, without carrying it
+ * out. The path goes over as typed; whether it is authorised is the core's.
+ */
+export function fileplanView(target: string): Promise<FilePlanView> {
+  return invoke<FilePlanView>(COMMANDS.fileplanView, { target });
 }
 
 /**

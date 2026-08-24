@@ -5,13 +5,14 @@
  * and only the far side of the IPC is faked. The values below mirror
  * `crates/soulcore/src/commands/shell.rs`; `contract.test.ts` reads that file
  * and fails if the two drift apart, which is what keeps this double from
- * quietly becoming a nicer core than the real one.
+ * quietly becoming a nicer core than the real one. Draft and file-plan
+ * notices are pinned the same way against `draft.rs` and `fileplan.rs`.
  */
 
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
 
-import type { CloudNotice, ConfigSnapshot } from "../core";
+import type { CloudNotice, ConfigSnapshot, DraftView, FilePlanView } from "../core";
 
 export const CLOUD_LABEL = "尚未启用";
 
@@ -36,6 +37,39 @@ export const KEY_PROTECTION =
 export const REFUSED_ROOT = "D:\\没有这个目录";
 export const REFUSED_ROOT_MESSAGE = `这个路径不存在：${REFUSED_ROOT}`;
 
+/**
+ * A directory the double refuses to scan, and the words it refuses with.
+ *
+ * Copied from `FilePlanError::PathNotAuthorized` with an empty root list: the
+ * real core never echoes the path it refused, so neither does this. The
+ * constant is a path the UI tests can type; it must not appear in the
+ * message, or a page that rendered the refusal would be confirming the path.
+ */
+export const REFUSED_TARGET = "D:\\没有授权这个目录";
+export const REFUSED_TARGET_MESSAGE =
+  "that path is not inside any authorized root (no directory has been authorized)";
+
+/**
+ * The sentence `DRAFT_NEVER_SENT_EXPLANATION` holds in
+ * `crates/soulcore/src/commands/draft.rs`. `contract.test.ts` reads the Rust
+ * constant and fails if this copy drifts.
+ */
+export const DRAFT_NEVER_SENT_EXPLANATION =
+  "这是一份草稿。本产品没有把它发出去的代码路径：要不要用、发给谁、什么时候发，都由你自己决定。";
+
+export const TEMPLATE_ROUTE_LABEL = "本机模板写成，没有任何字节出网。";
+
+export const EMPTY_PASTE_EXPLANATION =
+  "粘贴框是空的。先把要回复的那段话贴进来，再让它起草。";
+
+/**
+ * The sentence `PLAN_PREVIEW_ONLY_EXPLANATION` holds in
+ * `crates/soulcore/src/commands/fileplan.rs`, with the line-wrap undone the
+ * way `rustStringConstant` undoes it.
+ */
+export const PLAN_PREVIEW_ONLY_EXPLANATION =
+  "以下只是建议。本版本没有执行它的代码路径：一个文件都不会被移动、改名或删除，磁盘上的东西保持原样。真正动手整理是 v0.1.1 的事。";
+
 export const CLOSED_CLOUD: CloudNotice = {
   state: "not_yet_available",
   label: CLOUD_LABEL,
@@ -54,6 +88,39 @@ export const CLOSED_SNAPSHOT: ConfigSnapshot = {
   open_capabilities: [],
   kek_protected: false,
   key_protection: KEY_PROTECTION,
+};
+
+export const CLOSED_DRAFT: DraftView = {
+  text: "[第三人正文已占位]",
+  route: "template",
+  route_label: TEMPLATE_ROUTE_LABEL,
+  turns: 1,
+  third_party_turns: 1,
+  placeheld_turns: 1,
+  carries_exempted_original: false,
+  never_sent: true,
+  notice: DRAFT_NEVER_SENT_EXPLANATION,
+};
+
+export const CLOSED_FILEPLAN: FilePlanView = {
+  scan_id: "00000000-0000-7000-8000-000000000001",
+  file_count: 2,
+  dir_count: 1,
+  skipped_escaping_links: 0,
+  entry_count: 1,
+  group_count: 1,
+  move_count: 0,
+  rename_count: 0,
+  entries: [
+    {
+      source_rel: "notes.xlsx",
+      action: "group",
+      action_label: "归类",
+      target_rel: "spreadsheets/notes.xlsx",
+    },
+  ],
+  written_to_disk: false,
+  notice: PLAN_PREVIEW_ONLY_EXPLANATION,
 };
 
 export interface RecordedCall {
@@ -116,6 +183,29 @@ export function installFakeCore(snapshot: ConfigSnapshot = CLOSED_SNAPSHOT): Fak
         // Whatever was requested, the answer is the notice. This is the whole
         // of AC-22 on the core side, and the shell must not improve on it.
         return snapshot.cloud;
+      case "draft_view": {
+        const pasted = (payload as { pasted?: unknown }).pasted;
+        const items = Array.isArray(pasted) ? pasted.map((item) => String(item)) : [];
+        if (items.length === 0 || items.every((item) => item.trim() === "")) {
+          throw {
+            reason: "empty_paste",
+            code: null,
+            message: EMPTY_PASTE_EXPLANATION,
+          };
+        }
+        return CLOSED_DRAFT;
+      }
+      case "fileplan_view": {
+        const target = String((payload as { target?: unknown }).target ?? "");
+        if (target === "" || target === REFUSED_TARGET) {
+          throw {
+            reason: "refused",
+            code: "PATH_NOT_AUTHORIZED",
+            message: REFUSED_TARGET_MESSAGE,
+          };
+        }
+        return CLOSED_FILEPLAN;
+      }
       default:
         throw `the shell called a command the core does not have: ${cmd}`;
     }

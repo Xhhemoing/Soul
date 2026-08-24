@@ -1,13 +1,16 @@
 //! The IPC surface, and nothing else.
 //!
 //! Every function here is one line long by design: it takes what the WebView
-//! sent, hands it to `soulcore::commands::shell`, and returns what came back.
-//! No decision is made in this file, so there is nothing in it for a test to
+//! sent, hands it to `soulcore::commands`, and returns what came back. No
+//! decision is made in this file, so there is nothing in it for a test to
 //! catch — which is the point. The decisions have tests, in `soulcore`.
 
+use soulcore::commands::draft::DraftView;
+use soulcore::commands::fileplan::FilePlanView;
 use soulcore::commands::shell::{
-    CloudNotice, ConfigSnapshot, RootRefused, Session, WizardAnswers, WizardRefused,
+    CloudNotice, ConfigSnapshot, RootRefused, Session, ViewRefused, WizardAnswers, WizardRefused,
 };
+use soulcore::commands::store::StoreSlot;
 use tauri::State;
 
 /// The configuration this session is running under.
@@ -51,6 +54,24 @@ pub fn authorized_roots(session: State<'_, SessionConfig>) -> Vec<String> {
     session.0.authorized_roots()
 }
 
+#[tauri::command]
+pub fn draft_view(
+    store: State<'_, StoreSlot>,
+    session: State<'_, SessionConfig>,
+    pasted: Vec<String>,
+) -> Result<DraftView, ViewRefused> {
+    soulcore::commands::draft::draft_view(&store, &session.0, pasted)
+}
+
+#[tauri::command]
+pub fn fileplan_view(
+    store: State<'_, StoreSlot>,
+    session: State<'_, SessionConfig>,
+    target: String,
+) -> Result<FilePlanView, ViewRefused> {
+    soulcore::commands::fileplan::fileplan_view(&store, &session.0, target)
+}
+
 /// The command names the WebView is allowed to call.
 ///
 /// Spelled out so `tests/command_surface.rs` can compare this list against
@@ -62,4 +83,6 @@ pub const COMMAND_NAMES: &[&str] = &[
     "cloud_toggle",
     "authorize_root",
     "authorized_roots",
+    "draft_view",
+    "fileplan_view",
 ];

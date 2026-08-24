@@ -15,7 +15,7 @@
 //! | no automatic updates | `tauri.conf.json`, `tests/no_egress_path.rs` |
 //! | the WebView loads only what shipped with it | the CSP in `tauri.conf.json` |
 //! | a tray entry exists | `tray.rs`; the icon itself is author-manual |
-//! | the database is opened once, and not by this file's rules | `install_store`, `tests/store_session.rs` |
+//! | the database is opened once, into the slot soulcore owns | `install_store`, `tests/store_session.rs` |
 
 #![forbid(unsafe_code)]
 
@@ -32,12 +32,15 @@ pub mod tray;
 pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder
         .manage(commands::SessionConfig::default())
+        .manage(soulcore::commands::store::StoreSlot::default())
         .invoke_handler(tauri::generate_handler![
             commands::config_snapshot,
             commands::complete_wizard,
             commands::cloud_toggle,
             commands::authorize_root,
-            commands::authorized_roots
+            commands::authorized_roots,
+            commands::draft_view,
+            commands::fileplan_view
         ])
 }
 
@@ -51,19 +54,22 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
 /// IPC test.
 ///
 /// Which key provider opens it is not decided here. This function asks Tauri
-/// where local data lives, hands the directory to `soulcore`, and keeps what
-/// comes back — three lines of hosting. The provider choice is a security
+/// where local data lives, hands the directory to `soulcore`, and fills the
+/// slot `configure` already registered. The provider choice is a security
 /// decision and lives in `soulcore::commands::store`, where a change to it is
 /// reviewed as one.
-fn install_store<R: tauri::Runtime>(
-    app: &tauri::App<R>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn install_store<R: tauri::Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
     let directory = app.path().app_local_data_dir()?;
     let session = soulcore::commands::store::open_store_for_session(&directory)?;
     app.state::<commands::SessionConfig>()
         .0
         .opened_store_with(session.key_protection());
-    app.manage(session.into_handle());
+    let filled = app
+        .state::<soulcore::commands::store::StoreSlot>()
+        .install(session.into_handle());
+    if !filled {
+        return Err("the store was already open in this process".into());
+    }
     Ok(())
 }
 
