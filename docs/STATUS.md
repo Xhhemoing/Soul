@@ -22,6 +22,7 @@
 | WP05 人脉图 | 完成。见下节 |
 | WP06 导入 | 完成。见下节 |
 | WP07 前台采集 | 完成。见下节 |
+| WP09 桌面壳 | 第一段（壳）完成。见下节。起草 UI 全文属 WP10，未开始 |
 | v0.1 其余 WP | 未开始 |
 
 ## WP01 完成情况
@@ -241,6 +242,49 @@ WP03 已经落地了自己的问卷入档路径（`soul-profile::questionnaire`�
 9. **`e0-audit` 在本机会被 `apps/desktop/dist/` 命中。** 那是 WP09 的构建产物，`.gitignore` 里有它，但 `xtask` 的 `EXEMPT_DIRS` 没有 `dist`，所以本机跑会报 20 条 URL。干净检出（我在 `/tmp` 克隆 HEAD 验过）三项全绿，CI 也是干净检出。要不要给 `EXEMPT_DIRS` 加 `dist` 由 WP09 或 WP13 决定，本工作单不动 `xtask`。
 10. **没有加 `soulcore/tests/collect_commands.rs`。** 工作单允许的 soulcore 面只有 `src/commands/collect.rs`，验收测试因此全部放在 `crates/soul-collect/tests/`，它们本来也需要真库与后台线程。
 
+## WP09 完成情况（第一段：壳）
+
+`apps/desktop` 落地：Tauri 2 宿主 + React/Vite/TypeScript 界面。本机 `just ci` 全绿（`lint / schema / e0 / denylist / fixtures-verify / test / ui-lint / ui-test`，vitest 4 个文件 20 项）；`just desktop-test` 绿（cargo 21 项，MSRV 1.83）。本段只做壳与两个必须落地的开关，**起草 UI 全文是 WP10**，相关路由留空并写明归属。
+
+| 交付 | 证据 |
+|---|---|
+| AC-01 asInvoker、无 updater、WebView 只本地、进程名按锁文档 | `src-tauri/tests/shell_is_local_only.rs` 7 项：`windows/soul.exe.manifest` 里 `requestedExecutionLevel level="asInvoker"` 且 `uiAccess="false"`，`build.rs` 确实把它嵌进去（读 build 脚本断言，不是相信约定）；`tauri.conf.json` 全文搜不到 updater 端点/公钥，`createUpdaterArtifacts: false`，`webviewInstallMode: "skip"`（安装器既不提权也不下载）；CSP 的 `default-src` 只有 `'self'`，没有任何 `http(s)://` 源；产物名与 `[[bin]] name` 都是锁文档写的 `soul` |
+| WebView 的权限面就是它需要的那点 | 同文件 `the_webview_holds_only_core_permissions`：`capabilities/default.json` 只列 `core:default`，断言里逐个排掉 `fs` / `shell` / `http` / `updater` / `dialog` 前缀。`src-tauri/tests/no_egress_path.rs` 从 `cargo metadata` 的 resolve 图出发（Windows 与 Linux 两个 target 各走一遍），normal/build 边上走不到任何被禁的 HTTP client 或 Tauri 网络插件；`reqwest` 唯一的到达路径仍是 `soul-egress` |
+| AC-02 向导：采集 / 云 / LLM 默认全关 | Rust 侧 `soulcore/tests/shell_commands.rs::a_finished_wizard_leaves_every_capability_off` 与 `the_wizard_would_refuse_a_configuration_with_a_switch_on`——向导**不能**产出一个有开关是开的快照，`complete_wizard` 拿到这种配置直接报错，所以「默认全关」不是初始值而是后置条件。界面侧 `src/routes/Wizard.test.tsx` 5 项：逐项断言渲染出来的每一项能力都写着关闭、页面上除了「我读过」之外没有第二个勾选框（没有一个能在向导里打开什么的控件）、没勾就点不动而且**一次核心都不问**、核心若说某项是开的向导照实显示（证明它读的是快照不是硬编码） |
+| AC-22 云开关可见、写「尚未启用」、点了不出网 | `src/components/CloudToggle.test.tsx` 4 项：开关可见且文案是「尚未启用」；连点五次，五次之后仍然是「尚未启用」；说明文字与 `soulcore` 的 `CLOUD_NOT_YET_AVAILABLE_EXPLANATION` 逐字相等（`src/contract.test.ts` 另有一条跨语言比对，界面自己编一句会红）；整个测试期间 `fetch` / `XMLHttpRequest` / `WebSocket` / `EventSource` / `navigator.sendBeacon` 五个全部被替换成「一被调用就让测试失败」的桩，`forbidNetwork` 在 `src/test/fakeCore.ts`。jsdom 本来就没有真 socket，所以这一条查的是意图不是报文：它拦的是某次改版顺手加上去的一个 `fetch`。Rust 侧 `cloud_toggle` 无视 `requested_on` 返回同一个 `CloudNotice`，`no_configuration_can_claim_the_cloud_is_available` 遍历配置空间断言没有哪一种能让它说可用 |
+| UI 无业务：只调 soulcore commands | 三道锁。① `eslint.config.js` 的 `no-restricted-imports` 只放行 `src/core.ts` 引用 `@tauri-apps/api`；② `src/contract.test.ts::只有 core.ts 直接引用 Tauri 的 API` 直接读每个源文件再查一遍（lint 规则被人改宽了它还在）；③ `src-tauri/tests/command_surface.rs::the_command_layer_stays_thin` 读 `src/commands.rs`，断言每个 wrapper 的函数体最多一条语句——放不下分支，也放不下循环，只够转调 `soulcore::commands::shell`。判断全在 Rust：`ConfigSnapshot.fully_closed` 与 `open_capabilities` 由核心算好送过来，界面只渲染 |
+| 两侧的命令名是同一套 | `src/contract.test.ts::界面用的命令名和 src-tauri 注册的一模一样` 与 `src-tauri/tests/command_surface.rs` 3 项对着咬：TS 的 `COMMANDS`、Rust 的 `COMMAND_NAMES`、`#[tauri::command]` 的实际注册，三者集合相等。少写一个或多写一个都会红 |
+| IPC 真的走通了 | `src-tauri/tests/ipc_roundtrip.rs` 7 项用 `tauri::mock_builder()` 加 **`generate_context!()`**（不是空 context）跑真 `RuntimeAuthority`——ACL 来自真的 `tauri.conf.json` 与 capabilities。三个命令都从 WebView 那一侧发请求、收 JSON：快照过去是 `fully_closed`、向导没勾选回来是错误不是默认值、云开关按哪一下都返回同一个 notice。另有反例两条：未注册的命令被拒、伪造 origin 的调用被拒；还有一条钉住参数在 WebView 侧的拼法（改 `requestedOn` 的 serde 命名会红） |
+| 托盘入口 | `src-tauri/src/tray.rs`：两项菜单「打开 Soul」「退出 Soul」，每个平台都编译。关窗默认收进托盘，所以「退出」必须在托盘里够得着 |
+| 界面不出现诊断词与量表词 | `src/contract.test.ts::不出现诊断词与量表词` 把 `fixtures/denylist/diagnostic_terms.txt` 读进来扫每个 `.ts`/`.tsx`/`.css`/`.html`。写这条的时候故意往组件里塞过一个禁用词验证它会红 |
+
+落地内容：`apps/desktop/` 43 个文件——界面 `src/{App,main,core,router,styles}` 加 `src/components/{CloudToggle,NavRail,Pending}`、`src/routes/{Wizard,Home,Settings}`、`src/test/{setup,fakeCore}` 与 4 个测试文件；宿主 `src-tauri/src/{lib,main,commands,tray}.rs`、`tauri.conf.json`、`capabilities/default.json`、`windows/soul.exe.manifest`、`build.rs`、图标与 4 个测试文件。仓库面：`soulcore/src/commands/shell.rs` + `soulcore/tests/shell_commands.rs`、`justfile` 的 `ui-*` 与新增 `desktop-*`、根 `package.json` / `pnpm-workspace.yaml` / `pnpm-lock.yaml`、`.github/workflows/ci.yml`、`.gitignore`、`crates/xtask/src/egress.rs`。没有动 schema，没有动产品定义，没有新 fixture。
+
+### WP09 的 Windows 手动缺口
+
+Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真机上由作者过一遍，CI 补不了：
+
+1. **托盘图标真的出现在通知区域（AC-01）。** 编译在 Windows CI 跑，图标在不在、tooltip 是不是「Soul」、右键菜单两项能不能点，没有 runner 有通知区域可看。托盘逻辑本身在 Linux 上用 Xvfb + AppIndicator 手动过了一遍（关窗后进程存活、窗口消失），但那不是 Windows 的实现。
+2. **双击启动不弹 UAC（AC-01）。** 清单文本与嵌入都有测试，但「图标上没有盾牌、启动没有提示框」是肉眼的事。
+3. **任务管理器里的进程名是 `soul.exe`。** 配置与 `[[bin]]` 有测试钉住，实际显示未看过。
+4. **`tauri build` 从来没有在任何 runner 上跑过。** Windows job 只跑 `cargo test`，没做 MSI/NSIS 打包——打包要下载 WiX/NSIS，那是出网。安装器的 asInvoker 与「不下载 WebView2」目前只由 `tauri.conf.json` 的字段保证。
+5. **WebView2 运行时。** `webviewInstallMode: "skip"` 意味着安装器不会去下载它。Windows 11 自带 Evergreen 运行时，但「在一台干净的 Windows 11 上双击就能开」要实测；万一开不了，正确的修法是在安装器里说清楚，不是改成让它自己下载。
+6. **中文在 WebView 里的字体与 DPI。** 缩放 150% 下向导那段长说明会不会截断，只能看。
+7. **点云开关时系统层面没有流量（AC-22）。** 测试证明的是代码里没有这条路径、JS 侧五个出网 API 一次都没被调、依赖图里走不到任何 HTTP client。用资源监视器看一眼进程的网络列是空的，是作者手动那一栏。
+
+### WP09 的取舍与遗留
+
+1. **`apps/desktop/src-tauri` 是独立的 cargo workspace，不是根 workspace 的成员。** 否则 Linux 上的 `cargo test --workspace` 会去编 `webkit2gtk`，而 Soul 不出 Linux 版——为一个不发布的平台给 CI 装一整套 GUI 依赖是错的交换。代价是根 workspace 的 `just lint` / `just test` 碰不到它，所以另开了 `just desktop-check` / `just desktop-test`，Windows job 显式跑后者。**加了新的 Rust 代码要记得它不在 `--workspace` 里面。**
+2. **`src-tauri` 有自己的 `Cargo.lock` 和 `.cargo/config.toml`。** Tauri 2 的若干传递依赖（`dlopen2` 等）新版本要 edition 2024，仓库钉 1.83。用 `incompatible-rust-versions = "fallback"` 加一份单独锁文件把它们钉在能编的版本上。`cargo update` 之后要用 1.83 验一遍，不要只看 stable。
+3. **`custom-protocol` 没有设成默认 feature。** 开着的话 `cargo check` 会要求 `dist/` 先存在，于是「跑 Rust 测试」就先要跑一次前端构建。打包时 `tauri build` 自己会开它。
+4. **CSP 的 `connect-src` 显式放行 `ipc:` 与 `ipc.localhost`。** 严格的 `'self'` 在 Windows 上会掐断 IPC——Tauri 在那边走 `http://ipc.localhost`。这不是放宽出网：两个都是本机协议端点，`default-src` 仍然只有 `'self'`，`shell_is_local_only.rs` 把这两项写成白名单，多一个源就红。
+5. **`e0-audit` 的 build output 豁免改成按标记文件认。** WP07 遗留 9 说 `apps/desktop/dist/` 会让本机 e0 红。修法不是把 `dist`/`gen` 加进 `EXEMPT_DIRS`（那样任何目录改个名字就能躲开审计），而是只在旁边有 `package.json` / `tauri.conf.json` 时才跳过。`xtask/tests/self_test.rs` 里有一条写了个手写的 `crates/pretend/src/gen/`，它仍然会被扫到。
+6. **托盘装不上时窗口就正常关闭。** 关窗收进托盘只有在真有托盘时才成立；没有通知区域的桌面上，那会变成关不掉又退不出的窗口。`tray::install_or_report` 把这次会话有没有托盘记进 state，关窗处理读它。Windows 11 一定有托盘，这条是给别的环境和调试用的。
+7. **`soulcore/src/commands/shell.rs` 里的 `ConfigSnapshot` 是壳自己的视图，不是 `Config` 的序列化。** 它只带界面要显示的那几个布尔与计数，**不带 LLM 端点字符串**（`the_snapshot_carries_no_endpoint_string` 钉住）：界面没有理由拿到那个地址，而每一个跨进程边界的字符串都是一次泄漏机会。要显示端点内容，得先想清楚为什么。
+8. **壳还没有连真的 store。** `SessionConfig` 目前握的是内存里的 `soulcore::Config`，没有打开 `SqlCipherStore`。WP07 遗留 8 说整个进程只能有一个 store 句柄；接线的时候在 `lib.rs` 的 setup 里开一次、`manage` 起来，不要在每个命令里开。
+9. **起草 / 文件计划 / 导入 / 记忆 / 人脉这些路由是空的，但不是白屏。** `components/Pending.tsx` 写明这一页归哪个 WP。`App.test.tsx` 里两条断言钉住空路由的形状：起草页没有输入框也没有发送按钮，文件计划页没有任何执行按钮——工作单禁止假实现，测试就是这条禁令的执行者。要在这些页面上加控件的人会先撞到它们。
+10. **前端只有 4 个测试文件，没有组件快照。** 断言全是「用户能看见什么」（`getByRole` / 可见文本），不是 DOM 结构。快照测试会在 WP10 改版式的时候整片变红，却挡不住把云开关文案改掉这种真问题。
+
 ## 下一步
 
-批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集也已完成。不要启动 Goal 2。文件写入仍是 v0.1.1。
+批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集与 WP09 桌面壳第一段也已完成。下一步是 WP10 起草 UI（空路由已就位）与把壳接上真的 `SqlCipherStore`。不要启动 Goal 2。文件写入仍是 v0.1.1。
