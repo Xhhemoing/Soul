@@ -75,7 +75,7 @@ WP02 已完成，取舍与遗留见 `docs/STATUS.md`。
 2. [x] `soulcore::commands::draft` 编排：每次现读 `read_voice`；顺序 `redact` → `e1_plan` → `PlanHash` → `issue_token(E1Generate)` → `e1_generate`。无 endpoint 返回确定性模板且零连接。跨 origin 302 是可读失败，不降级成模板。
 3. [x] AC-07 / 11 / 12 / 13 / 16 / 17 / 25 起草侧：`cargo test -p soul-draft --all-targets` 与 `cargo test -p soulcore --test draft_commands`。
 4. [x] 粘贴不落库；审计 `DraftCreate` 只有 id/计数/plan hash；默认 E1 body 过 LeakageChecker；一次性豁免按值消费。
-5. [ ] 起草 UI（WP09 功能视图）。`/draft` 仍无发送按钮。
+5. [x] 起草 UI（WP09 功能视图）。`/draft` 有粘贴框与「生成草稿」，没有发送按钮。
 
 ## WP11 完成定义
 
@@ -84,14 +84,14 @@ WP02 已完成，取舍与遗留见 `docs/STATUS.md`。
 3. [x] AC-18：授权根扫描前后磁盘内容哈希不变；未授权矩阵（空根、穿越、symlink 逃逸、父目录、前缀撞名）全部 `PATH_NOT_AUTHORIZED`。
 4. [x] 计划 JSON 稳定排序后 `PlanHash::of`；改字段携旧 hash 拒 `PlanHashMismatch`。`FileWrite` 令牌买不来执行。
 5. [x] 审计只记扫描 uuid 与计数，不含路径/文件名/`root_fingerprint`。
-6. [ ] 文件页 UI（WP09 功能视图）。写执行是 v0.1.1（AC-27）。
+6. [x] 文件页 UI（WP09 功能视图）。只读预览；写执行是 v0.1.1（AC-27）。
 
 ## 壳接真库完成定义
 
-1. [x] 桌面 `setup` 调 `open_store_for_session` 一次，句柄 `manage` 为 `Arc<Mutex<SqlCipherStore>>`。密钥选择在 soulcore：先问 `DpapiKeyProvider`，仅 `Unsupported` 回退 `TestKeyProvider::in_dir`。
+1. [x] 桌面 `setup` 调 `open_store_for_session` 一次，填进 `configure` 托管的 `StoreSlot`（mock 运行时空槽可读拒绝）。密钥选择在 soulcore：先问 `DpapiKeyProvider`，仅 `Unsupported` 回退 `TestKeyProvider::in_dir`。
 2. [x] 设置页逐字渲染 `KEY_FILE_NOT_PROTECTED_EXPLANATION`。全仓不宣称 KEK 已受 DPAPI 保护。
 3. [x] `authorize_root` / `authorized_roots` IPC：会话有效、不持久化、不进向导。AC-02 向导后置条件保持。
-4. [ ] `DpapiKeyProvider` Win32 实现（P1）。配置持久化（WP13）。档案/记忆/人脉/导入接到 UI（WP09 功能视图）。
+4. [ ] `DpapiKeyProvider` Win32 实现（P1）。配置持久化（WP13）。档案/记忆/人脉/导入接到 UI（WP09 功能视图）。用 T4D 替换 `soul-graph` 的 T0 判档（`docs/algorithms/DECISION.md` 合并义务）。
 5. [x] **D32：** QQ/微信客户端读取不在 Goal 1。后续用进程外开源读取 / wechat-rpa 的导出适配 `soul-import-v1`，本仓库不嵌抓取。
 
 ## WP01 允许 / 禁止（历史，WP01 关门后不再扩张）

@@ -22,11 +22,12 @@
 | WP05 人脉图 | 完成。见下节 |
 | WP06 导入 | 完成。见下节 |
 | WP07 前台采集 | 完成。见下节 |
-| WP09 桌面壳 | 第一段（壳）完成。壳已接真库（见下「壳接真库」）。起草/文件页仍是 Pending |
-| WP10 起草 + 人事摘要 | 核心完成。见下节。UI 仍是 Pending |
-| WP11 只读文件计划 | 核心完成。见下节。UI 仍是 Pending |
+| WP09 桌面壳 | 第一段（壳）完成。壳已接真库（见下「壳接真库」） |
+| WP10 起草 + 人事摘要 | 核心完成。起草页已接上（见下「WP09 功能视图」） |
+| WP11 只读文件计划 | 核心完成。文件计划页已接上（见下「WP09 功能视图」） |
 | 壳接真库 + 授权目录 | 完成。见下节 |
-| WP09 功能视图 / WP13 | 未开始 |
+| WP09 功能视图（起草页 / 文件计划页） | 完成。见下节。其余功能视图与 WP13 仍排队 |
+| 灵魂层算法冻结（PR #5） | 已合入本分支。`soul-algo-tie`（T4D）/ `soul-algo-trait`（A0）为参考 crate；xtask denylist 豁免其内部 `score` 标识。Goal 1 图构建仍走 T0，接线排队 |
 
 ## WP01 完成情况
 
@@ -274,6 +275,7 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 5. **WebView2 运行时。** `webviewInstallMode: "skip"` 意味着安装器不会去下载它。Windows 11 自带 Evergreen 运行时，但「在一台干净的 Windows 11 上双击就能开」要实测；万一开不了，正确的修法是在安装器里说清楚，不是改成让它自己下载。
 6. **中文在 WebView 里的字体与 DPI。** 缩放 150% 下向导那段长说明会不会截断，只能看。
 7. **点云开关时系统层面没有流量（AC-22）。** 测试证明的是代码里没有这条路径、JS 侧五个出网 API 一次都没被调、依赖图里走不到任何 HTTP client。用资源监视器看一眼进程的网络列是空的，是作者手动那一栏。
+8. **起草页与文件计划页在真窗口里。** CI 证明 IPC、文案与禁按钮；「生成草稿」之后中文草稿是否可读、授权目录扫描在 Windows 路径下是否出表，要看真机。
 
 ### WP09 的取舍与遗留
 
@@ -284,8 +286,8 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 5. **`e0-audit` 的 build output 豁免改成按标记文件认。** WP07 遗留 9 说 `apps/desktop/dist/` 会让本机 e0 红。修法不是把 `dist`/`gen` 加进 `EXEMPT_DIRS`（那样任何目录改个名字就能躲开审计），而是只在旁边有 `package.json` / `tauri.conf.json` 时才跳过。`xtask/tests/self_test.rs` 里有一条写了个手写的 `crates/pretend/src/gen/`，它仍然会被扫到。
 6. **托盘装不上时窗口就正常关闭。** 关窗收进托盘只有在真有托盘时才成立；没有通知区域的桌面上，那会变成关不掉又退不出的窗口。`tray::install_or_report` 把这次会话有没有托盘记进 state，关窗处理读它。Windows 11 一定有托盘，这条是给别的环境和调试用的。
 7. **`soulcore/src/commands/shell.rs` 里的 `ConfigSnapshot` 是壳自己的视图，不是 `Config` 的序列化。** 它只带界面要显示的那几个布尔与计数，**不带 LLM 端点字符串**（`the_snapshot_carries_no_endpoint_string` 钉住）：界面没有理由拿到那个地址，而每一个跨进程边界的字符串都是一次泄漏机会。要显示端点内容，得先想清楚为什么。
-8. **壳在 setup 里打开一次真 `SqlCipherStore`。** `install_store` 把句柄 `manage` 起来；密钥选择在 `soulcore::commands::store::open_store_for_session`：先问 `DpapiKeyProvider`，仅 `Unsupported` 时回退 `TestKeyProvider::in_dir`。设置页如实渲染「密钥文件未受 DPAPI 保护」。授权目录是会话内入口，不进向导、不持久化（WP13）。
-9. **起草 / 文件计划 / 导入 / 记忆 / 人脉这些路由是空的，但不是白屏。** `components/Pending.tsx` 写明这一页归哪个 WP。`App.test.tsx` 里两条断言钉住空路由的形状：起草页没有输入框也没有发送按钮，文件计划页没有任何执行按钮——工作单禁止假实现，测试就是这条禁令的执行者。要在这些页面上加控件的人会先撞到它们。
+8. **壳在 setup 里打开一次真 `SqlCipherStore`。** `configure` 托管空 `StoreSlot`，`install_store` 填槽（`install` 的布尔返回值必须用）；mock 运行时槽空，视图命令返回可读拒绝而不是 panic。密钥选择在 `soulcore::commands::store::open_store_for_session`：先问 `DpapiKeyProvider`，仅 `Unsupported` 时回退 `TestKeyProvider::in_dir`。设置页如实渲染「密钥文件未受 DPAPI 保护」。授权目录是会话内入口，不进向导、不持久化（WP13）。
+9. **档案 / 记忆 / 人脉 / 导入 / 研究 / 审计这些路由仍是空的，但不是白屏。** `components/Pending.tsx` 写明这一页归哪个 WP。起草页与文件计划页已经接上，见下「WP09 功能视图」。
 10. **前端测试覆盖设置页授权入口。** 断言仍是「用户能看见什么」，不是 DOM 快照。
 
 ## WP10 完成情况（核心，无起草 UI）
@@ -308,7 +310,7 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 1. **E1 只发生在 soulcore。** `soul-draft` 不依赖 `soul-egress`。
 2. **本地人事摘要不写审计、不落 inference。**
 3. **粘贴不落库。** 要存走记忆入口。
-4. **起草 UI 未做。** `/draft` 仍是 Pending，禁止发送按钮的测试仍在。
+4. **起草 UI 已接。** `/draft` 粘贴生成，禁止发送按钮的测试仍在。
 5. 审计链泄漏检查对中文用 4-gram、对 ASCII 用 ≥8，避免哈希假阳性。
 6. **永不发送的依赖图层：** `xtask e0-audit` 现禁消息发送类 crate（`lettre`/`teloxide`/`matrix-sdk` 等），不只是 HTTP client。
 
@@ -330,7 +332,7 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 1. **`written_to_disk` 构造级恒 false。**
 2. **计划 JSON 用目录指纹而不是把路径写进审计。** 扫描 id 是 uuid7。
 3. **Windows junction 逃逸** `cfg(windows)` 忽略，进手动清单。
-4. **文件页 UI 未做。** `/files` 仍无执行按钮。
+4. **文件页 UI 已接。** `/files` 只读预览，仍无执行按钮。
 5. **Windows 手动：** junction 逃逸、canonicalize 的 `\\?\` 前缀回显、NTFS 大小写。
 
 ## 壳接真库与授权目录
@@ -342,8 +344,34 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 | 授权目录 | `shell::authorize_root` + IPC `authorize_root` / `authorized_roots`；会话有效、不持久化 |
 | AC-02 不回归 | 向导仍拒绝开着的配置；授权不进向导 |
 
+## WP09 完成情况（功能视图：起草页 / 文件计划页）
+
+把已落地的 `draft_reply` / `scan_directory`+`plan_files` 接到 `#/draft` 与 `#/files`。本机 Linux：根树 clippy 绿；`cargo test -p soulcore --test draft_view` 10 项、`--test fileplan_view` 9 项；`just desktop-test` 等价 34 项；vitest 7 个文件 38 项。SOTA 复核 **ship**（`.agent_workspace/dev-sota/reports/SOTA-VIEWS.md`）。Windows 真窗口里的两页进手动清单。
+
+| 交付 | 证据 |
+|---|---|
+| 视图 DTO 构造级承诺 | `DraftView::of` 写死 `never_sent: true`；`FilePlanView::of` 写死 `written_to_disk: false`；只 Serialize。源码级扫描带合成反例 |
+| 空槽可读拒绝 | `StoreSlot`；mock IPC `reason == "no_store_opened"`，文案 `NO_STORE_FOR_VIEW_EXPLANATION` |
+| 起草页永不发送 | 按钮全集「生成草稿」「清空」；`queryByRole(/发送\|send\|submit\|deliver/)` 为空；命令名禁发送词汇 |
+| 文件页永不执行 | 仅「扫描并预览」；建议行内零 button/link/input；预览前后磁盘快照（路径/字节/内容/mtime）全等 |
+| 说明句逐字 | `contract.test.ts` 把 fakeCore 副本钉回 `DRAFT_NEVER_SENT_EXPLANATION` / `PLAN_PREVIEW_ONLY_EXPLANATION` |
+| 拒绝不回显 | 粘贴正文不进 `ViewRefused.message`；未授权路径不作为独立 root 出现在拒绝语里 |
+| D32 | 无采集/OAuth/RPA/QQ/微信客户端入口。概览已写明本版不从客户端读取 |
+| IPC 薄封装 | `commands.rs` 两个 wrapper 各一行；`the_command_layer_stays_thin` |
+
+### 取舍
+
+1. **本轮只接这两页。** people_summary、豁免、LLM 端点录入、其余功能视图都不做。
+2. **视图路径恒走模板。** 壳没有写 `llm_endpoint` 的入口。
+3. **粘贴按一段送进核心。** 多段 turns 的计数在 soulcore 测，页面不拆行（那会变成业务判断）。
+4. **父目录拒绝的「不回显」不能用裸 substring**：授权根路径包含父路径作为前缀，测试改成断言父路径没有作为独立 root 出现在括号列表里。
+
+## 灵魂层算法（PR #5 合入）
+
+`crates/soul-algo-tie`（默认 T4D）与 `crates/soul-algo-trait`（A0）已在工作区。它们是纯函数参考实现，零运行时依赖，不进 WebView。产品 denylist 仍禁 `score`；这两个 crate 因冻结标识 `TieScore`/`score()` 而列入 `EXEMPT_CRATES`（与 `xtask` 同类：必须写出禁词才能实现规则）。`docs/algorithms/DECISION.md` 的合并义务——用 T4D 替换 Goal 1 `graph_build.rs` 的 T0 `Tally::band()`——尚未做。
+
 ## 下一步
 
-WP09 功能视图优先接 **起草页与文件计划页**（核心已在，UI 还是 Pending）。档案/记忆/人脉/导入/研究/审计视图、DPAPI Win32、WP13 `tauri build` 仍排队。
+把 T4D 接到 `soul-graph`（替换 T0 判档）。档案 / 记忆 / 人脉 / 导入 / 研究 / 审计视图、DPAPI Win32、WP13 `tauri build` 与配置持久化仍排队。起草页与文件计划页已接上。
 
 **不做：** Goal 2；文件写执行（v0.1.1）；E0/云；OAuth；**QQ/微信客户端读取（D32：进程外开源读取 / wechat-rpa，本仓库不嵌）**；双问卷合并仍按契约重做。
