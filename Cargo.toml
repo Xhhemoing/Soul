@@ -14,6 +14,7 @@ members = [
   "crates/soul-profile",
   "crates/soul-memory",
   "crates/soul-collect",
+  "crates/soul-draft",
   "crates/soul-fileplan",
 ]
 
@@ -70,6 +71,7 @@ soul-testkit = { path = "crates/soul-testkit", version = "0.1.0" }
 soul-profile = { path = "crates/soul-profile", version = "0.1.0" }
 soul-memory = { path = "crates/soul-memory", version = "0.1.0" }
 soul-collect = { path = "crates/soul-collect", version = "0.1.0" }
+soul-draft = { path = "crates/soul-draft", version = "0.1.0" }
 soul-fileplan = { path = "crates/soul-fileplan", version = "0.1.0" }
 
 [profile.test]
