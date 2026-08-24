@@ -25,6 +25,7 @@
 | WP09 桌面壳 | 第一段（壳）完成。见下节。起草路由已由 WP10 接上 |
 | WP10 起草与人事摘要 | 完成。见下节。`/draft` 已接本机路径；端点路径的确认屏留给 WP13 |
 | WP11 文件计划 | 核心与命令面完成。见下节。UI 视图未接，`/files` 仍是空路由 |
+| WP13 安装 smoke / CI / SBOM | 第一段完成。见下节。壳接 store 与配置那一段未做 |
 | v0.1 其余 WP | 未开始 |
 
 ## WP01 完成情况
@@ -371,6 +372,57 @@ D31 是这份工作单的边界：只读预览留在 Goal 1，写执行是 v0.1.
 13. **扫描有上限**（深度 8、条目 20000）。撞上限时 `truncated` 为真并出 `SkipReason::DepthLimit` / `EntryLimit`，不是安静地少显示一些。上限值是拍的，等真机上有人对着家目录跑一次再调。
 14. **Windows `canonicalize` 给出 `\\?\C:\...`，那是本地盘，不是 UNC。** `screen` 把 `\\?\` 后紧跟盘符的形式剥成 `C:\...` 再走其余规则；`\\?\UNC\`、`\\.\`、`\\server\share` 仍然拒绝。不剥的话，windows-latest 上临时目录连授权都过不了（`authorized_scan.rs` 在 `authorize Alpha` 红）。未授权语料仍是对着已授权根去 `resolve`，能筛过本地 extended-length 写法不会把 Bravo 放进来。
 
+## WP13 完成情况（第一段：安装 smoke、CI、SBOM）
+
+本机 `just ci` 全绿（`lint / schema / e0 / denylist / fixtures-verify / test / smoke-lint / sbom / ui-lint / ui-test`；workspace 79 个测试目标 444 项，vitest 5 个文件 31 项），`just desktop-test` 绿（25 项，含 `ipc_roundtrip` 11 项——它在 Linux 上跑得起来，红的是 windows-latest，见下）。
+
+这一段做的是**证据链的最后一环**：AC-21 到目前为止只有「每个 crate 各自不出网」，AC-01 与 AC-26 的打包那一栏一直是空的。WP13 的另一半（壳接 `SqlCipherStore` 与配置、`/files` 与 `/graph` 接视图、起草端点的确认屏）**没有做**，仍在「下一步」里。
+
+| 交付 | 证据 |
+|---|---|
+| AC-21 主流程，不是逐 crate | `crates/soulcore/src/headless.rs`：向导 → 加密库 → 导入 → 图谱 → 档案（含被推断顶不动的那条轴）→ 记忆 CRUD 与遗忘 → 无 key 起草 → 人事摘要 → 文件计划预览与执行拒绝 → 研究预览 → 采集（同意关）→ 云开关 → 审计链，十三步在**同一个进程**里按顺序跑完，每一步证不出自己声称的事就返回 `HeadlessError` 而不是打一行日志。这是逐 crate 测试看不见的那种泄漏该出现的地方 |
+| AC-21 非回环连接 = 0，观察来的不是推理来的 | `crates/soulcore/src/netwatch.rs`：Linux 上读 `/proc/self/fd` 拿到本进程的 socket inode，再对着 `/proc/net/{tcp,tcp6,udp,udp6}` 把它们解析成对端地址，整个主流程期间持续采样。`crates/soulcore/tests/netwatch.rs` 证明这个观察器不是空转——真开一个到文档地址（RFC 5737 / 3849）的 socket，它必须看得见；同时还有一份合成 `/proc/net` 表喂给解析器。平台不支持时报 `Unsupported` 而**不是**报 0：一个总是说「没看到连接」的观察器和一个坏掉的观察器长得一模一样 |
+| AC-21 关着的守卫真的拒绝 | 同上，`egress_findings`：三个不可能存在的地址（`.invalid` 加两段文档网段）过 `NetGuard::closed()`，逐个记下拒绝理由码。地址在源码里写成裸 authority 再在运行时拼成 URL——`xtask e0-audit` 扫的就是 URL 字面量，这个文件不豁免 |
+| AC-02 装完之后仍然全关 | `soul-headless smoke` 的报告里 `config.fully_closed` 与 `config.open_capabilities`，`install-smoke.ps1` 在真机上断言它们。`soul-headless config` 另有一条：默认配置里有开关是开的就**拒绝启动**，不是打印出来让人自己看 |
+| AC-01 静默安装 → smoke → 卸载 | `scripts/install-smoke.ps1`（533 行）：NSIS `/S` 装（`.msi` 走 `msiexec /qn`，留给还不存在的 WiX 目标）→ 卸载项必须在 HKCU（按用户装）→ 装出来的可执行文件叫 `soul.exe` 且 PE 里的清单是 `asInvoker` → `soul-headless smoke` 在 `Get-NetTCPConnection` 盯着它的 TCP 表的情况下跑 → `uninstall.exe /S _?=<dir>` 卸干净且注册项消失。退出码是全部接口，`finally` 保证卸载在前面任何一步失败后照样跑 |
+| AC-01 不提权，由脚本自己证明 | 同上：安装前断言**本进程不是管理员**。要提权的安装器在这里会弹 UAC，而 `/S` 压不住它——这正是 AC-01 要抓的那件事。清单检查除了要 `asInvoker`，还逐个排掉 `requireAdministrator` / `highestAvailable` 并要求 `uiAccess="false"` |
+| 脚本不下载任何东西 | `crates/soulcore/tests/install_smoke_script.rs` 6 项：`Invoke-WebRequest` / `Invoke-RestMethod` / `Start-BitsTransfer` / `WebClient` / `curl` / `wget` / `winget` / `Install-Module` 一个都不许出现，全文搜不到 `://`。另外 `xtask e0-audit` 现在也扫 `scripts/`（`.ps1` / `.psm1` / `.sh` / `.bat` / `.cmd`），`xtask/tests/self_test.rs::the_url_scanner_reads_packaging_scripts` 喂一个合成的脚本证明它会红 |
+| 脚本读的字段真的存在 | 同上：从脚本源码里**扫出**每一个 `$smoke.Report.<path>`，再拿一份真跑出来的报告逐个解析。CI 的 Linux job 不执行这个脚本，所以「报告字段改了名，脚本拿 `$null` 去和 0 比，smoke 在一台正在出网的机器上绿了」是唯一没人会发现的失败模式，这条就是堵它的 |
+| SBOM | `crates/xtask/src/sbom.rs`（502 行）：从 `cargo metadata` 的 resolve 图出发，只走 normal 与 build 边，两份 CycloneDX 文档——`soul-core`（215 个组件，13 个 shipped root，测试器材排除在外）与 `soul-desktop`（514 个组件，安装器里装的其实主要是它）。`self_test.rs` 里 7 项：测试器材不进文档、同一个 checkout 两次输出逐字节相等、生成的文档里搜不到 `://`（SBOM 是要发出去的东西，往里放 URL 等于给自己开一个例外）、`Cargo.lock` 的校验和配对、没写许可证的依赖会被点名。`cargo cyclonedx` 没有用：那是又一个要装的二进制，而这份文档描述的正是一张没有 HTTP client 的依赖图 |
+| SBOM 的第二份证词 | CI 的 lint job 导出 `cargo deny list` 的许可图（`--layout crate --format json` 与 `--layout license --format tsv`）为产物。`xtask sbom` 说什么 crate 以什么 SPDX 表达式发货，cargo-deny 用它自己的话再说一遍，两边不一致就看得见 |
+| AC-09 / AC-10 真机采集有得跑 | `soul-headless collect-probe --i-consent [--seconds N]`（`crates/soulcore/src/collect_probe.rs`）：两段计时，采集关的那段 `start` 被拒且事件数不变，采集开的那段必须写出至少一条——写不出来算失败，「0 条」在这里不是更安全而是探针没看见桌面。然后**只撤销同意、不停止采集器**，隔 1.2 秒读两次事件数，相等才算过 AC-10。临时库跑完删掉，`tests/collect_probe.rs` 断言它用的是 `open_test_store` 而不是真库、且撤销发生在停止之前 |
+| 作者手动那一栏有文档了 | `scripts/author-manual-checklist.md`：七节，托盘 / 不提权 / `soul.exe` 进程名 / 云开关的系统层面无流量 / 真机采集 / WebView2 与 DPI / 记录方式。每一条要么是一条带预期读数的命令，要么是一件要看的事加上「看到什么算失败」 |
+| AC-26 | `just ci` 多了 `smoke-lint` 与 `sbom` 两步；CI 多了 `sbom` job（CycloneDX 产物）与 `package` job。Windows job 加了 `--test ipc_roundtrip --no-run` |
+
+落地内容：`crates/soulcore/src/{headless,netwatch,collect_probe}.rs` 与 `bin/soul-headless.rs`、四个测试文件（`headless_main_flow` / `netwatch` / `install_smoke_script` / `collect_probe`）；`crates/xtask/src/sbom.rs` 与 `main.rs` / `lib.rs` / `egress.rs` 的接线加 `tests/self_test.rs` 的 8 项；`scripts/install-smoke.ps1` 与 `scripts/author-manual-checklist.md`；`justfile` 三条新 recipe；`.github/workflows/ci.yml`。没有动 schema，没有动产品定义，没有新 fixture，没有加依赖。
+
+### WP13 的 Windows 手动缺口
+
+CI 到此为止。下面每一条都要在 Windows 11 x64 真机上由作者过一遍，步骤在 `scripts/author-manual-checklist.md`：
+
+1. **`tauri build` 仍然没有在任何 runner 上跑过（WP09 缺口 4 未消除）。** `tauri build` 第一次打 NSIS 包时会去取 NSIS 工具链，那是出网。为了证明安装器可信而去下载一个第三方安装器，是把自己绕进去了，所以打包这一步标为**作者手动**。`package` job 走到打包之前为止：前端产物、带 `custom-protocol` 的 release 二进制、从**编出来的 `soul.exe` 里**读清单确认是 `asInvoker`（不是读 `tauri.conf.json` 的字段）、以及 Windows 上的 AC-21 headless smoke，两个二进制作为产物上传，作者拿下来直接打包即可，不用重编一遍。
+2. **安装包里没有 `soul-headless.exe`。** Tauri bundle 只放 `mainBinaryName`，所以 `install-smoke.ps1` 的 `-Headless` 指的是同一 commit 编出来的那个，不是安装器放上去的那个。这一步证明的是「这个 build 的核心在这台机器上跑起来不出网」，**不是**「安装器放上去的核心不出网」。要消除它，得让 bundle 带上第二个二进制（`tauri.conf.json` 的 `externalBin`），那是产品打包形状的改动，本工作单不动。
+3. **托盘图标、UAC 弹窗、任务管理器里的进程名。** 编译在 Windows CI 跑，清单在 CI 里从二进制里读出来验过，但「通知区域里有没有那个图标」「双击的时候屏幕暗没暗一下」「那一行显示的是不是 `soul.exe`」是肉眼的事。检查清单第 2、3、4 节。
+4. **`Get-NetTCPConnection` 只看 TCP。** Windows 的 UDP 端点表没有远端地址，所以脚本看不见 UDP 对端。Linux 侧的 `netwatch` 两个都读，两边合起来才是覆盖。检查清单第 5 节让作者手动看一眼 `Get-NetUDPEndpoint`。
+5. **WebView2 的进程不是 `soul.exe`。** `msedgewebview2.exe` 有它自己的网络行为。云开关那一节明确要求把它单独记一条，不要含糊地算进「Soul 出网了」或者「没事」。
+6. **AC-09 / AC-10 的真机那一半。** 所有采集测试都驱动 `FakeForegroundSource`，因为 runner 没有桌面。`collect-probe` 是给这一半准备的工具，但它要一个人在键盘前切二十秒窗口，所以结果只能手填回来。
+7. **卸载会不会删掉用户数据、Defender/SmartScreen 会不会拦未签名的安装器。** 两条都要实测并记录，都是发布前要处理的事。
+
+### WP13 的取舍与遗留
+
+1. **SBOM 自己写而不是装 `cargo cyclonedx`。** 理由有两条，第二条才是主要的：一是又一个要装的二进制（CI 里 `cargo-deny` 已经是特例，靠下载预编译包解决），二是这份文档存在的意义就是描述一张没有 HTTP client 的图，为它引入一个带 HTTP client 的生成器，逻辑上说不过去。代价是 `sbom.rs` 502 行要自己维护 CycloneDX 1.5 的形状；它只发 `metadata` / `components` / `dependencies` 三块，用到的字段都在 `self_test.rs` 里钉着。
+2. **SBOM 里不放 URL，包括 crates.io 的。** CycloneDX 通常带 `externalReferences`（仓库地址、下载地址）。这里一个都不放，因为 `xtask e0-audit` 扫 URL 字面量，而一份把 URL 写进产物的生成器等于给自己开了个例外。crate 的身份靠 purl（`pkg:cargo/serde@1.0.219`）与 `Cargo.lock` 里的 sha256 校验和表达，两样都不是地址。
+3. **`soul-desktop` 那份 SBOM 是 `cargo metadata` 解出来的，不是 `tauri build` 产出的清单。** 它列的是「编 `soul.exe` 要用到的 crate」，不是「安装包里有哪些文件」。WebView2 运行时、NSIS 自己放进去的东西、图标资源都不在里面。要一份真正的安装包清单，得在打包之后对着 bundle 生成——那要先解决缺口 1。
+4. **`netwatch` 在非 Linux 上是 `Unsupported`，不是 0。** Windows 的等价物是 `GetExtendedTcpTable`，那要么引 `windows-sys` 要么写 `unsafe`，而 `soulcore` 是 `forbid(unsafe_code)`。选择是：Rust 侧诚实地说「这台机器上没看」，Windows 侧的观察交给 `install-smoke.ps1` 的 `Get-NetTCPConnection`。报告里 `egress.observed` 就是这个区别，别把它读成通过。
+5. **`collect-probe` 是仪器，不是产品面。** 没有任何 shell 命令到得了它，它只在 `soul-headless` 这个二进制里，而且要 `--i-consent`。这是有意的：界面上还没有采集开关（WP07 落的是 crate 与命令面，壳没接），在壳里现加一个只为了手动测试的开关，等于让测试需求决定产品形状。
+6. **`collect-probe` 写的那条 `collect.start` 审计是探针自己补的。** `ConsentHandle::grant` 把审计条目交回给调用方，由拿着 store 的人写；平时那个人是壳，这里是探针。链里少一条「采集被打开过」的记录，不是 AC-23 要的那条链。
+7. **`ipc_roundtrip` 在 windows-latest 上仍然不跑，只编译。** 失败发生在测试进程启动阶段（`STATUS_ENTRYPOINT_NOT_FOUND` / 0xc0000139），runner 的 `WebView2Loader.dll` 没有导出 mock IPC runtime 要的符号，一条断言都还没跑到。加了 `--no-run` 之后，这个文件里的编译错误会当场红，而不是等作者本地跑才发现。它在 Linux 上 11 项全过（`just desktop-test`），AC-02 与 AC-22 另有 soulcore 与 vitest 覆盖。
+8. **`package` job 会编一次 Tauri 的 release，很慢。** 换来的是「装到用户机器上的那个 `soul.exe` 确实是 `asInvoker`」这句话有二进制层面的证据，而不只是配置字段。要是这个 job 的时间变成问题，先砍的应该是它的触发条件（比如只在 tag 上跑），不是砍掉从二进制里读清单那一步。
+9. **`install-smoke.ps1` 用 `.gitattributes` 钉成 CRLF。** PowerShell 对 LF 其实无所谓，但脚本是给 Windows 作者双击着用的，混行尾在 `git diff` 里很吵。`install_smoke_script.rs` 用 `include_str!` 读它，所以断言都写成单行片段，不跨行。
+10. **`just ci` 里 `sbom` 是检查不只是产物。** 一个没写许可证的依赖会让它失败——`deny.toml` 判的是 SPDX 名字的允许清单，而「条款根本没人写下来」是那份清单唯一说不上话的情况。目前 `LicenseRef-Soul-Proprietary` 14 个（本仓库自己的 crate）、`LicenseRef-LICENSE` 2 个（依赖自带的非 SPDX 声明）。
+11. **`headless::run` 用固定时钟（`AT_UNIX_SECONDS`），`collect_probe` 用墙钟。** 前者是为了两次运行写出同一条审计链，后者不行：它写的是「刚才这一次采集」，时间戳编一个出来就成了假话。`headless::now_unix_seconds` 是这条分界。
+12. **主流程用的是编进二进制的 fixture。** `fixtures/` 是仓库目录，装好的 Soul 没有仓库，所以导入语料与问卷答案用 `include_str!` 编进去。它们和 `just fixtures-verify` 检查的是同一批字节。代价是这两个文件改了，`soulcore` 要重编。
+
 ## 下一步
 
-批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集与 WP09 桌面壳第一段也已完成。批 5 的 WP10 起草与人事摘要已完成（`/draft` 接了本机路径），WP11 核心与命令面已完成、视图未接。下一步有三件，都卡在同一个地方：`/files` 接 `PlanPreview`、`/graph` 接 `PersonSummaryView`、起草的端点路径接 `prepare` / `generate` 的确认屏——后两件都要一个打开的 `SqlCipherStore` 与一份能读的配置，也就是 WP13。不要启动 Goal 2。文件写入仍是 v0.1.1。
+批 3 的档案与记忆（WP03+WP04）、人脉图与导入（WP05+WP06）都已完成，批 4 的 WP07 前台采集与 WP09 桌面壳第一段也已完成。批 5 的 WP10 起草与人事摘要已完成（`/draft` 接了本机路径），WP11 核心与命令面已完成、视图未接。WP13 的第一段（安装 smoke、CI、SBOM）已完成。下一步有三件，都卡在同一个地方：`/files` 接 `PlanPreview`、`/graph` 接 `PersonSummaryView`、起草的端点路径接 `prepare` / `generate` 的确认屏——后两件都要一个打开的 `SqlCipherStore` 与一份能读的配置，也就是 WP13 剩下的那一段（配置文件住在哪里、谁在进程里开那一个 store 句柄，见 WP07 遗留 8 与 WP11 遗留 8）。另外 `scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍，结果填回上面的「WP13 的 Windows 手动缺口」。不要启动 Goal 2。文件写入仍是 v0.1.1。
