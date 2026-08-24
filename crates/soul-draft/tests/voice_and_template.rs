@@ -185,6 +185,13 @@ fn with_no_endpoint_the_draft_is_a_template_and_nothing_is_contacted() {
     assert!(!draft.text.contains("公司门口"));
 }
 
+/// Determinism, which is the whole of what AC-17 promises about the no-key
+/// path: the same inputs give the same draft, every time, on a `Drafter` that
+/// was built fresh each round so nothing can be carried between them.
+///
+/// A run of 32 rather than a pair, because the ways this could go wrong are
+/// ones a single repeat might miss — a hash map iterated in whatever order it
+/// felt like, a clock consulted, a random tiebreak between two phrasings.
 #[test]
 fn the_template_is_a_function_of_its_inputs_and_nothing_else() {
     let mut voice = VoiceProfile::default();
@@ -193,8 +200,10 @@ fn the_template_is_a_function_of_its_inputs_and_nothing_else() {
     let request = DraftRequest::from_paste(brief, "在吗");
 
     let first = drafter().draft_offline(&request).expect("first draft");
-    let second = drafter().draft_offline(&request).expect("second draft");
-    assert_eq!(first, second, "the same inputs must produce the same draft");
+    for round in 1..32 {
+        let again = drafter().draft_offline(&request).expect("another draft");
+        assert_eq!(again, first, "draft {round} differs from the first one");
+    }
 }
 
 /// Every voice field has to reach the output. A template that ignored one
