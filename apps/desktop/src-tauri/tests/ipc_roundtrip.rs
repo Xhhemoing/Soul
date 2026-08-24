@@ -10,10 +10,28 @@
 //! The registration under test is `soul_desktop::configure`, which is the same
 //! function the shipped binary calls. A second list here would test itself.
 
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use serde_json::{json, Value};
+use soulcore::commands::session::Session;
 use tauri::test::{get_ipc_response, mock_builder, INVOKE_KEY};
 use tauri::webview::InvokeRequest;
 use tauri::WebviewWindowBuilder;
+
+/// A directory no installation uses.
+///
+/// `Session::open` writes a configuration file and opens a database, so a test
+/// that used the real data directory would be editing whatever is on the
+/// machine running it. Every scratch directory here is its own, which is also
+/// what lets a test say "restart" by opening a second session on the same one.
+fn scratch() -> PathBuf {
+    static NEXT: AtomicU32 = AtomicU32::new(0);
+    let nth = NEXT.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!("soul-ipc-{}-{nth}", std::process::id(),));
+    let _ = std::fs::remove_dir_all(&path);
+    path
+}
 
 /// Call a command the way the WebView would, and return what it answered.
 ///
@@ -29,38 +47,87 @@ fn app_url<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Url {
 }
 
 fn invoke(command: &str, body: Value) -> Result<Value, Value> {
-    invoke_from(command, body, None)
+    Shell::on(scratch()).invoke(command, body)
 }
 
 /// As [`invoke`], with the option to claim a different origin.
 fn invoke_from(command: &str, body: Value, origin: Option<&str>) -> Result<Value, Value> {
-    let app = soul_desktop::configure(mock_builder())
+    Shell::on(scratch()).invoke_from(command, body, origin)
+}
+
+/// One launched application: one session, one store handle, one WebView.
+///
+/// Most tests below want a single command and do not care what session it ran
+/// against. Two do care. The endpoint draft path is prepare then generate, and
+/// a second session would have no preparation to approve; and "the wizard
+/// survives a restart" is only a claim about disk if the restart is a second
+/// [`Shell`] on the same directory.
+struct Shell {
+    directory: PathBuf,
+    webview: tauri::WebviewWindow<tauri::test::MockRuntime>,
+    url: tauri::Url,
+}
+
+impl Shell {
+    fn on(directory: impl Into<PathBuf>) -> Shell {
+        let directory = directory.into();
+        let session = Session::open(&directory);
+        let app = soul_desktop::configure(
+            mock_builder(),
+            soul_desktop::commands::SessionState::new(session),
+        )
         .build(tauri::generate_context!())
         .expect("the mock application builds");
-    let webview = WebviewWindowBuilder::new(&app, "main", Default::default())
-        .build()
-        .expect("a mock webview");
-    let url = match origin {
-        Some(url) => url.parse().expect("a url"),
-        None => app_url(&app),
-    };
-
-    let response = get_ipc_response(
-        &webview,
-        InvokeRequest {
-            cmd: command.to_owned(),
-            callback: tauri::ipc::CallbackFn(0),
-            error: tauri::ipc::CallbackFn(1),
+        let webview = WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("a mock webview");
+        let url = app_url(&app);
+        Shell {
+            directory,
+            webview,
             url,
-            body: body.into(),
-            headers: Default::default(),
-            invoke_key: INVOKE_KEY.to_owned(),
-        },
-    );
+        }
+    }
 
-    match response {
-        Ok(value) => Ok(value.deserialize::<Value>().expect("a JSON body")),
-        Err(value) => Err(value),
+    /// Shut this one down and launch another on the same directory.
+    fn restart(self) -> Shell {
+        let directory = self.directory.clone();
+        drop(self);
+        Shell::on(directory)
+    }
+
+    fn invoke(&self, command: &str, body: Value) -> Result<Value, Value> {
+        self.invoke_from(command, body, None)
+    }
+
+    fn invoke_from(
+        &self,
+        command: &str,
+        body: Value,
+        origin: Option<&str>,
+    ) -> Result<Value, Value> {
+        let url = match origin {
+            Some(url) => url.parse().expect("a url"),
+            None => self.url.clone(),
+        };
+
+        let response = get_ipc_response(
+            &self.webview,
+            InvokeRequest {
+                cmd: command.to_owned(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url,
+                body: body.into(),
+                headers: Default::default(),
+                invoke_key: INVOKE_KEY.to_owned(),
+            },
+        );
+
+        match response {
+            Ok(value) => Ok(value.deserialize::<Value>().expect("a JSON body")),
+            Err(value) => Err(value),
+        }
     }
 }
 
@@ -88,6 +155,43 @@ fn a_finished_wizard_answers_with_everything_off() {
     .expect("the wizard finishes");
 
     assert_eq!(snapshot["fully_closed"], json!(true));
+    assert_eq!(snapshot["cloud"]["enabled"], json!(false));
+}
+
+/// WP13's second slice, over the IPC: the wizard is asked once.
+///
+/// Before this the shell held the answer in a React prop, so every launch was
+/// a first launch. The restart here is a second application on the same
+/// directory, which means the only thing carrying the answer across is the
+/// file `Session` wrote.
+#[test]
+fn a_finished_wizard_is_still_finished_after_a_restart() {
+    let shell = Shell::on(scratch());
+    assert_eq!(
+        shell.invoke("session_status", json!({})).expect("a status")["wizard_completed"],
+        json!(false),
+    );
+
+    shell
+        .invoke(
+            "complete_wizard",
+            json!({ "answers": { "acknowledged_defaults_are_off": true } }),
+        )
+        .expect("the wizard finishes");
+
+    let restarted = shell.restart();
+    let status = restarted
+        .invoke("session_status", json!({}))
+        .expect("a status");
+    assert_eq!(status["wizard_completed"], json!(true));
+
+    // AC-02: what came back from disk is the wizard's answer and nothing else.
+    let snapshot = restarted
+        .invoke("config_snapshot", json!({}))
+        .expect("a snapshot");
+    assert_eq!(snapshot["fully_closed"], json!(true));
+    assert_eq!(snapshot["collect_enabled"], json!(false));
+    assert_eq!(snapshot["llm_endpoint_configured"], json!(false));
     assert_eq!(snapshot["cloud"]["enabled"], json!(false));
 }
 
@@ -165,6 +269,268 @@ fn a_paste_comes_back_as_a_draft_with_nowhere_to_send_it() {
             assert_ne!(*field, forbidden, "the draft carries a `{forbidden}`");
         }
     }
+}
+
+/// WP10's other half, over the IPC. What the confirmation screen is handed is
+/// counts and two identifiers — no prose from anywhere, and above all not the
+/// paste. The user approves a shape; they have already read the text.
+#[test]
+fn preparing_a_generation_describes_the_request_without_quoting_it() {
+    let shell = Shell::on(scratch());
+    let pasted = "周五的场地我已经订好了，你直接过来就行";
+
+    let plan = shell
+        .invoke("prepare_draft", json!({ "pasted": pasted }))
+        .expect("a paste can always be described");
+
+    assert_eq!(plan["third_party_turns"], json!(1));
+    assert_eq!(plan["placeheld_turns"], json!(1));
+    assert_eq!(plan["carries_exempted_original"], json!(false));
+    assert_eq!(
+        plan["notice"],
+        json!(soulcore::commands::draft::E1_PLAN_NOTICE),
+    );
+    assert!(
+        plan["plan_hash"]
+            .as_str()
+            .is_some_and(|hash| hash.len() == 64),
+        "a plan the user cannot echo back is one nobody can approve: {plan}",
+    );
+
+    // The counts are the request; the text is not in them. A plan carrying the
+    // paste would put third-party words on a confirmation screen, which is the
+    // one place they must not appear.
+    let rendered = plan.to_string();
+    assert!(
+        !rendered.contains(pasted),
+        "the plan quotes the paste: {plan}"
+    );
+    assert!(
+        !rendered.contains("场地"),
+        "the plan carries a fragment of the paste: {plan}",
+    );
+
+    // AC-02 holds through the confirmation: no endpoint was configured, so the
+    // approval the user could give reaches nothing.
+    let refusal = shell
+        .invoke(
+            "generate_draft",
+            json!({
+                "approval": {
+                    "preparation_id": plan["preparation_id"],
+                    "plan_hash": plan["plan_hash"],
+                }
+            }),
+        )
+        .expect_err("nothing is configured to generate against");
+    assert!(
+        refusal["reason_code"]
+            .as_str()
+            .is_some_and(|code| !code.is_empty()),
+        "a refusal the screen cannot name is one it has to invent words for: {refusal}",
+    );
+}
+
+/// A confirmation the user did not give sends nothing.
+///
+/// The preparation is real and the approval echoes the wrong hash, which is the
+/// shape a replayed or tampered-with confirmation arrives in. `discard_draft`
+/// is the other half of the same promise: the user read the plan and said no.
+#[test]
+fn an_approval_that_does_not_echo_the_plan_generates_nothing() {
+    let shell = Shell::on(scratch());
+    let plan = shell
+        .invoke("prepare_draft", json!({ "pasted": "一句话" }))
+        .expect("a plan");
+
+    let refusal = shell
+        .invoke(
+            "generate_draft",
+            json!({
+                "approval": {
+                    "preparation_id": plan["preparation_id"],
+                    "plan_hash": "d5".repeat(32),
+                }
+            }),
+        )
+        .expect_err("a mismatched approval is refused");
+    assert!(refusal["explanation"].is_string(), "unexpected: {refusal}");
+
+    // And there is nothing left to approve a second time.
+    assert_eq!(
+        shell.invoke("discard_draft", json!({})).expect("an answer"),
+        json!(false),
+    );
+}
+
+/// An approval nobody prepared is the same refusal, arriving on a session that
+/// has never been asked to prepare anything.
+#[test]
+fn an_approval_with_no_preparation_behind_it_generates_nothing() {
+    let refusal = invoke(
+        "generate_draft",
+        json!({
+            "approval": {
+                "preparation_id": "0192f000-0000-7000-8000-0000000000f1",
+                "plan_hash": "d5".repeat(32),
+            }
+        }),
+    )
+    .expect_err("an approval nobody prepared is refused");
+
+    assert!(refusal["explanation"].is_string(), "unexpected: {refusal}");
+}
+
+/// The user read the plan and said no: the preparation goes away, and a later
+/// approval of it reaches nothing.
+#[test]
+fn discarding_a_plan_leaves_nothing_an_approval_could_reach() {
+    let shell = Shell::on(scratch());
+    let plan = shell
+        .invoke("prepare_draft", json!({ "pasted": "一句话" }))
+        .expect("a plan");
+
+    assert_eq!(
+        shell.invoke("discard_draft", json!({})).expect("an answer"),
+        json!(true),
+        "there was a preparation to throw away",
+    );
+    assert!(
+        shell
+            .invoke(
+                "generate_draft",
+                json!({
+                    "approval": {
+                        "preparation_id": plan["preparation_id"],
+                        "plan_hash": plan["plan_hash"],
+                    }
+                }),
+            )
+            .is_err(),
+        "a discarded plan was still approvable",
+    );
+}
+
+/// `approval` is a record rather than two arguments, so the conversion Tauri
+/// does to it is the one that would silently drop half of a confirmation.
+#[test]
+fn the_approval_argument_is_required_and_must_carry_both_halves() {
+    for body in [
+        json!({}),
+        json!({ "approval": { "preparation_id": "0192f000-0000-7000-8000-0000000000f1" } }),
+        json!({ "approval": { "plan_hash": "d5".repeat(32) } }),
+    ] {
+        assert!(
+            invoke("generate_draft", body.clone()).is_err(),
+            "a half-filled approval resolved to something: {body}",
+        );
+    }
+}
+
+/// WP11 over the IPC. A directory nobody authorized is not scannable, and the
+/// view the shell starts from says so with the core's own sentence.
+#[test]
+fn the_file_screen_starts_with_nothing_authorized_and_no_way_to_execute() {
+    let shell = Shell::on(scratch());
+    let view = shell.invoke("files_view", json!({})).expect("a view");
+
+    assert_eq!(view["roots"], json!([]));
+    assert_eq!(view["unavailable_roots"], json!([]));
+    assert_eq!(view["executable_in_this_version"], json!(false));
+    assert_eq!(
+        view["read_only_notice"],
+        json!(soulcore::commands::fileplan::READ_ONLY_NOTICE),
+    );
+
+    assert!(
+        shell
+            .invoke("preview_plan", json!({ "path": "/nowhere/in/particular" }))
+            .is_err(),
+        "an unauthorized directory was scanned",
+    );
+}
+
+/// A directory the user named, the plan a scan of it produced, and the
+/// authorization surviving a restart because it went to disk.
+#[test]
+fn an_authorized_directory_scans_read_only_and_is_remembered() {
+    let shell = Shell::on(scratch());
+    let root = scratch().join("下载");
+    std::fs::create_dir_all(&root).expect("a directory to authorize");
+    std::fs::write(root.join("预算.csv"), b"a,b\n1,2\n").expect("a file in it");
+
+    let path = root.to_str().expect("a utf-8 path").to_owned();
+    let view = shell
+        .invoke("authorize_directory", json!({ "path": path }))
+        .expect("the directory is authorizable");
+    assert_eq!(view["roots"].as_array().map(Vec::len), Some(1));
+
+    let plan = shell
+        .invoke("preview_plan", json!({ "path": path }))
+        .expect("an authorized directory scans");
+    assert_eq!(plan["executable_in_this_version"], json!(false));
+    assert_eq!(
+        plan["read_only_notice"],
+        json!(soulcore::commands::fileplan::READ_ONLY_NOTICE),
+    );
+    assert!(
+        plan["plan_hash"]
+            .as_str()
+            .is_some_and(|hash| hash.len() == 64),
+        "a plan without a hash is not one anybody could approve: {plan}",
+    );
+    assert!(
+        root.join("预算.csv").exists(),
+        "the scan moved a file, and this version has no code that may",
+    );
+
+    // The authorization is in the file beside the store, not in this process.
+    let restarted = shell.restart();
+    let view = restarted.invoke("files_view", json!({})).expect("a view");
+    assert_eq!(view["roots"].as_array().map(Vec::len), Some(1));
+
+    let _ = std::fs::remove_dir_all(root.parent().unwrap_or(&root));
+}
+
+/// WP08 over the IPC. An empty store is an empty graph rather than an error,
+/// and the notice on it is `soul-policy`'s, not a sentence written here.
+#[test]
+fn the_people_screen_reads_an_empty_store_as_an_empty_graph() {
+    let graph = match invoke("people_graph", json!({})) {
+        Ok(graph) => graph,
+        // On a platform whose key provider refuses — Windows, where DPAPI is
+        // still a skeleton — the store does not open and the refusal is the
+        // honest answer. It must still be a refusal with a code on it.
+        Err(refusal) => {
+            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+            return;
+        }
+    };
+
+    assert_eq!(graph["people"], json!([]));
+    assert_eq!(graph["ties"], json!([]));
+    assert_eq!(graph["third_party_data_is_local_only"], json!(true));
+    assert_eq!(
+        graph["notice"],
+        json!(soulcore::commands::graph::WORKING_HYPOTHESIS_NOTICE),
+    );
+}
+
+/// `contactId` is what `core.ts` sends, and Tauri has to make it `contact_id`.
+#[test]
+fn the_person_argument_is_required_and_spelled_the_way_the_webview_spells_it() {
+    assert!(
+        invoke("person_summary", json!({})).is_err(),
+        "a summary of nobody in particular resolved to something",
+    );
+    // A well-formed identifier for a person who is not in the store: the
+    // command has to answer, and the answer has to be a refusal.
+    let refusal = invoke(
+        "person_summary",
+        json!({ "contactId": "0192f000-0000-7000-8000-000000000002" }),
+    )
+    .expect_err("nobody is in an empty store");
+    assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
 }
 
 /// `pasted` is what `core.ts` sends. It is a single word, so Tauri's camelCase

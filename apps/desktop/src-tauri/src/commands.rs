@@ -5,100 +5,143 @@
 //! decision is made in this file, so there is nothing in it for a test to
 //! catch — which is the point. The decisions have tests, in `soulcore`.
 //!
-//! One absence is deliberate. WP10's endpoint path is two calls —
-//! `DraftSession::prepare` describes a request and `generate` runs it, with a
-//! person in between — and this shell has no screen for that person yet. So
-//! it binds the local half only: [`draft_reply`] takes the path that builds
-//! no request body at all. When WP13 gives the shell a configuration to read
-//! and a dialog to show, the other two calls get bound; until then there is
-//! no way through this file to reach an endpoint, which is a stronger thing
-//! to be able to say than "the button is hidden".
+//! One thing this file does *not* do is open a database. WP07 leftover 8 says
+//! the process gets one `SqlCipherStore` handle, because two connections are
+//! two write-ahead logs; so the handle is opened once in `lib.rs`, lives
+//! inside `soulcore::commands::session::Session`, and every command here
+//! borrows it through [`SessionState`]. `tests/one_store.rs` reads this file
+//! and `lib.rs` back to check that no second opening has appeared.
 
 use std::sync::{Mutex, MutexGuard};
 
-use soulcore::commands::draft::{self, DraftRefusalView, DraftSession, DraftValue};
-use soulcore::commands::policy::PolicySession;
-use soulcore::commands::shell::{self, CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
-use soulcore::Config;
+use soulcore::commands::draft::{Approval, DraftValue, E1DraftPlan, PersonSummaryView};
+use soulcore::commands::fileplan::PlanPreview;
+use soulcore::commands::graph::PeopleGraphView;
+use soulcore::commands::session::{FilesView, Session, SessionRefusal, SessionStatus};
+use soulcore::commands::shell::{CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
 use tauri::State;
 
-/// The configuration this session is running under.
+/// The one session this process has.
 ///
-/// `Config::default()` for now. Where a real installation reads it from — and
-/// therefore what happens on the second launch — is WP13's question; keeping
-/// it in managed state means answering it does not touch this file.
-#[derive(Debug, Default)]
-pub struct SessionConfig(pub Config);
-
-#[tauri::command]
-pub fn config_snapshot(config: State<'_, SessionConfig>) -> ConfigSnapshot {
-    ConfigSnapshot::of(&config.0)
-}
-
-#[tauri::command]
-pub fn complete_wizard(answers: WizardAnswers) -> Result<ConfigSnapshot, WizardRefused> {
-    shell::complete_wizard(&answers)
-}
-
-#[tauri::command]
-pub fn cloud_toggle(config: State<'_, SessionConfig>, requested_on: bool) -> CloudNotice {
-    shell::cloud_toggle(&config.0, requested_on)
-}
-
-/// The drafting state this window is using.
-///
-/// Both halves are behind one lock because they have to agree: the two
-/// sessions each hold a redactor, and a redactor that knew about a different
-/// set of names would placehold different things. `draft::closed_session`
-/// builds the pair, so the agreement is `soulcore`'s to keep rather than a
-/// thing this file could get wrong.
+/// Constructed by the caller rather than by [`Default`], because where the
+/// data directory is depends on the machine and a test must be able to say
+/// "somewhere else". `lib.rs` builds the real one; `tests/ipc_roundtrip.rs`
+/// builds one in a scratch directory and gets the same commands.
 #[derive(Debug)]
-pub struct Drafting {
-    draft: DraftSession,
-    policy: PolicySession,
-}
+pub struct SessionState(Mutex<Session>);
 
-impl Default for Drafting {
-    fn default() -> Drafting {
-        let (draft, policy) = draft::closed_session();
-        Drafting { draft, policy }
+impl SessionState {
+    pub fn new(session: Session) -> SessionState {
+        SessionState(Mutex::new(session))
     }
-}
 
-impl Drafting {
-    /// One paste in, one draft out. Nothing here decides anything: the origin,
-    /// the clock and the reading of a paste as somebody else's words are all
-    /// `soulcore`'s, and `tests/draft_commands.rs` is where they are checked.
-    fn reply_to(&mut self, pasted: &str) -> Result<DraftValue, DraftRefusalView> {
-        draft::draft_pasted(&self.draft, &mut self.policy, pasted)
-            .map_err(|refusal| DraftRefusalView::of(&refusal))
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct DraftingState(pub Mutex<Drafting>);
-
-impl DraftingState {
-    /// The pair, with a poisoned lock recovered rather than propagated.
+    /// The session, with a poisoned lock recovered rather than propagated.
     ///
-    /// A panic in one draft must not take drafting away for the rest of the
-    /// session: nothing in [`Drafting`] can be left half-written by one, since
-    /// the only mutable thing in it is the prepared body this shell never
-    /// builds. The honest recovery is to carry on.
-    fn held(&self) -> MutexGuard<'_, Drafting> {
+    /// A panic in one command must not take the whole interface away for the
+    /// rest of the run: what a panicking command can leave behind is a
+    /// rolled-back transaction, not a half-written session.
+    fn held(&self) -> MutexGuard<'_, Session> {
         self.0
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 
-/// Draft a reply to something the user pasted. Never sends it.
+#[tauri::command]
+pub fn config_snapshot(session: State<'_, SessionState>) -> ConfigSnapshot {
+    session.held().snapshot()
+}
+
+/// Whether the wizard has been through before, and whether there is a
+/// database to read. Both are answers only the core can give.
+#[tauri::command]
+pub fn session_status(session: State<'_, SessionState>) -> SessionStatus {
+    session.held().status()
+}
+
+#[tauri::command]
+pub fn complete_wizard(
+    session: State<'_, SessionState>,
+    answers: WizardAnswers,
+) -> Result<ConfigSnapshot, WizardRefused> {
+    session.held().complete_wizard(&answers)
+}
+
+#[tauri::command]
+pub fn cloud_toggle(session: State<'_, SessionState>, requested_on: bool) -> CloudNotice {
+    session.held().cloud_toggle(requested_on)
+}
+
+/// The directories the user has authorized, and the ones that have gone.
+#[tauri::command]
+pub fn files_view(session: State<'_, SessionState>) -> FilesView {
+    session.held().files()
+}
+
+#[tauri::command]
+pub fn authorize_directory(
+    session: State<'_, SessionState>,
+    path: String,
+) -> Result<FilesView, SessionRefusal> {
+    session.held().authorize(&path)
+}
+
+/// Scan one authorized directory and describe what tidying it would mean.
+/// Read-only: there is no command on this surface that carries a plan out.
+#[tauri::command]
+pub fn preview_plan(
+    session: State<'_, SessionState>,
+    path: String,
+) -> Result<PlanPreview, SessionRefusal> {
+    session.held().preview(&path)
+}
+
+#[tauri::command]
+pub fn people_graph(session: State<'_, SessionState>) -> Result<PeopleGraphView, SessionRefusal> {
+    session.held().people()
+}
+
+#[tauri::command]
+pub fn person_summary(
+    session: State<'_, SessionState>,
+    contact_id: String,
+) -> Result<PersonSummaryView, SessionRefusal> {
+    session.held().person_summary(&contact_id)
+}
+
+/// Draft a reply to something the user pasted. Never sends it, and on this
+/// path never builds a request body either.
 #[tauri::command]
 pub fn draft_reply(
-    drafting: State<'_, DraftingState>,
+    session: State<'_, SessionState>,
     pasted: String,
-) -> Result<DraftValue, DraftRefusalView> {
-    drafting.held().reply_to(&pasted)
+) -> Result<DraftValue, SessionRefusal> {
+    session.held().draft_pasted(&pasted)
+}
+
+/// Step one of the endpoint path: describe the request, and stop.
+#[tauri::command]
+pub fn prepare_draft(
+    session: State<'_, SessionState>,
+    pasted: String,
+) -> Result<E1DraftPlan, SessionRefusal> {
+    session.held().prepare_draft(&pasted)
+}
+
+/// Step two: the user read the counts on screen and approved this exact
+/// preparation. An approval that does not echo both halves sends nothing.
+#[tauri::command]
+pub fn generate_draft(
+    session: State<'_, SessionState>,
+    approval: Approval,
+) -> Result<DraftValue, SessionRefusal> {
+    session.held().generate_draft(&approval)
+}
+
+/// The user read the plan and said no.
+#[tauri::command]
+pub fn discard_draft(session: State<'_, SessionState>) -> bool {
+    session.held().discard_draft()
 }
 
 /// What the drafting screen says before there is a draft on it.
@@ -118,6 +161,9 @@ pub fn draft_notices() -> DraftNotices {
 pub struct DraftNotices {
     /// `soulcore`'s constant, not a paraphrase of it.
     pub not_sent: String,
+    /// What the user reads before approving a generation request. Also
+    /// `soulcore`'s constant.
+    pub e1_plan: String,
     /// Always false. There is no command on this surface that sends anything,
     /// and `tests/command_surface.rs` is what keeps that list short.
     pub can_send: bool,
@@ -126,7 +172,8 @@ pub struct DraftNotices {
 impl DraftNotices {
     fn of_this_build() -> DraftNotices {
         DraftNotices {
-            not_sent: draft::NOT_SENT_NOTICE.to_owned(),
+            not_sent: soulcore::commands::draft::NOT_SENT_NOTICE.to_owned(),
+            e1_plan: soulcore::commands::draft::E1_PLAN_NOTICE.to_owned(),
             can_send: false,
         }
     }
@@ -139,8 +186,17 @@ impl DraftNotices {
 /// them. A command added to one and not the other is a failing test.
 pub const COMMAND_NAMES: &[&str] = &[
     "config_snapshot",
+    "session_status",
     "complete_wizard",
     "cloud_toggle",
+    "files_view",
+    "authorize_directory",
+    "preview_plan",
+    "people_graph",
+    "person_summary",
     "draft_reply",
     "draft_notices",
+    "prepare_draft",
+    "generate_draft",
+    "discard_draft",
 ];
