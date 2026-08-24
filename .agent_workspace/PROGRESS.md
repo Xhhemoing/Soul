@@ -37,6 +37,6 @@
 - [x] 隔离分支创建
 - [x] Round 1 六子代理完成（均声明实际 slug，无静默降级）
 - [x] Round 1 结论简报：`.agent_workspace/round1/R1-SYNTHESIS.md`
-- [ ] PR 提交
+- [x] PR 提交：https://github.com/Xhhemoing/Soul/pull/3
 
 父仲裁要点：双问卷不能按 STATUS「import 零改」合并；DPAPI 阻塞 AC-01 但不阻塞批 5 核心 crate；不合并 PR #1/#2。
