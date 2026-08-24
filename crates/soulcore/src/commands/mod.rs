@@ -11,6 +11,8 @@
 //! * `memory.rs`      WP04  autobiographical memory and forgetting
 //! * `graph.rs`       WP05  contacts and relationships
 //! * `collect.rs`     WP07  foreground application duration
+//! * `shell.rs`       WP09  what the desktop shell may display: the wizard,
+//!                          the configuration summary, the cloud notice
 //! * `draft.rs`       WP10  drafting, which never sends
 //! * `fileplan.rs`    WP11  read-only scan and plan preview
 //!
@@ -22,11 +24,14 @@
 //! `graph.rs`, `profile.rs` and `memory.rs` are pass-throughs too. The first
 //! appends the audit entries its crate hands back; the other three leave the
 //! audit to the crate underneath, which already writes it as part of the same
-//! call.
+//! call. `shell.rs` reaches neither the network nor the disk: it answers
+//! questions about this build's defaults, which is all a WebView is allowed to
+//! ask in WP09.
 
 pub mod graph;
 pub mod import;
 pub mod memory;
 pub mod policy;
 pub mod profile;
+pub mod shell;
 pub mod store;
