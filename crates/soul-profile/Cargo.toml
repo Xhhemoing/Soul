@@ -1,0 +1,27 @@
+[package]
+name = "soul-profile"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Soul's soul profile: five direction axes with evidence bands, a voice the user can pin, and corrections that later inference must not overwrite."
+
+# No database and no HTTP client. This crate talks to the storage boundary
+# (`soul-store-api`), so the same code runs against `FakeStore` in a unit test
+# and against SQLCipher in `soulcore`. `soul-policy` is here for one reason:
+# every human-readable string this crate emits has to pass the non-clinical
+# check before a caller can see it.
+[dependencies]
+soul-schema = { workspace = true }
+soul-store-api = { workspace = true }
+soul-policy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+soul-store = { workspace = true }
+soul-testkit = { workspace = true }
+tempfile = { workspace = true }

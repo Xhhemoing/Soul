@@ -11,6 +11,7 @@ members = [
   "crates/soul-testkit",
   "crates/xtask",
   "crates/soulcore",
+  "crates/soul-profile",
 ]
 
 [workspace.package]
@@ -63,6 +64,7 @@ soul-egress = { path = "crates/soul-egress", version = "0.1.0" }
 soul-graph = { path = "crates/soul-graph", version = "0.1.0" }
 soul-import = { path = "crates/soul-import", version = "0.1.0" }
 soul-testkit = { path = "crates/soul-testkit", version = "0.1.0" }
+soul-profile = { path = "crates/soul-profile", version = "0.1.0" }
 
 [profile.test]
 opt-level = 1

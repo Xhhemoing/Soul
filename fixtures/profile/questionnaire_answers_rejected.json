@@ -1,0 +1,42 @@
+{
+  "note": "三种进不了库的答卷。numeric_position 用来证明 D22：位置字段连一个数字都反序列化不进去，不需要等到写库才拒。",
+  "cases": [
+    {
+      "id": "numeric_position",
+      "why": "把方向轴当成 1-5 分打分",
+      "response": {
+        "answered_at": "2026-08-24T09:25:00Z",
+        "answers": [{ "kind": "axis", "question_id": "q.axis.curiosity", "position": 4 }]
+      }
+    },
+    {
+      "id": "unknown_question",
+      "why": "答案指向一个本问卷里没有的问题",
+      "response": {
+        "answered_at": "2026-08-24T09:25:00Z",
+        "answers": [
+          { "kind": "axis", "question_id": "q.axis.made_up", "position": "leans_high" }
+        ]
+      }
+    },
+    {
+      "id": "target_mismatch",
+      "why": "拿语气答案去答一道轴的题",
+      "response": {
+        "answered_at": "2026-08-24T09:25:00Z",
+        "answers": [
+          {
+            "kind": "voice",
+            "question_id": "q.axis.curiosity",
+            "setting": { "field": "directness", "value": "direct" }
+          }
+        ]
+      }
+    },
+    {
+      "id": "empty",
+      "why": "一题没答，档案会是空的",
+      "response": { "answered_at": "2026-08-24T09:25:00Z", "answers": [] }
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "note": "问卷可以只答一部分。没答到的轴留在 unknown、证据档 none，而不是被猜一个方向。",
+  "answered_at": "2026-08-24T09:20:00Z",
+  "answers": [
+    { "kind": "axis", "question_id": "q.axis.curiosity", "position": "mixed" },
+    { "kind": "axis", "question_id": "q.axis.orderliness", "position": "leans_high" }
+  ]
+}
