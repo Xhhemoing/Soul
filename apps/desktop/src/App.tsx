@@ -103,7 +103,9 @@ export function App(): React.JSX.Element {
         {route.id === "draft" ? <Draft /> : null}
         {route.id === "research" ? <Research /> : null}
         {route.id === "audit" ? <Audit /> : null}
-        {route.id === "settings" ? <Settings snapshot={snapshot} /> : null}
+        {route.id === "settings" ? (
+          <Settings snapshot={snapshot} onSnapshot={setSnapshot} />
+        ) : null}
         {route.ownedBy === null ? null : (
           <Pending title={route.title} ownedBy={route.ownedBy} detail={route.pending ?? ""} />
         )}

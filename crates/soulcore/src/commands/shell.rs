@@ -37,6 +37,25 @@ pub const CLOUD_NOT_YET_AVAILABLE_EXPLANATION: &str =
     "v0.1 没有云端出网的代码路径。开关留在这里是为了让你看见它默认是关的，\
      点它不会发出任何请求，也不会把任何内容送出本机。";
 
+/// What the endpoint form says about the address typed into it.
+///
+/// Two claims, and both are about the core rather than about the page.
+/// "只在这次运行里有效" is [`StoredConfig`](crate::commands::session::StoredConfig)
+/// having no field an endpoint could be written to, so the next launch starts
+/// from a closed guard without anything having to remember to clear one.
+/// "填写的时候不会访问这个地址" is
+/// [`Session::set_user_endpoint`](crate::commands::session::Session::set_user_endpoint)
+/// parsing a string and handing the origin to a `NetGuard`: naming a host is
+/// not asking it anything, and the first packet waits for the approval on the
+/// drafting screen.
+///
+/// It travels in [`ConfigSnapshot`] beside the cloud switch's explanation, for
+/// the reason that one is there: a promise kept in TypeScript is a promise no
+/// Rust test reads.
+pub const LLM_ENDPOINT_SESSION_ONLY_NOTICE: &str = "地址只在这次运行里有效，\
+    退出 Soul 再打开需要重新填写。填写的时候不会访问这个地址，\
+    只有你在起草页按下生成时才会。";
+
 /// What the shell may display about the current configuration.
 ///
 /// Not [`Config`] itself: the endpoint the user typed is their own business
@@ -51,6 +70,10 @@ pub struct ConfigSnapshot {
     /// True once the user has entered their own OpenAI-compatible endpoint.
     /// The URL itself is not part of this value.
     pub llm_endpoint_configured: bool,
+    /// What the user is told about that address: it lives in this process, and
+    /// entering it contacts nothing. Fixed for the build, like the cloud
+    /// switch's explanation, and carried here for the same reason.
+    pub llm_endpoint_notice: String,
     pub authorized_root_count: usize,
     /// Nothing is switched on. A fresh install and a finished wizard must both
     /// be able to say this.
@@ -65,6 +88,7 @@ impl ConfigSnapshot {
             collect_enabled: config.collect_enabled,
             cloud: CloudNotice::of(config),
             llm_endpoint_configured: config.llm_endpoint.is_some(),
+            llm_endpoint_notice: LLM_ENDPOINT_SESSION_ONLY_NOTICE.to_owned(),
             authorized_root_count: config.authorized_roots.len(),
             fully_closed: config.is_fully_closed(),
             open_capabilities: config

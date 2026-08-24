@@ -22,8 +22,10 @@ import {
   COLLECT_OFF_NOTICE,
   COLLECT_RUNNING_NOTICE,
   E1_PLAN_NOTICE,
+  ENDPOINT_UNPARSABLE_NOTICE,
   FORGET_NOTICE,
   IMPORT_LOCAL_ONLY_NOTICE,
+  LLM_ENDPOINT_SESSION_ONLY_NOTICE,
   NO_ANSWERS_NOTICE,
   NOT_SENT_NOTICE,
   QUESTIONS,
@@ -188,6 +190,22 @@ describe("壳与核心的边界", () => {
     expect(rustConstant(session, "COLLECT_NOT_OBSERVING_NOTICE")).toBe(
       COLLECT_NOT_OBSERVING_NOTICE,
     );
+  });
+
+  /**
+   * The two sentences the endpoint form renders. One is what the address is —
+   * this run only, contacted by nothing until a generation is approved — and
+   * the other is what the core says when what it was handed is not an address.
+   * Both are claims about `Session::set_user_endpoint` rather than about this
+   * page, so both are read off the Rust side.
+   */
+  it("端点那两句话都和核心里的常量一模一样", () => {
+    expect(
+      rustConstant(readFileSync(SHELL_RS, "utf8"), "LLM_ENDPOINT_SESSION_ONLY_NOTICE"),
+    ).toBe(LLM_ENDPOINT_SESSION_ONLY_NOTICE);
+    expect(
+      rustConstant(readFileSync(CORE_SESSION_RS, "utf8"), "ENDPOINT_UNPARSABLE_NOTICE"),
+    ).toBe(ENDPOINT_UNPARSABLE_NOTICE);
   });
 
   it("导入那句话和核心里的常量一模一样", () => {

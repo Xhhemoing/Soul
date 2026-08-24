@@ -153,6 +153,24 @@ pub fn discard_draft(session: State<'_, SessionState>) -> bool {
     session.held().discard_draft()
 }
 
+/// The user entered their own OpenAI-compatible endpoint. This process only:
+/// there is no field in `config.json` that could carry it to the next launch,
+/// and nothing is contacted by naming it.
+#[tauri::command]
+pub fn set_user_endpoint(
+    session: State<'_, SessionState>,
+    url: String,
+) -> Result<ConfigSnapshot, SessionRefusal> {
+    session.held().set_user_endpoint(&url)
+}
+
+/// The user took the address away again. The guard goes back to refusing every
+/// origin, which is the state a fresh launch is in.
+#[tauri::command]
+pub fn clear_user_endpoint(session: State<'_, SessionState>) -> ConfigSnapshot {
+    session.held().clear_user_endpoint()
+}
+
 /// What a `soul-import-v1` file contains, as counts. Writes nothing.
 #[tauri::command]
 pub fn preview_soul_import_v1(
@@ -369,6 +387,8 @@ pub const COMMAND_NAMES: &[&str] = &[
     "prepare_draft",
     "generate_draft",
     "discard_draft",
+    "set_user_endpoint",
+    "clear_user_endpoint",
     "preview_soul_import_v1",
     "preview_telegram",
     "commit_soul_import_v1",

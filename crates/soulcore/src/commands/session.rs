@@ -160,6 +160,19 @@ pub const COLLECT_NOT_OBSERVING_NOTICE: &str = "同意已经记下来了，但�
 /// The `source` a machine with no foreground collector reports.
 pub const NO_FOREGROUND_SOURCE: &str = "unsupported";
 
+/// What the endpoint form is told when what it was given is not an address.
+///
+/// [`OriginError`](soul_policy::net_guard::OriginError) names the string it
+/// refused in every one of its variants, and that is the one thing this
+/// sentence must not do. A user who pasted a key into the address bar by
+/// mistake — or who typed the `user:password@host` form the parser rejects
+/// outright — would have it read back to them on screen, and from a screen it
+/// goes into a screenshot. So the refusal describes what an address has to
+/// look like, and the field keeps whatever they typed for them to fix.
+pub const ENDPOINT_UNPARSABLE_NOTICE: &str = "这个地址不像一个端点：要 http:// 或 https:// 开头，\
+    后面跟主机名，端口不写就按 80 或 443 算，比如 http://127.0.0.1:11434/v1；\
+    地址里不能带用户名和密码。这一次什么都没有保存，端点还是没有填写。";
+
 /// A collector that would not wind down. Rare enough to be worth a sentence.
 pub const COLLECT_NOT_STOPPED_NOTICE: &str = "同意已经收回，但采集线程没有正常收尾：";
 
@@ -618,6 +631,65 @@ impl Session {
     /// The honest answer to a user who read the plan and said no.
     pub fn discard_draft(&mut self) -> bool {
         self.draft.discard()
+    }
+
+    // ------------------------------------------------- WP08: the endpoint ---
+
+    /// The user typed in their own OpenAI-compatible endpoint.
+    ///
+    /// Three things happen here, and the one that does not is the load-bearing
+    /// one. The guard is re-pointed, so an approved generation has somewhere to
+    /// go; the in-memory [`Config`] records that there is an endpoint, so the
+    /// snapshot the interface renders says 已填写; and `persist` is not
+    /// called. [`StoredConfig`] has no field this could be written to and
+    /// this method does not give it one, which is what makes AC-02 true of the
+    /// endpoint the same way it is true of collection consent: the next launch
+    /// starts from [`draft::closed_session`] because there is no file that
+    /// could tell it otherwise, rather than because something remembered to
+    /// clear one.
+    ///
+    /// Nothing is contacted. `Origin::parse` reads a string and `NetGuard`
+    /// holds the answer; the first packet still waits for the plan on the
+    /// drafting screen and the approval in front of it. A preparation made
+    /// before the address changed would be approved against the address that
+    /// is here when the user presses 生成 — the plan is counts and a model
+    /// name, and never named a host — which is reachable only by leaving the
+    /// drafting page mid-flight and coming back to it.
+    ///
+    /// What is stored in the configuration is the origin the guard ended up
+    /// with rather than the string that was typed: a path, a query and a
+    /// trailing slash are all dropped by the parser, and the field should say
+    /// what Soul would actually reach.
+    pub fn set_user_endpoint(&mut self, url: &str) -> Result<ConfigSnapshot, SessionRefusal> {
+        // The error is dropped rather than forwarded. Every variant of it
+        // quotes the string back, and [`ENDPOINT_UNPARSABLE_NOTICE`] says why
+        // that is not something to put on a screen.
+        self.policy
+            .set_user_endpoint(url)
+            .map_err(|_| SessionRefusal {
+                reason_code: ReasonCode::EgressTargetUnparsable.as_str().to_owned(),
+                explanation: ENDPOINT_UNPARSABLE_NOTICE.to_owned(),
+            })?;
+        self.config.llm_endpoint = self
+            .policy
+            .guard()
+            .config()
+            .e1_endpoint()
+            .map(ToString::to_string);
+        Ok(self.snapshot())
+    }
+
+    /// The user took the address away again.
+    ///
+    /// [`PolicySession::clear_user_endpoint`] puts the guard back to
+    /// `NetGuard::closed()`, which refuses every origin including loopback, so
+    /// what is left is the state a fresh launch is in rather than a weaker one
+    /// that merely has no URL to hand. Nothing is persisted here either; there
+    /// was never anything on disk to remove.
+    pub fn clear_user_endpoint(&mut self) -> ConfigSnapshot {
+        self.policy.clear_user_endpoint();
+        self.config.llm_endpoint = None;
+        self.snapshot()
     }
 
     // ------------------------------------------------------- WP06: import ---

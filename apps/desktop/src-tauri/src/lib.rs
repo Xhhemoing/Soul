@@ -53,6 +53,8 @@ pub fn configure<R: tauri::Runtime>(
             commands::prepare_draft,
             commands::generate_draft,
             commands::discard_draft,
+            commands::set_user_endpoint,
+            commands::clear_user_endpoint,
             commands::preview_soul_import_v1,
             commands::preview_telegram,
             commands::commit_soul_import_v1,

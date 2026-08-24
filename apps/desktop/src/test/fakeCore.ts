@@ -647,10 +647,19 @@ export const CLOSED_CLOUD: CloudNotice = {
     "v0.1 没有云端出网的代码路径。开关留在这里是为了让你看见它默认是关的，点它不会发出任何请求，也不会把任何内容送出本机。",
 };
 
+/** `soulcore::commands::shell::LLM_ENDPOINT_SESSION_ONLY_NOTICE`. */
+export const LLM_ENDPOINT_SESSION_ONLY_NOTICE =
+  "地址只在这次运行里有效，退出 Soul 再打开需要重新填写。填写的时候不会访问这个地址，只有你在起草页按下生成时才会。";
+
+/** `soulcore::commands::session::ENDPOINT_UNPARSABLE_NOTICE`. */
+export const ENDPOINT_UNPARSABLE_NOTICE =
+  "这个地址不像一个端点：要 http:// 或 https:// 开头，后面跟主机名，端口不写就按 80 或 443 算，比如 http://127.0.0.1:11434/v1；地址里不能带用户名和密码。这一次什么都没有保存，端点还是没有填写。";
+
 export const CLOSED_SNAPSHOT: ConfigSnapshot = {
   collect_enabled: false,
   cloud: CLOSED_CLOUD,
   llm_endpoint_configured: false,
+  llm_endpoint_notice: LLM_ENDPOINT_SESSION_ONLY_NOTICE,
   authorized_root_count: 0,
   fully_closed: true,
   open_capabilities: [],
@@ -729,6 +738,14 @@ export interface FakeCoreOptions {
    */
   readonly granting?: (current: CollectStatus) => CollectStatus;
   readonly revoking?: (current: CollectStatus) => CollectStatus;
+  /**
+   * How the double answers 保存端点.
+   *
+   * Stateful for the same reason collection is: the page's subject is a state
+   * that changes. It can throw, which is how the core's refusal of something
+   * that is not an address arrives.
+   */
+  readonly endpointing?: (url: string, current: ConfigSnapshot) => ConfigSnapshot;
 }
 
 /** Consent recorded; a collector only where there is a desktop to watch. */
@@ -751,6 +768,43 @@ function revokedFrom(current: CollectStatus): CollectStatus {
   };
 }
 
+/**
+ * The snapshot the core answers with once an endpoint is there, or once it is
+ * not: a boolean, the capability list it belongs on, and 全部关闭 following
+ * from that list being empty. The address is in none of them.
+ */
+function withEndpoint(current: ConfigSnapshot, configured: boolean): ConfigSnapshot {
+  const others = current.open_capabilities.filter((name) => name !== "llm_endpoint");
+  const open = configured ? [...others, "llm_endpoint"] : others;
+  return {
+    ...current,
+    llm_endpoint_configured: configured,
+    open_capabilities: open,
+    fully_closed: open.length === 0,
+  };
+}
+
+/**
+ * Enough of `Origin::parse` to refuse what the core refuses.
+ *
+ * Not the whole parser: port syntax and IPv6 brackets are the Rust side's, and
+ * `crates/soulcore/tests/session_e1.rs` is where they are tested. What is
+ * mirrored is the part the page's behaviour depends on — an address that is not
+ * one comes back as a refusal rather than as a save — because a double that
+ * accepted anything would leave the refusal path on this page unexercised.
+ */
+function looksLikeAnOrigin(url: string): boolean {
+  const authority = /^https?:\/\/([^/?#]+)/i.exec(url.trim())?.[1];
+  return authority !== undefined && !authority.includes("@");
+}
+
+function savedEndpoint(url: string, current: ConfigSnapshot): ConfigSnapshot {
+  if (!looksLikeAnOrigin(url)) {
+    throw { reason_code: "EGRESS_TARGET_UNPARSABLE", explanation: ENDPOINT_UNPARSABLE_NOTICE };
+  }
+  return withEndpoint(current, true);
+}
+
 export function installFakeCore(
   snapshotOrOptions: ConfigSnapshot | FakeCoreOptions = CLOSED_SNAPSHOT,
 ): FakeCore {
@@ -761,14 +815,16 @@ export function installFakeCore(
   const drafting = options.drafting ?? (() => aTemplateDraft());
   const files = options.files ?? NO_ROOTS;
   const calls: RecordedCall[] = [];
-  /** The one piece of state the double keeps, because the core keeps it too. */
+  /** The two pieces of state the double keeps, because the core keeps them
+   *  too: a consent ledger, and an endpoint that lives for one run. */
   let collect = options.collect ?? COLLECT_OFF;
+  let configuration = snapshot;
 
   mockIPC((cmd, payload) => {
     calls.push({ cmd, payload });
     switch (cmd) {
       case "config_snapshot":
-        return snapshot;
+        return configuration;
       case "session_status":
         return status;
       case "complete_wizard": {
@@ -809,6 +865,15 @@ export function installFakeCore(
         );
       case "discard_draft":
         return true;
+      case "set_user_endpoint":
+        configuration = (options.endpointing ?? savedEndpoint)(
+          (payload as { url?: string }).url ?? "",
+          configuration,
+        );
+        return configuration;
+      case "clear_user_endpoint":
+        configuration = withEndpoint(configuration, false);
+        return configuration;
       case "preview_soul_import_v1":
       case "preview_telegram": {
         const format = cmd === "preview_telegram" ? "telegram-desktop" : "soul-import-v1";

@@ -33,6 +33,9 @@ export interface ConfigSnapshot {
   readonly cloud: CloudNotice;
   /** Whether the user has entered their own endpoint. Never the URL itself. */
   readonly llm_endpoint_configured: boolean;
+  /** What the core says about that address: this run only, contacted by
+   *  nothing until a generation is approved. */
+  readonly llm_endpoint_notice: string;
   readonly authorized_root_count: number;
   readonly fully_closed: boolean;
   readonly open_capabilities: readonly string[];
@@ -586,6 +589,8 @@ export const COMMANDS = {
   prepareDraft: "prepare_draft",
   generateDraft: "generate_draft",
   discardDraft: "discard_draft",
+  setUserEndpoint: "set_user_endpoint",
+  clearUserEndpoint: "clear_user_endpoint",
   previewSoulImportV1: "preview_soul_import_v1",
   previewTelegram: "preview_telegram",
   commitSoulImportV1: "commit_soul_import_v1",
@@ -702,6 +707,25 @@ export function generateDraft(approval: Approval): Promise<Draft> {
 /** The user read the plan and said no. Returns whether there was one. */
 export function discardDraft(): Promise<boolean> {
   return invoke<boolean>(COMMANDS.discardDraft);
+}
+
+/**
+ * The user's own OpenAI-compatible endpoint, for this run.
+ *
+ * The address goes one way. What comes back is the snapshot, which says
+ * whether there is an endpoint and never what it is — so this shell cannot
+ * redisplay it later, and neither can the next launch: the core writes it to
+ * no file. Nothing is contacted here; the core parses the address and points
+ * its egress guard at it, and the first request waits for an approval on the
+ * drafting page.
+ */
+export function setUserEndpoint(url: string): Promise<ConfigSnapshot> {
+  return invoke<ConfigSnapshot>(COMMANDS.setUserEndpoint, { url });
+}
+
+/** The user took the address away. The core goes back to reaching nothing. */
+export function clearUserEndpoint(): Promise<ConfigSnapshot> {
+  return invoke<ConfigSnapshot>(COMMANDS.clearUserEndpoint);
 }
 
 /**

@@ -62,6 +62,37 @@ impl PolicySession {
         ))
     }
 
+    /// Re-point an existing session at an endpoint the user has just entered.
+    ///
+    /// The difference from [`PolicySession::with_user_endpoint`] is what is
+    /// *kept*, and it is the reason this exists rather than the caller
+    /// building a second session. The redactor is built from a
+    /// [`KnownIdentifiers`] set that has to be the same one the drafter holds
+    /// — `draft.rs` says why: two redactors that disagree about who exists
+    /// placehold different things — and a caller that replaced the whole
+    /// session would have to know that set in order to hand it over again.
+    /// Today the shell's set is empty, so replacing would look identical;
+    /// the day it is not, the endpoint form would silently be the thing that
+    /// emptied it.
+    ///
+    /// The guard is what changes, and only the guard. Nothing is contacted:
+    /// [`Origin::parse`](soul_policy::net_guard::Origin::parse) reads a string
+    /// and `NetGuard` holds the answer, so the first packet still waits for
+    /// [`PolicySession::e1_generate`] and the approval in front of it.
+    pub fn set_user_endpoint(&mut self, url: &str) -> Result<(), OriginError> {
+        self.guard = NetGuard::new(EgressConfig::with_user_endpoint(url)?);
+        Ok(())
+    }
+
+    /// Take the endpoint away again, leaving the session where it started.
+    ///
+    /// `NetGuard::closed()` refuses every origin, loopback included, so this
+    /// is the same state [`PolicySession::closed`] is in rather than a weaker
+    /// one that merely has no URL to hand.
+    pub fn clear_user_endpoint(&mut self) {
+        self.guard = NetGuard::closed();
+    }
+
     pub fn guard(&self) -> &NetGuard {
         &self.guard
     }
