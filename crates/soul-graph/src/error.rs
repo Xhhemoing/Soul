@@ -16,11 +16,10 @@ pub enum GraphError {
 
     /// An interaction points at a contact row that is not there. The importer
     /// writes contacts before evidence, so this means the two disagree.
-    #[error("interaction evidence {evidence_id} names contact {contact_id}, which does not resolve")]
-    DanglingContact {
-        evidence_id: Uuid,
-        contact_id: Uuid,
-    },
+    #[error(
+        "interaction evidence {evidence_id} names contact {contact_id}, which does not resolve"
+    )]
+    DanglingContact { evidence_id: Uuid, contact_id: Uuid },
 
     /// An interaction claims the user is on both ends.
     #[error("interaction evidence {evidence_id} has the same contact on both ends")]

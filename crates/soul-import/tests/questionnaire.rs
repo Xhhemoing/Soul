@@ -163,8 +163,8 @@ fn an_answer_to_a_question_this_build_does_not_ask_is_refused() {
         &[Answer::new("voice.astrology", "水瓶座")],
         &Timestamp::new("2026-08-24T09:30:00Z"),
         &mut sink,
-        )
-        .expect_err("unknown question");
+    )
+    .expect_err("unknown question");
 
     assert!(matches!(
         error,

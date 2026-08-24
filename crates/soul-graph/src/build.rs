@@ -118,7 +118,9 @@ impl Tally {
     fn band(&self) -> SupportedBand {
         let count = self.interaction_count();
         let days = self.active_days.len() as u64;
-        if self.is_reciprocal() && count >= STRONG_MIN_INTERACTIONS && days >= STRONG_MIN_ACTIVE_DAYS
+        if self.is_reciprocal()
+            && count >= STRONG_MIN_INTERACTIONS
+            && days >= STRONG_MIN_ACTIVE_DAYS
         {
             SupportedBand::Strong
         } else if self.is_reciprocal() && count >= MODERATE_MIN_INTERACTIONS {

@@ -27,11 +27,7 @@ pub fn is_civil_datetime(text: &str) -> bool {
     let number = |from: usize, to: usize| text[from..to].parse::<u32>().unwrap_or(u32::MAX);
     let (month, day) = (number(5, 7), number(8, 10));
     let (hour, minute, second) = (number(11, 13), number(14, 16), number(17, 19));
-    (1..=12).contains(&month)
-        && (1..=31).contains(&day)
-        && hour < 24
-        && minute < 60
-        && second < 60
+    (1..=12).contains(&month) && (1..=31).contains(&day) && hour < 24 && minute < 60 && second < 60
 }
 
 /// A civil timestamp followed by optional fractional seconds and a zone.
@@ -51,10 +47,7 @@ pub fn is_date_time(text: &str) -> bool {
     let zone = match rest.strip_prefix('.') {
         None => rest,
         Some(after_dot) => {
-            let digits = after_dot
-                .chars()
-                .take_while(char::is_ascii_digit)
-                .count();
+            let digits = after_dot.chars().take_while(char::is_ascii_digit).count();
             if digits == 0 {
                 return false;
             }

@@ -155,10 +155,11 @@ pub fn schema_defects(
 /// A missing property is reported against the enclosing object, so the
 /// property name comes out of the error kind rather than the instance path.
 fn field_of(error: &ValidationError<'_>) -> Option<String> {
-    if let ValidationErrorKind::Required { property } = &error.kind {
-        if let Value::String(name) = property {
-            return Some(name.clone());
-        }
+    if let ValidationErrorKind::Required {
+        property: Value::String(name),
+    } = &error.kind
+    {
+        return Some(name.clone());
     }
     let path = error.instance_path.to_string();
     match path.is_empty() {

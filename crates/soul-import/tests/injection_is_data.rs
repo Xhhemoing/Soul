@@ -74,9 +74,11 @@ fn hostile_lines_arrive_as_untrusted_text_and_import_like_anything_else() {
 fn a_hostile_export_commits_and_leaves_an_injection_blocked_entry() {
     let dir = tempfile::tempdir().expect("temp dir");
     let staged = hostile_with_a_reply();
-    let mut store =
-        SqlCipherStore::open(dir.path().join("soul.db"), &TestKeyProvider::from_seed(SEED))
-            .expect("open");
+    let mut store = SqlCipherStore::open(
+        dir.path().join("soul.db"),
+        &TestKeyProvider::from_seed(SEED),
+    )
+    .expect("open");
 
     let receipt = soul_import::commit::commit(&mut store, &staged).expect("commit");
     for content in receipt.audit.clone() {

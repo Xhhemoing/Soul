@@ -212,7 +212,9 @@ fn the_graph_listings_see_everything_that_was_written<S: SoulStore>(mk: &impl Fn
     store.put_contact(contact(left)).expect("left contact");
     store.put_contact(contact(right)).expect("right contact");
     store.put_evidence(evidence("a10")).expect("first evidence");
-    store.put_evidence(evidence("a11")).expect("second evidence");
+    store
+        .put_evidence(evidence("a11"))
+        .expect("second evidence");
     let edge_id = store
         .put_relationship(relationship("70", left, right, &[uuid7("a10")]))
         .expect("edge");
@@ -232,7 +234,12 @@ fn the_graph_listings_see_everything_that_was_written<S: SoulStore>(mk: &impl Fn
     // Rewriting an edge under the same id updates it rather than adding a
     // second one, which is what makes a graph rebuild idempotent.
     store
-        .put_relationship(relationship("70", left, right, &[uuid7("a10"), uuid7("a11")]))
+        .put_relationship(relationship(
+            "70",
+            left,
+            right,
+            &[uuid7("a10"), uuid7("a11")],
+        ))
         .expect("rewrite the edge");
     let edges = store.list_relationships().expect("list again");
     assert_eq!(edges.len(), 1, "the rewrite must not duplicate the edge");

@@ -199,9 +199,10 @@ where
     receipt.content_key_id = Some(content_key_id);
 
     for answer in answers {
-        let question = question(&answer.question_key).ok_or(QuestionnaireError::UnknownQuestion {
-            key: answer.question_key.clone(),
-        })?;
+        let question =
+            question(&answer.question_key).ok_or(QuestionnaireError::UnknownQuestion {
+                key: answer.question_key.clone(),
+            })?;
         if answer.text.trim().is_empty() {
             continue;
         }

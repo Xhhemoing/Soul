@@ -82,8 +82,7 @@ pub fn parse(document: &Value) -> Result<StagedImport, ImportFailure> {
         defects.push(Defect::field(
             Locator::Path("chats".into()),
             "list",
-            "must be an array; this does not look like a Telegram Desktop result.json"
-                .to_owned(),
+            "must be an array; this does not look like a Telegram Desktop result.json".to_owned(),
         ));
         return Err(ImportFailure::new(SOURCE, defects, examined));
     };
@@ -249,7 +248,11 @@ fn display_name(personal: Option<&Value>) -> Option<String> {
 /// `date` is checked too when it is there. It is not used to build the
 /// instant, but a `date` that is not a real civil timestamp says the file is
 /// damaged in a way the user should hear about.
-fn read_instant(message: &Value, locator: &Locator, defects: &mut Vec<Defect>) -> Option<Timestamp> {
+fn read_instant(
+    message: &Value,
+    locator: &Locator,
+    defects: &mut Vec<Defect>,
+) -> Option<Timestamp> {
     if let Some(date) = message.get("date").and_then(Value::as_str) {
         if !is_civil_datetime(date) {
             defects.push(Defect::field(
@@ -280,7 +283,7 @@ fn read_instant(message: &Value, locator: &Locator, defects: &mut Vec<Defect>) -
                 "date_unixtime",
                 "is required: the neighbouring `date` carries no time zone, so on its own \
              it can only be guessed at"
-                .to_owned(),
+                    .to_owned(),
             ));
             None
         }

@@ -248,7 +248,7 @@ fn shape_defects(value: &Value, locator: &Locator, guard: &ContentGuard) -> Vec<
 /// vocabulary, which is what makes them safe to show.
 type Fault<'a> = (&'a str, &'static str);
 
-fn check_header<'a>(object: &Map<String, Value>, faults: &mut Vec<Fault<'a>>) {
+fn check_header(object: &Map<String, Value>, faults: &mut Vec<Fault<'_>>) {
     if object.get("format").is_some_and(|f| f != "soul-import-v1") {
         faults.push(("format", "must equal `soul-import-v1`"));
     }
@@ -258,7 +258,7 @@ fn check_header<'a>(object: &Map<String, Value>, faults: &mut Vec<Fault<'a>>) {
     check_instant(object, "exported_at", faults);
 }
 
-fn check_message<'a>(object: &Map<String, Value>, faults: &mut Vec<Fault<'a>>) {
+fn check_message(object: &Map<String, Value>, faults: &mut Vec<Fault<'_>>) {
     if object
         .get("id")
         .is_some_and(|id| id.as_str().is_none_or(str::is_empty))
