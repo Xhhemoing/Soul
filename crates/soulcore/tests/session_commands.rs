@@ -349,6 +349,88 @@ fn a_preview_of_a_path_nobody_authorized_is_recorded_as_a_denial() {
     drop((keep_data, keep_folder));
 }
 
+/// AC-18's matrix Given, which nothing on this path had yet: A is authorized
+/// *and then* B is operated.
+///
+/// The two preview refusals above are both the empty-list one — nothing was
+/// authorized, so no containment decision was ever made and "B is refused"
+/// held for the same reason "A is refused" held. The matrix asks the harder
+/// question. B here is a sibling directory with the same three files in it,
+/// real and readable and every bit as scannable as A; the only thing it does
+/// not have is the user's consent, and that has to be the whole difference.
+#[test]
+fn an_authorized_root_does_not_let_a_sibling_be_scanned() {
+    const ONLY_IN_A: &str = "预算.csv";
+
+    let (keep_data, directory) = scratch();
+    let (keep_a, a) = scratch();
+    let (keep_b, b) = scratch();
+    let authorized = a_folder_worth_tidying(&a);
+    std::fs::write(a.join(ONLY_IN_A), "a,b\n1,2\n").expect("write");
+    let beside_it = a_folder_worth_tidying(&b);
+
+    let mut session = Session::open(&directory);
+    session.authorize(&authorized).expect("authorize");
+    let before = session.audit().expect("the chain").entries.len();
+
+    // A: a plan the user can read, and no way to carry it out.
+    let preview = session.preview(&authorized).expect("a plan");
+    assert!(preview.disk_unchanged);
+    assert!(!preview.executable_in_this_version);
+    assert!(
+        preview
+            .moves
+            .iter()
+            .any(|proposed| proposed.from == ONLY_IN_A),
+        "the plan does not mention the file that is only in A: {:?}",
+        preview.moves,
+    );
+
+    // B: the same call, one directory over, on a session that now has a root
+    // on its list.
+    let refusal = session
+        .preview(&beside_it)
+        .expect_err("nobody authorized the folder next door");
+    assert_eq!(refusal.reason_code, "CONSENT_MISSING");
+    assert!(
+        !refusal.explanation.is_empty(),
+        "the user still has to be told why",
+    );
+
+    // A's disk is what it was. This version has no code that could move it,
+    // and the read-only scan did not touch it either.
+    assert_eq!(
+        std::fs::read(a.join(ONLY_IN_A)).expect("the file is still in A"),
+        b"a,b\n1,2\n",
+        "the scan rewrote the file it was only asked to describe",
+    );
+
+    let chain = session.audit().expect("the chain");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    assert_eq!(chain.entries.len(), before + 2, "one plan, one refusal");
+    let denied = chain
+        .entries
+        .last()
+        .expect("the entry the refusal just wrote");
+    assert_eq!(denied.action, "file.plan");
+    assert_eq!(denied.decision, "denied");
+    assert_eq!(denied.reason_code.as_deref(), Some("CONSENT_MISSING"));
+    assert!(denied.follows_previous);
+
+    // Two directories were named at this session and neither reached the
+    // chain — nor did the file name the plan itself was allowed to show.
+    let played = serde_json::to_string(&chain).expect("serialize the chain");
+    for prose in [
+        beside_it.as_str(),
+        authorized.as_str(),
+        ONLY_IN_A,
+        "budget.csv",
+    ] {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
+    }
+    drop((keep_data, keep_a, keep_b));
+}
+
 /// AC-25's third channel, on the product path: a file name that asks to be
 /// obeyed is counted into the chain and never repeated there.
 ///

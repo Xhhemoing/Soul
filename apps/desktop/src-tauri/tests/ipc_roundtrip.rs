@@ -1170,6 +1170,105 @@ fn an_authorized_directory_scans_read_only_and_is_remembered() {
     let _ = std::fs::remove_dir_all(root.parent().unwrap_or(&root));
 }
 
+/// AC-18's matrix Given over the real handler: A authorized, B operated.
+///
+/// `the_file_screen_starts_with_nothing_authorized_and_no_way_to_execute`
+/// refuses a path on a session whose authorization list is empty, and
+/// `an_authorized_directory_scans_read_only_and_is_remembered` authorizes one
+/// directory and scans that same one. Neither is the matrix: with a root on
+/// the list, the containment decision is the thing being made, and B is a real
+/// sibling directory with a real file in it that differs from A in nothing but
+/// consent. A shell that resolved every `preview_plan` against "is anything
+/// authorized at all" would pass both neighbours and hand the 文件 page a plan
+/// for the folder next door.
+#[test]
+fn an_authorized_directory_does_not_let_a_sibling_be_scanned_over_the_ipc() {
+    const ONLY_IN_A: &str = "预算.csv";
+    const ONLY_IN_B: &str = "发票.csv";
+
+    let shell = Shell::on(scratch());
+    let outside = scratch();
+    let authorized = outside.join("下载");
+    let beside_it = outside.join("临时");
+    std::fs::create_dir_all(&authorized).expect("the directory the user names");
+    std::fs::create_dir_all(&beside_it).expect("the one beside it that nobody names");
+    std::fs::write(authorized.join(ONLY_IN_A), b"a,b\n1,2\n").expect("a file in A");
+    std::fs::write(beside_it.join(ONLY_IN_B), b"a,b\n3,4\n").expect("a file in B");
+
+    let a = authorized.to_str().expect("a utf-8 path").to_owned();
+    let b = beside_it.to_str().expect("a utf-8 path").to_owned();
+    let view = shell
+        .invoke("authorize_directory", json!({ "path": a }))
+        .expect("the directory is authorizable");
+    assert_eq!(view["roots"].as_array().map(Vec::len), Some(1));
+
+    // A: the read-only plan, with the two fields the 文件 page prints.
+    let plan = shell
+        .invoke("preview_plan", json!({ "path": a }))
+        .expect("an authorized directory scans");
+    assert_eq!(plan["disk_unchanged"], json!(true), "unexpected: {plan}");
+    assert_eq!(plan["executable_in_this_version"], json!(false));
+    assert!(
+        authorized.join(ONLY_IN_A).exists(),
+        "the scan moved a file, and this version has no code that may",
+    );
+
+    // B: the same command, one directory over.
+    let refusal = shell
+        .invoke("preview_plan", json!({ "path": b }))
+        .expect_err("nobody authorized the folder beside it");
+    assert_eq!(
+        refusal["reason_code"],
+        json!("CONSENT_MISSING"),
+        "unexpected: {refusal}",
+    );
+    assert!(
+        refusal["explanation"]
+            .as_str()
+            .is_some_and(|explanation| !explanation.is_empty()),
+        "the files page is shown a blank refusal: {refusal}",
+    );
+    assert!(
+        beside_it.join(ONLY_IN_B).exists(),
+        "a refused scan touched the directory it refused",
+    );
+
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the chain reads back");
+    assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
+    let denied = chain["entries"]
+        .as_array()
+        .expect("a chain is a list of entries")
+        .iter()
+        .find(|entry| entry["action"] == json!("file.plan") && entry["decision"] == json!("denied"))
+        .unwrap_or_else(|| {
+            panic!("a scan was refused and the IPC chain never heard about it: {chain}")
+        });
+    assert_eq!(denied["reason_code"], json!("CONSENT_MISSING"));
+    assert_eq!(denied["follows_previous"], json!(true));
+
+    // The refusal names the path the user typed, because that is the sentence
+    // 文件 puts on screen — but neither it nor the chain may carry anything
+    // the user did not already have in front of them. A's file name is on the
+    // plan, which is what the user is being asked to read; the chain beside it
+    // is counts and a code.
+    let played = format!("{refusal}{chain}");
+    for prose in [a.as_str(), ONLY_IN_A, ONLY_IN_B] {
+        assert!(
+            !played.contains(prose),
+            "the IPC answered with `{prose}`: {played}",
+        );
+    }
+    assert!(
+        !chain.to_string().contains(b.as_str()),
+        "the chain carried the refused path across the IPC: {chain}",
+    );
+
+    let _ = std::fs::remove_dir_all(&outside);
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
 /// AC-25's third channel over the real handler: a file name that asks to be
 /// obeyed.
 ///
