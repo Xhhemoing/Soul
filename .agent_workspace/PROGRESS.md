@@ -27,6 +27,18 @@ Do not start Goal 2. Do not silent-patch F04c. Do not pull SQLCipher into algo c
 ## Round status
 
 - Round 1: in flight
+
+## Round 1 fable-a — G1 T4D wiring spec delivered (spec only, no code)
+
+- Spec at `.agent_workspace/unblock/round1/fable-a-T4D_WIRING.md`; Round 2 opus implements from it without redesigning.
+- Wiring: `rebuild` keeps one evidence pass; rows adapted per peer via the committed `InteractionInterner` (4da2184), then `soul_algo_tie::score` per peer; band opaque to soul-graph after the swap.
+- Intern: fresh interner each rebuild; dense u64 keyed on the full peer UUID AND the full conversation_ref; never hashed, truncated, or persisted.
+- One as_of: max(occurred_at) over every observation read (whole store, incl. unresolved peers); never per-peer, never wall clock, never soulcore's audit `at_unix_seconds`.
+- Persist: `TieStrength` gains serde-defaulted split fields (direct/group out+in, direct_active_day_count, last_direct_contact_utc, silent_days, as_of_utc, algorithm_id="T4D"); legacy rows still load; contract-legal (tie_strength is a free object).
+- Delete in `build.rs`: local 3/10/3 constants, `Tally` + `band()/strength()/types()`, `utc_date`; display timestamps keep the original stored strings.
+- Algo crates take zero diffs: no serde/deps, no constant edits, no third demotion gate, no storage/clock (DECISION §3/§5/§6).
+- Tests specified T1–T12: decisive group-flood fixture at store level, store-wide as_of discipline, closed 180/360 edges, split round-trip, legacy-row load, broken-timestamp failure, no-second-threshold source scan, audit-clock isolation; ego_graph.rs must pass unmodified (lilei_12 anchor).
+- Out of scope: soul-graph `band()` implementation this round, G3 verdict preservation, A2/COPY_ZH rewiring (R3), Goal 2.
 - R1 fable-b: G3 spec delivered — `.agent_workspace/unblock/round1/fable-b-G3.md` (docs only, no
   crate changes). Refines round2/fable-b/GRAPH_CORRECTION.md against ALGO_FROZEN + frozen COPY_ZH:
   fields (3 optional lock fields on `TieStrength`, `first/last_contact_utc` → `Option` for GC-7),
