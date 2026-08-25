@@ -13,17 +13,17 @@
 | 当前轮次 | ROUND 2 |
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
-| 已检查模块 | 壳 + bead-core + TS 管线 + DATA-1 + AL + B04 IA |
-| 当前任务 | B04 IA 已合（#33）；Opus 实现因 Soul R5 占满 VM 暂缓；B05 IA 仍在途 |
-| PR | #16 专属线；#20–#33（#33 B04 IA） |
-| Merge | AL `331b513`；AL 复审 `3fac2fd`；B04 IA `47b9ac0`；不合 unique trunk |
+| 已检查模块 | 壳 + bead-core + TS 管线 + DATA-1 + AL + B04/B05 IA |
+| 当前任务 | B04/B05 IA 已合（#33 #34）；Opus 实现等 VM；BD20 已拍 |
+| PR | #16 专属线；#20–#34（#34 B05 IA） |
+| Merge | AL `331b513`；复审 `3fac2fd`；B04 IA `47b9ac0`；B05 IA `fbe0921`；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读（BLOCKED_PR）；云端异步 VM ≈3 |
 
 ## 已检查模块（11.5）
 
 | 面 | 现状 | 下一动作 |
 |---|---|---|
-| 前端 | 壳 + SH-1..4 已合入；B04 IA 已锁 D-ASM-1..13 | Opus 实现 B04（等 VM） |
+| 前端 | 壳已合；B04 IA D-ASM-1..13；B05 IA D-INV | Opus 实现 B04（等 VM），随后 B05 |
 | 后端 | 无 bead 服务 | v0 本机，不造第二灵魂核 |
 | API | 无 bead API | 本地 store 契约 |
 | 数据库 | Soul 加密 SQLite，与 bead 无关 | WP-B09 IndexedDB（Grid 落盘才上，BD19） |
@@ -92,9 +92,10 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] AL-1/2/3 合入专属线 `331b513`（抖动取整 + steps slug/断言 + 分叉表）
 - [x] AL 复审合入 `3fac2fd`（#32，三项 PASS，无新增 HIGH）
 - [x] B04 IA 合入 `47b9ac0`（#33，`docs/bead/reviews/round2-assemble.md`）
-- [ ] B04 实现（Opus；BLOCKED_VM：Soul R5 并行审查占满异步席）
+- [x] B05 IA 合入 `fbe0921`（#34，`docs/bead/reviews/round2-inventory.md`）；BD20 码空间
+- [ ] B04 实现（Opus；BLOCKED_VM：Soul 并行审查仍占席，定时回看）
 - [ ] AL-4（MED）rust 侧补跨取整边界的 oracle fixture（不改 TS 语义）
-- [ ] B05 库存/BOM UI
+- [ ] B05 库存/BOM UI（等 B04 实现席）
 - [ ] `/create` 上传接线（独立变更；若持久化 Grid 必须同时上 IDB，BD19）
 - [ ] B10 独立 bead workflow
 - [ ] S1/S2 覆盖与构建探针
@@ -109,21 +110,21 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 
 ## 下一轮重点（ROUND 2）
 
-AL 三项已合。下一刀：**B04 沉浸拼装**（先 Fable IA，再 Opus 实现）。B05 库存 UI、B10 隔离 CI、导入消毒审查、S1/S2 探针仍缺席。判定器/产品框定/检测退化按 align-review §4 NO_HIGH_VALUE，不动。
+B04/B05 IA 均已合。下一刀：**Opus 实现 B04**（等 VM）。B05 实现、B10、S1/S2、AL-4 后置。判定器/产品框定/检测退化按 align-review §4 NO_HIGH_VALUE，不动。
 
 ```text
 ROUND 2（进行中）
-子代理任务    F4 数据审查；DATA-1；AL-1/2/3；下一席 AL 复审 + B04 IA
-发现问题      抖动查表未取整；steps 缺 parity；contract 分叉表过期；写失败静默降级
-修复问题      DATA-1 #31；AL @ 331b513（81184be / c0d346f / f0e6a21）
+子代理任务    F4；DATA-1；AL；AL 复审 #32；B04 IA #33；B05 IA #34
+发现问题      assemble 仍占位；画廊与 generic-5mm 的 G07 实撞
+修复问题      DATA-1；AL；BD20 钉码空间与 BD19 同触发点
 测试结果      @bead/app 258 绿；bead-core 153 绿（未改 rust）
-Commit        331b513 merge AL；本提交记进度
-PR            #16 更新；AL 子支对专属线已无独立 diff（先合后开 PR 被拒）
+Commit        fbe0921 merge B05 IA；本提交记进度 + BD20
+PR            #16 #32 #33 #34
 Merge状态     已进专属线；不合 unique trunk
-下一轮重点    B04 IA → B04 实现（只存游标）；B05；B10
-在途          [R2 Fable B05 IA](https://cursor.com/agents/bc-e1451aad-5003-5ffb-9364-0a3bb1f0e619)
-已收          [R2 Fable review AL](https://cursor.com/agents/bc-7b365534-e6fd-5e45-bc50-769cc93d4454) → #32；[R2 Fable B04 IA](https://cursor.com/agents/bc-d265c746-7f1f-5358-9493-9e49856a4b82) → #33
-Blocked       B04 Opus 实现等 VM（Soul R5 占席）
+下一轮重点    Opus 实现 B04（只存游标）；随后 B05
+在途          （BeadFlow 子代理空；等 VM）
+已收          [R2 Fable review AL](https://cursor.com/agents/bc-7b365534-e6fd-5e45-bc50-769cc93d4454) → #32；[R2 Fable B04 IA](https://cursor.com/agents/bc-d265c746-7f1f-5358-9493-9e49856a4b82) → #33；[R2 Fable B05 IA](https://cursor.com/agents/bc-e1451aad-5003-5ffb-9364-0a3bb1f0e619) → #34
+Blocked       B04 Opus 实现等 VM
 ```
 
 ### ROUND 2 · AL-1/2/3 吸收

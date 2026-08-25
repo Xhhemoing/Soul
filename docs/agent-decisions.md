@@ -23,3 +23,4 @@
 | BD17 | e0 URL 与 Soul CI 触发 | 注释里的 URL 也算字面量（e0 不跳注释）；出处只进 `.md` 或 `fixtures/`/`tests/`。禁止从 bead ref 对 Soul `CI` 做 `workflow_dispatch` | F5 `round1-cicd.md` I-4 / CI-6 |
 | BD18 | TS 与 rust 谁听谁 | **rust `bead-core` 仍是 oracle**（BD8）。`round1-algo-ts-review` 的 AT-1 不得改写成「以 TS/contract.md 重写 bead-core」。TS 对齐 `crates/bead-core/fixtures/parity` 与合同后的 rust 语义。AT-2（末格采样）在 TS 修 | 审查时 rust 尚未收合同补丁 `1880487` |
 | BD19 | 何时上 IndexedDB | v0 方板+步进游标继续 localStorage。**第一次持久化 `Grid` 的 PR**（B03 接线或 B07 导入）必须同时上 `bead-v1` IDB 契约（见 `round2-data.md` §5）。进度只存 `mode`/`stepIndex`/`elapsedMs`，不存整份 `Step[]` | ROUND 2 数据审查；避免 512² 撑爆 quota |
+| BD20 | 库存/BOM 码空间 | v0 扁平码空间 = 画廊 fixture 码。`generic-5mm` 的 G 码不进库存流。已知实撞：画廊 `G07 苔绿 #4c7a44` vs generic-5mm `G07 Silver #B7BFC6`。**与 BD19 同一触发点**：第一个持久化 Grid 的 PR 必须同时给库存与 BOM 加色板命名空间。此前 B05 不预埋字段、不调用 `buildBom`（BOM 真源 = `pattern.palette`） | B05 IA `round2-inventory.md` D-INV-1/3 |
