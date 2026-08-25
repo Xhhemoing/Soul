@@ -155,9 +155,9 @@ export function Wizard({ snapshot, onComplete }: WizardProps): React.JSX.Element
   return (
     <main className="wizard" aria-labelledby="wizard-heading">
       <h1 id="wizard-heading">欢迎使用 Soul</h1>
-      <p>
+      <p data-testid="wizard-locality">
         Soul 在这台电脑上给你建一个电子版的你：人格、记忆、心理工作模型和人脉图。
-        它只处理你交给它的东西，处理过程留在本机。
+        它只处理你交给它的东西。处理过程留在本机；只有你以后自己填写的模型端点例外，发出去的内容会先占位。
       </p>
 
       <section className="panel" aria-labelledby="defaults-heading">

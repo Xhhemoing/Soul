@@ -94,6 +94,23 @@ describe("首次向导", () => {
   });
 
   /**
+   * The welcome line must not promise that every later process stays on this
+   * machine. Filling an endpoint on 设置 makes draft generate and person
+   * summary leave (redacted). The sentence is true of this screen's moment —
+   * nothing is filled yet — but it is the last thing the user reads about
+   * locality before they never see this page again.
+   */
+  it("欢迎那段不会把后来的模型端点说成也留在本机", () => {
+    renderWizard();
+
+    const pitch = screen.getByTestId("wizard-locality");
+    expect(pitch).toHaveTextContent("留在本机");
+    expect(pitch).toHaveTextContent("模型端点");
+    expect(pitch).toHaveTextContent("占位");
+    expect(pitch.textContent).not.toContain("它只处理你交给它的东西，处理过程留在本机。");
+  });
+
+  /**
    * "不弹一堆权限" is checkable: the only tick box on the screen is the one
    * that says the user read the page. A permission checkbox added later fails
    * here before anyone has to notice it in review.
