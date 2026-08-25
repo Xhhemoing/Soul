@@ -828,6 +828,16 @@ export interface FakeCoreOptions {
   /** The collection state this launch starts in. Nobody has consented yet. */
   readonly collect?: CollectStatus;
   /**
+   * What one `collect_status` read does to the state it reads.
+   *
+   * The real core recounts the table on every read, so a page that stays put
+   * while a collector runs sees a number that moves without anything on this
+   * side having asked for it. A double that answered a constant could not tell
+   * a page that rereads from one that froze on mount. The default is identity:
+   * reading changes nothing unless a test says it does.
+   */
+  readonly rereading?: (current: CollectStatus) => CollectStatus;
+  /**
    * How the double answers 开始采集 / 停止采集.
    *
    * Stateful by default, because the page's whole subject is a state that
@@ -1139,6 +1149,7 @@ export function installFakeCore(
       case "audit_chain":
         return (options.audit ?? (() => EMPTY_CHAIN))();
       case "collect_status":
+        collect = (options.rereading ?? ((current: CollectStatus) => current))(collect);
         return collect;
       case "grant_collect_consent":
         collect = (options.granting ?? grantedFrom)(collect);
