@@ -29,6 +29,13 @@ const BLOB: &str = "keys.dpapi";
 const DATABASE: &str = "soul.db";
 const RACERS: usize = 6;
 
+/// A lost race is a scheduling accident, so one round of it proves nothing
+/// about the round that did not happen. Each round below is an independent
+/// first run in its own directory; against the write-then-rename this file was
+/// written for, six racers across four rounds miss roughly one time in a
+/// hundred, and one round misses closer to one time in three.
+const ROUNDS: usize = 4;
+
 fn scratch() -> tempfile::TempDir {
     tempfile::tempdir().expect("temporary directory")
 }
@@ -76,6 +83,12 @@ fn is_contention(error: &str) -> bool {
 /// at the end would come back missing that racer's row.
 #[test]
 fn first_runs_that_race_all_open_the_database_the_surviving_key_file_opens() {
+    for round in 0..ROUNDS {
+        one_racing_first_run(round);
+    }
+}
+
+fn one_racing_first_run(round: usize) {
     let directory = scratch();
     let database = directory.path().join(DATABASE);
     let barrier = Arc::new(Barrier::new(RACERS));
@@ -127,17 +140,21 @@ fn first_runs_that_race_all_open_the_database_the_surviving_key_file_opens() {
     // The next launch: a provider that has only ever read the surviving key
     // file, against the database the race built.
     let next_launch = launch(directory.path());
-    let reopened = SqlCipherStore::open(&database, next_launch.as_ref())
-        .expect("the key file left by the race does not open the database the race created");
+    let reopened = SqlCipherStore::open(&database, next_launch.as_ref()).unwrap_or_else(|error| {
+        panic!(
+            "round {round}: the key file left by the race does not open the database the race \
+             created: {error}"
+        )
+    });
     for index in 0..RACERS {
         let event_id = common::id(&format!("{:02}", index + 1));
         assert_eq!(
             reopened
                 .get_event(event_id)
-                .unwrap_or_else(|error| panic!("racer {index}'s row: {error}"))
+                .unwrap_or_else(|error| panic!("round {round}, racer {index}'s row: {error}"))
                 .event_id,
             event_id,
-            "racer {index} wrote into a database the surviving key file cannot read",
+            "round {round}: racer {index} wrote into a database the surviving key file cannot read",
         );
     }
 
@@ -153,6 +170,12 @@ fn first_runs_that_race_all_open_the_database_the_surviving_key_file_opens() {
 /// above them can agree either.
 #[test]
 fn racing_first_runs_all_receive_the_root_secrets_that_are_on_disk() {
+    for round in 0..ROUNDS {
+        one_racing_key_handout(round);
+    }
+}
+
+fn one_racing_key_handout(round: usize) {
     let directory = scratch();
     let barrier = Arc::new(Barrier::new(RACERS));
 
@@ -195,7 +218,7 @@ fn racing_first_runs_all_receive_the_root_secrets_that_are_on_disk() {
     for (index, pair) in seen.iter().enumerate() {
         assert_eq!(
             pair, &expected,
-            "racer {index} was handed key material the next launch will not find",
+            "round {round}: racer {index} was handed key material the next launch will not find",
         );
     }
 }
