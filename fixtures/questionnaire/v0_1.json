@@ -1,0 +1,89 @@
+{
+  "about": "v0.1 问卷的题号表，两侧共用的那一份。`soul-import` 负责把回答落成事件与 user_stated 证据，`soul-profile` 负责决定一条回答动哪个字段；两边各有一张自己的表，这个 fixture 是把它们钉在一起的东西。改题号 = 让已经写进库里的证据指空，所以两侧的测试都会读这个文件，对不上就红。",
+  "asked_once": "用户只被问这一遍。有导入文件时问卷可以跳过，没有文件时走的是同一套题、同一个 sink。",
+  "questions": [
+    {
+      "id": "q.axis.curiosity",
+      "shape": "choice",
+      "options": ["leans_low", "mixed", "leans_high"],
+      "profile_target": "axis.curiosity"
+    },
+    {
+      "id": "q.axis.orderliness",
+      "shape": "choice",
+      "options": ["leans_low", "mixed", "leans_high"],
+      "profile_target": "axis.orderliness",
+      "absorbs": "WP06 原本另问一题 `preference.decision_style`（推进 vs 想清楚），问的是同一条轴"
+    },
+    {
+      "id": "q.axis.social_energy",
+      "shape": "choice",
+      "options": ["leans_low", "mixed", "leans_high"],
+      "profile_target": "axis.social_energy"
+    },
+    {
+      "id": "q.axis.accommodation",
+      "shape": "choice",
+      "options": ["leans_low", "mixed", "leans_high"],
+      "profile_target": "axis.accommodation"
+    },
+    {
+      "id": "q.axis.emotional_steadiness",
+      "shape": "choice",
+      "options": ["leans_low", "mixed", "leans_high"],
+      "profile_target": "axis.emotional_steadiness"
+    },
+    {
+      "id": "q.voice.register",
+      "shape": "choice",
+      "options": ["casual", "plain", "formal"],
+      "profile_target": "voice.register",
+      "absorbs": "WP06 的 `voice.register`，当时只落成一段散文，现在直接钉住语气字段"
+    },
+    {
+      "id": "q.voice.directness",
+      "shape": "choice",
+      "options": ["reserved", "balanced", "direct"],
+      "profile_target": "voice.directness",
+      "absorbs": "WP06 的 `voice.directness`"
+    },
+    {
+      "id": "q.voice.emoji_use",
+      "shape": "choice",
+      "options": ["never", "sparing", "frequent"],
+      "profile_target": "voice.emoji_use"
+    },
+    {
+      "id": "q.boundary.topics",
+      "shape": "prose",
+      "profile_target": "boundary",
+      "absorbs": "WP06 的 `boundary.topics`"
+    },
+    {
+      "id": "q.boundary.availability",
+      "shape": "prose",
+      "profile_target": "boundary",
+      "absorbs": "WP06 的 `boundary.availability`"
+    },
+    {
+      "id": "q.value.what_matters",
+      "shape": "prose",
+      "profile_target": "value",
+      "absorbs": "WP06 的 `value.what_matters`"
+    }
+  ],
+  "dropped": [
+    {
+      "was": "voice.length",
+      "why": "档案里没有对应字段，而消息长短是导入文件一眼就能看出来的东西；没有文件时它也推不动任何字段"
+    },
+    {
+      "was": "preference.decision_style",
+      "why": "与 q.axis.orderliness 问的是同一条轴，合并"
+    },
+    {
+      "was": "relationship.close_circle",
+      "why": "人脉图是从证据推出来的（WP05），一段「同事、家人」的散文既建不出节点也建不出边，还会把第三人写进一条 subject: self 的密文里"
+    }
+  ]
+}

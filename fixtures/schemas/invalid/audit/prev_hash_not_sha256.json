@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0.0",
+  "seq": 0,
+  "entry_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a80",
+  "ts": "2026-08-24T11:00:00Z",
+  "prev_hash": "GENESIS",
+  "entry_hash": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+  "action": "consent.grant",
+  "decision": "allowed"
+}

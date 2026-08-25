@@ -1,0 +1,384 @@
+/**
+ * 灵魂档案: the axes, the correction lock, and the words the user wrote that
+ * this screen is not allowed to show.
+ *
+ * `soul-profile` already tests what a correction does to the store. What only
+ * this side can check is that the screen renders the core's readings rather
+ * than composing its own, that a locked axis still shows the inference it
+ * refused, and that a boundary the user typed reaches the page as a question
+ * and an id and never as prose.
+ *
+ * The second half of the file is 再答几题. The wizard runs once and never
+ * comes back, so this page is the only place a user who skipped it can state a
+ * boundary or a value at all — and the questions it asks have to be the
+ * core's, in the core's words, handed in with the core's tokens.
+ */
+
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+
+import { Profile } from "./Profile";
+import { denylistHits, diagnosticTerms, renderedText } from "../test/denylist";
+import {
+  aProfileScreen,
+  forbidNetwork,
+  installFakeCore,
+  QUESTIONS,
+  WORKING_HYPOTHESIS_NOTICE,
+  type FakeCoreOptions,
+} from "../test/fakeCore";
+
+const AXIS_ID = "0192b0c0-5001-7a01-8b01-000000000001";
+const ORDERLINESS_AXIS_ID = "0192b0c0-5001-7a02-8b02-000000000002";
+
+async function open(options: FakeCoreOptions = {}) {
+  const core = installFakeCore(options);
+  render(<Profile />);
+  await screen.findByRole("heading", { name: "现在的档案" });
+  return core;
+}
+
+/** Press 打开题目 and hand back the list the profile page then draws. */
+async function askAgain(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+  const opener = await screen.findByRole("button", { name: "打开题目" });
+  await waitFor(() => expect(opener).toBeEnabled());
+  await user.click(opener);
+  return screen.findByTestId("profile-questions");
+}
+
+/** The three buttons of one choice question, found by the question it asks. */
+function choicesFor(questionId: string): HTMLElement {
+  const prompt = QUESTIONS.find((question) => question.question_id === questionId)?.prompt ?? "";
+  return screen.getByRole("group", { name: prompt });
+}
+
+/** The text box of one prose question, found the same way. */
+function boxFor(questionId: string): HTMLElement {
+  const prompt = QUESTIONS.find((question) => question.question_id === questionId)?.prompt ?? "";
+  return screen.getByRole("textbox", { name: prompt });
+}
+
+function answersSentBy(core: Awaited<ReturnType<typeof open>>) {
+  return (
+    core.callsTo("answer_questionnaire")[0]?.payload as {
+      answers: { question_id: string; given: string }[];
+    }
+  ).answers;
+}
+
+describe("灵魂档案页", () => {
+  it("整段读法是核心写的，界面不自己拼句子", async () => {
+    await open();
+
+    expect(screen.getByTestId("profile-reading")).toHaveTextContent("偏向尝试新的做法");
+    expect(screen.getByTestId("profile-notice")).toHaveTextContent(WORKING_HYPOTHESIS_NOTICE);
+    expect(screen.getByTestId("voice-reading")).toHaveTextContent("平实");
+  });
+
+  /**
+   * 不猜 is the whole of the partial-questionnaire promise, and the screen has
+   * to say it out loud rather than leaving four blank rows.
+   */
+  it("没答过的轴写着还看不出方向，并且说明不会替你猜", async () => {
+    await open();
+
+    expect(screen.getByTestId("profile-known")).toHaveTextContent("五条轴里有 1 条有方向");
+    expect(screen.getByTestId("profile-known")).toHaveTextContent("没答过的题不会被猜");
+    const axes = screen.getByTestId("axis-list");
+    expect(within(axes).getByText("条理与执行：还看不出方向")).toBeVisible();
+  });
+
+  /** AC-07: the correction goes to the core, and the whole screen comes back. */
+  it("纠正一条轴之后，这条轴锁住了", async () => {
+    const core = await open();
+    const user = userEvent.setup();
+
+    const row = screen.getByTestId(`axis-${AXIS_ID}`);
+    await user.click(within(row).getByRole("button", { name: "偏向熟悉稳妥的做法" }));
+
+    expect(core.callsTo("correct_axis")[0]?.payload).toEqual({
+      axisId: AXIS_ID,
+      position: "leans_low",
+    });
+    expect(await screen.findByTestId(`axis-locked-${AXIS_ID}`)).toHaveTextContent(
+      "推断不再改这条",
+    );
+  });
+
+  /**
+   * A lock that hid the inference it refused would make AC-07 invisible. The
+   * user has to be able to see that the machine still disagrees and is not
+   * allowed to act on it.
+   */
+  it("锁住之后，机器那条不同意的推断还留在屏幕上", async () => {
+    const second = "0192b0c0-5001-7a02-8b02-000000000002";
+    await open({
+      profile: () =>
+        aProfileScreen({
+          axes: aProfileScreen().axes.map((axis) =>
+            axis.axis_id === second ? { ...axis, locked_by_user: true } : axis,
+          ),
+        }),
+    });
+
+    const inferences = screen.getByTestId(`axis-inferences-${second}`);
+    expect(inferences).toHaveTextContent("机器推的是「偏向随性推进」");
+    expect(inferences).toHaveTextContent("因为你锁定过所以没有生效");
+  });
+
+  it("设一项语气之后，这一项也锁住了", async () => {
+    const core = await open();
+    const user = userEvent.setup();
+
+    const row = screen.getByTestId("voice-register");
+    await user.click(within(row).getByRole("button", { name: "正式" }));
+
+    expect(core.callsTo("set_voice")[0]?.payload).toEqual({ field: "register", option: "formal" });
+    expect(await screen.findByTestId("voice-locked-register")).toBeVisible();
+  });
+
+  /**
+   * The user's own words about their boundaries are sealed in the event the
+   * recorder wrote. `StatedRow` has no field that could carry them, so what is
+   * on screen is the question and the evidence id — and this checks the answer
+   * itself is nowhere on the page.
+   */
+  it("你写过的边界只留问题和编号，原话不出现", async () => {
+    await open({
+      profile: () =>
+        aProfileScreen({
+          stated: [
+            {
+              field: "boundary",
+              question_id: "q.boundary.topics",
+              prompt: "有哪些话题，你不希望 Soul 替你起草或分析？",
+              event_id: "0192f000-0000-7000-8000-0000000000b1",
+              evidence_id: "0192f000-0000-7000-8000-0000000000b2",
+            },
+          ],
+        }),
+    });
+
+    const stated = screen.getByTestId("stated-list");
+    expect(stated).toHaveTextContent("边界");
+    expect(stated).toHaveTextContent("有哪些话题");
+    expect(stated).toHaveTextContent("0192f000-0000-7000-8000-0000000000b2");
+    expect(stated).toHaveTextContent("原话密封");
+  });
+
+  it("一条都没写过的时候，不替用户编一条出来", async () => {
+    await open({ profile: () => aProfileScreen({ stated: [] }) });
+
+    expect(screen.getByTestId("no-stated")).toHaveTextContent("跳过就是跳过");
+    expect(screen.queryByTestId("stated-list")).toBeNull();
+  });
+
+  /** The same denylist `xtask` runs over the crates, over what was rendered. */
+  it("渲染出来的档案里没有一个诊断词或量表词", async () => {
+    const terms = diagnosticTerms();
+    expect(terms.length).toBeGreaterThan(50);
+
+    await open({ profile: () => aProfileScreen() });
+    // With the eleven questions open too: they are prose on this page as much
+    // as the axis readings are, and nobody else checks them after a render.
+    await askAgain(userEvent.setup());
+
+    expect(denylistHits(renderedText(), terms)).toEqual([]);
+  });
+
+  /** A store that did not open is a refusal with a code, not a blank profile. */
+  it("读不到库的时候给出理由码，而不是一份空档案", async () => {
+    installFakeCore({
+      profile: () => {
+        throw {
+          reason_code: "STORE_UNAVAILABLE",
+          explanation: "数据库这次没有打开，所以读不到档案。",
+        };
+      },
+    });
+    render(<Profile />);
+
+    expect(await screen.findByTestId("profile-refusal-code")).toHaveTextContent(
+      "STORE_UNAVAILABLE",
+    );
+    expect(screen.queryByTestId("axis-list")).toBeNull();
+  });
+
+  it("这一页上没有一个按钮是发送或执行", async () => {
+    const attempts = forbidNetwork();
+    await open();
+    await askAgain(userEvent.setup());
+
+    for (const button of screen.queryAllByRole("button")) {
+      expect(button.textContent ?? "").not.toMatch(/发送|发出|执行|上传|导出/);
+    }
+    expect(attempts).toEqual([]);
+  });
+});
+
+describe("在档案页上再答几题", () => {
+  /**
+   * The wizard tells a user who answered nothing that the questions are still
+   * on this page. That sentence is only true if the section it names is here,
+   * so the promise is read off the wizard's own source and then looked for on
+   * this screen.
+   */
+  it("向导许诺的那一节，在这一页上确实有", async () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const wizard = readFileSync(join(here, "Wizard.tsx"), "utf8");
+    const promised = /档案页的「(.+?)」里随时可以再答/.exec(wizard)?.[1] ?? "";
+    expect(promised).toBe("再答几题");
+
+    await open();
+
+    expect(screen.getByRole("heading", { name: promised })).toBeVisible();
+  });
+
+  /**
+   * The same eleven, from the same command. Not a shorter list somebody
+   * assembled for this page: the ids are the ones `questionnaire()` sent, the
+   * three prose questions among them, because those three are the only way
+   * anything ever reaches 边界 or 在乎的事.
+   */
+  it("这一页给的题就是核心那一份，三道填空题一道不少", async () => {
+    const core = await open();
+    const questions = await askAgain(userEvent.setup());
+
+    expect(core.callsTo("questionnaire")).toHaveLength(1);
+    expect(within(questions).getAllByRole("listitem")).toHaveLength(QUESTIONS.length);
+    for (const question of QUESTIONS) {
+      expect(document.getElementById(`profile-question-${question.question_id}`)).toHaveTextContent(
+        question.prompt,
+      );
+    }
+    for (const id of ["q.boundary.topics", "q.boundary.availability", "q.value.what_matters"]) {
+      expect(boxFor(id)).toBeVisible();
+    }
+    expect(choicesFor("q.axis.curiosity")).toBeVisible();
+    expect(choicesFor("q.axis.orderliness")).toBeVisible();
+    expect(within(questions).getAllByRole("textbox")).toHaveLength(3);
+  });
+
+  /**
+   * The hole this section fills: an axis the wizard skipped stays 还看不出方向
+   * forever unless something can answer for it later. What goes back is the
+   * core's own token, and what comes back is the whole screen — the axis is
+   * re-read rather than patched here.
+   */
+  it("补答一条跳过的轴，交上去之后这条轴有了方向", async () => {
+    const core = await open();
+    const user = userEvent.setup();
+    await askAgain(user);
+
+    expect(within(screen.getByTestId("axis-list")).getByText("条理与执行：还看不出方向")).toBeVisible();
+
+    await user.click(within(choicesFor("q.axis.orderliness")).getByRole("button", { name: "偏那一端" }));
+    await user.click(screen.getByRole("button", { name: "写进档案" }));
+
+    expect(core.callsTo("answer_questionnaire")).toHaveLength(1);
+    const answers = answersSentBy(core);
+    expect(answers).toHaveLength(QUESTIONS.length);
+    expect(answers.filter((answer) => answer.given !== "")).toEqual([
+      { question_id: "q.axis.orderliness", given: "leans_high" },
+    ]);
+
+    expect(
+      await within(screen.getByTestId(`axis-${ORDERLINESS_AXIS_ID}`)).findByText(
+        "条理与执行：偏向先规划再动手",
+      ),
+    ).toBeVisible();
+    expect(core.callsTo("profile_screen")).toHaveLength(2);
+    expect(screen.getByTestId("profile-known")).toHaveTextContent("五条轴里有 2 条有方向");
+    expect(screen.getByTestId("profile-receipt")).toHaveTextContent("记下了 1 条");
+  });
+
+  /**
+   * AC-03's other half, reached from the product path rather than the wizard:
+   * a user who skipped the three fill-ins can state a boundary here, and what
+   * they typed goes to the core and comes back as a question and an id. The
+   * words themselves are looked for across the whole rendered document, which
+   * is the one place a leak would show.
+   */
+  it("在这里写下的边界只交给核心，原话不回到屏幕上", async () => {
+    const written = "周末和家里人的事一概不要碰";
+    const core = await open({ profile: () => aProfileScreen({ stated: [] }) });
+    const user = userEvent.setup();
+
+    expect(screen.getByTestId("no-stated")).toHaveTextContent("再答几题");
+    await askAgain(user);
+
+    await user.type(boxFor("q.boundary.topics"), written);
+    await user.click(screen.getByRole("button", { name: "写进档案" }));
+
+    expect(answersSentBy(core).filter((answer) => answer.given !== "")).toEqual([
+      { question_id: "q.boundary.topics", given: written },
+    ]);
+    const stated = await screen.findByTestId("stated-list");
+    expect(stated).toHaveTextContent("边界");
+    expect(stated).toHaveTextContent("有哪些话题");
+    expect(stated).toHaveTextContent("原话密封");
+    expect(renderedText()).not.toContain(written);
+    // The box is not a second copy of the answer either: it goes back to
+    // blank, because what the core now holds is on the screen above it.
+    expect(boxFor("q.boundary.topics")).toHaveValue("");
+  });
+
+  /**
+   * A questionnaire with nothing in it is refused by the core, so the button
+   * stays grey rather than sending one and reporting the refusal afterwards.
+   * Nothing is claimed either way: no receipt, and the profile is not re-read.
+   */
+  it("一道都没答的时候交不上去，也不会假装记下了什么", async () => {
+    const core = await open();
+    const user = userEvent.setup();
+    await askAgain(user);
+
+    expect(screen.getByTestId("profile-answered")).toHaveTextContent("这一次答了 0 题");
+    const hand = screen.getByRole("button", { name: "写进档案" });
+    expect(hand).toBeDisabled();
+    await user.click(hand);
+
+    expect(core.callsTo("answer_questionnaire")).toHaveLength(0);
+    expect(core.callsTo("profile_screen")).toHaveLength(1);
+    expect(screen.queryByTestId("profile-receipt")).toBeNull();
+    expect(screen.getByTestId("profile-nothing-answered")).toHaveTextContent("没有东西可以写进去");
+  });
+
+  /** An answer withdrawn is a blank again, and a blank is a skip. */
+  it("再按一下就是收回，收回之后又交不上去了", async () => {
+    const core = await open();
+    const user = userEvent.setup();
+    await askAgain(user);
+
+    const choice = within(choicesFor("q.axis.curiosity")).getByRole("button", { name: "偏这一端" });
+    await user.click(choice);
+    expect(screen.getByTestId("profile-answered")).toHaveTextContent("这一次答了 1 题");
+    await user.click(choice);
+    expect(screen.getByTestId("profile-answered")).toHaveTextContent("这一次答了 0 题");
+    expect(screen.getByRole("button", { name: "写进档案" })).toBeDisabled();
+    expect(core.callsTo("answer_questionnaire")).toHaveLength(0);
+  });
+
+  /** A refusal is the core's own sentence, and the profile is left alone. */
+  it("核心拒绝的时候照抄核心的话，档案不动", async () => {
+    const core = await open({
+      recording: () => {
+        throw { reason_code: "ROUTINE", explanation: "这份问卷核心不收。" };
+      },
+    });
+    const user = userEvent.setup();
+    await askAgain(user);
+
+    await user.click(within(choicesFor("q.axis.curiosity")).getByRole("button", { name: "偏这一端" }));
+    await user.click(screen.getByRole("button", { name: "写进档案" }));
+
+    expect(await screen.findByTestId("profile-ask-refusal-code")).toHaveTextContent("ROUTINE");
+    expect(screen.getByText("这份问卷核心不收。")).toBeVisible();
+    expect(core.callsTo("profile_screen")).toHaveLength(1);
+    expect(screen.queryByTestId("profile-receipt")).toBeNull();
+  });
+});

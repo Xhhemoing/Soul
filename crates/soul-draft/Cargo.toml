@@ -1,0 +1,40 @@
+[package]
+name = "soul-draft"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Drafting that never sends, and people summaries that never claim more than the evidence behind them."
+
+# No HTTP client and no store. The one thing that can reach the network here is
+# a `ReplyGenerator` the caller supplies, and the only body it may be handed is
+# a `RedactedBody`, which only `soul-policy`'s redactor can produce. Everything
+# a draft says about the user comes from `soul-profile`; everything a summary
+# says about a person comes from `soul-graph` edges and the evidence rows the
+# caller resolved.
+#
+# `soul-algo-trait` is the frozen A2 renderer and is a plain dependency because
+# the people summary's wording is its output, not this crate's (D40). The edge
+# is one way: the renderer takes counts and returns sentences, and knows nothing
+# about a store, a graph or a draft.
+[dependencies]
+soul-algo-trait = { workspace = true }
+soul-schema = { workspace = true }
+soul-policy = { workspace = true }
+soul-profile = { workspace = true }
+soul-graph = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+# `soul-egress` is a dev dependency and must stay one: the acceptance tests put
+# a real request on the wire against `soul-testkit`'s loopback mock, which is
+# the only way AC-11 and AC-12 can be checked against what a server received
+# rather than against a re-serialization of it. `xtask e0-audit` does not
+# follow dev edges, so this does not make the crate an egress path.
+[dev-dependencies]
+soul-egress = { workspace = true }
+soul-store-api = { workspace = true }
+soul-testkit = { workspace = true }

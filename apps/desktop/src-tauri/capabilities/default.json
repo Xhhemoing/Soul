@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "本机窗口与托盘所需的最小权限。没有文件系统、shell、HTTP 或更新器插件——它们在这一版根本没有被依赖。",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

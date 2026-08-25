@@ -1,0 +1,32 @@
+[package]
+name = "soul-import"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Soul's two v0.1 importers — soul-import-v1 JSONL and Telegram Desktop result.json — plus the questionnaire fallback. External content enters as data and only as data."
+
+[dependencies]
+soul-schema = { workspace = true }
+soul-store-api = { workspace = true }
+# `UntrustedText` is the type an imported line arrives in, and the injection
+# scanner is what makes the `injection.blocked` audit entry honest.
+soul-policy = { workspace = true }
+# The interaction evidence an import writes is the graph's input contract.
+soul-graph = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+# Used for its error *kinds*, not its error strings: a rendered jsonschema
+# error embeds the offending instance, and a rejected import line must not
+# echo what someone wrote. See `src/defect.rs`.
+jsonschema = { workspace = true }
+
+[dev-dependencies]
+soul-store = { workspace = true }
+soul-testkit = { workspace = true }
+tempfile = { workspace = true }

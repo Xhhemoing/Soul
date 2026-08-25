@@ -1,0 +1,122 @@
+# Soul 诊断词与量表词 denylist —— 单一事实来源
+#
+# 由 `cargo run -p xtask -- denylist-audit` 扫描 crates/**/src 的字符串字面量
+# 与公共 API 标识符。命中即失败。
+#
+# 为什么存在：PRODUCT_LOCK 写明 Soul 不是临床医学产品，不给出精神疾病诊断；
+# DECISIONS D22 写明心理模型是方向轴加弱/中/强证据档，不是量表、不是分数。
+# 这两条只靠人自觉守不住，所以做成 CI 断言。
+#
+# 匹配规则（见 crates/xtask/src/denylist.rs）：
+#   * ASCII 词按词边界匹配，标识符先按 `_` 与驼峰拆词再比对，
+#     所以 `underscore` 不会被 `score` 命中；
+#   * 非 ASCII 词按子串匹配；
+#   * 大小写不敏感。
+#
+# 豁免：本文件自身、`crates/xtask/**`（实现与自测需要引用这些词）、
+# `fixtures/**`、任何 `tests/` 目录。
+#
+# 故意不在名单里：
+#   * `clinical`、`clinical_claim` —— 那是 schema 里的护栏字段，不是声称；
+#   * `diagnostics` —— 那是 privacy.purposes 的合法取值（本机诊断日志用途），
+#     与 `diagnosis`/`diagnose` 不同词，不要混为一谈。
+
+# ---- 量表与分数（D22：特质轴无数字分数）----
+score
+percentile
+subscale
+norm-referenced
+t-score
+z-score
+量表
+得分
+分数
+评分
+计分
+常模
+标准分
+百分位
+
+# ---- 诊断动作与结论 ----
+diagnosis
+diagnose
+diagnosed
+diagnostic criteria
+differential diagnosis
+prognosis
+comorbidity
+symptom
+symptoms
+syndrome
+disorder
+pathology
+psychopathology
+patient
+mental illness
+psychiatric
+psychiatry
+psychotherapy
+therapy
+treatment plan
+诊断
+确诊
+病症
+症状
+病理
+患者
+病人
+精神疾病
+心理疾病
+精神病
+共病
+预后
+疗程
+治疗方案
+心理治疗
+
+# ---- 具体病名与标准（DSM/ICD 一律不碰）----
+dsm-5
+dsm-iv
+icd-10
+icd-11
+depression
+major depressive
+anxiety disorder
+bipolar
+schizophrenia
+psychosis
+mania
+manic
+ocd
+obsessive-compulsive
+adhd
+autism
+autistic
+asperger
+ptsd
+post-traumatic
+personality disorder
+narcissistic personality
+borderline personality
+neurosis
+neurotic
+抑郁症
+抑郁
+焦虑症
+双相
+躁郁
+精神分裂
+强迫症
+多动症
+注意缺陷
+自闭症
+孤独症
+阿斯伯格
+创伤后应激
+人格障碍
+边缘型人格
+自恋型人格
+神经症
+躁狂
+妄想
+幻觉

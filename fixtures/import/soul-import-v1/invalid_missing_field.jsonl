@@ -1,0 +1,6 @@
+{"type":"header","format":"soul-import-v1","version":1,"exported_at":"2026-08-24T08:00:00Z"}
+{"type":"message","id":"m-0001","occurred_at":"2026-08-20T09:12:00Z","sender_scope":"self","conversation_id":"c-01","sender_id":"u-self","text":"这一行是好的"}
+{"type":"message","id":"m-0002","occurred_at":"2026-08-20T09:13:05Z","conversation_id":"c-01","sender_id":"u-lilei","text":"这一行缺 sender_scope，必须报出可读错误并指明行号"}
+{"type":"message","id":"m-0003","occurred_at":"2026-08-20T09:14:00Z","sender_scope":"third_party","conversation_id":"c-01","text":"这一行缺 sender_id"}
+{"type":"message","id":"m-0004","occurred_at":"not-a-timestamp","sender_scope":"self","conversation_id":"c-01","sender_id":"u-self","text":"这一行的时间戳不是 RFC 3339"}
+{"type":"message","id":"m-0005","occurred_at":"2026-08-20T09:16:00Z","sender_scope":"unknown","conversation_id":"c-01","sender_id":"u-self","text":"这一行的 sender_scope 不在枚举里"}

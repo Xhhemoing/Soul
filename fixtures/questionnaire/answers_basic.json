@@ -1,0 +1,37 @@
+{
+  "note": "AC-03。一份填完的问卷：五条方向轴、三项语气各答一次，三道散文题答了两道。位置只有 leans_low / mixed / leans_high 三个可选，没有任何数字。question_id 必须与 fixtures/questionnaire/v0_1.json 一致，对不上时问卷会拒。留白的那一题（q.boundary.availability）是故意的——跳过的题不该留下任何一行。",
+  "answered_at": "2026-08-24T09:15:00Z",
+  "answers": [
+    { "kind": "axis", "question_id": "q.axis.curiosity", "position": "leans_high" },
+    { "kind": "axis", "question_id": "q.axis.orderliness", "position": "leans_low" },
+    { "kind": "axis", "question_id": "q.axis.social_energy", "position": "leans_low" },
+    { "kind": "axis", "question_id": "q.axis.accommodation", "position": "mixed" },
+    { "kind": "axis", "question_id": "q.axis.emotional_steadiness", "position": "leans_low" },
+    {
+      "kind": "voice",
+      "question_id": "q.voice.register",
+      "setting": { "field": "register", "value": "formal" }
+    },
+    {
+      "kind": "voice",
+      "question_id": "q.voice.directness",
+      "setting": { "field": "directness", "value": "direct" }
+    },
+    {
+      "kind": "voice",
+      "question_id": "q.voice.emoji_use",
+      "setting": { "field": "emoji_use", "value": "never" }
+    },
+    {
+      "kind": "prose",
+      "question_id": "q.boundary.topics",
+      "text": "家里人的身体情况，别替我起草也别分析。"
+    },
+    { "kind": "prose", "question_id": "q.boundary.availability", "text": "   " },
+    {
+      "kind": "prose",
+      "question_id": "q.value.what_matters",
+      "text": "别替我做决定，尤其是别替我回复人。"
+    }
+  ]
+}

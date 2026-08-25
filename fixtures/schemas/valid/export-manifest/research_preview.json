@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0.0",
+  "manifest_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a90",
+  "export_kind": "research_preview",
+  "fields": ["event_kind", "time_bucket_utc", "duration_bucket", "aggregate_count"],
+  "rows": [
+    {
+      "event_kind": "app.foreground",
+      "time_bucket_utc": "2026-08-24T09:00:00Z/PT1H",
+      "duration_bucket": "5m-15m",
+      "aggregate_count": 4
+    }
+  ],
+  "third_party_rows": 0,
+  "written_to_disk": false,
+  "redaction_profile": { "third_party_body": "excluded", "one_time_override_allowed": false }
+}

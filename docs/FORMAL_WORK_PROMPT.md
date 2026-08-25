@@ -13,21 +13,22 @@
 
 ### 计划面与代码面（先读这一节，否则会重复造轮子）
 
-这个仓库同时有两条线，任何「当前几乎无代码」的判断都必须指明说的是哪一条：
+这个仓库曾经分两条线。**本文件所在的树已经把它们并在一起**：计划权威面（D1–D60、`PLAN_INDEX.md`、类型化 `tie_strength`）与 Goal 1 实现主干同树。任何「当前几乎无代码」的判断都必须指明说的是哪一条历史线，不要当成此刻的事实。
 
 | 线 | 有什么 | 没有什么 |
 |---|---|---|
-| `main`（本文件随计划 PR 合入的那条线） | 计划权威面（`docs/`）+ 冻结算法 crate（`crates/soul-algo-tie` T4D 族、`crates/soul-algo-trait` A0/A1/A2/A3）。纯函数、无存储、无 UI、无出网 | **没有可安装的应用**。本计划 PR 合入之后仍然没有：本 PR 只动 `docs/` 与 `README.md` |
-| Goal 1 分支 `cursor/soul-goal1-7b1c` | 实现主干：桌面壳、加密主库、导入、人脉图、记忆、审计、策略面、安装 smoke。WP01–WP11 与 WP13 已在那条线上落地 | 尚未合回 `main`；hosted CI 与作者 Win11 手动清单尚未全绿 |
+| `cursor/goal1-unblock-a073`（PR #7，**当前唯一实现主干**） | 计划权威面 + 冻结算法 crate + 可安装桌面壳、加密主库、导入、人脉图（T4D / A2 / G1+ / G3）、记忆、审计、策略面、安装 smoke。WP01–WP11 与 WP13 已落地 | 尚未合回 `main`（本 PR 就是合入路径）；hosted CI 与作者 Win11 手动清单尚未全绿 |
+| `main`（合入本 PR **之前**） | 计划权威面（`docs/`）+ 冻结算法 crate | **没有可安装的应用**。合入本 PR 之后这条描述作废 |
+| 历史 Goal 1 HEAD `cursor/soul-goal1-7b1c` | 实现主干的祖先 | **不是合入路径。** 不要把它当现行主干，不要从它另开第二条实现线 |
 
 因此：
 
-1. 「当前几乎无代码」**只对 `main` 成立**，对 Goal 1 分支不成立。接手 Goal 1 的父代理不是从零开始，先读 `origin/cursor/soul-goal1-7b1c:docs/STATUS.md` 与 `:docs/GOAL1_PLAN.md`，再决定派谁。
-2. **Goal 1 分支是唯一实现主干。** 不要另开第二条实现线，不要把 Goal 1 的树整体拷进计划分支。
-3. 计划冻结（`PLAN_FROZEN`）≠ Goal 1 关闭 ≠ `main` 已有应用。三件事在 `docs/STATUS.md` 里分开写，改其中一件不要顺手改另外两件。
-4. 算法 crate 已在 `main` 上，Goal 1 采纳它是**合并义务**，不是重新选型；采纳方式见 `docs/algorithms/DECISION.md` 第 6 节（该节沿用冻结文稿里的旧 crate 名与旧文件名，实现一律跟仓库真名，见 D53），本文件只给对应门禁（AC-28…AC-34）。
+1. 「当前几乎无代码」**只对合入前的 `main` 成立**，对本树不成立。接手的父代理读本树的 `docs/STATUS.md` 与 `docs/GOAL1_PLAN.md`，不要从零开始。
+2. **现行唯一实现主干是本分支 / PR #7。** 不要另开第二条实现线，不要把 Goal 1 的树整体拷进别的计划分支，不要把 PR #1 / #2 / #4 当合入路径。
+3. 计划冻结（`PLAN_FROZEN`）≠ Goal 1 关闭 ≠ `main` 已有应用。三件事在 `docs/STATUS.md` 里分开写，改其中一件不要顺手改另外两件。本 PR 合入后第三件变为真，前两件仍然分开。
+4. 算法 crate 已在树上，Goal 1 采纳它是**已经完成的合并义务**，不是重新选型；接线方式见 `docs/algorithms/DECISION.md` 第 6 节（该节沿用冻结文稿里的旧 crate 名与旧文件名，实现一律跟仓库真名，见 D53），本文件只给对应门禁（AC-28…AC-34）。
 5. **Goal 1 完成 = 本文件验收矩阵全部 `v0.1` 行通过，并且 `PRODUCT_LOCK.md` 的 13 条垂直切片同时成立（D54）。** 矩阵没有的行不能否决切片；切片没有的行不能否决矩阵。一个仍走 T0 全场地判档的图谱，即使 AC-01–AC-26 全绿，也不能关闭 Goal 1。
-6. 本文件里只有末尾的「**开工第一动作**」是可执行的开工路径。中段那节标着「历史段」的派单原话是存档，写于 Goal 1 开工之前，**不要照着重派 planner、也不要再 `CreateGoal：Goal 1`**。
+6. 本文件里只有末尾的「**开工第一动作**」是可执行的开工路径。中段那节标着「历史段」的派单原话是存档，写于 Goal 1 开工之前，**不要照着重派 planner、也不要再 `CreateGoal：Goal 1`**。Goal 2 在 Goal 1 关闭前不要启动。
 
 ### 产品锁定（不可改写）
 
@@ -169,7 +170,7 @@ AC-28…AC-34 测在**产品边界**（导入 → 加密库 → rebuild → 读�
 本节优先于本文件任何其他段落，尤其优先于上面的「历史段」。新会话按这五步走，不要另起派单流程。
 
 1. 若 STATUS 不是 `PLAN_FROZEN`，只做文档。
-2. 读 `origin/cursor/soul-goal1-7b1c:docs/STATUS.md` 与 `docs/BLOCKERS.md`（尚未合入 `main`，仍在 PR #6：`git show origin/cursor/blockers-analysis-a073:docs/BLOCKERS.md`），确认 Goal 1 已落地到哪一步、还剩哪些关闭项。
-3. **不要**把已完成的 WP 重派一遍，**不要**再从「CreateGoal：Goal 1 + 空 planner」开始——Goal 1 早已开工。
-4. 未合入 `main` 的实现工作只在 `cursor/soul-goal1-7b1c`（或经宣布的后继主干）上进行。
-5. 本计划 PR 合入后，新会话的第一件事是读 `docs/STATUS.md` 与 `docs/PLAN_INDEX.md`。
+2. 读**本树**的 `docs/STATUS.md` 与 `docs/GOAL1_PLAN.md`。阻碍项清单仍在 PR #6（`git show origin/cursor/blockers-analysis-a073:docs/BLOCKERS.md`），本树没有 `docs/BLOCKERS.md`。确认 Goal 1 已落地到哪一步、还剩哪些关闭项。
+3. **不要**把已完成的 WP 重派一遍，**不要**再从「CreateGoal：Goal 1 + 空 planner」开始——Goal 1 早已开工。**不要**启动 Goal 2。
+4. 未合入 `main` 的实现工作只在 `cursor/goal1-unblock-a073`（PR #7）上进行。`cursor/soul-goal1-7b1c` 是历史祖先，不是合入路径。
+5. 本 PR 合入 `main` 之后，新会话的第一件事是读 `docs/STATUS.md` 与 `docs/PLAN_INDEX.md`。`main` 那时已有应用代码；不要再写「main 不能安装」。

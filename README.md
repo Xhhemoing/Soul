@@ -1,40 +1,48 @@
 # Soul
 
-灵魂级个人软件。根据你授权的社交档案、电脑操作和日常记录，在 Windows 本机复刻电子版的你——人格、记忆、心理倾向、人脉图——并辅助处理电脑事务、起草回复、分析人与事。本机采集与浅层处理；云端深度分析默认关闭。行为数据可在授权下用于行为预测研究。
+桌面端本地优先的个人关系图谱。v0.1 的产品锁、算法冻结、工作包合同与计划入口在 [`docs/PLAN_INDEX.md`](docs/PLAN_INDEX.md)。
 
-## 这个仓库现在有什么
+本仓库 **同时** 承载：
 
-| 位置 | 内容 | 能不能装出来用 |
-|---|---|---|
-| `main`（你正在看的这条线） | 计划权威面 `docs/`（产品锁、拍板、验收矩阵、schema、安全规范）+ 已冻结的灵魂层算法 crate：`crates/soul-algo-tie`（人脉关系强度 T4D）、`crates/soul-algo-trait`（特质轴 A0 / A1 / A2 / A3）。都是纯函数：不读时钟、不碰存储、不出网 | **不能。** `main` 上没有桌面壳、没有主库、没有安装包 |
-| `cursor/soul-goal1-7b1c` | Goal 1 实现主干：Tauri 桌面壳、加密主库、导入、人脉图、记忆、审计、策略面、安装 smoke。WP01–WP11 与 WP13 已落地 | 该分支上可以，但尚未合回 `main`，hosted CI 与作者 Win11 手动清单也尚未全绿 |
+- 计划面：`docs/GOAL1_PLAN.md`、`docs/GOAL2_PLAN.md`、`docs/algorithms/` 冻结、D1–D60。
+- 代码面：Tauri 2 桌面壳、SQLCipher 本地仓、图构建（T4D / A2 / G1+ / G3）、导入与会话。
 
-一句话：**计划已冻结，算法已冻结，应用在 Goal 1 分支上，`main` 还装不出东西。** 三件事互相独立，进度以 [`docs/STATUS.md`](docs/STATUS.md) 为准。
+主集成路径是 [PR #7](https://github.com/Xhhemoing/Soul/pull/7)（`cursor/goal1-unblock-a073`）。合入后 `main` 不再是「只有计划文档、没有可安装应用」。
 
-## 30 秒找到权威文件
+## 现在能做什么 / 还不能做什么
 
-先看 [`docs/PLAN_INDEX.md`](docs/PLAN_INDEX.md)——它是「哪件事以哪份文件为准」的索引。急的话按这个顺序读：
+**能：**
 
-- 产品锁定（唯一产品权威）：[`docs/PRODUCT_LOCK.md`](docs/PRODUCT_LOCK.md)
-- 自主拍板：[`docs/DECISIONS.md`](docs/DECISIONS.md)
-- 算法冻结（人脉 T4D / 特质 A0）：[`docs/algorithms/DECISION.md`](docs/algorithms/DECISION.md)
-- 正式开工提示词与验收矩阵：[`docs/FORMAL_WORK_PROMPT.md`](docs/FORMAL_WORK_PROMPT.md)
-- 进度：[`docs/STATUS.md`](docs/STATUS.md)
-- 安全规范：[`docs/SECURITY.md`](docs/SECURITY.md)
-- 数据契约：[`docs/schemas/`](docs/schemas/)
-- Goal 2（Goal 1 关闭后再开）：[`docs/GOAL2_POLISH_PROMPT.md`](docs/GOAL2_POLISH_PROMPT.md)
-- 计划验证提示词（**历史存档**，勿当新工单）：[`docs/PLAN_VERIFY_PROMPT.md`](docs/PLAN_VERIFY_PROMPT.md)
-- 三轮双模型模板：[`docs/templates/THREE_ROUND_DUAL_SCAN.md`](docs/templates/THREE_ROUND_DUAL_SCAN.md)
+- 在作者 Win11 上按 `docs/STATUS.md` 的安装清单编译并打开桌面壳（需本机 SQLCipher / WebView2 / 证书；本仓库不代装系统依赖）。
+- 跑 Goal 1 工作包对应的离线单测（`soul-graph` / `soul-draft` / `soul-profile` / `soul-schema` 等）。
 
-## 跑一下现有的算法 crate
+**不能（产品锁，不是缺实现）：**
+
+- 没有云同步、没有账号、没有联网模型、没有自动发消息。
+- 没有「你的早晨」本地墙钟、没有窗口标题、没有预取、没有从应用猜性格。
+
+**诚实限制：**
+
+- 作者 Win11 全量安装清单 **尚未** 全部打勾（见 `docs/STATUS.md`）。
+- GitHub hosted Actions 已耗尽免费分钟，空跑 runner 不能当证据。
+- 本 Linux 云代理环境 **不能** 编译 `soul-app`（缺 webkit gtk）——那不是产品缺口。
+
+## 文档从哪读
+
+| 问题 | 文档 |
+|------|------|
+| 产品锁 / 算法冻结 | [`docs/PRODUCT_LOCK.md`](docs/PRODUCT_LOCK.md)、[`docs/algorithms/DECISION.md`](docs/algorithms/DECISION.md) |
+| 计划入口 / 仓库拓扑 | [`docs/PLAN_INDEX.md`](docs/PLAN_INDEX.md) |
+| Goal 1 / Goal 2 工作包 | [`docs/GOAL1_PLAN.md`](docs/GOAL1_PLAN.md)、[`docs/GOAL2_PLAN.md`](docs/GOAL2_PLAN.md) |
+| 当前实现状态 | [`docs/STATUS.md`](docs/STATUS.md) |
+| 形式化开工 | [`docs/FORMAL_WORK_PROMPT.md`](docs/FORMAL_WORK_PROMPT.md) |
+| 安全边界 | [`docs/SECURITY.md`](docs/SECURITY.md) |
+
+## 构建（开发者）
 
 ```bash
-cargo test --workspace          # Rust 1.83，无外网依赖，无 unsafe
-cargo run -p soul-algo-tie --example matrix   # 打印 T4/T4D 的判档矩阵
+cargo test --workspace --all-targets --offline   # 在能编 soul-app 的机器上
+cargo run -p xtask -- schema-freeze --check
 ```
 
-这两条只验证冻结算法本身。应用级验收（安装、托盘、导入、遗忘、出网）在 Goal 1 分支上，门禁清单见 `docs/FORMAL_WORK_PROMPT.md`。
-
-## 边界
-
-不是通用聊天壳，不是虚拟恋人，不抓取他人社交账号，不默认上传原始记录，不做临床诊断。v0.1 只起草不发送、只预览不写文件、采集默认关。完整清单在 `docs/PRODUCT_LOCK.md`。
+Linux CI / 无 webkit 的机器请跳过 `soul-app`，只跑算法与 schema crate。

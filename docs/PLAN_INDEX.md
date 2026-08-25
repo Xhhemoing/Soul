@@ -26,15 +26,16 @@
 | 判档阈值到底是多少 | 只有两处：`algorithms/DECISION.md` 第 3 节常量表（语义）与 `crates/soul-algo-tie` 常量模块（取值）。产品锁 / 拍板 / FORMAL / STATUS / README / PLAN_INDEX / SECURITY 只写常量名。`algorithms/COPY_ZH.md` 与 `REJECTED.md` 允许引用常量表已钉的数字（D60） |
 | 加密、密钥、遗忘、审计的规范 | `SECURITY.md` |
 | 关系强度为什么是这个档 | `algorithms/DECISION.md` 第 3 节；中文话术在 `algorithms/COPY_ZH.md`；被否决的候选在 `algorithms/REJECTED.md` |
-| Goal 1 的 DAG 与实现细节 | `origin/cursor/soul-goal1-7b1c:docs/GOAL1_PLAN.md`（只读对照，尚未合入 `main`） |
-| 已知阻塞 | `origin/cursor/blockers-analysis-a073:docs/BLOCKERS.md`（`BLOCKERS_FROZEN`）。**仍在 PR #6，尚未合入 `main`，本树也没有这份文件**；本计划 PR 不整份拷贝它。按 `STATUS.md` 的合入顺序，PR #6 在本 PR 之后合 |
+| Goal 1 的 DAG 与实现细节 | [`GOAL1_PLAN.md`](GOAL1_PLAN.md)（本树已有；历史对照仍可看 `origin/cursor/soul-goal1-7b1c`，那不是合入路径） |
+| 已知阻塞 | `origin/cursor/blockers-analysis-a073:docs/BLOCKERS.md`（`BLOCKERS_FROZEN`）。**仍在 PR #6，尚未合入 `main`，本树也没有这份文件**；不要整份拷贝它。按 `STATUS.md` 的合入顺序，PR #6 在 PR #7 之后合 |
 | Goal 2 | `GOAL2_POLISH_PROMPT.md`。Goal 1 关闭前不要打开 |
 
 ## 三、仓库拓扑（读代码前先看这三行）
 
-- `main`：计划权威面 `docs/` + 冻结算法 crate `crates/soul-algo-tie`（T4D）、`crates/soul-algo-trait`（A0/A1/A2/A3）。**没有可安装的应用。**
-- `cursor/soul-goal1-7b1c`：Goal 1 实现主干（桌面壳、加密库、导入、图谱、记忆、审计、安装 smoke）。唯一实现线，尚未合回 `main`。
-- 计划冻结 ≠ Goal 1 关闭 ≠ `main` 已有应用。三件事在 `STATUS.md` 里分开写。
+- `cursor/goal1-unblock-a073`（PR #7）：**现行唯一实现主干**。计划权威面 + 冻结算法 crate + 可安装应用（桌面壳、加密库、导入、图谱、记忆、审计、安装 smoke）。合入路径是本 PR，不是 PR #1 / #2 / #4。
+- `main`：合入 PR #7 **之前**只有计划权威面 + 冻结算法 crate，没有可安装应用。合入之后这条描述作废。
+- `cursor/soul-goal1-7b1c`：历史 Goal 1 HEAD，是本分支的祖先，**不是合入路径**。
+- 计划冻结 ≠ Goal 1 关闭 ≠ `main` 已有应用。三件事在 `STATUS.md` 里分开写。本 PR 合入后第三件变为真，前两件仍然分开。
 
 ## 四、不是权威（别拿它当依据）
 

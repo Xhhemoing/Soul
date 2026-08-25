@@ -1,0 +1,45 @@
+[package]
+name = "soulcore"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Soul orchestration core. WP01 ships configuration defaults and a headless entry point only."
+
+# `soul-egress` is here because this crate owns the one E1 path, and it is the
+# only way an HTTP client enters soulcore's graph — `xtask e0-audit` and
+# `deny.toml` both check that it stays the only way. Everything that decides
+# whether a request may be made is in `soul-policy`, which has no HTTP client
+# of its own.
+[dependencies]
+soul-schema = { workspace = true }
+soul-store-api = { workspace = true }
+soul-store = { workspace = true }
+soul-policy = { workspace = true }
+soul-egress = { workspace = true }
+soul-graph = { workspace = true }
+soul-import = { workspace = true }
+soul-profile = { workspace = true }
+soul-memory = { workspace = true }
+soul-collect = { workspace = true }
+soul-draft = { workspace = true }
+soul-fileplan = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+soul-testkit = { workspace = true }
+tempfile = { workspace = true }
+# AC-24 through the product session, which needs the store's `fail_point!`
+# sites to be live. They are compiled out unless something in the build turns
+# the feature on, and this is a dev-dependency for exactly that reason: a
+# shipped `soulcore` enables no failpoints, and `cargo test -p soulcore`
+# unifies the feature into `soul-store` the same way `soul-policy` does.
+fail = { workspace = true, features = ["failpoints"] }
+
+[[bin]]
+name = "soul-headless"
+path = "src/bin/soul-headless.rs"

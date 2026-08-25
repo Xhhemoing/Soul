@@ -1,0 +1,22 @@
+[package]
+name = "soul-store-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Storage boundary for Soul: traits, conformance suite, and an in-memory fake. No real database here."
+
+[dependencies]
+soul-schema = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+# FakeStore seals for real, so "forgetting destroys the plaintext" is a
+# demonstrated property rather than a bookkeeping flag.
+chacha20poly1305 = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+rusqlite = { workspace = true, features = ["bundled-sqlcipher-vendored-openssl"] }
