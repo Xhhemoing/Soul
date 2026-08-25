@@ -208,9 +208,9 @@ function defaultIndexedDb(): IDBFactory | undefined {
  */
 export function createRepository(
   storage: Storage | undefined = defaultStorage(),
-  factory: IDBFactory | undefined = defaultIndexedDb(),
+  factory: IDBFactory | null | undefined = defaultIndexedDb(),
 ): Repository {
-  if (factory === undefined) return createLocalStateRepository(storage);
+  if (factory === undefined || factory === null) return createLocalStateRepository(storage);
   return createBeadV1Repository(factory, { legacyStorage: storage });
 }
 

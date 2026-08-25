@@ -85,6 +85,18 @@ function isSize(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
+/**
+ * `instanceof` is bound to a realm and a structured clone is not: the value
+ * IndexedDB hands back is a genuine `Int16Array`, but not always one built from
+ * the same constructor this module closed over. The brand check is the portable
+ * question. A plain array is still refused — the contract says typed array, and
+ * loosening that would let a hand-written JSON blob in through the same door.
+ */
+function asInt16Array(value: unknown): Int16Array | null {
+  if (Object.prototype.toString.call(value) !== "[object Int16Array]") return null;
+  return Int16Array.from(value as ArrayLike<number>);
+}
+
 function toProvenance(value: unknown): PatternProvenance | null {
   if (typeof value !== "object" || value === null) return null;
   const candidate = value as Record<string, unknown>;
@@ -119,9 +131,8 @@ export function toPatternDoc(value: unknown): PatternDoc | null {
   const { width, height } = candidate;
   if (!isSize(width) || !isSize(height)) return null;
 
-  const cells = candidate["cells"];
-  if (!(cells instanceof Int16Array)) return null;
-  if (cells.length !== width * height) return null;
+  const cells = asInt16Array(candidate["cells"]);
+  if (cells === null || cells.length !== width * height) return null;
   for (const cell of cells) {
     if (cell === EMPTY_CELL) continue;
     if (cell < 0 || cell >= palette.entries.length) return null;
@@ -133,7 +144,7 @@ export function toPatternDoc(value: unknown): PatternDoc | null {
     paletteId,
     width,
     height,
-    cells: Int16Array.from(cells),
+    cells,
     ...(provenance === null ? {} : { provenance }),
   };
 }
