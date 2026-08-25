@@ -77,12 +77,20 @@ function defaultLines(snapshot: ConfigSnapshot): readonly DefaultLine[] {
     },
     {
       // Two independent sentences on purpose: authorizing a directory is what
-      // lets Soul read it, and it is not what lets Soul write. This version has
-      // no write path at all, so a note that reads as "点头之后就能写" would be
-      // false the moment the user authorizes anything.
+      // lets the scanner read it, and it is not what lets Soul write. This
+      // version has no write path into a scanned directory at all, so a note
+      // that reads as "点头之后就能写" would be false the moment the user
+      // authorizes anything.
+      //
+      // Both halves are scoped to the directory scanner, which is the only
+      // thing this row counts. Said of Soul as a whole either half would be
+      // false in this same build: `/import` reads the one file the user hands
+      // it through a file dialog with no root on this list, and Soul reads and
+      // writes its own config, keys and database on every launch. Same
+      // narrowing as the Files empty state.
       name: "已授权目录",
       state: `${snapshot.authorized_root_count} 个`,
-      note: "没有你点头，Soul 不看任何目录。这一版即使授权了也只做只读扫描与计划预览，不会写任何文件。",
+      note: "没有你点头，Soul 的目录扫描不看任何目录；这一版即使授权了，扫描也只做只读扫描与计划预览，不会写、移动、重命名或删除被扫的任何文件。授权管的只是目录扫描，不是 Soul 的全部：导入页里你自己挑的那一个文件不用授权目录就能读，Soul 自己的配置与数据库也一直在本机读写。",
     },
   ];
 }

@@ -79,9 +79,9 @@ describe("首次向导", () => {
 
   /**
    * The 已授权目录 note must not read as "点头之后 Soul 就能写文件了". Both halves
-   * have to hold on their own: nothing is read without authorization, and this
-   * version writes nothing even after it — the same read-only promise
-   * `READ_ONLY_NOTICE` makes on 文件整理.
+   * have to hold on their own: the scanner reads nothing without authorization,
+   * and this version writes nothing into a scanned directory even after it —
+   * the same read-only promise `READ_ONLY_NOTICE` makes on 文件整理.
    */
   it("授权目录那一行不会暗示点头之后就能写文件", () => {
     renderWizard();
@@ -89,8 +89,27 @@ describe("首次向导", () => {
     const note = screen.getByTestId("wizard-note-已授权目录");
     expect(note).toHaveTextContent("不看任何目录");
     expect(note).toHaveTextContent("只做只读扫描与计划预览");
-    expect(note).toHaveTextContent("不会写任何文件");
+    expect(note).toHaveTextContent("不会写、移动、重命名或删除被扫的任何文件");
     expect(note.textContent).not.toContain("没有你点头，Soul 不看任何目录，也不会写任何文件。");
+  });
+
+  /**
+   * Neither half may be said of Soul as a whole. Without a root on this list
+   * this build still reads the file the user picks on /import and still reads
+   * and writes its own config, keys and database — so an unqualified
+   * 「Soul 不看任何目录」/「不会写任何文件」 is false on the screen whose whole
+   * job is telling a first-run user what is off. The scanner is what the row
+   * counts and the scanner is what the sentence may promise about.
+   */
+  it("授权目录那一行把读与写都限定在目录扫描器上，并点名两个例外", () => {
+    renderWizard();
+
+    const note = screen.getByTestId("wizard-note-已授权目录");
+    expect(note).toHaveTextContent("Soul 的目录扫描不看任何目录");
+    expect(note).toHaveTextContent("导入页");
+    expect(note).toHaveTextContent("自己的配置与数据库");
+    expect(note.textContent).not.toContain("没有你点头，Soul 不看任何目录。");
+    expect(note.textContent).not.toContain("不会写任何文件");
   });
 
   /**
