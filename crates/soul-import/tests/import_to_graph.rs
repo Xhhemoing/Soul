@@ -153,23 +153,37 @@ fn what_the_user_says_to_a_group_is_attributed_to_nobody() {
 /// one keystroke. Nothing in the export says who read it, so nothing is
 /// credited. What the peers said still is: each of their messages names its
 /// own sender, and produces exactly one incoming row for that person.
+///
+/// AC-34 asks the same question twice, and the second half is the one that
+/// survives a redesign: even if the fan-out never comes back as rows, the
+/// user's line must not quietly bump the last-contact instant of everybody who
+/// had spoken there. That instant is what the app reads to say how long it has
+/// been since you and this person were in touch, so borrowing the owner's
+/// timestamp would make six dormant ties look freshly tended.
 #[test]
 fn an_owner_group_message_does_not_write_one_outgoing_row_per_speaker() {
     const SPEAKERS: usize = 6;
+    /// Later than every peer line, so a leak shows up as the newest instant on
+    /// the edge rather than being masked by traffic of the peer's own.
+    const OWNER_SENT_AT: &str = "2026-08-20T10:00:00Z";
+
+    fn peer_spoke_at(speaker: usize) -> String {
+        format!("2026-08-20T09:{speaker:02}:00Z")
+    }
 
     let mut lines = vec![
         r#"{"type":"header","format":"soul-import-v1","version":1,"exported_at":"2026-08-24T08:00:00Z"}"#
             .to_owned(),
     ];
     for speaker in 1..=SPEAKERS {
+        let occurred_at = peer_spoke_at(speaker);
         lines.push(format!(
-            r#"{{"type":"message","id":"g-{speaker:04}","occurred_at":"2026-08-20T09:{speaker:02}:00Z","sender_scope":"third_party","conversation_id":"g-01","sender_id":"u-p{speaker}","text":"收到"}}"#,
+            r#"{{"type":"message","id":"g-{speaker:04}","occurred_at":"{occurred_at}","sender_scope":"third_party","conversation_id":"g-01","sender_id":"u-p{speaker}","text":"收到"}}"#,
         ));
     }
-    lines.push(
-        r#"{"type":"message","id":"g-0100","occurred_at":"2026-08-20T10:00:00Z","sender_scope":"self","conversation_id":"g-01","sender_id":"u-self","text":"那就按这个来"}"#
-            .to_owned(),
-    );
+    lines.push(format!(
+        r#"{{"type":"message","id":"g-0100","occurred_at":"{OWNER_SENT_AT}","sender_scope":"self","conversation_id":"g-01","sender_id":"u-self","text":"那就按这个来"}}"#,
+    ));
 
     let staged = soul_import::soul_import_v1::parse(&lines.join("\n")).expect("valid");
     assert!(
@@ -237,6 +251,43 @@ fn an_owner_group_message_does_not_write_one_outgoing_row_per_speaker() {
         .edges
         .iter()
         .all(|edge| edge.tie_strength.outgoing_count == 0));
+
+    // AC-34's second Then. Nobody's last contact moved to 10:00: each of the
+    // six is still last heard from at the minute they themselves spoke.
+    for speaker in 1..=SPEAKERS {
+        let peer = contact_for(&store, &format!("u-p{speaker}"));
+        let spoke_at = peer_spoke_at(speaker);
+        let edges = graph.edges_for(peer);
+        assert_eq!(edges.len(), 1, "u-p{speaker} shares one tie with the user");
+        assert_eq!(
+            edges[0].tie_strength.last_contact_utc.as_str(),
+            spoke_at,
+            "u-p{speaker} was last heard from at {spoke_at}; the owner typing at \
+             {OWNER_SENT_AT} is not contact with them",
+        );
+        assert_eq!(
+            graph
+                .node(peer)
+                .unwrap_or_else(|| panic!("u-p{speaker} is in the graph"))
+                .last_contact_utc
+                .as_ref()
+                .map(soul_schema::common::Timestamp::as_str),
+            Some(spoke_at.as_str()),
+            "the node reads the same instant the edge carries",
+        );
+        assert!(
+            edges[0].tie_strength.last_direct_contact_utc.is_none(),
+            "the two have never spoken one to one",
+        );
+    }
+    assert!(
+        graph.edges.iter().all(|edge| {
+            edge.tie_strength.first_contact_utc.as_str() != OWNER_SENT_AT
+                && edge.tie_strength.last_contact_utc.as_str() != OWNER_SENT_AT
+        }),
+        "the instant the user wrote at belongs to no edge: the message is an \
+         event, and events are not evidence of contact with a particular person",
+    );
 }
 
 /// The contact the file called `handle`, by the digest the importer stored.
