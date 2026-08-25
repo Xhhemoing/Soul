@@ -49,7 +49,7 @@ export const TEMPLATE_NOTICE = "本次没有用模型：草稿由本机确定性
 
 /** `soulcore::commands::draft::E1_PLAN_NOTICE`, checked by `contract.test.ts`. */
 export const E1_PLAN_NOTICE =
-  "确认之后，只有下面这些内容会发到你自己配置的模型端点，用来生成草稿。第三人正文默认已占位。草稿生成之后仍然由你自己决定要不要发出去，Soul 不会替你发送。";
+  "确认之后，会发到你自己配置的模型端点的是这些：模型名、一段固定的系统指令，以及一段引用材料——里面是你自己的档案摘要（口吻、口吻来源、有证据支持的要点，和「工作假设，非临床结论」那句），加上你粘贴的这一段。第三人正文默认已占位，只有你二次确认「这一条按原文带上」时才按原文发出，而且只这一次；姓名与账号两种情况下都占位。下面的段数、计划哈希与准备编号是给你核对用的，不在发出去的内容里。草稿生成之后仍然由你自己决定要不要发出去，Soul 不会替你发送。";
 
 /** `soulcore::commands::fileplan::READ_ONLY_NOTICE`, checked the same way. */
 export const READ_ONLY_NOTICE =
@@ -232,7 +232,7 @@ export function aTemplateDraft(overrides: Partial<Draft> = {}): Draft {
 
 /** `soulcore::commands::memory::FORGET_NOTICE`, checked by `contract.test.ts`. */
 export const FORGET_NOTICE =
-  "遗忘销毁的是这条记忆的内容密钥：正文从此打不开，行会留成一块墓碑，引用过它的推断会被标成失去依据。这一步不可撤销，也不写任何文件。这不是把磁盘块擦干净：SSD 上可能还留着旧密文，只是没有密钥再也打不开。";
+  "遗忘销毁的是这条记忆的内容密钥：正文从此打不开，行会留成一块墓碑，引用过它的推断会被标成失去依据。这一步不可撤销。它不动 Soul 数据目录以外的任何文件，但 Soul 自己的加密库要写：密钥行和密文行被删掉，墓碑、失据标记和一条审计记录被写进去，数据库文件和它的日志都会跟着变。这不是把磁盘块擦干净：SSD 上可能还留着旧密文，只是没有密钥再也打不开。";
 
 /** `soulcore::commands::store::RESEARCH_PREVIEW_NOTICE`. */
 export const RESEARCH_PREVIEW_NOTICE =
@@ -957,12 +957,24 @@ export function installFakeCore(
   const files = options.files ?? NO_ROOTS;
   const questions = options.questions ?? QUESTIONS;
   const calls: RecordedCall[] = [];
-  /** The three pieces of state the double keeps, because the core keeps them
-   *  too: a consent ledger, an endpoint that lives for one run, and a profile
-   *  that a questionnaire or a correction writes to and the next read sees. */
+  /** The four pieces of state the double keeps, because the core keeps them
+   *  too: a consent ledger, an endpoint that lives for one run, a profile that
+   *  a questionnaire or a correction writes to and the next read sees, and the
+   *  one forget the user has been quoted a price for. */
   let collect = options.collect ?? COLLECT_OFF;
   let configuration = snapshot;
   let profile: ProfileScreen | null = null;
+  /**
+   * `Session::held_forget`, as far as this page can tell.
+   *
+   * The core issues a preview, remembers it, and matches both halves of the
+   * confirmation against it before taking it: a wrong id leaves the preview
+   * standing, and the forget that runs spends it. A double that only compared
+   * a constant could not tell a screen that keeps the price the user read from
+   * one that throws it away on a refusal, nor a core that consumes a spent
+   * preview from one that would run the same forget twice.
+   */
+  let heldForget: { readonly preview_id: string; readonly memory_id: string } | null = null;
 
   /** Read on demand, so a `profile` option that refuses still refuses. */
   const profileNow = (): ProfileScreen => {
@@ -1126,22 +1138,38 @@ export function installFakeCore(
         };
         return (options.editing ?? changed)(asked.memoryId ?? "", asked.change);
       }
-      case "preview_forget":
-        return (options.pricing ?? (() => aForgetPreview()))(
-          (payload as { memoryId?: string }).memoryId ?? "",
-        );
+      case "preview_forget": {
+        const memoryId = (payload as { memoryId?: string }).memoryId ?? "";
+        // What this core is holding is always the id it issues, `PREVIEW_ID`,
+        // for the memory it was asked about. `pricing` shapes the document the
+        // screen is handed, so a test hands the screen a different id to say
+        // that the panel is quoting a preview the core is not holding — a
+        // stale window, or a WebView echoing the id it kept rather than the
+        // one it was shown. Asking again replaces the held one.
+        heldForget = { preview_id: PREVIEW_ID, memory_id: memoryId };
+        return (options.pricing ?? (() => aForgetPreview()))(memoryId);
+      }
       case "forget_memory": {
         const confirmation = (payload as {
           confirmation: { preview_id: string; memory_id: string };
         }).confirmation;
         if (options.forgetting !== undefined) return options.forgetting(confirmation);
-        // The core holds the preview it issued and refuses anything else.
-        if (confirmation.preview_id !== PREVIEW_ID) {
+        // Match both halves before taking, the way `Session::forget_memory`
+        // does. A confirmation that names the wrong preview or the wrong
+        // memory costs the click and leaves the price the user read standing;
+        // the one that runs spends it, so a replay reaches nothing.
+        const held = heldForget;
+        if (
+          held === null ||
+          held.preview_id !== confirmation.preview_id ||
+          held.memory_id !== confirmation.memory_id
+        ) {
           throw {
             reason_code: "PLAN_HASH_MISMATCH",
             explanation: "这次遗忘对不上你刚才看过的那份影响面预览。什么都没有销毁。",
           };
         }
+        heldForget = null;
         return aForgetReceipt({ memory_id: confirmation.memory_id });
       }
       case "research_preview":

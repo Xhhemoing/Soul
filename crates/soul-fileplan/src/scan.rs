@@ -7,7 +7,10 @@
 //! file, truncated one, or touched a timestamp. It is deliberately computed by
 //! the same code on both sides: a snapshot the caller could not reproduce would
 //! only prove that this module agrees with itself, so
-//! [`DirectorySnapshot::of`] is public and the tests take their own.
+//! [`DirectorySnapshot::of`] is public and the tests take their own. Both the
+//! snapshot and the plan walk are bounded by the same [`ScanLimits`], and both
+//! say when a limit bit: a directory large enough to hang the preview is
+//! large enough to hang the proof.
 //!
 //! Two things the walk will not do:
 //!
@@ -148,12 +151,14 @@ pub struct SkippedEntry {
     pub reason: SkipReason,
 }
 
-/// What a directory looked like at one instant.
+/// What a directory looked like at one instant, as far as the limits let it
+/// look.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DirectorySnapshot {
     hash: String,
     entries: usize,
     bytes: u64,
+    truncated: bool,
 }
 
 impl DirectorySnapshot {
@@ -162,17 +167,34 @@ impl DirectorySnapshot {
     /// Reads directories, never files. Unreadable entries are folded into the
     /// hash as unreadable, so a directory that becomes unreadable during a scan
     /// changes the snapshot rather than disappearing from it.
+    ///
+    /// Bounded by both halves of [`ScanLimits`], for the reason the plan walk
+    /// is: this runs twice per preview, with the session locked, and a
+    /// directory with a few hundred thousand entries in it would otherwise
+    /// mean an unbounded list built twice before the user sees anything. When
+    /// [`ScanLimits::max_entries`] stops the walk the snapshot says so — in
+    /// [`DirectorySnapshot::truncated`] and inside the hash, so that a partial
+    /// view can never hash equal to the complete one it is a prefix of.
     pub fn of(root: &Path, limits: ScanLimits) -> DirectorySnapshot {
         let mut lines: Vec<String> = Vec::new();
         let mut bytes = 0u64;
+        let mut truncated = false;
         let mut pending = vec![(root.to_path_buf(), String::new(), 0usize)];
 
-        while let Some((directory, prefix, depth)) = pending.pop() {
+        'walk: while let Some((directory, prefix, depth)) = pending.pop() {
+            if lines.len() >= limits.max_entries {
+                truncated = true;
+                break 'walk;
+            }
             let Ok(read) = std::fs::read_dir(&directory) else {
                 lines.push(format!("{prefix}\u{0}unreadable-dir"));
                 continue;
             };
             for entry in read {
+                if lines.len() >= limits.max_entries {
+                    truncated = true;
+                    break 'walk;
+                }
                 let Ok(entry) = entry else {
                     lines.push(format!("{prefix}\u{0}unreadable-entry"));
                     continue;
@@ -221,10 +243,14 @@ impl DirectorySnapshot {
             digest.update(line.as_bytes());
             digest.update([b'\n']);
         }
+        if truncated {
+            digest.update("\u{0}truncated\n".as_bytes());
+        }
         DirectorySnapshot {
             hash: hex::encode(digest.finalize()),
             entries,
             bytes,
+            truncated,
         }
     }
 
@@ -238,6 +264,14 @@ impl DirectorySnapshot {
 
     pub fn bytes(&self) -> u64 {
         self.bytes
+    }
+
+    /// Whether [`ScanLimits::max_entries`] cut this snapshot short. A truncated
+    /// snapshot still compares equal to another truncated snapshot of the same
+    /// unchanged directory; what it cannot say is anything about what lies past
+    /// the limit.
+    pub fn truncated(&self) -> bool {
+        self.truncated
     }
 }
 
@@ -343,7 +377,7 @@ pub fn scan(
     let mut truncated = false;
     let mut pending = vec![(root.clone(), String::new(), 0usize)];
 
-    while let Some((directory, prefix, depth)) = pending.pop() {
+    'walk: while let Some((directory, prefix, depth)) = pending.pop() {
         let Ok(read) = std::fs::read_dir(&directory) else {
             skipped.push(SkippedEntry {
                 shown: shorten(&prefix),
@@ -362,13 +396,17 @@ pub fn scan(
             let name = entry.file_name().to_string_lossy().into_owned();
             let relative = join_relative(&prefix, &name);
 
+            // The walk ends here rather than reading on to name every entry it
+            // is not going to show: past the limit, the skipped list is the
+            // same unbounded list under another name, and the entries already
+            // collected are the same either way.
             if entries.len() >= limits.max_entries {
                 truncated = true;
                 skipped.push(SkippedEntry {
                     shown: shorten(&relative),
                     reason: SkipReason::EntryLimit,
                 });
-                continue;
+                break 'walk;
             }
 
             let untrusted = UntrustedText::new(name.clone());
@@ -448,6 +486,11 @@ pub fn scan(
     skipped.sort_by(|a, b| (&a.shown, a.reason.as_str()).cmp(&(&b.shown, b.reason.as_str())));
 
     let after = DirectorySnapshot::of(&root, limits);
+    // A snapshot can hit the limit where the plan walk did not — it counts the
+    // links and the unreadable entries the walk only skips — and a preview
+    // whose proof of read-only covers part of the directory is a truncated
+    // preview.
+    let truncated = truncated || before.truncated() || after.truncated();
 
     Ok(DirectoryScan {
         root_display: root.to_string_lossy().into_owned(),

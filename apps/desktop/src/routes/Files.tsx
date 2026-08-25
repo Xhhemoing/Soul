@@ -119,8 +119,14 @@ export function Files(): React.JSX.Element {
       <section className="panel" aria-labelledby="roots-heading">
         <h2 id="roots-heading">已授权的目录</h2>
         {view === null || view.roots.length === 0 ? (
+          // What authorization gates is the directory scanner, and only that.
+          // This build already reads two other things without a root on this
+          // list: `/import` reads the one file the user hands it through a file
+          // dialog, and Soul reads its own config and store on every launch. A
+          // note claiming an empty list means nothing on the machine is
+          // readable would be false on both counts.
           <p className="muted" data-testid="no-roots">
-            还没有授权任何目录。授权之前，Soul 读不到你机器上的任何文件。
+            还没有授权任何目录。没有你点头，Soul 的目录扫描不看任何目录。要授权的是这台目录扫描器，不是 Soul 的全部：导入页里你自己挑的那一个文件不用授权目录就能读，Soul 自己的配置与数据库也一直在读。
           </p>
         ) : (
           <ul className="facts">

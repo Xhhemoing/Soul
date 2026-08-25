@@ -314,6 +314,223 @@ fn an_endpoint_that_redirects_elsewhere_is_refused_and_the_target_is_never_conta
     drop(keep);
 }
 
+/// `SECURITY.md`: an E1 configuration change invalidates the plan hash.
+///
+/// The reachable shape is mundane. A user prepares a generation, leaves the
+/// drafting page to fix the address in 设置, comes back and presses 生成 — and
+/// before the origin was part of what `e1_plan` hashes, the approval they were
+/// still holding described a request to the first address and sent it to the
+/// second. `NetGuard` is no defence here: it authorizes whatever is configured
+/// *now*, so the request is a well-formed E1 request to an origin the user
+/// never saw a plan for.
+///
+/// Both addresses are real loopback servers. The two zeroes are the test: the
+/// refusal has to happen before a token is minted and before a socket is
+/// opened, not after the body has already been offered to somebody.
+#[test]
+fn an_endpoint_saved_after_the_plan_voids_the_approval_and_neither_address_hears_it() {
+    let (keep, directory) = scratch();
+    let described_against = MockLlm::start().expect("the endpoint the plan was described against");
+    let saved_afterwards = MockLlm::start().expect("the endpoint the user saved next");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&described_against.base_url())
+        .expect("a loopback address is an address");
+
+    let plan = session
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
+        .expect("a paste can always be described");
+    let stale = plan.approval();
+
+    // 设置, mid-flight. Nothing is contacted by typing an address.
+    session
+        .set_user_endpoint(&saved_afterwards.base_url())
+        .expect("a loopback address is an address");
+
+    let refusal = session
+        .generate_draft(&stale)
+        .expect_err("the approval describes a request to somewhere else");
+    assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+    assert!(
+        !refusal.explanation.is_empty(),
+        "the drafting panel is shown a blank refusal",
+    );
+    assert_eq!(
+        described_against.request_count(),
+        0,
+        "the address the plan named was contacted after it stopped being current",
+    );
+    assert_eq!(
+        saved_afterwards.request_count(),
+        0,
+        "a plan approved for another address was sent to this one",
+    );
+
+    // AC-23: being refused is a thing that happened, and the chain says so
+    // without writing down the paste or either port number.
+    let chain = session.audit().expect("the store opened");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    let denied = chain.entries.last().expect("the refusal was recorded");
+    assert_eq!(denied.decision, "denied");
+    assert_eq!(denied.reason_code.as_deref(), Some("PLAN_HASH_MISMATCH"));
+    assert!(denied.follows_previous);
+    let played = serde_json::to_string(&chain).expect("serialize the chain");
+    for prose in [
+        "周五的场地",
+        "直接过来",
+        &described_against.port().to_string(),
+        &saved_afterwards.port().to_string(),
+    ] {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
+    }
+
+    // And this is invalidation, not breakage: preparing again against the
+    // address that is now current works, and goes there exactly once.
+    draft_through_the_endpoint(&mut session).expect("the current endpoint answers");
+    assert_eq!(described_against.request_count(), 0);
+    assert_eq!(saved_afterwards.request_count(), 1);
+    assert_eq!(saved_afterwards.requests()[0].path, "/v1/chat/completions");
+    drop(keep);
+}
+
+/// Taking the address away voids a plan described against it, too.
+///
+/// The sibling of the test above, and the one a user reaches by pressing 清除
+/// rather than by typing a second address. `E1_NOT_CONFIGURED` would also stop
+/// this, but it stops it one layer later — after a token has been minted
+/// against a plan that no longer describes anything — so the refusal asserted
+/// here is the earlier one.
+#[test]
+fn clearing_the_endpoint_after_the_plan_voids_the_approval_too() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the plan was described against");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let stale = session
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
+        .expect("a paste can always be described")
+        .approval();
+    session.clear_user_endpoint();
+
+    let refusal = session
+        .generate_draft(&stale)
+        .expect_err("the approval named an address this session no longer has");
+    assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+    assert_eq!(endpoint.request_count(), 0);
+    drop(keep);
+}
+
+/// The rest of `SECURITY.md`'s invalidation rule: the prepared body is *gone*
+/// after an endpoint change, not merely unapprovable.
+///
+/// The two tests above check the backstop, and it is a real one — the origin
+/// is part of what `e1_plan` hashes, so a stale approval is refused before a
+/// token is minted. What a hash check cannot do is stop a body that was
+/// redacted and described for one destination from sitting in the session
+/// waiting for an approval that can now only be turned down. So the change is
+/// made at the address form rather than at the consume: the preparation is
+/// dropped the moment the user saves somewhere else, and the only way forward
+/// is a second `prepare_draft` describing the address that is now current.
+///
+/// `discard_draft` answers whether there was anything to throw away, which is
+/// the one question that distinguishes "dropped" from "held and refused".
+#[test]
+fn saving_another_endpoint_drops_the_prepared_body_rather_than_holding_it() {
+    let (keep, directory) = scratch();
+    let described_against = MockLlm::start().expect("the endpoint the plan was described against");
+    let saved_afterwards = MockLlm::start().expect("the endpoint the user saved next");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&described_against.base_url())
+        .expect("a loopback address is an address");
+
+    let stale = session
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
+        .expect("a paste can always be described")
+        .approval();
+    session
+        .set_user_endpoint(&saved_afterwards.base_url())
+        .expect("a loopback address is an address");
+
+    assert!(
+        !session.discard_draft(),
+        "the body prepared for the previous address is still held on the session",
+    );
+    session
+        .generate_draft(&stale)
+        .expect_err("there is nothing left for that approval to name");
+    assert_eq!(described_against.request_count(), 0);
+    assert_eq!(saved_afterwards.request_count(), 0);
+
+    // A second preparation is what the user owes, and it goes to the address
+    // that is now current, once.
+    draft_through_the_endpoint(&mut session).expect("the current endpoint answers");
+    assert_eq!(described_against.request_count(), 0);
+    assert_eq!(saved_afterwards.request_count(), 1);
+    drop(keep);
+}
+
+/// The same, for the user who pressed 清除 instead of typing a second address.
+#[test]
+fn clearing_the_endpoint_drops_the_prepared_body_too() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the plan was described against");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let stale = session
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
+        .expect("a paste can always be described")
+        .approval();
+    session.clear_user_endpoint();
+
+    assert!(
+        !session.discard_draft(),
+        "a session with no endpoint is still holding a body described for one",
+    );
+    session
+        .generate_draft(&stale)
+        .expect_err("there is nothing left for that approval to name");
+    assert_eq!(endpoint.request_count(), 0);
+    drop(keep);
+}
+
+/// An address that does not parse changes nothing, the prepared body included.
+///
+/// The twin of [`a_refused_address_leaves_the_one_that_was_there`]. Dropping
+/// the preparation is the answer to a destination that *changed*; a typo in
+/// the form is not a change, and a user who mistyped their second address
+/// would otherwise lose both the endpoint they had and the plan they were
+/// reading, with nothing on screen to say the second one had gone.
+#[test]
+fn a_refused_address_leaves_the_prepared_body_where_it_was() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the plan was described against");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let approval = session
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
+        .expect("a paste can always be described")
+        .approval();
+    session
+        .set_user_endpoint("not an address at all")
+        .expect_err("that is not an address");
+
+    session
+        .generate_draft(&approval)
+        .expect("the address the plan was described against is still the one");
+    assert_eq!(endpoint.request_count(), 1);
+    drop(keep);
+}
+
 /// AC-02 for the endpoint: the next launch is back to reaching nothing.
 ///
 /// Free, and that is the point of not persisting: `Session::open` builds its
@@ -687,10 +904,41 @@ const IMPORTED_NAME: &str = "李 雷";
 
 /// A paste that names the person it came from, the way one does.
 ///
-/// Nothing in it has an identifier's *shape*: no digits, no `@`, no address.
-/// Two Chinese characters and a space are what the shape scrub cannot see and
-/// the contact graph can.
+/// Nothing in it has an identifier's *shape* in the sense the digit, `@` and
+/// address rules mean: it is Chinese characters and a space. That spacing is
+/// the one thing about a display label a redactor can recognize without a
+/// contact graph, and since it is what an export writes, the exempted turn is
+/// held to it — see
+/// [`with_nothing_imported_the_same_name_is_placeheld_by_its_shape`].
 const PASTE_NAMING_A_CONTACT: &str = "李 雷 说周五的场地他已经订好了，你直接过来就行";
+
+/// The same name written the way a person writes it, with no space in it.
+///
+/// This is the ordinary Chinese spelling and the one an export does *not*
+/// produce, so on a Soul that imported the file above it is not in the
+/// identifier set either — `李 雷` is. Nothing about these four characters in
+/// a row says where the name ends; what says it is the position, in front of
+/// 说. See
+/// [`with_nothing_imported_a_name_without_a_space_is_placeheld_by_where_it_stands`].
+const PASTE_NAMING_A_CONTACT_UNSPACED: &str = "李雷说周五的场地他已经订好了，你直接过来就行";
+
+/// The other display label `result_basic.json` seals, in the script that has
+/// no spelling to recognize.
+const LATIN_LABEL: &str = "Wang Xiao";
+
+/// A paste naming that person, with the name nowhere near a verb of saying.
+///
+/// Two capitalized words are how English writes a good deal of a sentence, and
+/// out of the attribution position there is nothing else to read: the contact
+/// graph is the only thing that can placehold this, which is what makes it the
+/// control for
+/// [`a_name_this_soul_imported_is_placeheld_even_in_a_body_the_user_confirmed`].
+const PASTE_NAMING_THE_LATIN_LABEL: &str = "这周的方案我已经发给 Wang Xiao，别拖到下周";
+
+/// The same label where a chat log puts it, which the shape can read without
+/// anybody having imported anything.
+const PASTE_ATTRIBUTED_TO_THE_LATIN_LABEL: &str =
+    "Wang Xiao said Friday's venue is booked, come straight over";
 
 fn telegram_export() -> String {
     fixtures::read_text("import/telegram/result_basic.json").expect("fixture")
@@ -824,25 +1072,215 @@ fn a_name_this_soul_imported_is_placeheld_even_in_a_body_the_user_confirmed() {
     drop(keep);
 }
 
-/// The control: with nothing imported, that name is just a word.
+/// The same promise on a Soul that has imported nobody.
 ///
-/// Without this the test above would pass on a build whose identifier set is
-/// still empty — `NAME_PLACEHOLDER` would only have to appear once for any
-/// reason. Here the same paste and the same confirmation are sent by a session
-/// that has imported nothing, and the name arrives at the endpoint intact.
-/// That is not a bug being pinned; it is the shape scrub's limit, and it is
-/// exactly what the contact rows are for.
+/// This used to be the control for the test above, and it asserted the
+/// opposite: the same paste, the same second confirmation, and `李 雷` in the
+/// bytes the endpoint received, on the reasoning that two Chinese characters
+/// and a space have no shape and the contact rows are what covers them. The
+/// reasoning about the shape scrub was right and the conclusion was still
+/// wrong, because PRODUCT_LOCK does not make 姓名占位 conditional on an import
+/// having happened and neither does anything the user reads: the wizard's
+/// welcome page and [`E1_PLAN_NOTICE`] both say 「姓名与账号两种情况下都占位」
+/// to somebody who has never opened 导入. A first-run Soul with an empty
+/// contact graph is the *common* case, and that build sent a name to the
+/// endpoint out of the one body the user was told carried 正文 and nothing
+/// else.
+///
+/// What closed it is `soul_policy::redactor`'s label shape, which the exempted
+/// turn — the only prose that leaves verbatim — is held to on top of the
+/// identifier set: a display label written the way an export writes one, two
+/// to four Han characters spaced apart, is placeheld whether or not anybody
+/// registered it. 正文 exemption is not 姓名 exemption.
+///
+/// [`E1_PLAN_NOTICE`]: soulcore::commands::draft::E1_PLAN_NOTICE
 #[test]
-fn with_nothing_imported_the_same_name_is_a_word_like_any_other() {
+fn with_nothing_imported_the_same_name_is_placeheld_by_its_shape() {
     let (keep, directory) = scratch();
     let endpoint = MockLlm::start().expect("the endpoint the user configured");
     let mut session = Session::open(&directory);
     session
         .set_user_endpoint(&endpoint.base_url())
         .expect("a loopback address is an address");
+    assert!(
+        stored_third_party_labels(&session).is_empty(),
+        "this session is supposed to have learned nobody's name",
+    );
 
     let exempted = session
         .prepare_draft(PASTE_NAMING_A_CONTACT, Some(true))
+        .expect("a plan");
+    assert!(exempted.carries_exempted_original);
+    assert_eq!(exempted.placeheld_turns, 0);
+    session
+        .generate_draft(&exempted.approval())
+        .expect("the endpoint answers");
+
+    let sent = endpoint.requests();
+    assert_eq!(sent.len(), 1);
+    assert!(
+        !sent[0].body.contains(IMPORTED_NAME),
+        "a name reached the endpoint out of a body the user confirmed for its 正文: {}",
+        sent[0].body,
+    );
+    assert!(
+        sent[0].body.contains(NAME_PLACEHOLDER),
+        "the name was dropped rather than placeheld: {}",
+        sent[0].body,
+    );
+    // And the confirmation still bought what it was for: one name is placeheld,
+    // not the turn.
+    assert!(
+        sent[0].body.contains("场地"),
+        "the confirmed message did not travel, so the confirmation bought nothing: {}",
+        sent[0].body,
+    );
+    assert!(!sent[0].body.contains(THIRD_PARTY_PLACEHOLDER));
+    drop(keep);
+}
+
+/// The name with no shape at all, which is what the contact rows are for.
+///
+/// `李 雷` is now covered twice over — the identifier set holds it after an
+/// import, and the label shape catches it on a Soul that has imported nothing
+/// — so [`a_name_this_soul_imported_is_placeheld_even_in_a_body_the_user_confirmed`]
+/// no longer discriminates on its own: `NAME_PLACEHOLDER` would appear in
+/// those bytes for either reason. The paste below is written so that only one
+/// of the rules can reach it. It is the second display label this export
+/// seals, in a script that spaces its words anyway, and it stands where no
+/// verb of saying follows it — so neither of `soul-policy`'s two shapes has
+/// anything to read, and a placeholder in these bytes can only have come from
+/// the contact graph. That is what the test above needs somebody to still be
+/// proving.
+///
+/// The same paste on a Soul that has imported nobody is
+/// [`the_name_shapes_cannot_reach_a_label_standing_outside_an_attribution`],
+/// where it travels.
+#[test]
+fn a_display_name_with_no_shape_is_placeheld_because_the_graph_learned_it() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut session = Session::open(&directory);
+
+    session
+        .commit_telegram(&telegram_export())
+        .expect("the export commits");
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let labels = stored_third_party_labels(&session);
+    assert!(
+        labels.iter().any(|label| label == LATIN_LABEL),
+        "the stored labels are {labels:?}, and the paste below names nobody in them",
+    );
+
+    let exempted = session
+        .prepare_draft(PASTE_NAMING_THE_LATIN_LABEL, Some(true))
+        .expect("a plan");
+    assert!(exempted.carries_exempted_original);
+    session
+        .generate_draft(&exempted.approval())
+        .expect("the endpoint answers");
+
+    let sent = endpoint.requests();
+    assert_eq!(sent.len(), 1, "one approval, one request");
+    assert!(
+        !sent[0].body.contains(LATIN_LABEL),
+        "the contact's name reached the endpoint: {}",
+        sent[0].body,
+    );
+    assert!(
+        sent[0].body.contains(NAME_PLACEHOLDER),
+        "the name was dropped rather than placeheld: {}",
+        sent[0].body,
+    );
+    assert!(
+        sent[0].body.contains("方案"),
+        "the confirmed message did not travel: {}",
+        sent[0].body,
+    );
+    drop(keep);
+}
+
+/// The ordinary spelling of a Chinese name, on a Soul that imported nobody.
+///
+/// [`with_nothing_imported_the_same_name_is_placeheld_by_its_shape`] closed the
+/// spelling an export writes, and that left the spelling everybody else writes:
+/// `李雷说…` is four Han characters in a row, so there is no space to read and
+/// no boundary to find, and the identifier set is empty because nothing has
+/// been imported. That build sent the name to the endpoint out of the one body
+/// the user was told carried 正文 and nothing else — the same hole as before,
+/// through the door next to it.
+///
+/// What closes it is where the name stands rather than how it is spelled: a
+/// chat log puts the person in front of a verb of saying, and `soul-policy`
+/// reads that position for the exempted turn. The placeholder has to be the
+/// name and not the clause, so 场地 is asserted too: the user confirmed twice
+/// to send this message, and a body of placeholders is not the message.
+#[test]
+fn with_nothing_imported_a_name_without_a_space_is_placeheld_by_where_it_stands() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+    assert!(
+        stored_third_party_labels(&session).is_empty(),
+        "this session is supposed to have learned nobody's name",
+    );
+
+    let exempted = session
+        .prepare_draft(PASTE_NAMING_A_CONTACT_UNSPACED, Some(true))
+        .expect("a plan");
+    assert!(exempted.carries_exempted_original);
+    assert_eq!(exempted.placeheld_turns, 0);
+    session
+        .generate_draft(&exempted.approval())
+        .expect("the endpoint answers");
+
+    let sent = endpoint.requests();
+    assert_eq!(sent.len(), 1);
+    assert!(
+        !sent[0].body.contains("李雷"),
+        "a name reached the endpoint out of a body the user confirmed for its 正文: {}",
+        sent[0].body,
+    );
+    assert!(
+        sent[0].body.contains(NAME_PLACEHOLDER),
+        "the name was dropped rather than placeheld: {}",
+        sent[0].body,
+    );
+    assert!(
+        sent[0].body.contains("场地"),
+        "the confirmed message did not travel, so the confirmation bought nothing: {}",
+        sent[0].body,
+    );
+    assert!(!sent[0].body.contains(THIRD_PARTY_PLACEHOLDER));
+    drop(keep);
+}
+
+/// The same, for the display label in the script that spaces its words.
+///
+/// `Wang Xiao` is the other name `result_basic.json` seals, and until the
+/// position rule existed the only thing that could placehold it was the
+/// contact graph — so a first-run Soul, which has no contact graph, sent it.
+/// Two capitalized words in front of `said` is the same shape as 李雷说 in a
+/// different script, and the endpoint below is a real socket rather than a
+/// plan the test re-serialized.
+#[test]
+fn with_nothing_imported_a_latin_display_label_is_placeheld_by_where_it_stands() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+    assert!(stored_third_party_labels(&session).is_empty());
+
+    let exempted = session
+        .prepare_draft(PASTE_ATTRIBUTED_TO_THE_LATIN_LABEL, Some(true))
         .expect("a plan");
     assert!(exempted.carries_exempted_original);
     session
@@ -852,11 +1290,97 @@ fn with_nothing_imported_the_same_name_is_a_word_like_any_other() {
     let sent = endpoint.requests();
     assert_eq!(sent.len(), 1);
     assert!(
-        sent[0].body.contains(IMPORTED_NAME),
-        "a session that imported nothing has no name to placehold, so the assertion \
-         above is about the contact graph rather than about the shape scrub: {}",
+        !sent[0].body.contains(LATIN_LABEL),
+        "a display label reached the endpoint out of an exempted body: {}",
         sent[0].body,
     );
+    assert!(
+        sent[0].body.contains(NAME_PLACEHOLDER),
+        "the name was dropped rather than placeheld: {}",
+        sent[0].body,
+    );
+    assert!(
+        sent[0].body.contains("venue is booked"),
+        "the confirmed message did not travel: {}",
+        sent[0].body,
+    );
+    drop(keep);
+}
+
+/// The hole that is left, on the screen that promises there is none.
+///
+/// 「姓名与账号两种情况下都占位」 is what `E1_PLAN_NOTICE` and the wizard's
+/// welcome page say, without a condition. Two shapes now stand behind that
+/// sentence for a Soul with an empty contact graph — the spelling an export
+/// writes (`李 雷`) and the position a chat log writes (`李雷说…`,
+/// `Wang Xiao said…`) — and this is what neither can reach: a name that stands
+/// anywhere else in the sentence. Nothing in those bytes distinguishes it from
+/// prose, and a rule that guessed would take away the message the user
+/// confirmed twice to send.
+///
+/// So the request below carries a third party's name, and the user was told it
+/// would not. This test asserts that it does, which is not an endorsement: it
+/// is the accounting entry, so that the hole is a fact somebody has to change
+/// a test to move rather than a paragraph in a report. Closing it needs one of
+/// two things this test cannot do on its own — a step that shows the user the
+/// bytes before they leave, or a decision about whether the promise may be
+/// qualified, which lives in PRODUCT_LOCK. Until then the honest reading is
+/// that the exemption keeps the promise for a name that is spelled or placed
+/// like a name, and for every name at all once anything has been imported.
+///
+/// [`a_display_name_with_no_shape_is_placeheld_because_the_graph_learned_it`]
+/// is this same paste on a Soul that has imported the export, where the
+/// contact graph placeholds it.
+#[test]
+fn the_name_shapes_cannot_reach_a_label_standing_outside_an_attribution() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+    assert!(
+        stored_third_party_labels(&session).is_empty(),
+        "the gap below is about the empty graph, so the graph has to be empty",
+    );
+
+    let exempted = session
+        .prepare_draft(PASTE_NAMING_THE_LATIN_LABEL, Some(true))
+        .expect("a plan");
+    assert!(exempted.carries_exempted_original);
+    session
+        .generate_draft(&exempted.approval())
+        .expect("the endpoint answers");
+
+    let sent = endpoint.requests();
+    assert_eq!(sent.len(), 1);
+    assert!(
+        sent[0].body.contains(LATIN_LABEL),
+        "`{LATIN_LABEL}` is now placeheld without an import, which is better than \
+         this test describes — move it up beside the two tests above and take \
+         the entry out of the report: {}",
+        sent[0].body,
+    );
+
+    // The default path is where the promise is unconditional in fact as well
+    // as in copy: nobody confirmed anything, and the whole turn is a
+    // placeholder, name included.
+    let placeheld = session
+        .prepare_draft(PASTE_NAMING_THE_LATIN_LABEL, None)
+        .expect("a plan");
+    assert_eq!(placeheld.placeheld_turns, 1);
+    session
+        .generate_draft(&placeheld.approval())
+        .expect("the endpoint answers");
+
+    let sent = endpoint.requests();
+    assert_eq!(sent.len(), 2);
+    assert!(
+        !sent[1].body.contains(LATIN_LABEL),
+        "the default path let a name out, which was never the gap: {}",
+        sent[1].body,
+    );
+    assert!(sent[1].body.contains(THIRD_PARTY_PLACEHOLDER));
     drop(keep);
 }
 

@@ -389,3 +389,153 @@ fn what_goes_out_for_rephrasing_is_soul_s_own_counts() {
     );
     assert_non_clinical(&sent).expect("nothing forbidden leaves either");
 }
+
+// --------------------------- AC-16, what a rephrasing is not allowed to be ---
+
+/// The endpoint answers with a claim about the person that no count supports.
+///
+/// The repro from the R3 probe. Before this, the sentence was shown under
+/// 这一份是你自己的端点根据本机统计改写的 — a provenance label the sentence had
+/// no relationship to. Nothing about durians is in the counts, so nothing about
+/// durians survives.
+#[test]
+fn an_answer_about_something_else_is_dropped_and_the_counts_remain() {
+    let store = store_with_one_partner();
+    let (summary, _) = summarize(&store);
+    let mut generator = Canned::saying("这个人最喜欢榴莲。");
+
+    let phrased = analysis::phrase_with(
+        &summary,
+        &Redactor::new(KnownIdentifiers::new()),
+        &mut generator,
+    )
+    .expect("free prose is not a failed summary");
+
+    assert_eq!(phrased.narrative, None);
+    assert_eq!(
+        phrased.source,
+        SummarySource::Counts,
+        "unconstrained prose was labelled as a rewrite of the counts",
+    );
+    assert_eq!(phrased.points, summary.points);
+
+    let rendered = analysis::render(&phrased).expect("renders");
+    assert!(!rendered.contains("榴莲"), "{rendered}");
+    assert!(
+        !rendered.contains(analysis::ENDPOINT_LINE_PREFIX),
+        "there is no endpoint line, so nothing introduces one: {rendered}",
+    );
+}
+
+/// A figure the counts do not contain is the one invention that is decided
+/// rather than estimated. Everything else in the sentence is the counts'
+/// own wording, so this is a test of the numeral check and of nothing else.
+#[test]
+fn an_answer_that_states_a_count_nobody_computed_is_dropped() {
+    let store = store_with_one_partner();
+    let (summary, _) = summarize(&store);
+    let mut generator = Canned::saying("你和这个人一共有 40 次往来，分布在 3 个自然日里。");
+
+    let phrased = analysis::phrase_with(
+        &summary,
+        &Redactor::new(KnownIdentifiers::new()),
+        &mut generator,
+    )
+    .expect("an invented figure is not a failed summary");
+
+    assert_eq!(phrased.narrative, None);
+    assert_eq!(phrased.source, SummarySource::Counts);
+    let rendered = analysis::render(&phrased).expect("renders");
+    assert!(!rendered.contains("40"), "{rendered}");
+    assert!(rendered.contains("6 次往来"), "{rendered}");
+}
+
+/// The same, for a model that spells its invention out in Chinese.
+#[test]
+fn a_chinese_numeral_the_counts_do_not_have_is_a_figure_too() {
+    let store = store_with_one_partner();
+    let (summary, _) = summarize(&store);
+    let mut generator = Canned::saying("你和这个人一共有四十次往来，分布在几个自然日里。");
+
+    let phrased = analysis::phrase_with(
+        &summary,
+        &Redactor::new(KnownIdentifiers::new()),
+        &mut generator,
+    )
+    .expect("phrased");
+    assert_eq!(phrased.narrative, None);
+    assert_eq!(phrased.source, SummarySource::Counts);
+}
+
+/// AC-16, read as "every line that looks like a claim says what is behind it".
+///
+/// The points say 依据 N 条记录. The endpoint's line cannot say that, because
+/// there is nothing behind it — so it says that instead, on the line, where a
+/// reader is looking. This is the assertion that stops a future edit from
+/// quietly rendering the narrative as though Soul had derived it.
+#[test]
+fn the_endpoint_s_line_says_on_the_line_that_it_is_the_endpoint_s() {
+    let store = store_with_one_partner();
+    let (summary, _) = summarize(&store);
+    let mut generator = Canned::saying("你们最近往来比较稳定，多数时候是一对一说话。");
+
+    let phrased = analysis::phrase_with(
+        &summary,
+        &Redactor::new(KnownIdentifiers::new()),
+        &mut generator,
+    )
+    .expect("phrased");
+    assert_eq!(phrased.source, SummarySource::UserEndpoint);
+
+    let rendered = analysis::render(&phrased).expect("renders");
+    let line = rendered
+        .lines()
+        .find(|line| line.contains("往来比较稳定"))
+        .expect("the endpoint's sentence is on screen");
+    assert!(
+        line.starts_with(analysis::ENDPOINT_LINE_PREFIX),
+        "the endpoint's sentence is not introduced as one: {line}",
+    );
+    for honest in ["你自己的端点写的", "没有证据支持", "没有替你核对"] {
+        assert!(
+            analysis::ENDPOINT_LINE_PREFIX.contains(honest),
+            "the prefix stopped saying `{honest}`: {}",
+            analysis::ENDPOINT_LINE_PREFIX,
+        );
+    }
+    // The one claim the label must never make.
+    assert!(
+        !analysis::ENDPOINT_LINE_PREFIX.contains("根据本机统计改写"),
+        "the prefix claims the endpoint's sentence was derived from the counts",
+    );
+
+    // And every point still carries its own rows, unchanged.
+    for point in &phrased.points {
+        assert!(!point.evidence_ids().is_empty());
+        assert!(rendered.contains(&format!(
+            "· {}（依据 {} 条记录）",
+            point.statement(),
+            point.evidence_ids().len(),
+        )));
+    }
+}
+
+/// What the endpoint is *asked* for is the summary instruction, not the
+/// drafting one.
+///
+/// `soul-draft` cannot see the system message — `soul-policy` owns it and
+/// `soul-egress` sends it — so what this pins is the constant's content. The
+/// bytes on the wire are `soulcore/tests/session_summary.rs`.
+#[test]
+fn the_summary_instruction_asks_for_a_rewrite_and_forbids_new_facts() {
+    let instruction = soul_policy::e1::PERSON_SUMMARY_INSTRUCTION;
+    for asked in ["只能改写", "不得添加新的事实", "不得改动或新增任何数字"] {
+        assert!(instruction.contains(asked), "{instruction}");
+    }
+    assert!(
+        !instruction.contains("起草回复"),
+        "the summary path is still asking for a draft: {instruction}",
+    );
+    assert_ne!(instruction, soul_policy::e1::DRAFTING_INSTRUCTION);
+    assert_non_clinical(instruction).expect("the instruction itself says nothing forbidden");
+}

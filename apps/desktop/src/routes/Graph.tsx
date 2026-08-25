@@ -8,8 +8,12 @@
  * summary underneath is the core's sentences and the evidence rows behind
  * them, it carries 工作假设，非临床结论 from the core, and every sentence in
  * it was built on the other side of the IPC where `soul-policy`'s denylist
- * could see it. Where those sentences came from is on screen: counts, or a
- * rephrasing the user's own endpoint produced from those counts.
+ * could see it. Where those sentences came from is on screen, and the
+ * distinction the wording has to keep is which of them this machine derived:
+ * the points are counts with rows behind them, and the one line an endpoint
+ * may have written is the endpoint's own sentence rather than a rewrite of
+ * anything — the core cannot verify that it is one, so this screen does not
+ * say it is.
  */
 
 import { useEffect, useState } from "react";
@@ -43,10 +47,22 @@ const TIE_TYPE: Record<string, string> = {
   one_sided: "只有一边发过",
 };
 
-/** Where the summary text came from. The codes are `PersonSummaryView.source`. */
+/**
+ * Where the summary text came from. The codes are `PersonSummaryView.source`.
+ *
+ * `user_endpoint` used to read 这一份是你自己的端点根据本机统计改写的, which was
+ * a claim nobody had checked: the core sends the counts and asks for a
+ * rewrite, and an endpoint that answers with something else entirely was
+ * getting its sentence displayed under this machine's provenance.
+ * `soul-draft` now drops an answer that states a figure the counts do not or
+ * that has nothing to do with them, and what survives that is still the
+ * endpoint's own sentence — so this says whose sentence it is, and how little
+ * was checked, rather than claiming it was derived here.
+ */
 const SUMMARY_SOURCE: Record<string, string> = {
   counts: "这一份是本机根据往来次数写的统计。",
-  user_endpoint: "这一份是你自己的端点根据本机统计改写的。",
+  user_endpoint:
+    "这一份里带证据的每一条仍然是本机根据往来次数算的；最后「整体来看」那一句是你自己的端点写的，本机只挡下了新出现的数字和跑题的回答，没有替你核对它说得对不对。",
 };
 
 function words(source: Record<string, string>, key: string): string {
@@ -127,9 +143,23 @@ export function Graph(): React.JSX.Element {
               <Tie key={tie.relationship_id} tie={tie} />
             ))}
           </ul>
+          {/*
+            The outgoing half has to name what goes, not just that something
+            does. `soul-draft`'s summary body is the whole set of statements
+            the core derived from this edge — interaction count, active days,
+            conversations, who sent how many, whether there was a one-to-one
+            exchange, the date of the last one, and the band those counts put
+            the tie in — under a fixed rewriting instruction. Saying only
+            往来次数 understates that by five facts.
+
+            The instruction is now the summary one rather than the drafting
+            one (`soul_policy::e1::PERSON_SUMMARY_INSTRUCTION`), so naming what
+            it asks for is naming something that is actually in the request
+            body.
+          */}
           <p className="muted" data-testid="local-only">
             {graph.third_party_data_is_local_only
-              ? "别人的密封姓名和节点、边本身只留在本机，也不进研究预览。若你填了语言模型地址，按「看这个人的摘要」会把这一页上的往来次数发给那个地址（不带姓名，也不会再问你一次）。"
+              ? "别人的密封姓名和节点、边本身只留在本机，也不进研究预览。若你填了语言模型地址，按「看这个人的摘要」会把本机从这条边上算出来的那一整组统计发给那个地址：往来次数、有往来的天数与会话数、你和对方各发出多少条、有没有一对一说过话、最近一次往来的日期，还有本机按这些计数给出的关系档位，外加一句固定的系统指令（只许把这些计数改写成一段话，不许添新事实、不许改数字）——都是聚合出来的计数和结论，不带姓名，也不带任何人说过的原话，中间不会再问你一次。"
               : "有节点或边没有标成只留本机，请把这件事报告出来。"}
           </p>
         </section>
@@ -216,7 +246,16 @@ function Summary({ summary }: SummaryProps): React.JSX.Element {
       <p className="muted" data-testid="summary-source">
         {words(SUMMARY_SOURCE, summary.source)}
       </p>
-      <p data-testid="summary-text">{summary.text}</p>
+      {/*
+        `reading`, because the core wrote this as lines and each line carries
+        its own 依据 N 条记录 — or, for the one line an endpoint may have
+        written, the sentence saying it has none. Collapsed into a paragraph,
+        the claim and what is behind it stop being on the same line, which is
+        the whole of AC-16's shape.
+      */}
+      <p className="reading" data-testid="summary-text">
+        {summary.text}
+      </p>
       <ul className="facts" data-testid="summary-points">
         {summary.points.map((point) => (
           <li key={point.statement}>

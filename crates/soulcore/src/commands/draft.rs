@@ -45,6 +45,7 @@ use soul_draft::draft::{BodyFacts, Draft, DraftRequest, Drafter, ReplyGenerator}
 use soul_draft::error::{DraftError, GenerationRefused};
 use soul_graph::GraphError;
 use soul_policy::audit::AuditContent;
+use soul_policy::e1::E1Purpose;
 use soul_policy::hitl::{
     ActionKind, ActionRequest, CapabilityScope, HitlDenial, PlanHash, RequestOrigin,
 };
@@ -80,9 +81,44 @@ pub use soul_policy::redactor::KnownIdentifiers as DraftIdentifiers;
 /// reason WP09 made the cloud notice one: it is a promise about what the
 /// build does, and a promise kept in TypeScript is one the Rust tests cannot
 /// check.
-pub const E1_PLAN_NOTICE: &str = "确认之后，只有下面这些内容会发到你自己配置的模型端点，\
-     用来生成草稿。第三人正文默认已占位。草稿生成之后仍然由你自己决定要不要发出去，\
-     Soul 不会替你发送。";
+///
+/// It names the request body rather than the panel. The earlier wording said
+/// 只有下面这些内容 while the list underneath it is counts, a plan hash and a
+/// preparation id — none of which are in the JSON — and said nothing about the
+/// owner's profile brief, which is. `soul_policy::e1::E1RequestPlan::json_body`
+/// and `soul_draft::draft` are the two places to check this against: a model
+/// name, one fixed system instruction, and one user-material message holding
+/// the rendered [`ProfileBrief`] and the pasted turn.
+///
+/// 「姓名与账号两种情况下都占位」 is unconditional, and `soul_policy::redactor`
+/// is what has to make it so rather than this sentence. A registered
+/// identifier is placeheld anywhere in the body, and the one turn a second
+/// confirmation exempts is held to two more rules on top of that: the spelling
+/// an export writes (`李 雷`) and the position a chat log writes (`李雷说…`,
+/// `Wang Xiao said…`). Between them the sentence survives a Soul whose contact
+/// graph is empty for a name that is spelled or placed like a name. It did not
+/// always — a build where it quietly depended on having imported somebody is
+/// what `session_e1.rs::with_nothing_imported_the_same_name_is_placeheld_by_its_shape`
+/// pins shut.
+///
+/// What is left is narrow and this comment is the place not to round it off: a
+/// name standing nowhere in particular in the one turn the user confirmed
+/// twice for, on a Soul that has imported nobody, still travels — see
+/// `soul_policy::redactor::scrub_attributed_name_shapes` for why no rule there
+/// guesses at it, and
+/// `session_e1.rs::the_name_shapes_cannot_reach_a_label_standing_outside_an_attribution`
+/// for the case asserted rather than described. Closing that means a step the
+/// user sees before the bytes leave, or a decision about whether this sentence
+/// may be qualified, which is PRODUCT_LOCK's to make and not this file's. The
+/// wording here is unchanged until it is made: `apps/desktop/src/test/fakeCore.ts`
+/// holds a byte-identical twin, and softening the promise on one screen while
+/// PRODUCT_LOCK still states it is a worse answer than leaving both alone.
+pub const E1_PLAN_NOTICE: &str = "确认之后，会发到你自己配置的模型端点的是这些：模型名、\
+     一段固定的系统指令，以及一段引用材料——里面是你自己的档案摘要（口吻、口吻来源、\
+     有证据支持的要点，和「工作假设，非临床结论」那句），加上你粘贴的这一段。\
+     第三人正文默认已占位，只有你二次确认「这一条按原文带上」时才按原文发出，而且只这一次；\
+     姓名与账号两种情况下都占位。下面的段数、计划哈希与准备编号是给你核对用的，\
+     不在发出去的内容里。草稿生成之后仍然由你自己决定要不要发出去，Soul 不会替你发送。";
 
 /// The model name a session uses until the user names one.
 ///
@@ -198,7 +234,11 @@ impl DraftSession {
 
         let body = self.drafter.redact(&request, exemption)?;
         let facts = BodyFacts::of(&body);
-        let plan_hash = PlanHash::of(&e1_plan(self.drafter.model(), &body));
+        let plan_hash = PlanHash::of(&e1_plan(
+            self.drafter.model(),
+            policy.guard().config().e1_endpoint(),
+            &body,
+        ));
         let id = Uuid::now_v7();
 
         // A second prepare replaces the first, so an unapproved body cannot
@@ -235,7 +275,11 @@ impl DraftSession {
     /// * the preparation id catches a body that is a different body of the
     ///   same shape. The plan carries counts and no prose, on purpose, so two
     ///   pastes with one third-party turn each hash identically. Without the
-    ///   id, an approval the user gave for one message would send another.
+    ///   id, an approval the user gave for one message would send another;
+    /// * re-deriving the hash from the session as it is *now* catches a
+    ///   destination that changed while the plan was on screen. The origin is
+    ///   part of what was hashed, which is `SECURITY.md`'s 配置变更会使计划哈希
+    ///   失效 rather than a second rule beside it.
     ///
     /// The token is minted here because this call *is* the approval: the
     /// ledger's job is to make sure one click buys one request.
@@ -255,6 +299,26 @@ impl DraftSession {
             return Err(HitlDenial::PlanHashMismatch {
                 approved: approval.plan_hash.clone(),
                 current: pending.plan_hash.as_str().to_owned(),
+            }
+            .into());
+        }
+
+        // The plan names the origin it would reach, so a 设置 page pointed
+        // somewhere else between the two steps makes the hash the user
+        // approved stop describing this session. `SECURITY.md` asks for
+        // exactly that, and it is checked here rather than only inside
+        // `e1_generate` so that no token is minted and no address is opened:
+        // neither the endpoint the plan was described against nor the one that
+        // replaced it hears anything.
+        let current = PlanHash::of(&e1_plan(
+            self.drafter.model(),
+            policy.guard().config().e1_endpoint(),
+            &pending.body,
+        ));
+        if current != pending.plan_hash {
+            return Err(HitlDenial::PlanHashMismatch {
+                approved: pending.plan_hash.as_str().to_owned(),
+                current: current.as_str().to_owned(),
             }
             .into());
         }
@@ -470,6 +534,12 @@ pub fn draft_pasted(
 /// by value — a later call that does not pass `true` is placeheld again,
 /// because there is nowhere for the permission to have been kept.
 ///
+/// What it buys is the 正文 of one turn and nothing else. Names and accounts
+/// inside that turn are placeheld whether or not this is `true`, and whether
+/// or not the contact graph has ever heard of them: the redactor holds an
+/// exempted turn to the display-label shape as well as to the identifier set,
+/// so nothing on this path has to remember to ask for it.
+///
 /// A paste is one third-party turn by construction, so there is exactly one
 /// id an exemption could name.
 ///
@@ -610,6 +680,12 @@ const REPHRASING_REFUSED: &str = "the summary rephrasing did not come back";
 /// has to be minted against the body that is actually going out rather than
 /// against one assembled a second time beside it.
 ///
+/// The purpose is [`E1Purpose::PersonSummary`], which is the whole of what
+/// makes this a rephrasing request rather than a drafting one: the system
+/// message says rewrite these counts and add nothing, where the drafting
+/// instruction says 只根据用户档案起草回复 — an instruction to write something
+/// new, which is not what the answer is going to be displayed as.
+///
 /// The audit entries are collected rather than returned, because the trait's
 /// error type carries no room for one and because the entries are owed either
 /// way: a request that left owes `egress.request`, and one that was refused
@@ -631,16 +707,23 @@ impl Rephraser<'_> {
 
 impl ReplyGenerator for Rephraser<'_> {
     fn generate(&mut self, body: RedactedBody) -> Result<String, GenerationRefused> {
-        let plan = PlanHash::of(&e1_plan(&self.model, &body));
+        let plan = PlanHash::of(&e1_plan(
+            &self.model,
+            self.policy.guard().config().e1_endpoint(),
+            &body,
+        ));
         let scope = CapabilityScope::E1Generate;
         let token_id = match self.policy.issue_token(scope, plan, self.now_ms) {
             Ok(token) => token.token_id(),
             Err(refused) => return Err(self.refused(DraftRefusal::Token(refused))),
         };
-        match self
-            .policy
-            .e1_generate(&self.model, body, token_id, self.now_ms)
-        {
+        match self.policy.e1_generate_for(
+            E1Purpose::PersonSummary,
+            &self.model,
+            body,
+            token_id,
+            self.now_ms,
+        ) {
             Ok(outcome) => {
                 self.audit.push(outcome.audit());
                 Ok(outcome.body)
@@ -661,8 +744,15 @@ impl ReplyGenerator for Rephraser<'_> {
 pub struct PersonSummaryView {
     pub contact_id: String,
     /// `counts` or `user_endpoint`.
+    ///
+    /// `user_endpoint` means one line of this text was written by the endpoint
+    /// the user configured, not that the endpoint's line was verified against
+    /// the rows. `soul_draft::analysis::ENDPOINT_LINE_PREFIX` is what that line
+    /// is introduced with, and a screen showing `source` has to say the same
+    /// thing.
     pub source: String,
-    /// Every line, each naming how many rows are behind it.
+    /// Every line, each naming what is behind it: how many rows for a point,
+    /// and who wrote it for the endpoint's line, which has no rows at all.
     pub text: String,
     /// Non-empty, and every point cites at least one evidence row.
     pub points: Vec<SummaryPointView>,

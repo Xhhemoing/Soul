@@ -386,8 +386,9 @@ pub struct Session {
     /// Forgetting is irreversible and the numbers behind it are a live query,
     /// so the confirmation has to name the answer it read — WP04 left this
     /// gap open and said so. One slot, replaced by the next preview, taken by
-    /// value when the forget runs: the same shape the endpoint drafting path
-    /// uses to make an approval describe what is actually about to happen.
+    /// value when the forget runs and left alone when it is refused: the same
+    /// shape the endpoint drafting path uses to make an approval describe what
+    /// is actually about to happen.
     held_forget: Option<HeldForget>,
     /// Whether collection may run, for this process and no longer.
     ///
@@ -835,10 +836,20 @@ impl Session {
     /// Nothing is contacted. `Origin::parse` reads a string and `NetGuard`
     /// holds the answer; the first packet still waits for the plan on the
     /// drafting screen and the approval in front of it. A preparation made
-    /// before the address changed would be approved against the address that
-    /// is here when the user presses 生成 — the plan is counts and a model
-    /// name, and never named a host — which is reachable only by leaving the
-    /// drafting page mid-flight and coming back to it.
+    /// before the address changed is *not* approvable afterwards, and it is
+    /// stopped twice over. The origin is one of the things `e1_plan` hashes,
+    /// so the approval the user is holding would stop matching at
+    /// `DraftSession::generate` — and the prepared body is dropped here
+    /// anyway, so the second half of the flight is a request that no longer
+    /// exists rather than one that is merely refused. That is `SECURITY.md`'s
+    /// 配置变更会使计划哈希失效 with nothing left over: leaving the drafting
+    /// page mid-flight, saving another endpoint, and coming back to press 生成
+    /// is reachable from the interface, and what it costs is one more
+    /// [`Session::prepare_draft`] against the address that is now current.
+    ///
+    /// An address that does not parse changes neither — the guard is
+    /// re-pointed only on success, and a user who mistyped their second
+    /// endpoint keeps the plan they were reading along with the first one.
     ///
     /// What is stored in the configuration is the origin the guard ended up
     /// with rather than the string that was typed: a path, a query and a
@@ -860,6 +871,7 @@ impl Session {
             .config()
             .e1_endpoint()
             .map(ToString::to_string);
+        self.draft.discard();
         Ok(self.snapshot())
     }
 
@@ -868,11 +880,14 @@ impl Session {
     /// [`PolicySession::clear_user_endpoint`] puts the guard back to
     /// `NetGuard::closed()`, which refuses every origin including loopback, so
     /// what is left is the state a fresh launch is in rather than a weaker one
-    /// that merely has no URL to hand. Nothing is persisted here either; there
-    /// was never anything on disk to remove.
+    /// that merely has no URL to hand. A body prepared against the address
+    /// that has just gone goes with it, for the reason
+    /// [`Session::set_user_endpoint`] gives. Nothing is persisted here either;
+    /// there was never anything on disk to remove.
     pub fn clear_user_endpoint(&mut self) -> ConfigSnapshot {
         self.policy.clear_user_endpoint();
         self.config.llm_endpoint = None;
+        self.draft.discard();
         self.snapshot()
     }
 
@@ -1122,11 +1137,20 @@ impl Session {
     /// on the user's behalf, and until it was written down `/audit` heard
     /// about forgets that ran and nothing at all about the ones that were
     /// turned away.
+    ///
+    /// A refusal leaves the held preview where it was. The match is made
+    /// before anything is taken, so a confirmation that named the wrong
+    /// preview — a stale screen, a WebView that echoed the id it had rather
+    /// than the id it was shown — costs the user the click and not the
+    /// preview they were reading. Nothing is destroyed either way, and the
+    /// alternative is worse than it looks: a refusal that also dropped the
+    /// pending would make one mistyped confirmation the reason a user has to
+    /// walk the irreversible screen a second time.
     pub fn forget_memory(
         &mut self,
         confirmation: &ForgetConfirmation,
     ) -> Result<ForgetReceiptView, SessionRefusal> {
-        let matched = self.held_forget.take().filter(|held| {
+        let matched = self.held_forget.take_if(|held| {
             held.preview_id.to_string() == confirmation.preview_id
                 && held.memory_id.to_string() == confirmation.memory_id
         });

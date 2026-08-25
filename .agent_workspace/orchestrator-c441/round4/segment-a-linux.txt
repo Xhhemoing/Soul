@@ -1,0 +1,22 @@
+Segment A (Linux, this VM) on cursor/first-test-candidate-c441 @ 3ca1605
+2026-08-25. just is not installed; recipes used the cargo/pnpm equivalents from justfile comments.
+This is not hosted green.
+
+schema-freeze --check	ok
+e0-audit	ok (14 crates / 188 files)
+denylist-audit	ok (94 terms / 116 files)
+cargo fmt --all -- --check	ok
+cargo clippy --workspace --all-targets --all-features -- -D warnings	ok
+cargo test --workspace --all-targets	ok (0 failed)
+cargo test -p soul-testkit --test fixture_corpus	ok 9/9
+cargo test -p soulcore --test install_smoke_script	ok 8/8
+cargo run -p xtask -- sbom	ok (soul-core.cdx.json, soul-desktop.cdx.json)
+pnpm --filter @soul/desktop lint	ok (tsc + eslint)
+pnpm --filter @soul/desktop test	ok 14 files / 172 tests
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets
+	command_surface 6, ipc_roundtrip 54, no_egress_path 3, one_store 3, shell_is_local_only 21
+cargo deny check bans licenses sources	ok
+cargo deny check advisories	ok (needed GIT_CONFIG_GLOBAL=/dev/null; inherited GitHub token is 401)
+
+branch-disposition.selftest.sh	ok
+--merge agent/dev-sota / main / closeout	exit 2, HEAD unchanged

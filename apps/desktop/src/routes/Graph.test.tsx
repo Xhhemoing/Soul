@@ -58,6 +58,15 @@ describe("人脉图页", () => {
     expect(localOnly).toHaveTextContent("研究预览");
     expect(localOnly).toHaveTextContent("摘要");
     expect(localOnly).toHaveTextContent(/往来次数|发给/);
+    // 发出去的不止「往来次数」：`soul-draft` 的 summary_body 把这条边上算出来的
+    // 整组陈述都带上——天数、会话数、双方各发多少、有没有一对一、最近一次的日期，
+    // 还有本机给的档位。只写「往来次数」等于少说了五件事。
+    expect(localOnly).toHaveTextContent("有往来的天数与会话数");
+    expect(localOnly).toHaveTextContent("你和对方各发出多少条");
+    expect(localOnly).toHaveTextContent("有没有一对一说过话");
+    expect(localOnly).toHaveTextContent("最近一次往来的日期");
+    expect(localOnly).toHaveTextContent("关系档位");
+    expect(localOnly).not.toHaveTextContent("会把这一页上的往来次数发给那个地址");
     expect(localOnly).not.toHaveTextContent("都不进任何出网请求");
     expect(localOnly).not.toHaveTextContent(
       "别人的数据只留在本机：这些节点和边都不进任何出网请求，也不进研究预览。",
@@ -97,12 +106,18 @@ describe("人脉图页", () => {
   });
 
   /**
-   * AC-16's other half: when the core says the endpoint rewrote the counts,
-   * the screen has to say so. Draft already renders `source_notice` for the
-   * same reason — a degradation the user cannot see is not a degradation, it
-   * is the only path there is.
+   * AC-16's other half: when a line came from the endpoint, the screen has to
+   * say so. Draft already renders `source_notice` for the same reason — a
+   * degradation the user cannot see is not a degradation, it is the only path
+   * there is.
+   *
+   * What this screen may *not* say is the sentence it used to: 你自己的端点根据
+   * 本机统计改写的. The core sends the counts and asks for a rewrite, and it
+   * refuses an answer that invents a figure or is about something else — but
+   * neither of those makes the sentence a rewrite, and a line that claimed it
+   * was would be attributing an endpoint's words to this machine's evidence.
    */
-  it("端点改写过的摘要，屏幕上写明是端点改写的", async () => {
+  it("端点写的那一句，屏幕上写明是端点写的，而且不说它是本机统计改写出来的", async () => {
     await open({
       graph: aPeopleGraph(),
       summarizing: () =>
@@ -114,10 +129,54 @@ describe("人脉图页", () => {
     const user = userEvent.setup();
     await user.click(screen.getAllByRole("button", { name: "看这个人的摘要" })[0]!);
 
-    expect(await screen.findByTestId("summary-source")).toHaveTextContent(
-      "你自己的端点根据本机统计改写",
-    );
+    const source = await screen.findByTestId("summary-source");
+    expect(source).toHaveTextContent("是你自己的端点写的");
+    expect(source).toHaveTextContent("没有替你核对");
+    expect(source).not.toHaveTextContent("根据本机统计改写");
     expect(screen.getByTestId("summary-text")).toHaveTextContent("往来比较稳定");
+    // The evidence-carrying half is still labelled as the counts it is.
+    expect(source).toHaveTextContent("本机根据往来次数算的");
+    expect(screen.getByTestId("summary-points")).toHaveTextContent("依据 2 条证据");
+  });
+
+  /**
+   * The other repro from the same probe, as far as this side can carry it: an
+   * endpoint answering with 这个人最喜欢榴莲 leaves `soul-draft` handing over
+   * the counts, so what has to hold here is that the screen renders a
+   * `counts` summary as counts and invents no provenance of its own. The
+   * dropping itself is `soul-draft`'s
+   * `an_answer_about_something_else_is_dropped_and_the_counts_remain` and
+   * `soulcore`'s `session_summary.rs`, where a real endpoint answers a real
+   * request.
+   */
+  it("端点跑题时核心退回计数，屏幕就照计数说，不提端点", async () => {
+    await open({
+      graph: aPeopleGraph(),
+      summarizing: () => aPersonSummary({ source: "counts" }),
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getAllByRole("button", { name: "看这个人的摘要" })[0]!);
+
+    const source = await screen.findByTestId("summary-source");
+    expect(source).toHaveTextContent("本机根据往来次数写的统计");
+    expect(source).not.toHaveTextContent("端点");
+    expect(screen.getByTestId("summary-text")).not.toHaveTextContent("榴莲");
+  });
+
+  /**
+   * The outbound disclosure on this page names what the request body carries.
+   * One of the things it carries is the instruction, and 一句固定的改写要求 was
+   * describing something that was not in it: the summary request sent the
+   * drafting instruction until `E1Purpose` existed. The sentence now names
+   * what `soul_policy::e1::PERSON_SUMMARY_INSTRUCTION` asks for.
+   */
+  it("出网那一行说的固定指令，就是摘要请求里那一条", async () => {
+    await open({ graph: aPeopleGraph() });
+
+    const localOnly = screen.getByTestId("local-only");
+    expect(localOnly).toHaveTextContent("固定的系统指令");
+    expect(localOnly).toHaveTextContent("不许添新事实");
+    expect(localOnly).toHaveTextContent("不许改数字");
   });
 
   /**
