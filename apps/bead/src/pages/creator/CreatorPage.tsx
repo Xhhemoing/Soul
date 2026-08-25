@@ -35,7 +35,6 @@ export function CreatorPage() {
         ) : (
           <EmptyState message="这位创作者还没有公开图纸。" actions={[{ label: "返回灵感", to: "/explore" }]} />
         )}
-        <p className="stub-note">Fork 二创改色归 WP-B08，B02 不放死按钮。</p>
       </section>
     </>
   );

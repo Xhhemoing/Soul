@@ -14,7 +14,7 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core + TS + DATA-1 + AL + B04 + B05 + B10 workflow |
-| 当前任务 | ROUND 3 产品闭环已合（B03/B06/B07）；B08 画廊 IA 已合（#53） |
+| 当前任务 | ROUND 3：B08 Fork 已吸收（#54）；本机测试/浏览器核/复审在途 |
 | PR | #16 专属线；#20–#46（#45 B03 实现；#46 B07 IA） |
 | Merge | B04 `15ad3b3`；B05 `8526c5c`；B10 本提交；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读；hosted Bead CI 空 runner（非产品失败） |
@@ -110,6 +110,8 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] B07 实现吸收 #51（`.beadproj` v1）
 - [x] B07 复审合入（#52，ACCEPT-WITH-NITS，0 HIGH / 1 MED 测试缺口）
 - [x] B07 浏览器核：`.pat` UNSUPPORTED_FORMAT；png 导向上传；坏 JSON SCHEMA_INVALID；Workspace 导出下载
+- [x] B08 画廊 IA 合入（#53，`round3-gallery.md`；Fork 时量化进 generic-5mm）
+- [x] B08 实现吸收 #54（+4 图纸 + torii 网格 + Fork 改色；实现席报 39/608）
 - [x] B05 复审合入（#40，ACCEPT；MED-1 blob URL 后置）
 - [x] B10 独立 `bead.yml` 合入（#41）；Soul `ci.yml` 零 diff
 - [x] B10 复审合入（#42，ACCEPT，0 HIGH/MED）
@@ -120,11 +122,11 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - 不要合 PR #4 / #7 / #10 / `main` 进 unique trunk。
 - 不要做 AC-27。
 - 不要把 bead 加进根 Cargo workspace。
-- hosted Actions 空 runner（Billing）：Soul 与 Bead `9b2d65a` 同症（作业 3s、无 step、无 runner_name）。不要 empty-commit 去「修」。本机命令仍是门。
+- hosted Actions 空 runner（Billing）：Soul 与 Bead 同症。`bb4ce71` / `00cc9c7` / `4ec0750` / `e6ca0ae` 四次 Bead 作业均 ~3s、`steps: []`、`runner_name` 空（与 `9b2d65a` / `a5a69c4` 同型）。不要 empty-commit 去「修」。本机命令仍是门。
 
 ## 下一轮重点（ROUND 3）
 
-B07 复审 ACCEPT-WITH-NITS。B08 画廊 IA 已合（#53）。下一刀：**B08 Fork 改色实现**。AL-4、MED-1 后置。
+B08 已吸收（#54）。下一刀：本机测试 + 浏览器核 Fork + Fable 复审。AL-4、MED-1 后置。hosted Bead CI 仍是空 runner，勿 empty-commit。
 
 ```text
 ROUND 2（进行中）
@@ -136,6 +138,7 @@ Commit        15ad3b3 absorb B04；本提交记进度
 PR            #16 #32–#37
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B05 实现；B10 workflow；MED-1 后置
+已收          [R3 Opus B08 implement](https://cursor.com/agents/bc-25eb9b45-259f-5e5e-85d4-99f78fbb0481) → #54
 已收          [R3 Fable B08 gallery IA](https://cursor.com/agents/bc-3a79073c-59fb-5767-b915-fb66bf14f55e) → #53
 已收          [R3 Fable review B07](https://cursor.com/agents/bc-1b7ae4a2-9407-5270-b668-66e03e95f421) → #52
 已核          B07：假 .pat 拒绝；png 导向上传；坏 beadproj 拒绝；Workspace 导出下载
