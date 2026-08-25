@@ -1,6 +1,6 @@
 # Goal 1 收口检查单（Round 1 fable-a）
 
-核于 `cursor/goal1-close-loop-a073` @ `10da234`（= trunk `6133307` + docs），2026-08-25。
+核于 `cursor/goal1-close-loop-a073` @ `10da234`（= trunk `6133307` + docs），2026-08-25；R1-LEGACY 一行按同轮并发提交 `9fd6870` 复核更新。
 类别恰好七种：already-done / code-now / docs-now / author-manual / minutes / frozen-wont / other-PR。
 「Owner (R2)」指 Round 2 的处置人；`—` = 无人做、按拍板冻结。
 
@@ -9,7 +9,7 @@
 | ID | 类 | 证据路径 | Owner (R2) |
 |---|---|---|---|
 | CI-TRUNK | already-done | `.github/workflows/ci.yml:24-28`（第 27 行列 trunk）+ job `if` 门 `:51,108,168,241,275`；提交 `f8fe32f`。种子过时 | —（勿再动触发面） |
-| R1-LEGACY | **code-now**（CODE-1） | `crates/soul-graph/src/model.rs:104-106`；`crates/soul-graph/src/correct.rs:98-114,144-160,207-226`；`docs/schemas/relationship.schema.json:31-34,106-115`；`.agent_workspace/plan-polish/round3/fable-b/REGRESSIONS.md:5-19` | opus |
+| R1-LEGACY | already-done（本轮 `9fd6870` 关闭） | 缺口证据（基线 `10da234`）：`crates/soul-graph/src/model.rs:104-106`、`correct.rs` 整包写回、`relationship.schema.json:31-34,106-115`。修复证据：`9fd6870` 新增 `correct.rs::scored()`（空 `algorithm_id` 先 rebuild、打不出分 `UnscoredEdge` 拒绝）+ `error.rs` + `graph_correction.rs` 188 行回归；schema 未动 | opus 仅复核 `9fd6870`，不重实现 |
 | DOC-D49 | **docs-now**（追加 D61，不改写 D49） | `docs/DECISIONS.md:60` vs `docs/STATUS.md:9`、`docs/FORMAL_WORK_PROMPT.md:20`、`docs/PLAN_INDEX.md:35` | 父代理直改（≤10 行，FORMAL 11.3）或 docs 槽 |
 | DOC-INDEX | already-done | `docs/PLAN_INDEX.md:26` 行尾已有 D60 豁免句；提交 `095c1f8`，本树经 `a30bd6f` 吸收。种子过时 | — |
 | M1-PR4 | other-PR | `gh pr list` 核于 2026-08-25：PR #4（`agent/dev-sota`）仍 open；本环境 `gh` 只读 | 父代理/作者（GitHub 关闭，不合入） |
@@ -98,6 +98,6 @@
 
 ## 五、Round 2 汇总
 
-- **code-now（恰 3 项，全给 opus）**：CODE-1 legacy 边守卫（R1-LEGACY）；CODE-2 具名夹具产品对拍 + 三个缺失断言（AC-28/29/30 收严）；CODE-3 AC-34 的 `last_contact` 断言。细则见 REPORT.md 第三节。
+- **code-now（2 项，全给 opus）**：CODE-2 具名夹具产品对拍 + 三个缺失断言（AC-28/29/30 收严）；CODE-3 AC-34 的 `last_contact` 断言。细则见 REPORT.md 第三节。原 CODE-1（R1-LEGACY 守卫）已被本轮 `9fd6870` 实现，Round 2 只复核。
 - **docs-now（2 项，均 ≤10 行）**：追加 D61（主干接班，DOC-D49）；STATUS D57 复述补半句（R-3）。
 - 其余全部 already-done / author-manual / minutes / frozen-wont / other-PR，Round 2 **不得**为它们生成工单。

@@ -3,6 +3,7 @@ MODEL_SLUG: claude-fable-5-thinking-xhigh
 # Round 1 fable-a：Goal 1 收口差距审计（close-gap audit）
 
 审计对象：`cursor/goal1-close-loop-a073` @ `10da234`（等于 trunk `cursor/goal1-unblock-a073` @ `6133307` + 一条 docs 提交）。
+**同轮并发修正**：审计进行期间兄弟槽位推了 `9fd6870`（opus-a，R-1 修复）等提交；凡受其影响的结论已按 `9fd6870` 复核并在文中标明，其余 file:line 仍核于 `10da234`。
 门禁口径：D54 —— FORMAL 验收矩阵全部 v0.1 行 **与** PRODUCT_LOCK 十三片切片**同时**过。
 逐项分类表在同目录 `CLOSE_CHECKLIST.md`；本文只写结论、父代理种子项的核实、与 Round 2 建议。
 
@@ -12,15 +13,15 @@ MODEL_SLUG: claude-fable-5-thinking-xhigh
 
 | 类 | 数量级 | 内容 |
 |---|---|---|
-| already-done | 矩阵 33 行中 28 行 + 切片 13 片中 9 片 + 种子项 2 项 + 历史回归 3 条 | 见检查单 |
-| code-now | **3 项**（全部小而有界：1 个 P2 守卫 + 2 个测试收紧） | 见第三节 |
+| already-done | 矩阵 33 行中 28 行 + 切片 13 片中 9 片 + 种子项 3 项（含本轮 `9fd6870` 关掉的 R1-LEGACY）+ 历史回归 3 条 | 见检查单 |
+| code-now | **2 项**（都是测试收紧，不动产品代码） | 见第三节 |
 | docs-now | 2 项（都在 10 行以内） | D49 追认接班 + STATUS 的 D57 复述补半句 |
 | author-manual | 切片 1/7/11 的真机半边 + AC-01 + NSIS 签名 + DPAPI 真机确认 | `scripts/author-manual-checklist.md` 七条门禁节 |
 | minutes | AC-26 / 切片 13 的 HEAD hosted 五门 | 分钟恢复后 `workflow_dispatch` 本分支，不 empty-commit |
 | frozen-wont | 8 项 | 全部有拍板或明确定价（D34/D35/D36/D44/D55、AC-27、9999 摆动、`parse_rfc3339` 双份、COPY_ZH §4 漂移） |
 | other-PR | 3 项 | PR #7 合入、PR #6 后合（含 D32 撞号处理）、PR #4 关闭 |
 
-换句话说：**Goal 1 关不上的原因只有两个不归代码管的东西（hosted 分钟、作者 Win11 真机），加上三个一轮 opus 就能收掉的小项。**
+换句话说：**Goal 1 关不上的原因只有两个不归代码管的东西（hosted 分钟、作者 Win11 真机），加上两个一轮 opus 就能收掉的测试小项。**
 
 ## 二、父代理种子项核实（两项是错的）
 
@@ -35,16 +36,16 @@ MODEL_SLUG: claude-fable-5-thinking-xhigh
 
 Round 2 **不要**再动 `ci.yml` 触发面。
 
-### R1-LEGACY —— **对，确认为 code-now（P2）**
+### R1-LEGACY —— **对（缺口属实），且已在本轮被 `9fd6870` 关闭（already-done）**
 
-事实链在本树逐条复核成立：
+缺口在审计基线 `10da234` 上逐条复核成立：
 
 1. `crates/soul-graph/src/model.rs:104-106`：`algorithm_id: String` 带 `#[serde(default)]`、**无** `skip_serializing_if`；分列计数（第 78-92 行）与 `silent_days`（第 98-99 行）同理恒序列化。
 2. `crates/soul-graph/src/correct.rs:98-114`（`correct_tie`）与 `:144-160`（`release_tie`）读整包 → 改锁字段 → `rewritten()`（`:207-226`）整包 `serde_json::to_value` 写回 `put_relationship`，无任何 legacy 检查；`machine_reading()` 注释（`:197-204`）明说 legacy 纠正是有意支持的路径。
 3. `docs/schemas/relationship.schema.json:31-34`：`algorithm_id` 枚举只有 `T4D`/`T4`，空串必拒；即便跳过空串序列化，`:106-115` 的 `dependentRequired`（`direct_out_count → algorithm_id` 等八条）也会拒掉恒序列化的 `direct_out_count: 0`。
 4. trunk 尾部提交 `6133307` 只改了 `soul-schema/tests/schema_wiring.rs` 的标识符遍历（`algorithm_id` 不当 uuid7 查），**没有**触碰本缺口。
 
-维持种子的修法方向：rebuild-first 或 refuse-with-rebuild，**不放松 T4D 枚举**。列为 Round 2 code-now 第 1 项。
+**同轮关闭**：opus 槽位提交 `9fd6870`（`soul-graph: score a pre-wiring edge before locking its band (R-1)`）落地了种子要求的形态——`correct.rs` 新增 `scored()`：`algorithm_id` 非空原样返回；为空先跑一次 `rebuild`（审计条目照写）再取重打分的行；重建后仍打不出分的边以新增的 `GraphError::UnscoredEdge` 具名拒绝。schema 未动（无放松枚举、无跳过零值），`graph_correction.rs` +188 行回归测试。**Round 2 只需复核这条提交，不要重新实现。**
 
 ### DOC-D49 —— **对，确认为 docs-now**
 
@@ -60,10 +61,9 @@ Round 2 **不要**再动 `ci.yml` 触发面。
 - `scripts/author-manual-checklist.md` 在树上（13 节，七条门禁节 + §8-10 可选）→ author-manual。
 - hosted 空 runner：STATUS「当前里程碑」已锚定证据（`2e72ddf` 五门绿 run 32754617268；此后 HEAD 全部 0 step 空 run）→ minutes，不是代码任务。
 
-## 三、Round 2 opus 的 code-now 建议（恰好 3 项，全部有界）
+## 三、Round 2 opus 的 code-now 建议（2 项，全部有界）
 
-**CODE-1（P2，产品代码 + 回归测试）：`correct_tie`/`release_tie` 的 legacy 边守卫。**
-对 `read_strength` 读出的边，若 `algorithm_id` 为空（即 pre-wiring 八字段行），先触发一次 rebuild 再纠正，或拒绝并回「先重建」的可读错误。不放松 schema，不动 T4D 枚举，不加第三套字段。回归测试：往真库 put 一条八字段合法 legacy 行（`t4d_band.rs` 已有此形状的写法），不 rebuild 直接 `correct_tie`，断言结果通过 `check(SchemaId::Relationship, …)`。改动面：`crates/soul-graph/src/correct.rs`（或其调用方）+ 一个测试文件。
+原第 1 项（R1-LEGACY 守卫，曾编号 CODE-1）已被本轮 `9fd6870` 实现，从建议中移除；Round 2 对它只做复核。剩两项，编号沿用：
 
 **CODE-2（测试收紧，不动产品代码）：具名夹具在产品边界对拍，收严 AC-28/29/30。**
 FORMAL 第 162 行原话是「Goal 1 侧应当**导入**它们并断言产品路径与算法 crate 同判」，但 `crates/soul-graph/tests/` 目前没有任何文件 import `soul_algo_tie::testing`（t4d_band/t4d_product 都是手搭等价形状）。补一个对拍测试：把 `group_heavy_plus_one_direct_each_way`、`lilei_12`、`group_heavy_plus_three_directs`、`dormant_2019` 四个具名夹具灌进真库 → rebuild → 断言每条边 band 与 `soul_algo_tie::score` 同判；顺带补上三个现缺断言：AC-28 决胜边的 `direct_active_day_count`（`t4d_band.rs:161-167` 现只断四个分列计数）、AC-29 的 `group_heavy_plus_three_directs`=Moderate 与锚同测、AC-30 的两条边 `as_of_utc` 全等。禁止在测试里复述阈值数字（红线 11——夹具规模数字可写，门槛数字不可写）。
@@ -71,7 +71,7 @@ FORMAL 第 162 行原话是「Goal 1 侧应当**导入**它们并断言产品路
 **CODE-3（测试收紧，一处断言）：AC-34 的 `last_contact` 半句。**
 AC-34 的 Then 有两半；`crates/soul-import/tests/import_to_graph.rs:157`（`an_owner_group_message_does_not_write_one_outgoing_row_per_speaker`）只断了「无 Outgoing 行」那一半。夹具本身已经把 owner 的消息排在最后（10:00 晚于全部发言人的 09:xx），正好用来断第二半：rebuild 之后每条边的 `tie_strength.last_contact_utc` 等于该 peer 自己那条 09:xx 消息，而不是 owner 的 10:00。一处断言，改一个测试函数。
 
-三项都不触碰冻结 crate、不动 schema、不加命令、不加依赖。除此以外**没有第四个 code-now**：gpt-sol-a 同轮报告里 AC-32/AC-33 的「无单一整合测试」读法比矩阵行文更严——那两行的每个 Then 子句都已各有产品路径断言（见检查单），不构成收口缺口，Round 2 不要为它们加测试。
+两项都是纯测试：不触碰冻结 crate、不动 schema、不加命令、不加依赖。除此以外**没有第三个 code-now**：gpt-sol-a 同轮报告里 AC-32/AC-33 的「无单一整合测试」读法比矩阵行文更严——那两行的每个 Then 子句都已各有产品路径断言（见检查单），不构成收口缺口，Round 2 不要为它们加测试。
 
 ## 四、明确不在范围内（Round 2/3 谁都不做）
 
