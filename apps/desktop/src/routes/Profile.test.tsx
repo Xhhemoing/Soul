@@ -92,6 +92,28 @@ describe("灵魂档案页", () => {
     expect(within(axes).getByText("条理与执行：还看不出方向")).toBeVisible();
   });
 
+  /**
+   * Where a direction came from is a claim about this build, not about the
+   * shape the store could hold. `record_axis_inference` exists in
+   * `soul-profile`, but nothing on this side calls it and committing an import
+   * rebuilds the people graph rather than proposing an axis — so the only
+   * things that have ever moved an axis here are the questionnaire and the
+   * buttons on this page, and the sentence must not borrow /graph's 导入的往来.
+   */
+  it("轴的说明写的是题目和纠正，不说方向是从导入的往来里推出来的", async () => {
+    await open();
+
+    const explanation = screen.getByTestId("axes-explanation");
+    expect(explanation).toHaveTextContent("你答过");
+    expect(explanation).toHaveTextContent("纠正");
+    expect(explanation.textContent ?? "").not.toMatch(/导入/);
+    expect(explanation).toHaveTextContent("只有偏向，没有高低，也没有名次");
+    // The lock is real in the core, and it is a lock against inference rather
+    // than against the user answering the same question again.
+    expect(explanation).toHaveTextContent("锁住");
+    expect(explanation).toHaveTextContent("不会覆盖你");
+  });
+
   /** AC-07: the correction goes to the core, and the whole screen comes back. */
   it("纠正一条轴之后，这条轴锁住了", async () => {
     const core = await open();

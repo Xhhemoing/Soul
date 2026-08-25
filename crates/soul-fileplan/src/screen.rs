@@ -25,6 +25,12 @@
 //! * a colon after the drive letter opens an alternate data stream, which is a
 //!   second file hiding behind the name of the first.
 //!
+//! One thing is taken off rather than refused: Explorer's 「复制为路径」 wraps
+//! what it copies in ASCII double quotes, so the way a Windows user names a
+//! directory is `"C:\Users\Roy\Downloads"`. That is the same directory, so the
+//! quotes come off before the rules run and every rule then applies to what
+//! was inside them.
+//!
 //! Several of these are Windows facts being enforced on Linux too. That is
 //! deliberate: Linux is only a CI host for this product, and a rule that is
 //! only active on the platform without the tests is a rule with no tests.
@@ -137,6 +143,9 @@ impl ScreenedPath {
 
 /// Apply every rule to one path.
 pub fn screen(raw: &str) -> Result<ScreenedPath, PathDefect> {
+    // What the clipboard put around the path, before any rule reads it.
+    let raw = without_paste_wrapping(raw);
+
     if raw.is_empty() {
         return Err(PathDefect::Empty);
     }
@@ -241,6 +250,29 @@ fn is_separator(c: char) -> bool {
     c == '/' || c == '\\'
 }
 
+/// Undo what a paste puts around a path, and nothing else.
+///
+/// Windows Explorer's 「复制为路径」 hands over `"C:\Users\Roy\Downloads"` with
+/// ASCII double quotes on both ends, and the files page is a text box, so that
+/// string is how a real user names an authorized root. Exactly one matching
+/// pair comes off: `""C:\x""` keeps a quote and is refused as the not-a-path it
+/// is, an unmatched `"C:\Users\Roy` is refused the same way, and a quote in the
+/// middle of a name is left where it was.
+///
+/// Only the whitespace in front is dropped. A space at the end belongs to the
+/// last segment — Windows would silently drop it and open a different file —
+/// so it stays and [`screen_segment`] refuses it.
+fn without_paste_wrapping(raw: &str) -> &str {
+    let raw = raw.trim_start();
+    match raw
+        .strip_prefix('"')
+        .and_then(|inner| inner.strip_suffix('"'))
+    {
+        Some(inner) => inner.trim_start(),
+        None => raw,
+    }
+}
+
 /// If `raw` is an extended-length local drive path, return the drive-letter
 /// spelling the rest of the screen already knows how to read.
 ///
@@ -289,6 +321,105 @@ mod tests {
         assert_eq!(
             screen(r"\\?\c:\Users\Roy\Docs").expect("lowercase drive"),
             ordinary,
+        );
+    }
+
+    /// Explorer's 「复制为路径」 is how a Windows user gets a path into a text
+    /// box, and it quotes what it copies. A quoted path is the same path.
+    #[test]
+    fn a_path_pasted_from_explorer_with_its_quotes_is_the_same_path() {
+        let quoted = screen("\"C:\\Users\\Roy\\Downloads\"").expect("quoted drive path");
+        assert_eq!(quoted, screen(r"C:\Users\Roy\Downloads").expect("bare"));
+        assert_eq!(quoted.display(), r"C:\Users\Roy\Downloads");
+
+        // The quotes come off first, so the extended-length spelling is still
+        // read as the local drive it names.
+        assert_eq!(
+            screen("\"\\\\?\\C:\\Users\\Roy\\Docs\"").expect("quoted extended local"),
+            screen(r"C:\Users\Roy\Docs").expect("bare"),
+        );
+        assert_eq!(
+            screen("\"/home/roy/文档\"").expect("quoted posix"),
+            screen("/home/roy/文档").expect("bare"),
+        );
+        // A paste can arrive with the field's leading whitespace attached.
+        assert_eq!(
+            screen("  \"C:\\Users\\Roy\"").expect("leading space then quotes"),
+            screen(r"C:\Users\Roy").expect("bare"),
+        );
+    }
+
+    /// Unwrapping is one pair of quotes and the whitespace in front, and
+    /// nothing else: everything the screen refused before it is refused after.
+    #[test]
+    fn unwrapping_a_paste_does_not_let_anything_else_through() {
+        for (raw, expected) in [
+            ("\"\"", PathDefect::Empty),
+            ("   ", PathDefect::Empty),
+            (
+                "\"C:\\Users\\Roy",
+                PathDefect::NotAbsolute("\"C:\\Users\\Roy".into()),
+            ),
+            (
+                "\"\"C:\\Users\\Roy\"\"",
+                PathDefect::NotAbsolute("\"C:\\Users\\Roy\"".into()),
+            ),
+            (
+                "\"relative/path\"",
+                PathDefect::NotAbsolute("relative/path".into()),
+            ),
+            ("\"\\\\server\\share\\x\"", PathDefect::UncOrDevicePrefix),
+            (
+                "\"\\\\?\\UNC\\server\\share\\x\"",
+                PathDefect::UncOrDevicePrefix,
+            ),
+            ("\"\\\\.\\PhysicalDrive0\"", PathDefect::UncOrDevicePrefix),
+            ("\"C:\\Users\\..\\Windows\"", PathDefect::ParentSegment),
+            (
+                "\"C:\\Users\\NUL\"",
+                PathDefect::ReservedDeviceName("NUL".into()),
+            ),
+            (
+                "\"C:\\Users\\notes.txt:hidden\"",
+                PathDefect::ColonInSegment("notes.txt:hidden".into()),
+            ),
+        ] {
+            assert_eq!(screen(raw).unwrap_err(), expected, "screening `{raw}`");
+        }
+    }
+
+    /// A space at the end of a path is not a paste artifact, it is a Windows
+    /// fact about the last segment: `secret.txt ` and `secret.txt` are one
+    /// file with two spellings, so the trailing one is refused quoted or not.
+    #[test]
+    fn a_trailing_space_survives_the_unwrap_and_is_still_refused() {
+        assert_eq!(
+            screen(r"C:\Users\secret.txt ").unwrap_err(),
+            PathDefect::TrailingDotOrSpace("secret.txt ".into()),
+        );
+        assert_eq!(
+            screen("\"C:\\Users\\secret.txt \"").unwrap_err(),
+            PathDefect::TrailingDotOrSpace("secret.txt ".into()),
+        );
+        assert_eq!(
+            screen("\"C:\\Users\\secret.txt.\"").unwrap_err(),
+            PathDefect::TrailingDotOrSpace("secret.txt.".into()),
+        );
+    }
+
+    /// Only ASCII quotes, and only at the ends. A curly quote is a character
+    /// in a name, and a quote in the middle of one is too.
+    #[test]
+    fn quotes_that_are_not_explorers_are_left_where_they_are() {
+        assert_eq!(
+            screen("\u{201c}C:\\Users\\Roy\u{201d}").unwrap_err(),
+            PathDefect::NotAbsolute("\u{201c}C:\\Users\\Roy\u{201d}".into()),
+        );
+        assert_eq!(
+            screen("C:\\Users\\a\"b\\Docs")
+                .expect("a quote inside a name")
+                .segments(),
+            ["Users", "a\"b", "Docs"],
         );
     }
 

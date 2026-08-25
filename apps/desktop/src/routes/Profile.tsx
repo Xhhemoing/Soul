@@ -143,9 +143,9 @@ export function Profile(): React.JSX.Element {
 
       <section className="panel" aria-labelledby="axes-heading">
         <h2 id="axes-heading">特质轴（{screen.axes.length}）</h2>
-        <p className="muted">
-          方向是从你说过的话和导入的往来里推出来的工作假设：只有偏向，没有高低，也没有名次。
-          你觉得哪一条不对就按下去改；改过之后这条轴就锁住了，后面再推出别的也不会覆盖你。
+        <p className="muted" data-testid="axes-explanation">
+          方向来自你答过的那些题，和你在这一页按下去的纠正：只有偏向，没有高低，也没有名次。
+          你觉得哪一条不对就按下去改；改过之后这条轴就锁住了，以后机器再推出别的方向也不会覆盖你。
         </p>
         <ul className="facts" data-testid="axis-list">
           {screen.axes.map((axis) => (
