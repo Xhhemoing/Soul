@@ -1,3 +1,4 @@
+import type { SplitMode } from "../algo/steps.ts";
 import type { CreatorId, PatternId, ProjectId } from "./ids.ts";
 
 export type BoardKind = "square-28" | "square-56" | "hex" | "round";
@@ -62,14 +63,31 @@ export interface InventoryEntry {
   beads: number;
 }
 
+/**
+ * BD19: the only assemble progress that reaches storage. The key set is exactly
+ * these five — `Step[]`, `Grid`, per-cell `doneBits` and anything else derived
+ * stay out, because the first PR that persists a grid owes the `bead-v1`
+ * IndexedDB contract along with it (round2-data §5) and that is not this one.
+ */
+export interface ProgressCursor {
+  projectId: ProjectId;
+  mode: SplitMode;
+  /** 0-based; consumers clamp it into `[0, steps.length]`. */
+  stepIndex: number;
+  elapsedMs: number;
+  updatedAt: number;
+}
+
 export interface PersistedState {
   projects: Project[];
   favorites: PatternId[];
   inventory: InventoryEntry[];
+  progress: ProgressCursor[];
 }
 
 export const EMPTY_STATE: PersistedState = {
   projects: [],
   favorites: [],
   inventory: [],
+  progress: [],
 };

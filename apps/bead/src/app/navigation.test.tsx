@@ -68,7 +68,8 @@ describe("路由表", () => {
   it("/pattern/:id 渲染画廊图纸真实内容", async () => {
     renderApp({ route: "/pattern/gal-slime-01" });
     expect(await screen.findByRole("heading", { level: 1, name: "史莱姆小队" })).toBeInTheDocument();
-    expect(screen.getByText("412")).toBeInTheDocument();
+    // D-ASM-2: the grids fixture is the authority for this count.
+    expect(screen.getByText("300")).toBeInTheDocument();
     expect(screen.getByText(/H02 薄荷绿/)).toBeInTheDocument();
   });
 

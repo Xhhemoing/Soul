@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { STORAGE_KEY, createRepository, parsePersistedState } from "./repository.ts";
 import { asPatternId, mintProjectId } from "./ids.ts";
 import { FlakyStorage } from "../test/flaky-storage.ts";
-import type { Project } from "./types.ts";
+import type { ProgressCursor, Project } from "./types.ts";
 
 function project(title = "元宵提灯"): Project {
   return {
@@ -14,6 +14,17 @@ function project(title = "元宵提灯"): Project {
     createdAt: 7,
     backdrop: "black",
     backdropColor: "#101014",
+  };
+}
+
+function cursor(owner: Project, overrides: Partial<ProgressCursor> = {}): ProgressCursor {
+  return {
+    projectId: owner.id,
+    mode: "color-by-color",
+    stepIndex: 2,
+    elapsedMs: 61_000,
+    updatedAt: 1_700_000_000_000,
+    ...overrides,
   };
 }
 
@@ -41,7 +52,7 @@ describe("Repository（D-UI-5：接口全 async）", () => {
       parsePersistedState(
         JSON.stringify({ projects: [{ id: "bad-1", title: "x", status: "todo" }], favorites: ["nope"] }),
       ),
-    ).toEqual({ projects: [], favorites: [], inventory: [] });
+    ).toEqual({ projects: [], favorites: [], inventory: [], progress: [] });
   });
 
   it("缺 backdrop 或 backdrop 不是预设的记录被丢掉", () => {
@@ -54,6 +65,97 @@ describe("Repository（D-UI-5：接口全 async）", () => {
       parsePersistedState(JSON.stringify({ projects: [withoutBackdrop, wrongKind, wrongColor] })).projects,
     ).toEqual([]);
     expect(parsePersistedState(JSON.stringify({ projects: [project()] })).projects).toHaveLength(1);
+  });
+});
+
+describe("步游标第四键（BD19 / T-ASM-6）", () => {
+  it("往返 localStorage，并跟着项目一起落在同一个 blob 里", async () => {
+    globalThis.localStorage.clear();
+    const repo = createRepository();
+    const owner = project();
+
+    await repo.saveProjects([owner]);
+    await repo.saveProgress([cursor(owner)]);
+
+    expect(await repo.loadProgress()).toEqual([cursor(owner)]);
+    expect(await repo.loadProjects()).toEqual([owner]);
+  });
+
+  it("畸形条目被丢掉，不带崩整份 blob", () => {
+    const owner = project();
+    const parsed = parsePersistedState(
+      JSON.stringify({
+        projects: [owner],
+        progress: [
+          cursor(owner),
+          { ...cursor(owner), projectId: "gal-slime-01" },
+          { ...cursor(owner), mode: "spiral" },
+          { ...cursor(owner), stepIndex: -1 },
+          { ...cursor(owner), elapsedMs: Number.NaN },
+          { ...cursor(owner), updatedAt: "刚刚" },
+          null,
+          "游标",
+        ],
+      }),
+    );
+    expect(parsed.progress).toEqual([cursor(owner)]);
+  });
+
+  it("孤儿游标被剪除", () => {
+    const owner = project();
+    const gone = project("已删掉的项目");
+    const parsed = parsePersistedState(
+      JSON.stringify({ projects: [owner], progress: [cursor(owner), cursor(gone)] }),
+    );
+    expect(parsed.progress.map((entry) => entry.projectId)).toEqual([owner.id]);
+  });
+
+  it("同一项目多条时取 updatedAt 最大的那条", () => {
+    const owner = project();
+    const parsed = parsePersistedState(
+      JSON.stringify({
+        projects: [owner],
+        progress: [
+          cursor(owner, { stepIndex: 1, updatedAt: 10 }),
+          cursor(owner, { stepIndex: 9, updatedAt: 30 }),
+          cursor(owner, { stepIndex: 4, updatedAt: 20 }),
+        ],
+      }),
+    );
+    expect(parsed.progress).toHaveLength(1);
+    expect(parsed.progress[0]?.stepIndex).toBe(9);
+  });
+});
+
+describe("BD19 红线：落盘的游标只有五个键（T-ASM-7）", () => {
+  it("多余的键在写盘前就被剥掉，网格与步数组进不了 blob", async () => {
+    globalThis.localStorage.clear();
+    const repo = createRepository();
+    const owner = project();
+    await repo.saveProjects([owner]);
+
+    const smuggled = {
+      ...cursor(owner),
+      cells: [1, 2, 3],
+      steps: [{ cells: [] }],
+      doneBits: "1010",
+      grid: { width: 28, height: 28 },
+    } as unknown as ProgressCursor;
+    await repo.saveProgress([smuggled]);
+
+    const raw = globalThis.localStorage.getItem(STORAGE_KEY) ?? "";
+    const stored = (JSON.parse(raw) as { progress: Record<string, unknown>[] }).progress;
+    expect(stored).toHaveLength(1);
+    expect(Object.keys(stored[0] ?? {}).sort()).toEqual([
+      "elapsedMs",
+      "mode",
+      "projectId",
+      "stepIndex",
+      "updatedAt",
+    ]);
+    for (const banned of ["cells", "steps", "doneBits", "grid"]) {
+      expect(raw).not.toContain(banned);
+    }
   });
 });
 
