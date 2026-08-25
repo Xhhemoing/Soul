@@ -62,7 +62,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 | F3 | claude-fable-5-thinking-xhigh | 算法契约 | **完成** `e3cb62d` → 已 merge。`docs/bead/reviews/round1-algorithms.md`。O1 仍在跑，契约 follow-up 等它空闲再 resume |
 | F4 | claude-fable-5-thinking-xhigh | 数据 / 存储 / 权限 | **BLOCKED** 等 VM |
 | F5 | claude-fable-5-thinking-xhigh | 测试 / CI 隔离 | **完成** `814250f` → #20 **MERGED**。门禁升为 BD17 |
-| O1 | claude-opus-5-thinking-high-fast | **唯一实现** WP-B01 `crates/bead-core` | **完成并合入** `5d62896` #23。本机 `cargo test --manifest-path crates/bead-core/Cargo.toml` 绿 |
+| O1 | claude-opus-5-thinking-high-fast | **唯一实现** WP-B01 `crates/bead-core` | **完成** tip `2a47329`。合同补丁已只收 `crates/bead-core`（避免整支 merge 回滚 TS 管线）。本机 153 测试绿 |
 | O2 | claude-opus-5-thinking-high-fast | **唯一实现** WP-B02 `apps/bead` | **完成** `dc35ef0` → 已 merge。43 tests（子代理）。#21 |
 | O3 | claude-opus-5-thinking-high-fast | **唯一实现** `apps/bead/src/algo/`（BD14） | **完成并合入** `5ca90c2` #24。本机 `@bead/app` 20 文件 217 绿。`/create` 上传仍故意不接线 |
 | S1 | gpt-5.6-sol-xhigh-fast | 覆盖缺口探针 | **BLOCKED** 等 VM |
@@ -80,7 +80,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] ROUND 1 先派 3 个 Fable 云端（上限 3）
 - [x] F2 前端 IA 合入专属线
 - [x] O2 壳合入专属线（#21）
-- [x] O1 bead-core 合入（#23），本机测试绿
+- [x] O1 bead-core 合入（#23）+ 合同补丁 `1880487`，153 绿
 - [x] F3 算法契约合入（#18）
 - [x] F1 地图收进专属线；BD14–BD16 已拍
 - [x] F5 CI 清单合入（#20）
