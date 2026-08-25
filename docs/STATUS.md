@@ -125,13 +125,14 @@
 
 ### WP03 的取舍与遗留
 
-1. **问卷答案不锁轴，纠正才锁。** 两者都是用户说的，但含义不同：轴是灵魂层持有的工作假设，后来的证据有权修正它；语气是代理层要照办的指令。所以问卷的语气回答**立刻**钉住 `user_set`，问卷的轴回答只置 `locked_by_user = false`。要锁轴得走 `correct_axis`。
+1. **问卷答案不锁轴，纠正才锁。** 两者都是用户说的，但含义不同：轴是灵魂层持有的工作假设，后来的证据有权修正它；语气是代理层要照办的指令。所以问卷的语气回答**立刻**钉住 `user_set`，问卷的轴回答只置 `locked_by_user = false`。要锁轴得走 `correct_axis`。反过来那一半见下面第 8 条：问卷答案也**推不动**已经锁上的轴。
 2. **`evidence_ids` 是替换不是累加。** 一条轴上的列表说的是「支持它**现在**这个位置的证据」。被取代的回答仍留在证据表与审计链里，只是不再被当作它已不支持的那个结论的依据。
 3. **denylist 抓到过一次真的。** 语气渲染里「用得少」原本写成「少量表情」，其中「量表」正是 D22 禁的刻度词。改词之后补了一条穷举测试，把 81 种语气组合全部渲染一遍再过断言——这类命中靠人眼复查是抓不住的。
 4. **语气问三题，不是两题也不是四题。** 原本只问直接程度与表情用量，理由是完成率。合并之后语域（`q.voice.register`）也进来了——WP06 那一侧本来就在问它，只是落成了一段没人读的散文；同一个问题问一遍并且让它真的钉住字段，比问一遍然后丢掉划算。温度（warmth）仍然不问，留在中性默认等用户在档案页自己改，`voice_question_id(Warmth)` 返回 `None` 而不是指向一道不存在的题。
 5. **`profile.voice` 是 schema 里的自由 JSON。** `VoiceProfile` 自己序列化进去，包含一份 `user_set` 名单。这意味着语气的锁定信息不在 `additionalProperties: false` 的保护范围内——档案 schema 没有为它定形状。`/profile` 现在确实在展示这个锁定态（WP09 第三段），它读的是 `VoiceProfile` 反序列化回来的那份名单，所以屏幕上的「你定的」正确与否仍然只由这个 crate 的测试保证，schema 那一层帮不上忙。提成正式字段仍然是对的，只是要动冻结的 schema，不是这一段能做的。
 6. **散文题落进 `boundaries` / `values` 的是指针，不是话。** 契约里这两个字段是自由数组，正因为如此往里放什么要自己守规矩：落的是 `{origin, question_id, event_id, evidence_id}`，用户写的那句话留在录制方密封的那条事件里。SECURITY.md 把散文限定在 `sealedText`，`profiles` 表不是那个地方。代价是要读回这句话得开一次 blob，档案视图不做这件事。WP09 第三段接 `/profile` 的时候顺着这条路走到了底：`StatedRow` 上没有一个字段能装那句话，屏幕上是题面和证据 id，`Profile.test.tsx` 把 fixture 里那句散文原文当关键词在整页 DOM 上搜一遍，搜到就红。要展示「你说过的边界」得先有人写开封那条路，那时该重新问一遍它值不值。
 7. **同一道题再答一次是替换，不是叠加。** 与轴上的 `evidence_ids` 同一个规矩：`boundaries` 里一道题只留一条指针，旧的那条事件与证据仍在库里、仍在链上，只是不再被当作现在这条边界的依据。
+8. ~~**再答一次问卷会推动已被纠正的轴。**~~ **已修（`62840ff`）。** 原先 `intake` 遍历回答直接调 `place_axis(..., locked_by_user: None)`，没有像 `record_axis_inference` 那样先问 `axis_is_locked`：位置、band 与 `evidence_ids` 全被问卷答案盖掉，而锁标记原样留着——两种可能的缺陷里更糟的那一种，因为界面上那把锁还在，用户看见的是「你的纠正还在」而档案里已经不是了。现在 `intake` 先查锁，锁着的轴不动；那条回答**照旧录制**（事件与 `questionnaire` 证据都在，答了就是答了，这是 `record_axis_inference` 已有的形状），并出现在 `IntakeOutcome::ignored` 里，带 `IntakeSkip::AxisLockedByUser`（`as_str()` 是 `axis_locked_by_user`，只有理由没有内容）。这条规则与 `crates/soul-algo-trait` 冻结的 A0 `apply_intake` 是同一条；写入模式仍是 last-write-wins，**没有**顺手开 A1 或 `NoDowngrade`。`tests/correction_lock.rs::re_answering_the_questionnaire_does_not_move_a_corrected_axis`：纠正好奇轴之后整卷改答 `leans_high`，好奇轴仍是 `leans_low`、仍锁着、band 仍是 `strong`、仍 cite 那条纠正证据，条理轴照常移动，被忽略那条的证据与事件 id 都解得开。**审计链上没有为此新增动作**：和被拒的推断一样，被拒的回答只留在证据表与回执里，链上仍是一条 intake。要让「我们保留了你的纠正」出现在屏幕或 `/audit` 上，得有人接 `ignored`——`soulcore::IntakeReceipt` 现在还不读它。
 
 ## WP04 完成情况
 
