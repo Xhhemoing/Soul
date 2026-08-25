@@ -318,6 +318,18 @@ impl ForgetOps for SqlCipherStore {
         // The audit tables are deliberately untouched.
         tx.commit().map_err(backend)?;
 
+        // Zeroing the freed page, which `PRAGMA secure_delete` does, only
+        // settles the main database file. The write-ahead log still holds the
+        // frames written before the delete, and those carry the page as it was
+        // when the wrapped key was on it. Truncating the log is what discards
+        // them; until then the key sits next to a database the DEK opens.
+        self.checkpoint().map_err(|error| {
+            StoreError::Backend(format!(
+                "the content keys were destroyed, but folding the write-ahead log back in \
+                 failed, so it may still hold their wrapped bytes: {error}"
+            ))
+        })?;
+
         Ok(ForgetReceipt { unit, impact })
     }
 }

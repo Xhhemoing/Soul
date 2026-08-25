@@ -142,6 +142,24 @@ impl SqlCipherStore {
             .map_err(backend)?;
         conn.pragma_update(None, "synchronous", "FULL")
             .map_err(backend)?;
+        // Forgetting is a `DELETE` of a wrapped content key, and plain SQLite
+        // would leave those bytes where they were, on a page that has merely
+        // joined the free list — still inside a file the DEK opens. SQLCipher
+        // happens to turn secure deletion on for us when its codec attaches,
+        // which is a fact about a dependency's internals and not something
+        // this crate says anywhere. Asking for it here, and refusing to hand
+        // back a store that answers anything else, makes it ours to keep.
+        conn.pragma_update(None, "secure_delete", "ON")
+            .map_err(backend)?;
+        let secure_delete: i64 = conn
+            .query_row("PRAGMA secure_delete", [], |row| row.get(0))
+            .map_err(backend)?;
+        if secure_delete != 1 {
+            return Err(StoreError::Backend(format!(
+                "this SQLite build answered PRAGMA secure_delete with {secure_delete} after being \
+                 asked for 1, so a destroyed content key would stay legible in a free page"
+            )));
+        }
         conn.execute_batch(sql::DDL).map_err(backend)?;
         conn.execute(
             "INSERT INTO meta (key, value) VALUES ('schema_version', ?1)
@@ -329,6 +347,17 @@ impl SqlCipherStore {
                 row.get::<_, i64>(0)
             })
             .map(|_| ())
+            .map_err(backend)
+    }
+
+    /// `PRAGMA secure_delete` as SQLite reports it: 0 off, 1 on, 2 for the
+    /// `FAST` compromise that only zeroes what it can do without extra page
+    /// writes. [`SqlCipherStore::open`] refuses to hand back a store that
+    /// answers anything but 1, because forgetting rests on the freed bytes
+    /// being gone rather than merely unlinked.
+    pub fn secure_delete(&self) -> StoreResult<i64> {
+        self.conn
+            .query_row("PRAGMA secure_delete", [], |row| row.get(0))
             .map_err(backend)
     }
 

@@ -20,6 +20,15 @@
 
 DPAPI → KEK → DB DEK → 每单元 CK。正文字段 AEAD，AAD=行 id+字段名。遗忘销毁 CK，预览影响面。不承诺物理擦除。
 
+「销毁 CK」不止是 `DELETE` 掉 `content_keys` 那一行——被删的字节还在两处，而这两处都是 DEK 打得开的文件：页内被释放的空间（行只是进了空闲页），以及删除之前写下的 WAL 帧（它们带着 CK 还在页上时的那一页）。所以现在多做两件事：
+
+- 开库时 `PRAGMA secure_delete = ON`，释放的页内字节被清零而不是留着。SQLCipher 在 codec 挂上时本来就会把它打开，但那是依赖内部的行为，本仓库任何地方都没写过；现在是显式设置并**读回校验**，`SqlCipherStore::open` 读到的不是 1 就直接报错退出。
+- `execute_forget` 提交之后立刻 `wal_checkpoint(TRUNCATE)`，把日志折回主库并截到 0 字节。这一步此前没有，日志会一直留着旧页直到应用下次碰巧 flush。
+
+于是可测语义变成：CK 那一行没了，包裹字节在主库页与 WAL 里都不再是可读的形态，正文解不出来。`crates/soul-store/tests/forget.rs` 断言 pragma 读回 1（关库重开后仍是 1，它是连接属性不是文件属性）、`execute_forget` 之后 `-wal` 是 0 字节（去掉 checkpoint 这条测试就红）。**没有**做解密后的逐页扫描：SQLite 唯一能做这件事的接口是 `sqlite_dbpage`，`libsqlite3-sys` 的 bundled 构建只开了 `SQLITE_ENABLE_DBSTAT_VTAB`，而且那张虚表可写，开它等于给任何拿到 DEK 的东西一条改原始页的路；测试里以「这个构建确实没有 `sqlite_dbpage`」的断言记着这件事，哪天有了就该把真扫描补上。同一个测试用明文库做对照，证明这个构建里关掉 pragma 删除的字节确实还在文件里、打开就没了。
+
+仍然不承诺 SSD 物理擦除：盘上更早的物理块可能仍带着旧密文，wear leveling 与 TRIM 不在本文件的承诺范围内。
+
 ## 加密落地（WP01 实测结论）
 
 结论：**走 SQLCipher 路线**，不需要回退。`ASSUMPTION` 中「若打包成本过高则退回 SQLite + 字段级 AEAD」这一条本 WP 未触发。
@@ -65,7 +74,7 @@ WP02 已落 `KeyProvider` 抽象，两个实现在 `crates/soul-store/src/keys.r
 
 测什么：`crates/soul-win-dpapi/tests/roundtrip.rs`（`cfg(windows)`：往返一致、blob 里搜不到明文密钥、两次保护结果不同、换 entropy 解不开、改一个字节解不开；`cfg(not(windows))`：两个方向都 `Unsupported`）；`crates/soul-store/src/keys.rs` 的单元测试（文件格式往返与九种坏 blob 全拒、DEK 在 KEK 下的包裹与换 KEK/换 AAD 都解不开）；`crates/soul-store/tests/dpapi_key_chain.rs`（开库 → 写一行 → 关库 → 新 provider 重开 → 读回来）。Linux 侧另有 `soulcore/tests/session_commands.rs` 断言这台机器上开库的是种子文件而不是 DPAPI。
 
-不承诺：抵抗本机管理员、物理取证、内核恶意软件；不承诺 SSD 物理擦除。遗忘的可测语义是「CK 已销毁，正文不可解，派生推断降为 orphaned」，UI 必须照此如实写。
+不承诺：抵抗本机管理员、物理取证、内核恶意软件；不承诺 SSD 物理擦除。遗忘的可测语义是「CK 已销毁——那一行没了，包裹字节在主库页与 WAL 里也不再可读（见「密钥与遗忘」）——正文不可解，派生推断降为 orphaned」，UI 必须照此如实写。
 
 ## 审计
 
