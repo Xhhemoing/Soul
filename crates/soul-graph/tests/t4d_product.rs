@@ -13,7 +13,7 @@ use soul_schema::common::{SchemaVersion, Subject, SupportedBand, Timestamp};
 use soul_schema::contact::{ContactClass, SoulContact};
 use soul_schema::memory::ForgetState;
 use soul_store::{SqlCipherStore, TestKeyProvider};
-use soul_store_api::ProfileStore;
+use soul_store_api::{GraphStore, ProfileStore};
 
 const SEED: &str = "t4d product gate";
 
