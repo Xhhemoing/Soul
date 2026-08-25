@@ -12,7 +12,7 @@
 //! be written twice by a caller that also audits.
 
 use soul_policy::audit::AuditContent;
-use soul_policy::e1::E1RequestPlan;
+use soul_policy::e1::{E1Purpose, E1RequestPlan};
 use soul_policy::hitl::{
     check_action, ActionKind, ActionRequest, ApprovedAction, CapabilityScope, CapabilityToken,
     HitlDenial, PlanHash, RequestOrigin, TokenIssuer,
@@ -194,6 +194,27 @@ impl PolicySession {
         token_id: Uuid,
         now_ms: u64,
     ) -> Result<E1Outcome, E1Refusal> {
+        self.e1_generate_for(E1Purpose::Draft, model, body, token_id, now_ms)
+    }
+
+    /// The same, for a request that is asking for something other than a
+    /// draft.
+    ///
+    /// The purpose decides which of `soul-policy`'s instruction constants goes
+    /// in the system position and nothing else: the guard, the token and the
+    /// redacted body are the same on every purpose, so a new one cannot buy a
+    /// caller a socket it did not already have. It is a separate entry point
+    /// rather than a field on the session because the purpose belongs to one
+    /// request — a session that remembered it would send the summary
+    /// instruction on the next draft.
+    pub fn e1_generate_for(
+        &mut self,
+        purpose: E1Purpose,
+        model: &str,
+        body: RedactedBody,
+        token_id: Uuid,
+        now_ms: u64,
+    ) -> Result<E1Outcome, E1Refusal> {
         let plan = e1_plan(model, self.guard.config().e1_endpoint(), &body);
         let request = ActionRequest::new(
             ActionKind::GenerateWithUserEndpoint.as_str(),
@@ -214,7 +235,9 @@ impl PolicySession {
         let class = permit.class();
 
         let carries_original = body.carries_exempted_original();
-        let response = soul_egress::send(&E1RequestPlan::chat_completions(permit, model, body))?;
+        let response = soul_egress::send(&E1RequestPlan::chat_completions_for(
+            purpose, permit, model, body,
+        ))?;
 
         Ok(E1Outcome {
             status: response.status,

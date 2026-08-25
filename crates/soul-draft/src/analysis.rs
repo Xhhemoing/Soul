@@ -88,7 +88,13 @@ impl SummaryPoint {
 pub enum SummarySource {
     /// Counts, computed on this machine. The no-key path.
     Counts,
-    /// The counts, rephrased by the endpoint the user configured.
+    /// The counts, plus one line the endpoint the user configured wrote.
+    ///
+    /// Not "the counts, rewritten": what Soul knows about that line is that it
+    /// states no figure the counts do not and is on their subject
+    /// ([`reply::is_grounded_in`]) — which is not the same as it being derived
+    /// from them. Everything with evidence behind it is still in
+    /// [`PersonSummary::points`], and [`render`] says so on the line itself.
     UserEndpoint,
 }
 
@@ -102,8 +108,8 @@ pub struct PersonSummary {
     pub points: Vec<SummaryPoint>,
     pub source: SummarySource,
     /// A rephrasing from the user's own endpoint, if there is one and it
-    /// passed the same checks the points did. The points stand on their own
-    /// without it.
+    /// passed the checks in [`phrase_with`]. It carries no evidence of its
+    /// own, and the points stand on their own without it.
     pub narrative: Option<String>,
     /// `工作假设，非临床结论`.
     pub notice: String,
@@ -164,9 +170,12 @@ pub fn summarize_person(
 
 /// The summary in words.
 ///
-/// Every line names how many rows are behind it, because a claim and its
-/// support belong on the same line — a footnote nobody scrolls to is not
-/// evidence the user can check.
+/// Every line names what is behind it, because a claim and its support belong
+/// on the same line — a footnote nobody scrolls to is not evidence the user
+/// can check. For a point that is rows: 依据 N 条记录. For the endpoint's line
+/// it is the truth that there are none, said on the line rather than in a
+/// legend somewhere else, because that line is the only one on the screen
+/// nobody on this machine wrote.
 pub fn render(summary: &PersonSummary) -> DraftResult<String> {
     let mut lines = vec!["关于这个人，本机能说的只有下面这些：".to_owned()];
     for point in &summary.points {
@@ -177,7 +186,7 @@ pub fn render(summary: &PersonSummary) -> DraftResult<String> {
         ));
     }
     if let Some(narrative) = summary.narrative.as_deref() {
-        lines.push(format!("整体来看：{narrative}"));
+        lines.push(format!("{ENDPOINT_LINE_PREFIX}{narrative}"));
     }
     lines.push(summary.notice.clone());
 
@@ -186,13 +195,43 @@ pub fn render(summary: &PersonSummary) -> DraftResult<String> {
     Ok(rendered)
 }
 
+/// How the endpoint's line is introduced, and who is told they wrote it.
+///
+/// A constant because it is the sentence that keeps the rendering honest: the
+/// line after it has no evidence rows, was not computed here, and was checked
+/// only for the two things [`reply::is_grounded_in`] can check. A reader who
+/// takes it for one of Soul's own findings has been misled by this crate, not
+/// by their endpoint.
+pub const ENDPOINT_LINE_PREFIX: &str =
+    "整体来看（这一句是你自己的端点写的，不是本机算出来的，也没有证据支持；\
+     本机只挡下了新出现的数字和跑题的回答，没有替你核对它说得对不对）：";
+
 /// Ask the user's own endpoint to rephrase the summary.
 ///
 /// The points and their evidence are not up for negotiation: only
-/// [`PersonSummary::narrative`] changes, and only if what comes back passes
-/// the same non-clinical check the points passed. A rephrasing that trips it
-/// is dropped and the summary stays exactly as it was, which is why "every
-/// point has evidence" survives a model that ignored the request entirely.
+/// [`PersonSummary::narrative`] changes, and only if what comes back is
+/// something Soul is prepared to show. Four things send it back to the counts,
+/// and each is a way an endpoint can answer that the screen must not carry:
+///
+/// * an answer that does not parse, or is empty;
+/// * an answer carrying vocabulary the denylist refuses, which is the same
+///   check the points passed;
+/// * an answer stating a figure that was not in the counts;
+/// * an answer about something else — 这个人最喜欢榴莲 is the case this was
+///   written for, and it leaves a summary that says only what the rows
+///   support.
+///
+/// The material the last two are checked against is the body that actually
+/// left, so the comparison is against what the endpoint was given rather than
+/// against a second rendering of it.
+///
+/// What none of them establish is that the line follows from the counts.
+/// [`reply::is_grounded_in`] is explicit about why that is not a solvable
+/// string comparison, and this function does not pretend otherwise: a
+/// narrative that survives is still the endpoint's own sentence, it carries no
+/// evidence, and [`render`] introduces it with [`ENDPOINT_LINE_PREFIX`] saying
+/// exactly that. AC-16 stays true because the lines that look like findings —
+/// the points — never came from here.
 ///
 /// What goes on the wire is the statements, not the conversation: they are
 /// Soul's own derived counts, they contain no third-party prose and no
@@ -202,9 +241,13 @@ pub fn phrase_with<G: ReplyGenerator>(
     redactor: &Redactor,
     generator: &mut G,
 ) -> DraftResult<PersonSummary> {
-    let raw = generator.generate(summary_body(summary, redactor))?;
+    let body = summary_body(summary, redactor);
+    let material = body.as_str().to_owned();
+    let raw = generator.generate(body)?;
 
-    let narrative = reply::read(&raw).ok().map(|answer| answer.text);
+    let narrative = reply::read_grounded_in(&raw, &material)
+        .ok()
+        .map(|answer| answer.text);
     Ok(PersonSummary {
         source: match narrative.is_some() {
             true => SummarySource::UserEndpoint,

@@ -45,6 +45,7 @@ use soul_draft::draft::{BodyFacts, Draft, DraftRequest, Drafter, ReplyGenerator}
 use soul_draft::error::{DraftError, GenerationRefused};
 use soul_graph::GraphError;
 use soul_policy::audit::AuditContent;
+use soul_policy::e1::E1Purpose;
 use soul_policy::hitl::{
     ActionKind, ActionRequest, CapabilityScope, HitlDenial, PlanHash, RequestOrigin,
 };
@@ -664,6 +665,12 @@ const REPHRASING_REFUSED: &str = "the summary rephrasing did not come back";
 /// has to be minted against the body that is actually going out rather than
 /// against one assembled a second time beside it.
 ///
+/// The purpose is [`E1Purpose::PersonSummary`], which is the whole of what
+/// makes this a rephrasing request rather than a drafting one: the system
+/// message says rewrite these counts and add nothing, where the drafting
+/// instruction says 只根据用户档案起草回复 — an instruction to write something
+/// new, which is not what the answer is going to be displayed as.
+///
 /// The audit entries are collected rather than returned, because the trait's
 /// error type carries no room for one and because the entries are owed either
 /// way: a request that left owes `egress.request`, and one that was refused
@@ -695,10 +702,13 @@ impl ReplyGenerator for Rephraser<'_> {
             Ok(token) => token.token_id(),
             Err(refused) => return Err(self.refused(DraftRefusal::Token(refused))),
         };
-        match self
-            .policy
-            .e1_generate(&self.model, body, token_id, self.now_ms)
-        {
+        match self.policy.e1_generate_for(
+            E1Purpose::PersonSummary,
+            &self.model,
+            body,
+            token_id,
+            self.now_ms,
+        ) {
             Ok(outcome) => {
                 self.audit.push(outcome.audit());
                 Ok(outcome.body)
@@ -719,8 +729,15 @@ impl ReplyGenerator for Rephraser<'_> {
 pub struct PersonSummaryView {
     pub contact_id: String,
     /// `counts` or `user_endpoint`.
+    ///
+    /// `user_endpoint` means one line of this text was written by the endpoint
+    /// the user configured, not that the endpoint's line was verified against
+    /// the rows. `soul_draft::analysis::ENDPOINT_LINE_PREFIX` is what that line
+    /// is introduced with, and a screen showing `source` has to say the same
+    /// thing.
     pub source: String,
-    /// Every line, each naming how many rows are behind it.
+    /// Every line, each naming what is behind it: how many rows for a point,
+    /// and who wrote it for the endpoint's line, which has no rows at all.
     pub text: String,
     /// Non-empty, and every point cites at least one evidence row.
     pub points: Vec<SummaryPointView>,
