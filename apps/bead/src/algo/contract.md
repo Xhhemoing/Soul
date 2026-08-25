@@ -176,10 +176,15 @@ premultiplyAlpha: "none" })`，再以自然尺寸 1:1 绘制、`imageSmoothingEn
 
 | 维度 | 本侧 | oracle |
 |------|------|--------|
-| 框定 | `board` / `aspect` / `manual` | `FixedBoards` / `AspectFit`（整板搜索）/ `ScaleCrop` |
-| 网格提取 | `detectGrid`：gcd + 相位，上限 64，不要求整除 | `detect_block_size`：k 须整除两轴、≤ 32、无相位 |
+| 框定 | `board` / `aspect` / `manual` | `FixedBoards` / `AspectFit`（整板搜索）/ `ScaleCrop`（parity 只走已共享的 `fixed-boards`） |
+| 网格提取（退化语义） | `detectGrid`：变化位置 < 2 或周期 > 64 ⇒ 该轴整幅算一格；「变化」比 RGBA 四字节 | `detect::detect_grid`：主干同式（gcd + 相位、`MAX_CELL_PROBE = 64`、不要求整除）；变化位置 < 2 ⇒ 该轴 1 像素一格（`GridGeometry::NONE`），周期 > 64 ⇒ 取 ≤ 64 的最大因子而不是放弃；「变化」只比不透明像素的 RGB，透明像素一律等价 |
 | 判定器 | `0.5·flat + 0.3·grid + 0.2·color` | `0.45·flat + 0.35·palette + 0.20·block` |
 | 抖动查表 | 输入是未取整的小数码值（仅夹取） | 查表前 `round().clamp()` 到 u8 |
-| Outline→Infill | 分量在非空掩码上做，内边界 slug `inner-border` | 分量按同色区域做，slug `inner-edge` |
-| tie-break 次键 | 色板索引升序 | `code` 字符串升序（`generic-5mm` 下两者巧合一致） |
+| Outline→Infill | 分量在非空掩码上 4 邻接，洞 = 边界洪泛不可达，外轮廓 8 邻接判定并优先归类；内边界 slug `inner-border` | 同式（`steps::outline_infill`）；只有 slug 不同，叫 `inner-edge` |
 | 面积平均 | `resampleBox` 按覆盖面积加权 | 覆盖到的整像素等权（本侧 `renderFit` 已同式） |
+
+已经收敛、不要再「收敛」一次的：**排序次键**——`bom.rs` 与 `steps.rs` 都按 `ColorId`
+（色板索引）升序断尾，与 G6 同键，不是 `code` 字符串序。
+
+上表的网格提取行只记录退化边角：oracle 的 fixture 生成器不撤放大，这些分支全在 parity
+路径之外，只影响本侧独有的像素图前处理，行为按现状保留。
