@@ -11,7 +11,8 @@
 //! 3. **events**, one per message, carrying a pointer to the sealed body and
 //!    never the body;
 //! 4. **interaction evidence**, one per (message, person the user was talking
-//!    to), which is what WP05 reads to build the graph.
+//!    to), which is what WP05 reads to build the graph. A message the user
+//!    sent to a group produces none: see the `peers` match in [`commit`].
 //!
 //! Nothing here treats the file as authority. A body arrives as
 //! [`UntrustedText`], is sealed, and is pointed at. It is scanned — for the
@@ -195,15 +196,22 @@ where
             receipt.messages_with_injection_markers += 1;
         }
 
-        let peers: Vec<Uuid> = match sender.is_owner {
-            // The user talking: everyone who has spoken in this conversation
-            // heard it. Restricting to people who spoke keeps a large silent
-            // group from generating an edge per lurker.
-            true => speakers
+        let peers: Vec<Uuid> = match (sender.is_owner, message.group) {
+            // One message the user sent to a group is one message, not one
+            // per person who has ever spoken there. The file does not say who
+            // read it, so fanning it out over the roster would turn a single
+            // line into N outgoing rows and let a busy group outweigh every
+            // conversation the user actually had. Their side of a group is
+            // left unattributed; the incoming messages still name a sender,
+            // so the tie is still observed, just not credited to the user.
+            (true, true) => Vec::new(),
+            // One to one, the other person is whoever else spoke in that
+            // conversation, which is at most one contact.
+            (true, false) => speakers
                 .get(&message.conversation_id)
                 .map(|set| set.iter().copied().collect())
                 .unwrap_or_default(),
-            false => vec![sender.contact_id],
+            (false, _) => vec![sender.contact_id],
         };
 
         for peer_id in peers {
