@@ -11,7 +11,7 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 | Field | Value |
 |---|---|
-| Current task | Landed: as_of=None; Session §6 pin; Graph+Profile same-band; forget-impact; collect count; name-harvest fold (`909b762`). Opus still out: keys.dpapi lock reclaim. E1 mutex stall parked P2. E1 body-size cap queued. |
+| Current task | Landed: as_of=None; Session §6 pin; Graph+Profile same-band; forget-impact; collect count; name-harvest fold; E1 response cap (`4959a68`, soul-egress 11/11). Opus still out: keys.dpapi lock reclaim. E1 mutex stall parked P2. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
 | Exclusive tip | `37c1fa0` / PR #15 |
