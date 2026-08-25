@@ -276,7 +276,19 @@ fn read_instant(
         _ => None,
     };
     match seconds {
-        Some(seconds) => Some(Timestamp::new(rfc3339_utc(seconds))),
+        Some(seconds) => match representable_instant(seconds) {
+            Some(instant) => Some(instant),
+            None => {
+                defects.push(Defect::field(
+                    locator.clone(),
+                    "date_unixtime",
+                    "is not a representable UTC year: only 1970 through 9999 can be written \
+                     as an instant the rest of Soul can read back"
+                        .to_owned(),
+                ));
+                None
+            }
+        },
         None => {
             defects.push(Defect::field(
                 locator.clone(),
@@ -287,6 +299,23 @@ fn read_instant(
             ));
             None
         }
+    }
+}
+
+/// A Unix second that renders as an instant every later reader accepts.
+///
+/// `rfc3339_utc` renders any `i64`, including years of five digits or more and
+/// years before the common era. Nothing downstream parses those: the graph
+/// wants a four-digit year, so one such message would make every rebuild after
+/// the import fail, for good, on a row nobody can edit. An import is not a
+/// transaction, so the check belongs here, before the value is staged.
+fn representable_instant(unix_seconds: i64) -> Option<Timestamp> {
+    let rendered = rfc3339_utc(unix_seconds);
+    let bytes = rendered.as_bytes();
+    let year = rendered.get(..4)?.parse::<u32>().ok()?;
+    match bytes.get(4) == Some(&b'-') && (1970..=9999).contains(&year) {
+        true => Some(Timestamp::new(rendered)),
+        false => None,
     }
 }
 

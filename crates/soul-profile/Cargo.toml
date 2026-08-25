@@ -29,6 +29,7 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+soul-algo-trait = { workspace = true }
 soul-store = { workspace = true }
 soul-testkit = { workspace = true }
 tempfile = { workspace = true }

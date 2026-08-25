@@ -188,3 +188,187 @@ fn dormant_peer_is_scored_against_the_store_wide_as_of() {
 
     assert_eq!(rebuilt_band(&mut store, dormant), SupportedBand::Weak);
 }
+
+#[test]
+fn two_reciprocal_direct_events_are_still_weak() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let peer_id = peer(7);
+    let mut store = open(dir.path(), &[peer_id]);
+    observe(
+        &mut store,
+        peer_id,
+        "direct",
+        Direction::Outgoing,
+        "2026-08-01T09:00:00Z",
+        Venue::Direct,
+    );
+    observe(
+        &mut store,
+        peer_id,
+        "direct",
+        Direction::Incoming,
+        "2026-08-02T09:00:00Z",
+        Venue::Direct,
+    );
+
+    assert_eq!(rebuilt_band(&mut store, peer_id), SupportedBand::Weak);
+}
+
+#[test]
+fn three_reciprocal_direct_events_over_three_days_are_moderate() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let peer_id = peer(8);
+    let mut store = open(dir.path(), &[peer_id]);
+    for (day, direction) in [
+        (1, Direction::Outgoing),
+        (2, Direction::Incoming),
+        (3, Direction::Outgoing),
+    ] {
+        observe(
+            &mut store,
+            peer_id,
+            "direct",
+            direction,
+            &format!("2026-08-{day:02}T09:00:00Z"),
+            Venue::Direct,
+        );
+    }
+
+    assert_eq!(rebuilt_band(&mut store, peer_id), SupportedBand::Moderate);
+}
+
+#[test]
+fn nine_events_and_even_a_tenth_over_only_two_utc_days_are_not_strong() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let peer_id = peer(9);
+    let mut store = open(dir.path(), &[peer_id]);
+    for index in 0..9 {
+        let day = 1 + index % 2;
+        let direction = if index % 2 == 0 {
+            Direction::Outgoing
+        } else {
+            Direction::Incoming
+        };
+        observe(
+            &mut store,
+            peer_id,
+            "direct",
+            direction,
+            &format!("2026-08-{day:02}T{index:02}:00:00Z"),
+            Venue::Direct,
+        );
+    }
+
+    assert_eq!(rebuilt_band(&mut store, peer_id), SupportedBand::Moderate);
+
+    observe(
+        &mut store,
+        peer_id,
+        "direct",
+        Direction::Incoming,
+        "2026-08-02T10:00:00Z",
+        Venue::Direct,
+    );
+    assert_eq!(rebuilt_band(&mut store, peer_id), SupportedBand::Moderate);
+}
+
+#[test]
+fn ten_reciprocal_direct_events_over_three_utc_days_are_strong() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let peer_id = peer(10);
+    let mut store = open(dir.path(), &[peer_id]);
+    for index in 0..10 {
+        let day = 1 + index % 3;
+        let direction = if index % 2 == 0 {
+            Direction::Outgoing
+        } else {
+            Direction::Incoming
+        };
+        observe(
+            &mut store,
+            peer_id,
+            "direct",
+            direction,
+            &format!("2026-08-{day:02}T{index:02}:00:00Z"),
+            Venue::Direct,
+        );
+    }
+
+    assert_eq!(rebuilt_band(&mut store, peer_id), SupportedBand::Strong);
+}
+
+#[test]
+fn one_hundred_seventy_nine_silent_days_keep_a_strong_tie_strong() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let dormant = peer(11);
+    let active = peer(12);
+    let mut store = open(dir.path(), &[dormant, active]);
+    add_reciprocal_direct_history(&mut store, dormant, 2025, 1);
+    observe(
+        &mut store,
+        active,
+        "recent",
+        Direction::Incoming,
+        "2025-07-04T09:05:00Z",
+        Venue::Direct,
+    );
+
+    assert_eq!(rebuilt_band(&mut store, dormant), SupportedBand::Strong);
+}
+
+#[test]
+fn one_hundred_eighty_silent_days_demote_strong_to_moderate() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let dormant = peer(13);
+    let active = peer(14);
+    let mut store = open(dir.path(), &[dormant, active]);
+    add_reciprocal_direct_history(&mut store, dormant, 2025, 1);
+    observe(
+        &mut store,
+        active,
+        "recent",
+        Direction::Incoming,
+        "2025-07-05T09:05:00Z",
+        Venue::Direct,
+    );
+
+    assert_eq!(rebuilt_band(&mut store, dormant), SupportedBand::Moderate);
+}
+
+#[test]
+fn three_hundred_fifty_nine_silent_days_demote_only_one_band() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let dormant = peer(15);
+    let active = peer(16);
+    let mut store = open(dir.path(), &[dormant, active]);
+    add_reciprocal_direct_history(&mut store, dormant, 2025, 1);
+    observe(
+        &mut store,
+        active,
+        "recent",
+        Direction::Incoming,
+        "2025-12-31T09:05:00Z",
+        Venue::Direct,
+    );
+
+    assert_eq!(rebuilt_band(&mut store, dormant), SupportedBand::Moderate);
+}
+
+#[test]
+fn three_hundred_sixty_silent_days_make_a_strong_history_weak() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let dormant = peer(17);
+    let active = peer(18);
+    let mut store = open(dir.path(), &[dormant, active]);
+    add_reciprocal_direct_history(&mut store, dormant, 2025, 1);
+    observe(
+        &mut store,
+        active,
+        "recent",
+        Direction::Incoming,
+        "2026-01-01T09:05:00Z",
+        Venue::Direct,
+    );
+
+    assert_eq!(rebuilt_band(&mut store, dormant), SupportedBand::Weak);
+}

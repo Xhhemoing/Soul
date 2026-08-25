@@ -160,7 +160,7 @@ jobs:
       # Windows is the target platform, so the whole workspace is exercised
       # here, including crates/soul-store-api/tests/sqlcipher_smoke.rs.
       - name: cargo test
-        run: cargo test --workspace --all-targets
+        run: cargo test --workspace --all-targets --no-fail-fast
 
       # apps/desktop/src-tauri is its own cargo workspace and is therefore not
       # covered by the line above. Windows is the only runner that can build it
@@ -184,6 +184,7 @@ jobs:
       - name: cargo test (desktop shell)
         run: >
           cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+          --no-fail-fast
           --lib --bins
           --test command_surface
           --test no_egress_path
@@ -197,7 +198,7 @@ jobs:
       - name: cargo test --no-run (ipc_roundtrip)
         run: >
           cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
-          --test ipc_roundtrip --no-run
+          --test ipc_roundtrip --no-run --no-fail-fast
 
   sbom:
     name: sbom (cyclonedx)

@@ -325,8 +325,21 @@ export interface GivenAnswer {
   readonly given: string;
 }
 
+/**
+ * One answer the core recorded and did not apply, and why.
+ *
+ * `reason` is a machine token — `axis_locked_by_user` — and not a sentence:
+ * the words a user reads belong to `COPY_ZH.md`, which has no line for this
+ * yet.
+ */
+export interface IgnoredAnswer {
+  readonly question_id: string;
+  readonly reason: string;
+}
+
 /** What one questionnaire run left behind. AC-03 is `profile_is_empty`. */
 export interface IntakeReceipt {
+  /** Answers that moved something. An answer in `ignored` is not one. */
   readonly answered: number;
   readonly axes_known: number;
   /** Axes nobody answered for. They stay `unknown`; nothing is guessed. */
@@ -334,7 +347,10 @@ export interface IntakeReceipt {
   readonly voice_fields_user_set: number;
   readonly stated_entries: number;
   readonly profile_is_empty: boolean;
+  /** One per recorded answer, the refused ones included. */
   readonly evidence_ids: readonly string[];
+  /** Answers that reached an axis the user had already corrected. */
+  readonly ignored: readonly IgnoredAnswer[];
 }
 
 export interface InferenceRow {

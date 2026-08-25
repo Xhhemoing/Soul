@@ -21,14 +21,17 @@ Do not start Goal 2. Do not silent-patch F04c. Do not pull SQLCipher into algo c
 | G2 | `intake` skips locked axes (`apply_intake` semantics) | R1 opus-a |
 | G1+ | Owner group messages must not fan Outgoing to historical speakers | R1 opus-b |
 | G1 | `Tally::band` → `soul_algo_tie::score`; one store-wide `as_of` | R2 opus |
-| G3 | rebuild preserves `user_verdict`; locked effective band | R2–R3 |
-| A2 | `points_for` → `a2_render`; P1b from persisted split; no second 3/10/3 | R3 opus-a |
+| G3 | rebuild preserves `user_verdict`; locked effective band | **done** (R2) |
+| A2 | `points_for` → `a2_render`; P1b from persisted split; no second 3/10/3 | **done** (R3) |
+| G2 receipt | `IntakeReceipt.ignored`; answered does not count lock-refused rows | **done** (R3) |
+| Import clock | Telegram year 1970–9999; civil month lengths | **done** (R3) |
 
 ## Round status
 
 - Round 1: done — `.agent_workspace/unblock/R1-SYNTHESIS.md`
-- Round 2: done — `.agent_workspace/unblock/R2-SYNTHESIS.md`（G1 换血、G3 纠正、R3 证据并集、denylist 豁免）
-- Round 3: in flight — SOTA 打磨（A2 接线、IntakeReceipt.ignored、导入时钟、store 近阈值、G2 对拍）
+- Round 2: done — `.agent_workspace/unblock/R2-SYNTHESIS.md`
+- Round 3: done — `.agent_workspace/unblock/R3-SYNTHESIS.md`（A2 接线、IntakeReceipt.ignored、导入时钟、store 近阈值、G2 对拍）
+- 不再开 Round 4–6：原 P0 已关；剩余项见 R3 简报「仍开放」表（D34/D35/D36、作者手动、空 runner）
 
 ## Round 1 fable-a — G1 T4D wiring spec delivered (spec only, no code)
 

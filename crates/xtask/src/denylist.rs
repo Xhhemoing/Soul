@@ -33,7 +33,13 @@ pub const EXEMPT_CRATES: &[&str] = &["xtask", "soul-algo-tie", "soul-algo-trait"
 /// that crate — the stored field names, the statement keys and the sentences a
 /// user reads all stay covered. Exempting a whole crate for one call would
 /// not.
-pub const EXEMPT_FILES: &[&str] = &["crates/soul-graph/src/t4d_adapt.rs"];
+///
+/// The same holds for the frozen A2 renderer: its input type is spelled in a
+/// denied word, and `soul-draft` calls it from one adapter (D40).
+pub const EXEMPT_FILES: &[&str] = &[
+    "crates/soul-graph/src/t4d_adapt.rs",
+    "crates/soul-draft/src/a2_adapt.rs",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HitContext {

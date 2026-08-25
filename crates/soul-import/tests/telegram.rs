@@ -217,6 +217,105 @@ fn a_message_without_a_unix_timestamp_is_refused_rather_than_guessed_at() {
     assert_eq!(failure.defects.len(), 1, "only that one message is wrong");
 }
 
+/// `date_unixtime` is somebody else's number and can be any `i64`. Rendering
+/// one produces a year with five digits, or a minus sign in front of it, and
+/// nothing downstream can read a year like that back: one such message would
+/// make every graph rebuild after the import fail, for good, on a row the user
+/// has no way to reach. An import is not a transaction, so the message is
+/// refused here rather than repaired later.
+#[test]
+fn a_unix_second_outside_the_representable_years_is_refused() {
+    // The render is happy to produce this, and the graph's reader is not.
+    let unreadable = soul_policy::clock::rfc3339_utc(i64::MAX);
+    assert_eq!(
+        soul_graph::InteractionInterner::default().adapt(&observation(&unreadable)),
+        Err(soul_graph::AdaptError::InvalidTimestamp {
+            timestamp: unreadable.clone(),
+        }),
+        "`{unreadable}` is what one unbounded `date_unixtime` would leave behind",
+    );
+
+    for seconds in [i64::MAX, i64::MIN, -1, 253_402_300_800, -62_167_219_200] {
+        let mut document = basic();
+        document["chats"]["list"][0]["messages"][0]["date_unixtime"] =
+            serde_json::json!(seconds.to_string());
+
+        let Err(failure) = soul_import::telegram::parse(&document) else {
+            panic!("{seconds} is not a year Soul can write");
+        };
+        assert!(
+            failure.mentions_field("date_unixtime"),
+            "the field that is wrong has to be named:\n{failure}",
+        );
+        assert_eq!(failure.defects.len(), 1, "only that one message is wrong");
+        assert!(
+            !failure.defects[0].reason.contains(&seconds.to_string()),
+            "a refusal says which field is wrong, not what was in it:\n{failure}",
+        );
+    }
+}
+
+/// One stored observation, made only to be handed to the graph's reader.
+fn observation(occurred_at: &str) -> soul_graph::InteractionRef {
+    soul_graph::InteractionRef::new(
+        uuid::Uuid::nil(),
+        uuid::Uuid::nil(),
+        uuid::Uuid::nil(),
+        soul_graph::conversation_ref("telegram-desktop", "c-1"),
+        soul_graph::Direction::Outgoing,
+        soul_schema::common::Timestamp::new(occurred_at.to_owned()),
+        soul_graph::Venue::Direct,
+    )
+}
+
+/// The bound is a bound, not a blanket refusal. Year 9999 is a legal RFC 3339
+/// year and a message dated then is imported; what a distant instant does to
+/// the graph's store-wide `as_of` is the graph's business, not the importer's.
+#[test]
+fn the_years_the_contract_allows_are_still_imported() {
+    for (seconds, expected) in [
+        (0i64, "1970-01-01T00:00:00Z"),
+        (253_402_300_799, "9999-12-31T23:59:59Z"),
+    ] {
+        let mut document = basic();
+        document["chats"]["list"][0]["messages"][0]["date_unixtime"] =
+            serde_json::json!(seconds.to_string());
+
+        let staged = soul_import::telegram::parse(&document).expect("a year in range");
+        assert!(
+            staged
+                .messages
+                .iter()
+                .any(|message| message.occurred_at.as_str() == expected),
+            "{seconds} is {expected} and belongs in the import",
+        );
+    }
+}
+
+/// The other half of the same promise: everything that does reach the store
+/// survives a rebuild. A timestamp the graph cannot read is a rebuild that
+/// fails every time it is run, so the importer's output is checked against the
+/// reader rather than against itself.
+#[test]
+fn every_instant_that_reaches_the_store_can_be_read_back() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut document = basic();
+    // Both ends of what the importer allows, in the same file.
+    document["chats"]["list"][0]["messages"][0]["date_unixtime"] = serde_json::json!("0");
+    document["chats"]["list"][0]["messages"][1]["date_unixtime"] =
+        serde_json::json!("253402300799");
+
+    let staged = soul_import::telegram::parse(&document).expect("both years are in range");
+    let mut store = SqlCipherStore::open(
+        dir.path().join("soul.db"),
+        &TestKeyProvider::from_seed(SEED),
+    )
+    .expect("open");
+    soul_import::commit::commit(&mut store, &staged).expect("commit");
+
+    soul_graph::rebuild(&mut store).expect("a rebuild reads every timestamp back");
+}
+
 /// Nothing about an import is decided by what a message says. A chat titled
 /// with an injection string is a chat with an awkward title.
 #[test]

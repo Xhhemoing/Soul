@@ -1492,6 +1492,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "soul-algo-trait",
  "soul-egress",
  "soul-graph",
  "soul-policy",
@@ -1613,6 +1614,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "soul-algo-trait",
  "soul-import",
  "soul-policy",
  "soul-schema",

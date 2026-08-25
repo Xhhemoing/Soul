@@ -21,6 +21,13 @@ MODEL_SLUG: claude-fable-5-thinking-xhigh
 
 **本轮（Round 1 unblock）只交本文档；产品 crate 零逻辑改动。** 以下各节是给本分支后续轮次的实现规范。
 
+> **R3 修订总注（Round 3 fable-a，2026-08-25）**：本规格三处原文已被 `docs/DECISIONS.md` 的父代理
+> 拍板取代，均已就地改字并以「R3 修订」标注——§1.1 不变式（**D32**：未锁边 `machine_band` 常在，
+> 「三锁字段全 None」作废）；§1.1 Option 放宽与 §2 R4/R5 的落地时点（**D34**：本 Goal 记 STATUS
+> 遗留，设计文本保留为未来轮次的记录，不是 Goal 1 工单）；§5 负向断言范围（**D35**：执法测试内的
+> 反向断言字面量豁免）。其余段落维持 Round 1 原文。修订依据与展开见
+> `.agent_workspace/unblock/round3/fable-a.md`。
+
 ---
 
 ## 1. 字段
@@ -52,13 +59,32 @@ pub struct TieStrength {
 }
 ```
 
-不变式（进测试，不进文档就会烂）：
+> **R3 修订注（草图已过期一半）**：上面的草图停在 Round 1。落地的 `TieStrength`
+> （`crates/soul-graph/src/model.rs`）另有 8 个 T4D 字段（`direct_out/in_count`、
+> `group_out/in_count`、`direct_active_day_count`、`last_direct_contact_utc`、`silent_days`、
+> `as_of_utc`、`algorithm_id`），「序列化输出与今天逐字节相同」的说法随 G1 换血（`814064e`）过期；
+> 且 `first/last_contact_utc` **保持非 Option**——D34 把 GC-7 的 Option 放宽顺延为 STATUS 遗留，
+> 本 Goal 不落地。三个锁字段的定义与落地一致，不受影响。
 
-- `locked_by_user == Some(true)` ⟺ `user_band.is_some()` ⟺ `machine_band.is_some()`；
-- 锁定时 `band == user_band.unwrap()`；未锁时三字段全 `None` 且 `band` = 机器档；
-- `first/last_contact_utc.is_none()` 仅当 `interaction_count == 0`（GC-7 形态）。
+不变式（进测试，不进文档就会烂；**R3 修订**，按 D32 与落地代码改字——原文
+「`locked_by_user == Some(true)` ⟺ `user_band.is_some()` ⟺ `machine_band.is_some()`」与
+「未锁时三字段全 `None`」**作废**）：
 
-**Option 放宽的理由与代价**：GC-7 的存活边计数清零后，时间戳是「从已销毁证据派生的断言」，
+- **锁定 ⟺ `user_band.is_some()`**（与 `locked_by_user == Some(true)` 同真同假；落地谓词
+  `TieStrength::is_locked_by_user` 两者并查，是同一判据的防御性写法，不是第三种状态）；
+- **`machine_band` 是重建边的常在字段**：任何经 rebuild 写出的边恒为 `Some`，锁定与否皆然，
+  记录冻结算法对同一批计数的读法（`build.rs::tie_strength_of` 无条件写入）。`machine_band == None`
+  只出现在两种行上——换血前写入的遗留行，与 `release_tie` 当场清空后、尚未经下一次 rebuild 的行。
+  **缺席 ≠ 未锁**；「缺席无法区分『未锁』与『换血前的行』」正是 D32 选常在的理由；
+- 锁定时 `band == user_band.unwrap()`；未锁时 `locked_by_user`/`user_band` 缺省且
+  `band == machine_band.unwrap()`（= 机器档）；
+- 落地钉测：`soul-graph/tests/graph_correction.rs::an_unlocked_edge_still_records_what_the_counts_say`；
+- （随 D34 顺延，R5 落地时方生效）`first/last_contact_utc.is_none()` 仅当
+  `interaction_count == 0`（GC-7 形态）。本 Goal 两时间戳非 Option，该条暂无对应物。
+
+**Option 放宽的理由与代价**（**R3 修订注**：本段随 D34 顺延为 STATUS 遗留——Goal 1 不 Option 化、
+不在产品 crate 发明墓碑；以下保留为 R5 未来实施时的设计记录，其中列举的消费者触点以实施当时的
+代码为准重查）：GC-7 的存活边计数清零后，时间戳是「从已销毁证据派生的断言」，
 与计数同罪，必须一并消失——保留旧值等于让遗忘留下可读残影。代价是两个消费者要接 `Option`：
 `soulcore/commands/graph.rs::TieEdgeView`（`first/last_contact_utc: String` → `Option<String>`）
 与 `soul-draft/src/analysis.rs::recency_point`（读不到 last contact 时按现有「找不到匹配行」路径返回
@@ -145,6 +171,12 @@ R6 幂等：无新导入时 rebuild ×2，relationship 行与 inference 行的�
       锁定与否皆然。审计链除外——它是只追加的，本来每次 rebuild 各记一条。
 ```
 
+> **R3 修订（D34）**：R4 与 R5 本 Goal **不落地**——rebuild 仍只遍历有观测的 peer，产品 crate
+> 不设计墓碑 schema，时间戳保持非 Option；GC-6/GC-7 记 STATUS 遗留，P2-6 陈旧边裁决随之顺延。
+> R1/R2/R6 已由 `814064e` 落地，R3 证据并集已由 `9b12268` 落地（纠正行在 rebuild 的
+> `list_evidence()` 单遍里按 `corrected_relationship` 归边并入 `edge.evidence_ids`；
+> inference 仍只 cite 观测行——否决机器判断的行不是机器判断的支撑）。
+
 `release_tie` 立即生效，不等下次 rebuild：写 `graph_correction_release` 证据行；
 `locked_by_user`/`user_band`/`machine_band` 三字段清空，`band` = 原 `machine_band`；
 inference `user_verdict` 置回 `Unreviewed`。锁必须有回头路（对称于 DEFECTS P2-4 对轴侧的同款要求）。
@@ -230,18 +262,23 @@ Given/When/Then 沿 Round 2 §6，逐条标注可实现性。落点：`crates/so
 | GC-3 | 锁定边 `release_tie` → rebuild；`band`=机器档、锁字段清空、verdict 回 Unreviewed；且 release 当场生效不等 rebuild | **可实现** | §2 |
 | GC-4 | 不存在的 relationship_id；`correct_tie`；`StoreError::NotFound` 上浮且 store 零写入 | **可实现** | §2 get 先行 |
 | GC-5 | 纠正后的边；`edge_evidence()`；纠正证据行在列且解引用成功 | **可实现** | §2 R3 |
-| GC-6 | 锁定边的 peer 被遗忘 → rebuild；图中无此边（遗忘压过锁） | **可实现** | §2 R4（前置：P2-6 陈旧边裁决与本条同一补丁位） |
-| GC-7 | 锁定边全部互动证据被遗忘 → rebuild；边存活：计数 0、时间戳 None、`evidence_ids=[纠正行]`、`machine_band=Weak`、`band=user_band` | **可实现** | §1.1 Option 放宽 + §2 R5 |
+| GC-6 | 锁定边的 peer 被遗忘 → rebuild；图中无此边（遗忘压过锁） | **可实现，但随 D34 顺延（本 Goal 不做，记 STATUS 遗留）** | §2 R4（前置：P2-6 陈旧边裁决与本条同一补丁位） |
+| GC-7 | 锁定边全部互动证据被遗忘 → rebuild；边存活：计数 0、时间戳 None、`evidence_ids=[纠正行]`、`machine_band=Weak`、`band=user_band` | **可实现，但随 D34 顺延（本 Goal 不做，记 STATUS 遗留）** | §1.1 Option 放宽 + §2 R5 |
 | GC-8 | 任意纠正/解锁；读审计；`ProfileCorrect` 条目 `about` 含 [relationship_id, evidence_id]；同 `at_unix_seconds` replay 产出相同条目内容 | **可实现** | §3（不加审计枚举） |
 | GC-9a | 锁定边；WP10 人事摘要；**归档句不渲染**（冻结 P5 原文与任何自造变体都不得出现）；其余计数句照常；全程无第二套阈值；图 view 三字段照 §1.4 可见 | **可实现** | §4 抑制规则 |
 | GC-9b | 锁定边；WP10 人事摘要；渲染 COPY_ZH 新增的「由你本人指定」归档变体，cite 纠正证据 id | **不可实现，需 COPY_ZH DECISIONS**（fable-a 加法 key + 父代理留痕；A2 侧 v4 加法 statement key） | §4 解锁条件 |
 | GC-10 | 无新导入 rebuild ×2；relationship 行与 inference 行规范序列化逐字节相同（锁定与否皆然）；审计链除外 | **可实现** | §2 R6 |
 
 计 10 条中 9.5 条本分支可落（GC-9 拆半）；唯一被冻结话术挡住的是 GC-9b 的**那一句中文**，
-存储、rebuild、命令、审计、抑制全部不等它。
+存储、rebuild、命令、审计、抑制全部不等它。（**R3 修订**：其中 GC-6/GC-7 随 D34 顺延，
+可实现但本 Goal 不做。）
 
-同批必附的负向断言（防倒退，随 GC-9a 落）：全仓库（含测试 fixture）grep 不得出现
-「由你本人指定」及其它未冻结归档变体句——话术进代码之前必须先进 COPY_ZH。
+同批必附的负向断言（防倒退，随 GC-9a 落；**R3 修订**，按 D35 改范围——原文
+「全仓库（含测试 fixture）grep」会被执法测试自己的反向断言字面量触发，按原文不可执行）：
+**产品 crate 的非测试源码与 fixture** 不得出现「由你本人指定」及其它未冻结归档变体句；
+执法测试内的反向断言字面量豁免（现状：`soul-draft/tests/locked_tie_summary.rs` 的
+`UNFROZEN_VARIANT` 常量即执法者本体，树级扫描排除执法文件自身）。话术进产品代码之前必须先进
+COPY_ZH。
 
 ---
 

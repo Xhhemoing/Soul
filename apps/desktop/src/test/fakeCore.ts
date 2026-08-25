@@ -369,6 +369,7 @@ export function anIntakeReceipt(overrides: Partial<IntakeReceipt> = {}): IntakeR
     stated_entries: 0,
     profile_is_empty: false,
     evidence_ids: ["0192f000-0000-7000-8000-0000000000d1"],
+    ignored: [],
     ...overrides,
   };
 }
