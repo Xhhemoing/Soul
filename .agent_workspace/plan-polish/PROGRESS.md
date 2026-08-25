@@ -3,7 +3,7 @@
 - 分支：`cursor/polish-project-plan-5280`（云端命名约束；用户 SOP 的 `agent/<task-name>` 映射为此名）
 - 基线：`origin/main` @ `7b35bde`（已含 `ALGO_FROZEN`）
 - 计划种子：`origin/cursor/soul-product-lock-7b1c`（PR #1，`PLAN_FROZEN`）
-- 循环：Round 1 完成，Round 2 待开始
+- 循环：Round 2 完成，Round 3 待开始
 - PR：https://github.com/Xhhemoing/Soul/pull/8
 
 ## 本轮目标
@@ -16,7 +16,7 @@
 |---|---|---|
 | 准备 | 完成 | 分支 + 种子 docs + 本文件 |
 | Round 1 | 完成 | 见 `R1-SYNTHESIS.md`；权威文档已合入 `docs/` |
-| Round 2 | 待开始 | 靶向重构与文档落地 |
+| Round 2 | 完成 | 见 `R2-SYNTHESIS.md`；schema P0 与引导面已合入 `docs/` |
 | Round 3 | 待开始 | SOTA 验收与交叉核验 |
 
 ## 硬约束

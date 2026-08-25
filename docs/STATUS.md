@@ -15,8 +15,8 @@
 | 线 | 尖端（核于 2026-08-25） | 有什么 | 状态 |
 |---|---|---|---|
 | `main` | `7b35bde` | 两个算法 crate 与 `docs/algorithms/` | **`main` 上还没有应用代码** |
-| 本分支（计划面） | 本 PR（#8） | 产品锁 / 拍板 / FORMAL / schema / SECURITY / 本文件 | 进行中 |
-| `cursor/soul-goal1-7b1c`（PR #2） | `3161e02` | Goal 1 实现主干；WP01–WP11、WP13 与 DPAPI 均已落地（以该分支自己的 STATUS 为准） | **未合入 `main`，也未关闭** |
+| 本分支（计划面） | 本 PR（#8） | 产品锁 / 拍板（D1–D59）/ FORMAL / `PLAN_INDEX.md` / 已类型化的 `tie_strength` / SECURITY / 本文件 | Round 2 落地中 |
+| `cursor/soul-goal1-7b1c`（PR #2） | `df5d2dd` | Goal 1 实现主干；WP01–WP11、WP13 与 DPAPI 均已落地（以该分支自己的 STATUS 为准） | **未合入 `main`，也未关闭** |
 | `cursor/blockers-analysis-a073`（PR #6） | 远程 | `docs/BLOCKERS.md`（`BLOCKERS_FROZEN`） | 待合进 `main` |
 | `cursor/goal1-unblock-a073`（PR #7） | 远程进行中 | Goal 1 吸收 T4D | 本分支不碰那条线的代码 |
 | `agent/dev-sota`（PR #4） | 远程 | 与主干分叉后重做的 WP10/WP11 | 按 D49 应停并关闭 |
@@ -32,7 +32,7 @@
 | R3 复核冻结 | 完成，结论 `PLAN_FROZEN`。仲裁见 `docs/scan-rounds/R3-SYNTHESIS.md` |
 | 算法三轮 + Round X | 完成，结论 `ALGO_FROZEN`：人脉 T4D、特质轴 A0。裁决见 `docs/algorithms/DECISION.md` |
 | 阻碍项分析 | 完成，`BLOCKERS_FROZEN`（PR #6），尚未在本树 |
-| 计划面打磨（本分支） | Round 1 落地：算法口径进锁与拍板、STATUS 诚实化、Goal 1 schema 正文合入以防倒退 |
+| 计划面打磨（本分支） | Round 2 落地：引导面历史段、`tie_strength` 类型化（D59，含 machine/user_band）、SECURITY 指针、AC-34 |
 | Goal 1 实现 | **进行中，在 `cursor/soul-goal1-7b1c`。未合入 `main`，未关闭** |
 | Goal 1 关闭门 | 未过。关闭需矩阵与十三片切片同时过（D54） |
 | Goal 2 | 未启动，且 Goal 1 关闭前不得启动 |
@@ -48,14 +48,14 @@
 | M1 两条实现线 | 合入 | 未见 PR #4 关闭 |
 | M2 `main` 并进 Goal 1 | 合入 | 未做：Goal 1 `Cargo.toml` 成员表里没有两个算法 crate |
 | M3 Windows 夹具 | 合入 | 需在尖端复核；`BLOCKERS.md` 已判定主干 `fc96e46` 的写法不采纳 |
-| G1 人脉图仍是遗留判档 | 关闭 | PR #7 正在做；`3161e02` 的 `soul-graph` 仍自带 `band()` |
-| schema 倒退 | 计划 | Round 1 已改用 Goal 1 接线版；`tie_strength` 仍为裸 object（D58） |
+| G1 人脉图仍是遗留判档 | 关闭 | PR #7 进行中；以该线 STATUS 为准，本树不复验源码 |
+| schema 倒退 | 计划 | **已关闭**：Goal 1 接线正文 + `tie_strength` 类型化（D58/D59），含 `machine_band` / `user_band` / `locked_by_user` |
 
 ## 下一步
 
-1. 本分支 Round 2/3 把 FORMAL AC-32/33、双门关闭语义、schema 字段义务打磨到可合。
-2. 本 PR 合进 `main` 后，PR #6（BLOCKERS）再合。
-3. 之后按 `BLOCKERS.md` 第 5 节在 Goal 1 线上走 M3 → M2 → G1…。**那些不在本分支做。**
+1. Round 3：交叉核验 schema 探针、AC-34、D59、引导面，然后合 PR。
+2. 本 PR 合进 `main` 后，PR #6（BLOCKERS）再合（合入时处理 BLOCKERS 文中的 D32 撞号，见 DECISIONS 脚注）。
+3. 之后按 `BLOCKERS.md` 第 5 节在 Goal 1 线上走剩余项。**那些不在本分支做。**
 4. Goal 2 在 Goal 1 关闭前不要启动。
 
 ## 本文件的写法纪律（D57）

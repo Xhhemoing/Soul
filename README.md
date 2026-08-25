@@ -6,7 +6,7 @@
 
 | 位置 | 内容 | 能不能装出来用 |
 |---|---|---|
-| `main`（你正在看的这条线） | 计划权威面 `docs/`（产品锁、拍板、验收矩阵、九份 schema、安全规范）+ 已冻结的灵魂层算法 crate：`crates/soul-algo-tie`（人脉关系强度 T4D）、`crates/soul-algo-trait`（特质轴 A0 / A1 / A2 / A3）。都是纯函数：不读时钟、不碰存储、不出网 | **不能。** `main` 上没有桌面壳、没有主库、没有安装包 |
+| `main`（你正在看的这条线） | 计划权威面 `docs/`（产品锁、拍板、验收矩阵、schema、安全规范）+ 已冻结的灵魂层算法 crate：`crates/soul-algo-tie`（人脉关系强度 T4D）、`crates/soul-algo-trait`（特质轴 A0 / A1 / A2 / A3）。都是纯函数：不读时钟、不碰存储、不出网 | **不能。** `main` 上没有桌面壳、没有主库、没有安装包 |
 | `cursor/soul-goal1-7b1c` | Goal 1 实现主干：Tauri 桌面壳、加密主库、导入、人脉图、记忆、审计、策略面、安装 smoke。WP01–WP11 与 WP13 已落地 | 该分支上可以，但尚未合回 `main`，hosted CI 与作者 Win11 手动清单也尚未全绿 |
 
 一句话：**计划已冻结，算法已冻结，应用在 Goal 1 分支上，`main` 还装不出东西。** 三件事互相独立，进度以 [`docs/STATUS.md`](docs/STATUS.md) 为准。
@@ -23,7 +23,7 @@
 - 安全规范：[`docs/SECURITY.md`](docs/SECURITY.md)
 - 数据契约：[`docs/schemas/`](docs/schemas/)
 - Goal 2（Goal 1 关闭后再开）：[`docs/GOAL2_POLISH_PROMPT.md`](docs/GOAL2_POLISH_PROMPT.md)
-- 计划验证提示词：[`docs/PLAN_VERIFY_PROMPT.md`](docs/PLAN_VERIFY_PROMPT.md)
+- 计划验证提示词（**历史存档**，勿当新工单）：[`docs/PLAN_VERIFY_PROMPT.md`](docs/PLAN_VERIFY_PROMPT.md)
 - 三轮双模型模板：[`docs/templates/THREE_ROUND_DUAL_SCAN.md`](docs/templates/THREE_ROUND_DUAL_SCAN.md)
 
 ## 跑一下现有的算法 crate

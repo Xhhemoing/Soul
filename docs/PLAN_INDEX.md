@@ -9,9 +9,9 @@
 | # | 文件 | 它是什么的唯一权威 | 冻结标记 |
 |---|---|---|---|
 | 1 | [`PRODUCT_LOCK.md`](PRODUCT_LOCK.md) | 产品是什么、不是什么；v0.1 的 13 条垂直切片；砍/留；出网分级 E0/E1/L；不可协商约束 | `PLAN_FROZEN` |
-| 2 | [`DECISIONS.md`](DECISIONS.md) | 已拍板的选择（D1–D58）。想重开某个方向战，先在这里找它有没有被拍过 | `PLAN_FROZEN` |
+| 2 | [`DECISIONS.md`](DECISIONS.md) | 已拍板的选择（D1–D59）。想重开某个方向战，先在这里找它有没有被拍过 | `PLAN_FROZEN` |
 | 3 | [`algorithms/DECISION.md`](algorithms/DECISION.md) | 灵魂层算法：人脉 = T4D，特质 = A0，摘要 = A2 渲染器，A1 默认规则；常量表；as_of 纪律；已知代价；回退链 | `ALGO_FROZEN` |
-| 4 | [`FORMAL_WORK_PROMPT.md`](FORMAL_WORK_PROMPT.md) | Goal 1 怎么开工：工作包清单、实现者红线、**验收矩阵（唯一门禁）** | 随 `PLAN_FROZEN` |
+| 4 | [`FORMAL_WORK_PROMPT.md`](FORMAL_WORK_PROMPT.md) | Goal 1 怎么开工：工作包清单、实现者红线、**验收矩阵（唯一门禁）**。开工路径只认末尾的「开工第一动作」；中段「历史段」是作者开工原话的存档，**不是工作指令** | 随 `PLAN_FROZEN` |
 
 ## 二、按问题查
 
@@ -21,11 +21,13 @@
 | 某个决定为什么是这样 | `DECISIONS.md`（产品/工程）、`algorithms/DECISION.md` 第 4–5 节（算法代价与回退） |
 | 一件事算不算做完 | `FORMAL_WORK_PROMPT.md` 验收矩阵。**散文不作门禁**（D29） |
 | 现在到哪一步了、谁没合入 | `STATUS.md` |
-| 数据长什么样 | `schemas/`（九份 + `_defs` + `schemas.lock.json`）。`tie_strength` 字段收紧见 D58 |
+| 数据长什么样 | `schemas/`（十份正文：九存储 + 一导入 + `_defs` + lock）。`tie_strength` 收紧见 D58/D59 |
+| 接手时该不该重开 Goal 1 / 重派 planner | 不该。`FORMAL_WORK_PROMPT.md`「开工第一动作」；理由见 D49（唯一实现主干）与 `STATUS.md`。同文件「历史段」写于 Goal 1 开工之前，照做即重开第二条线 |
+| 判档阈值到底是多少 | 只有两处：`algorithms/DECISION.md` 第 3 节常量表（语义）与 `crates/soul-algo-tie` 常量模块（取值）。其余文档一律只写常量名，写出数字即为缺陷（FORMAL 红线 11） |
 | 加密、密钥、遗忘、审计的规范 | `SECURITY.md` |
 | 关系强度为什么是这个档 | `algorithms/DECISION.md` 第 3 节；中文话术在 `algorithms/COPY_ZH.md`；被否决的候选在 `algorithms/REJECTED.md` |
 | Goal 1 的 DAG 与实现细节 | `origin/cursor/soul-goal1-7b1c:docs/GOAL1_PLAN.md`（只读对照，尚未合入 `main`） |
-| 已知阻塞 | `origin/cursor/blockers-analysis-a073:docs/BLOCKERS.md`（`BLOCKERS_FROZEN`，尚未合入 `main`） |
+| 已知阻塞 | `origin/cursor/blockers-analysis-a073:docs/BLOCKERS.md`（`BLOCKERS_FROZEN`）。**仍在 PR #6，尚未合入 `main`，本树也没有这份文件**；本计划 PR 不整份拷贝它。按 `STATUS.md` 的合入顺序，PR #6 在本 PR 之后合 |
 | Goal 2 | `GOAL2_POLISH_PROMPT.md`。Goal 1 关闭前不要打开 |
 
 ## 三、仓库拓扑（读代码前先看这三行）
@@ -38,6 +40,8 @@
 
 - `.agent_workspace/**`：过程材料（扫描轮次、探针、子代理草稿）。**任何权威结论必须落到 `docs/`**；`.agent_workspace/context/plan/` 已不再是权威面。
 - `scan-rounds/**`：历史仲裁记录。解释「为什么」，不定义「是什么」。
+- [`PLAN_VERIFY_PROMPT.md`](PLAN_VERIFY_PROMPT.md)：**一次性提示词，已执行完毕**（三轮双模型扫描，结论 `PLAN_FROZEN`，落盘在 `scan-rounds/`）。存档以便追溯当时的风险清单，**不要当新工单重跑**。
+- `FORMAL_WORK_PROMPT.md` 的「历史段」：作者开工原话，`CreateGoal：Goal 1` 与派 planner 都已执行过。可执行路径只有同文件的「开工第一动作」。
 - 第二份 `PRODUCT.md`：**禁止存在**（D27）。看到就删。
 
 ## 五、改这些文件的规矩
@@ -46,6 +50,6 @@
 |---|---|
 | 产品方向 | 先改 `PRODUCT_LOCK.md`，并在 `DECISIONS.md` 追一条 |
 | 算法判档 | 只走 `algorithms/DECISION.md` 第 5 节回退链，`DECISIONS.md` 留痕。禁止为 F04c 加第三道门 |
-| 验收矩阵 | 只增不删已通过的门禁；新增行写清 Given/When/Then 与「谁跑」 |
+| 验收矩阵 | 只增不删已通过的门禁；新增行写清 Given/When/Then 与「谁跑」。行文里只准出现夹具身份的数字，不准复述判档阈值（红线 11） |
 | 工作包 | 只减不增（D30）。WP12 保持删除 |
 | `schemas/**` | 同一 PR 里重算 Goal 1 的 `schemas.lock.json`，并说明对已落库数据的影响 |
