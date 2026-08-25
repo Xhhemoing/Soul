@@ -13,17 +13,17 @@
 | 当前轮次 | ROUND 2 |
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
-| 已检查模块 | 壳 + bead-core + TS 管线 + DATA-1 + AL-1/2/3 + AL 复审 |
-| 当前任务 | AL 复审已合（#32，PASS）；B04 IA 仍在途 |
-| PR | #16 专属线；#20–#32（#32 AL 复审） |
-| Merge | AL @ `331b513`；AL 复审 `3fac2fd`；不合 unique trunk |
+| 已检查模块 | 壳 + bead-core + TS 管线 + DATA-1 + AL + B04 IA |
+| 当前任务 | B04 IA 已合（#33）；Opus 实现因 Soul R5 占满 VM 暂缓；B05 IA 仍在途 |
+| PR | #16 专属线；#20–#33（#33 B04 IA） |
+| Merge | AL `331b513`；AL 复审 `3fac2fd`；B04 IA `47b9ac0`；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读（BLOCKED_PR）；云端异步 VM ≈3 |
 
 ## 已检查模块（11.5）
 
 | 面 | 现状 | 下一动作 |
 |---|---|---|
-| 前端 | 壳 + SH-1..4 已合入；`/assemble` 仍是静态占位 | B04 沉浸拼装 |
+| 前端 | 壳 + SH-1..4 已合入；B04 IA 已锁 D-ASM-1..13 | Opus 实现 B04（等 VM） |
 | 后端 | 无 bead 服务 | v0 本机，不造第二灵魂核 |
 | API | 无 bead API | 本地 store 契约 |
 | 数据库 | Soul 加密 SQLite，与 bead 无关 | WP-B09 IndexedDB（Grid 落盘才上，BD19） |
@@ -91,7 +91,8 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] TS / core / align Review 合入（#26 #27 #30）
 - [x] AL-1/2/3 合入专属线 `331b513`（抖动取整 + steps slug/断言 + 分叉表）
 - [x] AL 复审合入 `3fac2fd`（#32，三项 PASS，无新增 HIGH）
-- [ ] B04 沉浸拼装 IA + 实现
+- [x] B04 IA 合入 `47b9ac0`（#33，`docs/bead/reviews/round2-assemble.md`）
+- [ ] B04 实现（Opus；BLOCKED_VM：Soul R5 并行审查占满异步席）
 - [ ] AL-4（MED）rust 侧补跨取整边界的 oracle fixture（不改 TS 语义）
 - [ ] B05 库存/BOM UI
 - [ ] `/create` 上传接线（独立变更；若持久化 Grid 必须同时上 IDB，BD19）
@@ -120,8 +121,9 @@ Commit        331b513 merge AL；本提交记进度
 PR            #16 更新；AL 子支对专属线已无独立 diff（先合后开 PR 被拒）
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B04 IA → B04 实现（只存游标）；B05；B10
-在途          [R2 Fable B04 IA](https://cursor.com/agents/bc-d265c746-7f1f-5358-9493-9e49856a4b82) · [R2 Fable B05 IA](https://cursor.com/agents/bc-e1451aad-5003-5ffb-9364-0a3bb1f0e619)
-已收          [R2 Fable review AL](https://cursor.com/agents/bc-7b365534-e6fd-5e45-bc50-769cc93d4454) → #32 `3fac2fd` PASS；AL-4 MED 后置
+在途          [R2 Fable B05 IA](https://cursor.com/agents/bc-e1451aad-5003-5ffb-9364-0a3bb1f0e619)
+已收          [R2 Fable review AL](https://cursor.com/agents/bc-7b365534-e6fd-5e45-bc50-769cc93d4454) → #32；[R2 Fable B04 IA](https://cursor.com/agents/bc-d265c746-7f1f-5358-9493-9e49856a4b82) → #33
+Blocked       B04 Opus 实现等 VM（Soul R5 占席）
 ```
 
 ### ROUND 2 · AL-1/2/3 吸收
