@@ -49,3 +49,14 @@ Do not start Goal 2. Do not silent-patch F04c. Do not pull SQLCipher into algo c
   split**: GC-9a (suppress the filing sentence on a locked edge — frozen P5 must not render, no
   homemade variant either) implementable now; GC-9b (「由你本人指定」 variant) blocked on an
   additive COPY_ZH key via DECISIONS (fable-a slot). G3 composes with G1 in either landing order.
+
+## Round 2 gpt-sol-b — T4D product rebuild gates delivered
+
+- Added `crates/soul-graph/tests/t4d_product.rs`, using the real SQLCipher test
+  store and `soul_graph::rebuild` for all four requested cases.
+- `cargo test -p soul-graph` compiles the gate. The 12 reciprocal direct rows
+  over six days pass as Strong. The three T4D-discriminating cases are
+  expected-red while rebuild still uses its local T0 tally: 100 group + one
+  direct each way, group-only volume, and a dormant peer scored against a
+  newer store-wide observation all return Strong instead of Weak.
+- No constants or scorer code changed.
