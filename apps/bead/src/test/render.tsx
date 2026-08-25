@@ -6,11 +6,13 @@ import { routes } from "../app/routes.tsx";
 import { createInMemoryRepository, type Repository } from "../stores/repository.ts";
 import { StoreProvider } from "../stores/store.tsx";
 import { ThemeProvider, type Theme } from "../stores/theme.tsx";
-import type { PersistedState } from "../stores/types.ts";
+import type { PatternDoc, PersistedState } from "../stores/types.ts";
 
 export interface RenderAppOptions {
   route?: string;
   seed?: Partial<PersistedState>;
+  /** Pattern documents the `patterns` store starts with (conversion projects). */
+  patterns?: readonly PatternDoc[];
   theme?: Theme;
   /** Overrides the in-memory double, e.g. to drive a failing storage backend. */
   repository?: Repository;
@@ -20,10 +22,11 @@ export interface RenderAppOptions {
 export function renderApp({
   route = "/explore",
   seed,
+  patterns,
   theme = "light",
   repository: override,
 }: RenderAppOptions = {}) {
-  const repository = override ?? createInMemoryRepository(seed);
+  const repository = override ?? createInMemoryRepository(seed, patterns);
   const router = createMemoryRouter(routes, { initialEntries: [route] });
   const user = userEvent.setup();
   const result = render(

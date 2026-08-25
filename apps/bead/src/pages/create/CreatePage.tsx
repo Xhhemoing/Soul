@@ -2,19 +2,23 @@ import { Link, useSearchParams } from "react-router";
 
 import { Card } from "../../components/Card.tsx";
 import { useDocumentTitle } from "../../app/useDocumentTitle.ts";
+import { UploadWorkbench } from "./UploadWorkbench.tsx";
 
 /**
- * R6 in the round-1 IA review: before WP-B03 and WP-B07 land these entries are
- * explanation panels, not features, and every panel names the work package
- * that owns it so a tester reads "not built yet" instead of filing a bug.
+ * R6 in the round-1 IA review: before the work packages that own them land,
+ * these entries are explanation panels rather than features, and every panel
+ * names the work package that owns it so a tester reads "not built yet"
+ * instead of filing a bug. WP-B03 has now landed, so the upload entry is a
+ * real workbench and no longer names an owner.
  *
  * The selected entry lives in `?entry=` rather than component state (D-UI-1),
- * so no new route is needed to make a stub explanation linkable and backable.
+ * so no new route is needed — D-UP-1 puts the workbench in the same panel slot
+ * the stub explanations use, which keeps it linkable and backable.
  */
 interface CreateEntry {
   key: string;
   label: string;
-  /** Null when the entry already works in B02. */
+  /** Null when the entry already works. */
   owner: string | null;
   detail: string;
   action?: { label: string; to: string };
@@ -24,9 +28,10 @@ const ENTRIES: CreateEntry[] = [
   {
     key: "upload",
     label: "上传图片转豆图",
-    owner: "WP-B03",
+    owner: null,
     detail:
-      "上传 png/jpg，识别像素图或普通图，再做框定、色板映射与抖动。整条浏览器转图管线归 WP-B03，B02 只留入口。",
+      "选一张 png / jpg：自动分辨像素图与照片（也可以手动指定），照片路径可开抖动，" +
+      "框定支持固定板、按比例适配与手动视口，色板固定为通用 5mm。确认前不写入任何本地数据。",
   },
   {
     key: "gallery",
@@ -83,6 +88,7 @@ export function CreatePage() {
           <Card>
             <h2 className="section__title">{selected.label}</h2>
             <p>{selected.detail}</p>
+            {selected.key === "upload" && <UploadWorkbench />}
             {selected.owner !== null && (
               <p className="stub-note">
                 这是 {selected.owner} 的占位说明页，不是缺陷：功能尚未实现，请勿提 bug。
