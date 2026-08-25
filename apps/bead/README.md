@@ -23,7 +23,7 @@ src/
   components/  EmptyState ColorSwatch ProgressBar Card BackHeader
   stores/      ids types repository catalog projects inventory store theme
   fixtures/    catalog.ts（5 张图纸、2 位创作者）
-  algo/        NOT_IMPLEMENTED 占位（色彩算法归 WP-B01 / WP-B03）
+  algo/        转图管线（WP-B03）：色彩、色板、抖动、判定、框定、拆分、BOM、替代色
   schema/      WP-B07 预留
 ```
 
@@ -45,5 +45,15 @@ src/
 
 - 不 import `@soul/desktop`、Tauri API 或任何 `soul-*` crate。eslint 与
   `src/test/isolation.test.ts` 双重把关。
-- 不实现 CIEDE2000 等色彩算法：`src/algo/index.ts` 只有 `NOT_IMPLEMENTED`。
 - `/create` 的未实现入口在页面上写明归属工作包（B03 / B06 / B07），别当 bug 报。
+  `src/algo/` 的转图管线已经可用，但 `/create` 的上传界面还没接上去，仍是占位。
+
+## 转图管线（WP-B03）
+
+`src/algo/` 是 BeadFlow 的 TypeScript 转图管线：CIEDE2000、`generic-5mm` 色板映射、
+Floyd–Steinberg、PixelArt|Photo 判定与 `detectGrid`、三种框定、四模式步骤拆分、BOM
+与 ΔE00 &lt; 3 替代色。`crates/bead-core`（WP-B01）仍是 oracle，验收标准是同一 fixture
+两侧得到同一色号序列。
+
+所有跨语言必须一致的取舍写在 `src/algo/contract.md`（对应审查里的 G1–G8），共享夹具是
+`src/algo/fixtures/parity.json`。改动管线前先读那两份文件。
