@@ -195,6 +195,55 @@ fn a_grouped_phone_number_stays_placeheld_inside_an_exempted_turn() {
     }
 }
 
+/// The same promise again, for the spellings a keyboard produces rather than
+/// the ones a test author types.
+///
+/// The test above covers the ASCII hyphen and the ASCII space, which is what a
+/// contact card and an English layout give. A Chinese IME in fullwidth mode
+/// gives U+FF10–U+FF19 for the digits and U+FF0D for the dash; a paste out of
+/// a document that has been autocorrected gives U+2013. None of them is the
+/// string the contact card holds, so what covers them is the shape, and the
+/// exempted turn is the one place a paste reaches an endpoint verbatim.
+///
+/// `138-0013–8000` is the case that says why the whole run has to go rather
+/// than the first seven digits: with only the ASCII hyphen joining, the run
+/// stopped at the en-dash and left `8000` standing beside the placeholder.
+#[test]
+fn a_phone_number_typed_on_an_ime_stays_placeheld_inside_an_exempted_turn() {
+    let redactor = redactor();
+
+    for typed in [
+        "１３８００１３８０００",
+        "１３８－００１３－８０００",
+        "138\u{2013}0013\u{2013}8000",
+        "138-0013\u{2013}8000",
+    ] {
+        let turn_id = Uuid::now_v7();
+        let turns = vec![Turn::new(
+            turn_id,
+            SealedSubject::ThirdParty,
+            format!("{ORIGINAL}，电话 {typed}"),
+        )];
+
+        let exemption = ExemptionRequest::for_turn(turn_id)
+            .confirm(true)
+            .expect("the user confirmed twice");
+        let redacted = redactor.redact_for_e1_with_exemption(&turns, exemption);
+
+        assert_eq!(
+            redacted.as_str(),
+            format!("{ORIGINAL}，电话 {ACCOUNT_PLACEHOLDER}"),
+            "`{typed}` reached the body the user confirmed",
+        );
+        assert!(
+            !redacted.as_str().contains("8000") && !redacted.as_str().contains("８０００"),
+            "the tail of the number travelled beside the placeholder: {}",
+            redacted.as_str(),
+        );
+        assert!(redacted.carries_exempted_original());
+    }
+}
+
 /// The same promise for a name nobody registered, which is every name on a
 /// Soul that has imported nothing.
 ///
