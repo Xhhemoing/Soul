@@ -11,6 +11,7 @@
 //! resolve, a `tie_strength` the schema rejects — fails here rather than on a
 //! user's machine.
 
+use serde_json::json;
 use uuid::Uuid;
 
 use soul_graph::correct::{corrected_relationship, CORRECTION_ORIGIN, RELEASE_ORIGIN};
@@ -21,6 +22,8 @@ use soul_schema::contact::{ContactClass, SoulContact};
 use soul_schema::evidence::EvidenceKind;
 use soul_schema::inference::UserVerdict;
 use soul_schema::memory::ForgetState;
+use soul_schema::relationship::{EgressScope, SoulRelationship};
+use soul_schema::validate::{SchemaId, SchemaSet};
 use soul_store::{SqlCipherStore, TestKeyProvider};
 use soul_store_api::types::StoreError;
 use soul_store_api::{AuditLog, GraphStore, ProfileStore};
@@ -113,6 +116,38 @@ fn seeded(store: &mut SqlCipherStore) -> Uuid {
     soul_graph::rebuild(store).expect("rebuild");
     let graph = soul_graph::load(store).expect("load");
     graph.edges_for(peer())[0].relationship_id
+}
+
+/// An edge exactly as this build wrote them before the frozen rule landed:
+/// eight fields, no split counts, no `as_of`, no algorithm id.
+///
+/// The contract still accepts it — the reviewable surface is required only once
+/// an algorithm has been named — which is why one can be sitting in a store
+/// waiting to be corrected.
+fn pre_wiring_edge(store: &mut SqlCipherStore, evidence_id: Uuid) -> Uuid {
+    let relationship_id = id("321");
+    store
+        .put_relationship(SoulRelationship {
+            schema_version: SchemaVersion,
+            relationship_id,
+            from_contact_id: owner(),
+            to_contact_id: peer(),
+            types: Some(vec![json!("direct"), json!("one_sided")]),
+            tie_strength: Some(json!({
+                "band": "moderate",
+                "interaction_count": 4,
+                "outgoing_count": 4,
+                "incoming_count": 0,
+                "conversation_count": 1,
+                "active_day_count": 2,
+                "first_contact_utc": "2026-07-30T09:00:00Z",
+                "last_contact_utc": "2026-07-31T09:00:00Z",
+            })),
+            evidence_ids: vec![evidence_id],
+            egress_scope: Some(EgressScope::LocalOnly),
+        })
+        .expect("the eight-field row is one the contract admits");
+    relationship_id
 }
 
 /// The strength on one edge, read back off the store rather than off whatever
@@ -310,6 +345,159 @@ fn correcting_an_edge_that_does_not_exist_writes_nothing() {
         store.list_audit().expect("audit").len(),
     );
     assert_eq!(before, after, "a refused correction leaves no trace");
+}
+
+/// R-1: correcting an edge written before the frozen rule scores it first.
+///
+/// The typed `tie_strength` names its algorithm, and the contract's enum has
+/// two words in it — `T4D` and `T4` — neither of which is the empty string a
+/// pre-wiring row carries. Writing the lock straight onto such a row would ask
+/// the store to take `algorithm_id: ""` and be refused, at exactly the moment
+/// the product promises to work. So the rebuild runs first and the lock lands
+/// on the row it leaves behind: a whole reviewable surface, not a legacy object
+/// with two lock fields bolted on.
+#[test]
+fn correcting_a_pre_wiring_edge_scores_it_before_locking_it() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = open(dir.path());
+    store
+        .put_contact(contact(owner(), ContactClass::Owner))
+        .expect("owner");
+    store
+        .put_contact(contact(peer(), ContactClass::ThirdParty))
+        .expect("peer");
+    let observed = id("301");
+    observe(
+        &mut store,
+        observed,
+        Direction::Outgoing,
+        "2026-08-01T09:00:00Z",
+    );
+    let relationship_id = pre_wiring_edge(&mut store, observed);
+    assert_eq!(
+        strength(&store, relationship_id).algorithm_id,
+        "",
+        "the fixture is the row the schema has no algorithm word for",
+    );
+
+    let correction =
+        correct_tie(&mut store, relationship_id, SupportedBand::Strong, NOW).expect("correct");
+    assert_eq!(correction.band, SupportedBand::Strong);
+    assert_eq!(
+        correction.machine_band,
+        SupportedBand::Weak,
+        "one hello is what the frozen rule now has to go on, not the four the legacy row claimed",
+    );
+
+    // The store validates every row it takes, so the correction landing at all
+    // is most of the point. Validated again here against the frozen document,
+    // so a failure says which keyword rejected it rather than that a write
+    // failed somewhere.
+    let stored = store.get_relationship(relationship_id).expect("edge");
+    SchemaSet::load()
+        .expect("the frozen contracts compile")
+        .validate_model(SchemaId::Relationship, &stored)
+        .expect("a corrected edge must satisfy relationship.schema.json");
+
+    let held = strength(&store, relationship_id);
+    assert_eq!(held.algorithm_id, "T4D");
+    assert_eq!(
+        held.band,
+        SupportedBand::Strong,
+        "the user's band is in force"
+    );
+    assert_eq!(held.user_band, Some(SupportedBand::Strong));
+    assert_eq!(held.locked_by_user, Some(true));
+    assert_eq!(held.machine_band, Some(SupportedBand::Weak));
+    assert!(held.is_locked_by_user());
+    assert_eq!(
+        (held.interaction_count, held.direct_out_count),
+        (1, 1),
+        "the counts are the rebuild's, not the legacy row's",
+    );
+    assert!(
+        held.as_of_utc.is_some(),
+        "a T4D row says which instant it was scored against",
+    );
+    assert_eq!(
+        verdict(&store, relationship_id),
+        Some(UserVerdict::Corrected),
+        "the rebuild wrote the inference, and the correction ruled on it",
+    );
+    assert_eq!(
+        store.list_audit().expect("audit").len(),
+        2,
+        "the rebuild a correction had to run is in the chain beside the correction",
+    );
+}
+
+/// R-1, the other way out: an edge nothing in the store can score is refused
+/// by name rather than locked.
+///
+/// This peer's contact row is gone — forgotten, most likely — so the rebuild
+/// has nothing to rescore the edge with and the band stays a word no algorithm
+/// stands behind. Locking it would be pinning a number nobody can review, so
+/// the call refuses and says what would make it work.
+#[test]
+fn an_edge_no_rebuild_can_score_is_refused_and_names_the_rebuild() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = open(dir.path());
+    store
+        .put_contact(contact(owner(), ContactClass::Owner))
+        .expect("owner");
+    let observed = id("301");
+    observe(
+        &mut store,
+        observed,
+        Direction::Outgoing,
+        "2026-08-01T09:00:00Z",
+    );
+    let relationship_id = pre_wiring_edge(&mut store, observed);
+
+    let before = (
+        store.list_evidence().expect("evidence").len(),
+        store.list_inferences().expect("inferences").len(),
+        store.list_audit().expect("audit").len(),
+        serde_json::to_string(&store.get_relationship(relationship_id).expect("edge"))
+            .expect("edge json"),
+    );
+
+    let refused = correct_tie(&mut store, relationship_id, SupportedBand::Strong, NOW);
+    match &refused {
+        Err(GraphError::UnscoredEdge {
+            relationship_id: named,
+        }) => {
+            assert_eq!(*named, relationship_id)
+        }
+        other => panic!("expected the unscored edge to be named, got {other:?}"),
+    }
+    assert!(
+        refused.unwrap_err().to_string().contains("rebuilt"),
+        "the refusal has to tell the caller what would make the correction work",
+    );
+
+    let after = (
+        store.list_evidence().expect("evidence").len(),
+        store.list_inferences().expect("inferences").len(),
+        store.list_audit().expect("audit").len(),
+        serde_json::to_string(&store.get_relationship(relationship_id).expect("edge"))
+            .expect("edge json"),
+    );
+    assert_eq!(
+        before, after,
+        "a refused correction leaves the edge and the chain as they were",
+    );
+    assert_eq!(
+        strength(&store, relationship_id).band,
+        SupportedBand::Moderate,
+        "the band the legacy row already had is still the band, unlocked",
+    );
+
+    // A release is the same call from the other side, and refuses the same way.
+    assert!(matches!(
+        release_tie(&mut store, relationship_id, NOW),
+        Err(GraphError::UnscoredEdge { .. }),
+    ));
 }
 
 /// GC-5: the correction is evidence, and evidence has to dereference. AC-06
