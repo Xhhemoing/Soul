@@ -69,6 +69,8 @@ pub enum ReasonCode {
     E1OriginMismatch,
     /// A redirect tried to move the request to another origin.
     E1CrossOriginRedirect,
+    /// The endpoint's answer was longer than the client will read.
+    E1ResponseTooLarge,
     /// The request target could not be parsed into an origin.
     EgressTargetUnparsable,
     /// The request body left the machine with third-party prose placeheld.
@@ -120,6 +122,7 @@ impl ReasonCode {
             ReasonCode::E1NotConfigured => "E1_NOT_CONFIGURED",
             ReasonCode::E1OriginMismatch => "E1_ORIGIN_MISMATCH",
             ReasonCode::E1CrossOriginRedirect => "E1_CROSS_ORIGIN_REDIRECT",
+            ReasonCode::E1ResponseTooLarge => "E1_RESPONSE_TOO_LARGE",
             ReasonCode::EgressTargetUnparsable => "EGRESS_TARGET_UNPARSABLE",
             ReasonCode::ThirdPartyBodyPlaceheld => "THIRD_PARTY_BODY_PLACEHELD",
             ReasonCode::ThirdPartyBodyIncluded => "THIRD_PARTY_BODY_INCLUDED",
@@ -147,6 +150,7 @@ impl ReasonCode {
         ReasonCode::E1NotConfigured,
         ReasonCode::E1OriginMismatch,
         ReasonCode::E1CrossOriginRedirect,
+        ReasonCode::E1ResponseTooLarge,
         ReasonCode::EgressTargetUnparsable,
         ReasonCode::ThirdPartyBodyPlaceheld,
         ReasonCode::ThirdPartyBodyIncluded,

@@ -7,6 +7,11 @@
 //! test that asserted against an in-process fake would be checking the same
 //! code twice.
 //!
+//! The mock is also how the response cap gets a real body to refuse: it is
+//! told to answer with an assistant message past the cap, and the assertion is
+//! that `send` refuses with a code the audit can carry rather than reading
+//! whatever the endpoint felt like sending.
+//!
 //! The redirect case is the one worth being careful about. A client that
 //! follows redirects by default turns a `302` from the user's endpoint into an
 //! outbound request to wherever the response pointed — an E0 connection nobody
@@ -16,7 +21,7 @@
 
 use uuid::Uuid;
 
-use soul_egress::{send, EgressError};
+use soul_egress::{send, EgressError, MAX_RESPONSE_BYTES};
 use soul_policy::e1::{E1RequestPlan, DRAFTING_INSTRUCTION, QUOTE_CLOSE, QUOTE_OPEN};
 use soul_policy::net_guard::{EgressClass, EgressConfig, NetGuard};
 use soul_policy::redactor::{
@@ -212,6 +217,68 @@ fn clearing_the_redirect_lets_the_same_request_through() {
     ))
     .expect("the same request succeeds once the endpoint stops redirecting");
     assert_eq!(response.status, 200);
+}
+
+/// The reply is untrusted in size, not only in content.
+///
+/// `REQUEST_TIMEOUT` bounds how long the endpoint has; it says nothing about
+/// how much a machine on the same LAN can send inside two minutes, and `send`
+/// runs with whatever the caller holds locked. So the cap has to be on the
+/// bytes, and the answer has to be a refusal rather than a body read in full.
+#[test]
+fn a_response_body_past_the_cap_is_refused_instead_of_read() {
+    let mock = MockLlm::start().expect("start the mock endpoint");
+    // The assistant message is the part of the answer the mock lets a test
+    // choose, and it is quoted into the JSON envelope verbatim, so a message
+    // this long is a response body over the cap by construction.
+    mock.set_reply("a".repeat(MAX_RESPONSE_BYTES as usize + 1));
+
+    let permit = guard_for(&mock)
+        .authorize_e1(&mock.chat_completions_url())
+        .expect("permit");
+    let error = send(&E1RequestPlan::chat_completions(
+        permit,
+        MODEL,
+        default_body(),
+    ))
+    .expect_err("a body past the cap must not be read into memory");
+
+    assert!(
+        matches!(error, EgressError::ResponseTooLarge { limit } if limit == MAX_RESPONSE_BYTES),
+        "expected the read to be capped, got {error:?}",
+    );
+    assert_eq!(
+        error.reason_code(),
+        Some(ReasonCode::E1ResponseTooLarge),
+        "the refusal has to be auditable",
+    );
+    assert_eq!(mock.request_count(), 1, "one request, one refused answer");
+}
+
+/// The control for the cap: an answer of a size a real completion reaches
+/// still comes back, and comes back whole. A cap that refused everything
+/// large-ish, or truncated quietly, would pass the test above on its own.
+#[test]
+fn a_reply_under_the_cap_still_comes_back_whole() {
+    let mock = MockLlm::start().expect("start the mock endpoint");
+    let reply = "b".repeat(512 * 1024);
+    mock.set_reply(reply.as_str());
+
+    let permit = guard_for(&mock)
+        .authorize_e1(&mock.chat_completions_url())
+        .expect("permit");
+    let response = send(&E1RequestPlan::chat_completions(
+        permit,
+        MODEL,
+        default_body(),
+    ))
+    .expect("a reply under the cap is an ordinary answer");
+
+    assert_eq!(response.status, 200);
+    assert!(
+        response.body.contains(&reply),
+        "the body must arrive whole, not truncated at some earlier boundary",
+    );
 }
 
 /// AC-21 and AC-17: with no endpoint configured, there is no permit, so there
