@@ -378,7 +378,8 @@ impl Redactor {
 }
 
 /// Replace the identifier shapes nobody had to register: e-mail addresses,
-/// `@handles`, and digit runs long enough to be a phone number.
+/// `@handles`, and digits — run together or grouped — in enough quantity to be
+/// a phone number. See [`phone_shape_end`] for what counts as grouped.
 ///
 /// Registered identifiers are handled before this; the shapes are the safety
 /// net for a contact the graph never learned about.
@@ -413,10 +414,7 @@ fn scrub_identifier_shapes(text: &str) -> String {
         }
 
         if c.is_ascii_digit() {
-            let end = run_end(&scalars, index, |c| c.is_ascii_digit());
-            // Seven digits is the shortest thing that is plausibly a phone
-            // number rather than a date, a count or a port.
-            if end - index >= 7 {
+            if let Some(end) = phone_shape_end(&scalars, index) {
                 out.push_str(ACCOUNT_PLACEHOLDER);
                 index = end;
                 continue;
@@ -428,6 +426,74 @@ fn scrub_identifier_shapes(text: &str) -> String {
     }
 
     out
+}
+
+/// Seven digits is the shortest thing that is plausibly a phone number rather
+/// than a date, a count or a port.
+const MIN_PHONE_DIGITS: usize = 7;
+
+/// Where the phone-number shape starting at `start` ends, if there is one.
+///
+/// A person writing a number down for another person to read groups it:
+/// `138 0013 8000` and `138-0013-8000` are the same number as `13800138000`,
+/// and a rule that counted only unbroken runs saw none of them, because every
+/// group on its own is shorter than a number. So the groups are counted
+/// instead of the run. A single separator — a space, an ideographic space, a
+/// hyphen or a dot — joins one group to the next, and it is the total that has
+/// to reach [`MIN_PHONE_DIGITS`].
+///
+/// Nothing else joins. Two separators in a row, a comma, a colon or a Han
+/// character ends the run, which is what leaves 下午 3 点，第 2 会议室，预算
+/// 45000 the sentence the user wrote: three groups that never touch.
+///
+/// What is replaced is the whole grouped run, separators included, rather than
+/// one group at a time. Stopping at the first seven digits would leave ` 8000`
+/// standing beside the placeholder, which is the last four digits of the
+/// number on the wire.
+///
+/// # The false positive this buys
+///
+/// `2026-08-25` is eight digits in three groups, so it is placeheld. It is a
+/// date and nobody can be reached on it, and a paste that quotes one loses it
+/// to a placeholder. The trade is deliberate and it is the same one-directional
+/// trade [`KnownIdentifiers::add_name`] makes: a placeholder too many is
+/// something the user can see and work around, and a number on the wire is
+/// not. Excusing the `\d{4}-\d{2}-\d{2}` shape by name would be a few lines,
+/// and it would excuse every number that happens to be punctuated 4-2-2 along
+/// with the dates — letting a number through because of how it was written is
+/// the wrong direction to be wrong in.
+fn phone_shape_end(scalars: &[char], start: usize) -> Option<usize> {
+    let mut index = start;
+    let mut digits = 0usize;
+    let mut end = start;
+
+    loop {
+        let group_end = run_end(scalars, index, |c| c.is_ascii_digit());
+        if group_end == index {
+            break;
+        }
+        digits += group_end - index;
+        end = group_end;
+        let separated = scalars
+            .get(group_end)
+            .is_some_and(|c| is_group_separator(*c))
+            && scalars.get(group_end + 1).is_some_and(char::is_ascii_digit);
+        if !separated {
+            break;
+        }
+        index = group_end + 1;
+    }
+
+    (digits >= MIN_PHONE_DIGITS).then_some(end)
+}
+
+/// The characters a written-out number is grouped by, and no others.
+///
+/// A comma groups digits too (`45,000`), and it is left out on purpose: it is
+/// also how a Chinese sentence separates its clauses, so joining across one
+/// would let a budget and a room number add up to a phone number.
+fn is_group_separator(c: char) -> bool {
+    is_label_space(c) || c == '-' || c == '.'
 }
 
 /// The identifier shape the scrub above cannot see: a display label written
