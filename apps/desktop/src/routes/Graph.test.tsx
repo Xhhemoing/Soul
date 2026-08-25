@@ -328,6 +328,112 @@ describe("人脉图页", () => {
   });
 
   /**
+   * The same tombstone, one section down. A forget leaves the relationship row
+   * and the evidence behind it standing — deleting them would take this page
+   * down, because the core resolves every id on every edge and fails rather
+   * than returning a short list — so the forgotten person's tie is still drawn
+   * with its counts, its band, and until now three live buttons under it.
+   *
+   * Pressing one of them wrote through: `soul_graph::correct_tie` never read
+   * the peer's forget state, so it filed a `UserCorrection` about somebody the
+   * user asked Soul to drop and put their orphaned tie inference back to live.
+   * The core refuses that now; this is the same fact where the user is
+   * looking, and it is asserted the way the summary button's is — grey, and no
+   * call made when it is pressed anyway.
+   */
+  it("这条边上的人已被遗忘的时候，档位按钮按不下去，也没有纠正发出去", async () => {
+    const graph = aPeopleGraph();
+    const core = await open({
+      graph: {
+        ...graph,
+        people: graph.people.map((person) =>
+          person.is_you ? person : { ...person, forgotten: true },
+        ),
+        // Locked, so the way back out to the counts is on screen too: a release
+        // is a write on the same edge and the core refuses it just the same.
+        ties: graph.ties.map((tie) => ({
+          ...tie,
+          band: "strong",
+          locked_by_user: true,
+          user_band: "strong",
+        })),
+      },
+    });
+    const user = userEvent.setup();
+    const tie = screen.getByTestId(`tie-${TIE_ID}`);
+
+    for (const band of ["弱", "中等", "强"]) {
+      expect(within(tie).getByRole("button", { name: band })).toBeDisabled();
+    }
+    expect(within(tie).getByRole("button", { name: "按计数重新算" })).toBeDisabled();
+    expect(screen.getByTestId(`tie-forgotten-${TIE_ID}`)).toHaveTextContent(
+      "已被遗忘，这一档不能再改",
+    );
+
+    await user.click(within(tie).getByRole("button", { name: "弱" }));
+    await user.click(within(tie).getByRole("button", { name: "按计数重新算" }));
+    expect(core.callsTo("correct_tie")).toEqual([]);
+    expect(core.callsTo("release_tie")).toEqual([]);
+    expect(screen.queryByTestId("tie-refusal-code")).toBeNull();
+
+    // The counts are still on screen. A tie that disappeared would read as the
+    // forget having deleted it, and a forget does not delete a derived row.
+    expect(tie).toHaveTextContent("往来 6 次");
+    expect(within(tie).getByTestId("tie-evidence")).toHaveTextContent("依据 2 条证据");
+  });
+
+  /**
+   * The control for the test above: one tombstone must not grey out anybody
+   * else's band. The set the screen builds is read per tie off both of its
+   * contact ids, so an edge neither end of which was forgotten is untouched.
+   */
+  it("只遗忘了一个人的时候，别人那条边上的档位照样能按", async () => {
+    const graph = aPeopleGraph();
+    const other = "0192f000-0000-7000-8000-000000000003";
+    const otherTie = "0192f000-0000-7000-8000-00000000000b";
+    const core = await open({
+      graph: {
+        ...graph,
+        people: [
+          ...graph.people.map((person) =>
+            person.is_you ? person : { ...person, forgotten: true },
+          ),
+          {
+            contact_id: other,
+            is_you: false,
+            identifier_hint: "cccccccc",
+            interaction_count: 4,
+            last_contact_utc: "2026-08-19T09:00:00Z",
+            tie_count: 1,
+            forgotten: false,
+          },
+        ],
+        ties: [
+          ...graph.ties,
+          {
+            ...graph.ties[0]!,
+            relationship_id: otherTie,
+            to_contact_id: other,
+          },
+        ],
+      },
+    });
+    const user = userEvent.setup();
+
+    expect(screen.queryByTestId(`tie-forgotten-${otherTie}`)).toBeNull();
+    const live = within(screen.getByTestId(`tie-${otherTie}`)).getByRole("button", {
+      name: "强",
+    });
+    expect(live).toBeEnabled();
+
+    await user.click(live);
+    expect(core.callsTo("correct_tie")[0]?.payload).toEqual({
+      relationshipId: otherTie,
+      band: "strong",
+    });
+  });
+
+  /**
    * AC-16's other half: when a line came from the endpoint, the screen has to
    * say so. Draft already renders `source_notice` for the same reason — a
    * degradation the user cannot see is not a degradation, it is the only path

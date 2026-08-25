@@ -38,6 +38,13 @@
  * than being patched here — the band, the lock and the evidence rows behind
  * that edge all move, and a screen that updated one of them itself would be
  * guessing at the other two. Same shape as `Profile.tsx`, for the same reason.
+ *
+ * The band row is grey on a tie touching somebody who has been forgotten. A
+ * forget leaves the relationship row and its evidence standing — deleting them
+ * would take this whole page down, because the core resolves every id on every
+ * edge — so the stale tie is still drawn with counts and a band. The core
+ * refuses the write now, and this is the same fact said where the user is
+ * looking: live buttons whose only outcome is a refusal invite the press.
  */
 
 import { useEffect, useState } from "react";
@@ -177,6 +184,14 @@ export function Graph(): React.JSX.Element {
   }
 
   const others = graph.people.filter((person) => !person.is_you);
+  /**
+   * Everybody on this page who is a tombstone. A tie is read off both ends
+   * because the view names two contact ids and says nothing about which of
+   * them is you.
+   */
+  const forgotten = new Set(
+    graph.people.filter((person) => person.forgotten).map((person) => person.contact_id),
+  );
 
   return (
     <>
@@ -218,6 +233,9 @@ export function Graph(): React.JSX.Element {
                 key={tie.relationship_id}
                 tie={tie}
                 busy={busy}
+                forgotten={
+                  forgotten.has(tie.from_contact_id) || forgotten.has(tie.to_contact_id)
+                }
                 onCorrect={(band) => write(correctTie(tie.relationship_id, band))}
                 onRelease={() => write(releaseTie(tie.relationship_id))}
               />
@@ -300,6 +318,8 @@ function Person({ person, onSummarize }: PersonProps): React.JSX.Element {
 interface TieProps {
   readonly tie: TieEdge;
   readonly busy: boolean;
+  /** Somebody on one end of this tie has been forgotten. */
+  readonly forgotten: boolean;
   readonly onCorrect: (band: string) => void;
   readonly onRelease: () => void;
 }
@@ -313,8 +333,15 @@ interface TieProps {
  * drawn without asking the scorer to run again, and a lock that hid what it
  * overruled would be the uncorrectable black box read backwards — the user
  * could no longer tell what the counts say about the edge they pinned.
+ *
+ * Every button in the row is grey once either end is a tombstone, the release
+ * along with the three band words: `soul_graph::release_tie` is a write on the
+ * same edge and the core refuses it for the same reason. The row stays visible
+ * and says why, rather than disappearing — the counts behind it are still what
+ * this machine observed, and a tie that vanished from the page would read as
+ * the forget having deleted it, which is not what a forget does.
  */
-function Tie({ tie, busy, onCorrect, onRelease }: TieProps): React.JSX.Element {
+function Tie({ tie, busy, forgotten, onCorrect, onRelease }: TieProps): React.JSX.Element {
   const disagrees =
     tie.locked_by_user && tie.machine_band !== null && tie.machine_band !== tie.band;
 
@@ -344,19 +371,25 @@ function Tie({ tie, busy, onCorrect, onRelease }: TieProps): React.JSX.Element {
           机器按这些计数算的是「{words(BAND, tie.machine_band ?? "")}」，你改过之后它没有生效。
         </span>
       ) : null}
+      {forgotten ? (
+        <span className="muted" data-testid={`tie-forgotten-${tie.relationship_id}`}>
+          {" "}
+          这条边上有人已被遗忘，这一档不能再改。留在这里的是本机原来数出来的计数，删掉它这一页就读不出来了。
+        </span>
+      ) : null}
       <div className="switch-row">
         {BANDS.map((band) => (
           <button
             key={band}
             type="button"
-            disabled={busy || (tie.locked_by_user && band === tie.band)}
+            disabled={busy || forgotten || (tie.locked_by_user && band === tie.band)}
             onClick={() => onCorrect(band)}
           >
             {words(BAND, band)}
           </button>
         ))}
         {tie.locked_by_user ? (
-          <button type="button" disabled={busy} onClick={onRelease}>
+          <button type="button" disabled={busy || forgotten} onClick={onRelease}>
             按计数重新算
           </button>
         ) : null}
