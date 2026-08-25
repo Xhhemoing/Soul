@@ -13,7 +13,7 @@ use std::path::PathBuf;
 
 use soulcore::commands::memory::{ForgetConfirmation, MemoryChange, NewMemory};
 use soulcore::commands::profile::GivenAnswer;
-use soulcore::commands::session::Session;
+use soulcore::commands::session::{Session, FORGET_NOT_PREVIEWED_NOTICE};
 
 /// Something a person pasted, for the drafting tests below.
 const PASTED: &str = "周五那个方案你还改吗？我这边可以等到下午三点。";
@@ -718,6 +718,130 @@ fn a_forget_only_runs_on_the_preview_the_user_read() {
     for prose in ["搬家那天", "交钥匙那天", "下午三点交的钥匙。"] {
         assert!(!played.contains(prose), "the chain carries `{prose}`");
         assert!(!debugged.contains(prose), "the chain carries `{prose}`");
+    }
+    drop(keep);
+}
+
+/// A confirmation that named the wrong thing costs the click, not the preview.
+///
+/// The refusal above is the contract: a forget runs on the preview the user
+/// read and on nothing else. What this pins is the other side of it — the
+/// preview survives being refused. Match first, take on success: a WebView
+/// that echoed a stale id, or a second window that answered for the wrong
+/// memory, leaves the held preview exactly where it was, and the correct
+/// confirmation right afterwards still goes through.
+///
+/// The alternative would make one wrong id the reason a user has to walk the
+/// irreversible screen again, which is the sort of retry that gets clicked
+/// through rather than read.
+#[test]
+fn a_forget_refused_for_the_wrong_id_leaves_the_preview_the_user_read_standing() {
+    let (keep, directory) = scratch();
+    let mut session = Session::open(&directory);
+
+    let written = session
+        .write_memory(&NewMemory {
+            memory_type: "episodic".to_owned(),
+            title: "搬家那天".to_owned(),
+            summary: "下午三点交的钥匙。".to_owned(),
+        })
+        .expect("a memory");
+    let memory_id = written.memory_id.clone();
+    let other = session
+        .write_memory(&NewMemory {
+            memory_type: "commitment".to_owned(),
+            title: "周五之前回信".to_owned(),
+            summary: "答应过对方周五之前给个说法。".to_owned(),
+        })
+        .expect("a second memory");
+
+    let preview = session.preview_forget(&memory_id).expect("the price");
+
+    // Wrong preview id, right memory. The screen the user is looking at is
+    // still the one this session holds.
+    let refusal = session
+        .forget_memory(&ForgetConfirmation {
+            preview_id: uuid::Uuid::now_v7().to_string(),
+            memory_id: memory_id.clone(),
+        })
+        .expect_err("that is not the preview that was issued");
+    assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+    assert_eq!(refusal.explanation, FORGET_NOT_PREVIEWED_NOTICE);
+
+    // Right preview id, wrong memory. Both halves are matched, and a
+    // confirmation that gets one of them wrong is not a licence to spend the
+    // other.
+    let refusal = session
+        .forget_memory(&ForgetConfirmation {
+            preview_id: preview.preview_id.clone(),
+            memory_id: other.memory_id.clone(),
+        })
+        .expect_err("the preview was read for another memory");
+    assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+
+    // Nothing was destroyed by either refusal.
+    assert!(session.memory(&memory_id).is_ok());
+    assert!(session.memory(&other.memory_id).is_ok());
+
+    // And the preview the user actually read is still the one on the session,
+    // so the confirmation they meant to send works without a second walk
+    // through the irreversible screen.
+    let receipt = session
+        .forget_memory(&ForgetConfirmation {
+            preview_id: preview.preview_id.clone(),
+            memory_id: memory_id.clone(),
+        })
+        .expect("the preview two refusals did not consume");
+    assert!(
+        receipt.matched_preview,
+        "the receipt charged something other than the preview"
+    );
+    assert_eq!(receipt.content_keys_destroyed, 1);
+    session
+        .memory(&memory_id)
+        .expect_err("the content key is gone");
+    assert!(
+        session.memory(&other.memory_id).is_ok(),
+        "the memory a refused confirmation named was forgotten too",
+    );
+
+    // Spent, though: the same confirmation a second time has no preview behind
+    // it, so a replay buys nothing.
+    let refusal = session
+        .forget_memory(&ForgetConfirmation {
+            preview_id: preview.preview_id,
+            memory_id: memory_id.clone(),
+        })
+        .expect_err("the forget that ran took the preview with it");
+    assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+
+    // AC-23: three denials and one execution, and not a word of any title.
+    let chain = session.audit().expect("the chain");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    assert_eq!(
+        chain
+            .entries
+            .iter()
+            .filter(|entry| entry.action == "hitl.deny")
+            .count(),
+        3,
+        "the refusals are not all in the chain: {:?}",
+        chain.entries,
+    );
+    assert_eq!(
+        chain
+            .entries
+            .iter()
+            .filter(|entry| entry.action == "forget.execute")
+            .count(),
+        1,
+        "one preview, one destruction: {:?}",
+        chain.entries,
+    );
+    assert!(chain.entries.iter().all(|entry| entry.follows_previous));
+    let played = serde_json::to_string(&chain).expect("serialize the chain");
+    for prose in ["搬家那天", "下午三点交的钥匙。", "周五之前回信"] {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
     }
     drop(keep);
 }

@@ -386,8 +386,9 @@ pub struct Session {
     /// Forgetting is irreversible and the numbers behind it are a live query,
     /// so the confirmation has to name the answer it read — WP04 left this
     /// gap open and said so. One slot, replaced by the next preview, taken by
-    /// value when the forget runs: the same shape the endpoint drafting path
-    /// uses to make an approval describe what is actually about to happen.
+    /// value when the forget runs and left alone when it is refused: the same
+    /// shape the endpoint drafting path uses to make an approval describe what
+    /// is actually about to happen.
     held_forget: Option<HeldForget>,
     /// Whether collection may run, for this process and no longer.
     ///
@@ -1136,11 +1137,20 @@ impl Session {
     /// on the user's behalf, and until it was written down `/audit` heard
     /// about forgets that ran and nothing at all about the ones that were
     /// turned away.
+    ///
+    /// A refusal leaves the held preview where it was. The match is made
+    /// before anything is taken, so a confirmation that named the wrong
+    /// preview — a stale screen, a WebView that echoed the id it had rather
+    /// than the id it was shown — costs the user the click and not the
+    /// preview they were reading. Nothing is destroyed either way, and the
+    /// alternative is worse than it looks: a refusal that also dropped the
+    /// pending would make one mistyped confirmation the reason a user has to
+    /// walk the irreversible screen a second time.
     pub fn forget_memory(
         &mut self,
         confirmation: &ForgetConfirmation,
     ) -> Result<ForgetReceiptView, SessionRefusal> {
-        let matched = self.held_forget.take().filter(|held| {
+        let matched = self.held_forget.take_if(|held| {
             held.preview_id.to_string() == confirmation.preview_id
                 && held.memory_id.to_string() == confirmation.memory_id
         });
