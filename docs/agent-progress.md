@@ -34,7 +34,7 @@
 | 核心业务 | 色号 + BOM + 四模式 steps 已对 rust fixture；AL 复审 PASS | AL-4（MED）rust 边界 fixture 后置；B04 |
 | 测试 | `@bead/app` 258 + bead-core 153；覆盖探针已盘点 | T-ASM/T-INV 等 B04/B05 实现锁 |
 | 构建 | Soul just/pnpm | 隔离，勿改根脚本 |
-| CI/CD | Soul ci.yml 不动；独立 `bead.yml` 已合 | B10 复审；hosted 跑分待订 |
+| CI/CD | 独立 `bead.yml` 已合；hosted 两作业 3s 空 runner（无 step） | 本机命令为门；勿 empty-commit |
 | 性能 | 无转图基准 | 后置大图 |
 | 安全 | Soul 锁不适用于 bead UI | 本地 XSS/文件导入审查 |
 | 可靠性 | DATA-1 已合 | AL 复审 |
@@ -125,7 +125,7 @@ Commit        15ad3b3 absorb B04；本提交记进度
 PR            #16 #32–#37
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B05 实现；B10 workflow；MED-1 后置
-在途          B10 复审待派
+在途          [R2 Fable review B10](https://cursor.com/agents/bc-f2043eb1-5f82-5964-99a9-ff585747319c)
 已收          [R2 Opus B10 workflow](https://cursor.com/agents/bc-08c28463-3949-5d72-b729-c048eaf21aa2) → #41
 已收          [R2 Fable review B05](https://cursor.com/agents/bc-f8cb512c-e819-5100-8d2c-7fc3d03bb1b0) → #40
 已收          [R2 Opus B05 implement](https://cursor.com/agents/bc-07588339-9d46-582e-9230-b027218aa67b) → #39 `8526c5c`
