@@ -11,7 +11,7 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 | Field | Value |
 |---|---|
-| Current task | 10× Fable Round 5 in flight. E1 mutex stall parked P2. Hosted Windows `LockFileEx` pending billing. |
+| Current task | Round 5 Fable still in flight (cross-slice, forget×summary, R4 review, G1+, perf). #3 D55 park; #5 audit crash NO_HIGH_VALUE; #6 usage-policy BLOCKED, replaced by #6b HIGH_VALUE multiline provenance (Opus in flight); #9 Windows checklist honesty landed; #10 DPAPI unrecoverability notice landed on `store_notice`. E1 mutex stall parked P2. Hosted Windows `LockFileEx` pending billing. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
 | Exclusive tip | key-blob reclaim merged; PR #15 |

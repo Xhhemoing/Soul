@@ -17,7 +17,7 @@
 //! Compiled only on Windows. Linux CI exercises the same collector through
 //! [`crate::FakeForegroundSource`].
 
-// The only `unsafe` in the crate, and it is confined to this file: four Win32
+// The only `unsafe` in the crate, and it is confined to this file: five Win32
 // declarations and the calls to them. Everything else is under
 // `deny(unsafe_code)` on Windows and `forbid(unsafe_code)` everywhere else, so
 // a second platform hook cannot be added without moving it here first.
@@ -98,9 +98,9 @@ fn executable_path(process_id: u32) -> Option<String> {
     Some(String::from_utf16_lossy(&buffer[..written]))
 }
 
-/// The four Win32 entry points this crate uses, declared rather than pulled in
+/// The five Win32 entry points this crate uses, declared rather than pulled in
 /// as a dependency: the workspace pins every third-party version centrally, and
-/// four declarations are cheaper to audit than a binding crate.
+/// five declarations are cheaper to audit than a binding crate.
 #[allow(non_snake_case)]
 mod ffi {
     use std::ffi::c_void;
