@@ -1143,6 +1143,11 @@ fn an_authorized_directory_scans_read_only_and_is_remembered() {
         .expect("an authorized directory scans");
     assert_eq!(plan["executable_in_this_version"], json!(false));
     assert_eq!(
+        plan["disk_unchanged"],
+        json!(true),
+        "the files page prints this field, and a conversion that dropped it would leave the screen inventing the sentence: {plan}",
+    );
+    assert_eq!(
         plan["read_only_notice"],
         json!(soulcore::commands::fileplan::READ_ONLY_NOTICE),
     );
