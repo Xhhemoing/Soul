@@ -21,9 +21,12 @@
 //!
 //! So the caller gets two things it can rely on and no more: a reply that
 //! states a figure the material does not is refused, and a reply about
-//! something else entirely is refused. Everything that passes is still the
-//! endpoint's own prose, still carries no evidence, and still has to be
-//! labelled as such wherever it is shown.
+//! something else entirely is refused. A caller that shows the answer on one
+//! labelled line gets a third — [`read_grounded_in`] also refuses an answer
+//! that carries a line break, because a label introduces the line it sits on
+//! and nothing underneath it. Everything that passes is still the endpoint's
+//! own prose, still carries no evidence, and still has to be labelled as such
+//! wherever it is shown.
 
 use std::collections::BTreeSet;
 
@@ -56,6 +59,8 @@ pub enum ReplyDefect {
     Clinical(#[from] NonClinicalViolation),
     #[error("the answer states a figure the material does not, or is about something else")]
     Ungrounded,
+    #[error("the answer is more than one line, and it is shown on one labelled line")]
+    NotOneLine,
 }
 
 /// Pull the assistant's text out of an OpenAI-compatible response.
@@ -97,12 +102,39 @@ pub fn read(raw: &str) -> Result<ModelReply, ReplyDefect> {
 /// [`ReplyDefect::Ungrounded`], so a caller that asked for 「把这些计数改写一遍」
 /// is not left holding prose about something else with nothing to do but show
 /// it.
+///
+/// An answer carrying a line break is refused too, and that rule is here
+/// rather than in [`read`] because it is about where the answer ends up. A
+/// draft is prose the user copies into a messaging app, where a paragraph
+/// break is an ordinary thing to want. An answer read against material Soul
+/// supplied is shown beside Soul's own lines under one label that names who
+/// wrote it — and a label introduces the line it sits on, not the ones below.
+/// [`read`] trims the ends, which is not the same thing: a break in the middle
+/// survives trimming and puts the rest of the answer on a line of the screen
+/// wearing no attribution at all.
 pub fn read_grounded_in(raw: &str, material: &str) -> Result<ModelReply, ReplyDefect> {
     let reply = read(raw)?;
+    if reply.text.contains(starts_a_new_line) {
+        return Err(ReplyDefect::NotOneLine);
+    }
     if !is_grounded_in(&reply.text, material) {
         return Err(ReplyDefect::Ungrounded);
     }
     Ok(reply)
+}
+
+/// Characters that begin a new line where an answer is displayed.
+///
+/// Line feed and carriage return are the two an endpoint actually sends. The
+/// rest are the other Unicode mandatory breaks, and they are here because
+/// `str::lines` splits on none of them: a rule written as "count the lines"
+/// would call such an answer one line while an element that preserves breaks
+/// renders it as several.
+fn starts_a_new_line(character: char) -> bool {
+    matches!(
+        character,
+        '\n' | '\r' | '\u{0b}' | '\u{0c}' | '\u{85}' | '\u{2028}' | '\u{2029}'
+    )
 }
 
 /// Whether `text` is about `material`, and quotes no figure it does not have.

@@ -594,6 +594,126 @@ fn the_endpoint_s_line_says_on_the_line_that_it_is_the_endpoint_s() {
     }
 }
 
+/// Characters that put what follows on a new line of the screen.
+///
+/// Written out here rather than taken from `soul-draft`, so that a build whose
+/// own idea of a line break narrowed fails this test instead of agreeing with
+/// it. `str::lines` splits on `\n` alone; a rendering shown in an element that
+/// preserves breaks does not.
+const LINE_BREAKS: [char; 7] = [
+    '\n', '\r', '\u{0b}', '\u{0c}', '\u{85}', '\u{2028}', '\u{2029}',
+];
+
+/// A rendering, split the way a screen that preserves line breaks splits it.
+fn display_lines(rendered: &str) -> Vec<&str> {
+    rendered.split(LINE_BREAKS).collect()
+}
+
+/// Every line of a rendering is one of the four kinds that may be there.
+///
+/// The header, one bullet per point carrying that point's own row count, at
+/// most one line introduced by [`analysis::ENDPOINT_LINE_PREFIX`], and the
+/// notice. A line that is none of them is a line the user is reading with
+/// nothing on it saying where it came from, which is the whole of what AC-16
+/// forbids.
+fn every_line_is_accounted_for(summary: &PersonSummary, rendered: &str) {
+    let bullets: Vec<String> = summary
+        .points
+        .iter()
+        .map(|point| {
+            format!(
+                "· {}（依据 {} 条记录）",
+                point.statement(),
+                point.evidence_ids().len(),
+            )
+        })
+        .collect();
+
+    let mut endpoint_lines = 0;
+    for line in display_lines(rendered) {
+        if line == "关于这个人，本机能说的只有下面这些：" || line == summary.notice
+        {
+            continue;
+        }
+        if bullets.iter().any(|bullet| bullet == line) {
+            continue;
+        }
+        if line.starts_with(analysis::ENDPOINT_LINE_PREFIX) {
+            endpoint_lines += 1;
+            continue;
+        }
+        panic!("a line nobody is told the source of: `{line}`\nthe whole rendering:\n{rendered}");
+    }
+    assert!(
+        endpoint_lines <= 1,
+        "{endpoint_lines} lines claim to be the endpoint's one line:\n{rendered}",
+    );
+    assert_eq!(
+        endpoint_lines,
+        usize::from(summary.narrative.is_some()),
+        "the rendering and the summary disagree about whether there is a narrative:\n{rendered}",
+    );
+}
+
+/// AC-16: the label is on the line the reader is looking at, whatever the
+/// endpoint sent.
+///
+/// [`analysis::render`] joins its lines with `\n` and puts
+/// [`analysis::ENDPOINT_LINE_PREFIX`] in front of the narrative — in front of
+/// it, once. A narrative carrying a break of its own therefore reaches the
+/// screen as one introduced line and one or more that are not, and the graph
+/// view preserves the breaks it is handed, so those trailing lines sit among
+/// the counts wearing this machine's provenance.
+///
+/// The first line is the sentence
+/// `the_endpoint_s_line_says_on_the_line_that_it_is_the_endpoint_s` keeps: on
+/// the counts' subject, no figure the counts do not have. So nothing else in
+/// the pipeline has a reason to drop this answer, and the only thing under
+/// test is the break. Either outcome is honest — refuse the answer and leave
+/// the counts standing, or show it on the one line the prefix introduces — and
+/// the accounting below is what says so.
+#[test]
+fn a_narrative_that_carries_its_own_line_break_gets_no_unlabelled_line() {
+    let store = store_with_one_partner();
+    let (summary, _) = summarize(&store);
+
+    for divider in LINE_BREAKS {
+        let mut generator = Canned::saying(&format!(
+            "你们最近往来比较稳定，多数时候是一对一说话。{divider}这些都是本机根据记录算出来的。",
+        ));
+        let phrased = analysis::phrase_with(
+            &summary,
+            &Redactor::new(KnownIdentifiers::new()),
+            &mut generator,
+        )
+        .expect("an answer laid out oddly is not a failed summary");
+
+        assert_eq!(
+            phrased.points, summary.points,
+            "the points and their evidence are not up for negotiation",
+        );
+        if let Some(narrative) = phrased.narrative.as_deref() {
+            assert!(
+                !narrative.contains(LINE_BREAKS),
+                "a narrative that would occupy more than the line it is labelled on: {narrative}",
+            );
+        } else {
+            assert_eq!(
+                phrased.source,
+                SummarySource::Counts,
+                "no narrative survived, so the summary is the counts and says so",
+            );
+        }
+
+        let rendered = analysis::render(&phrased).expect("renders");
+        every_line_is_accounted_for(&phrased, &rendered);
+        assert!(
+            rendered.contains("有记录的往来 6 次"),
+            "the counts are still there: {rendered}",
+        );
+    }
+}
+
 /// What the endpoint is *asked* for is the summary instruction, not the
 /// drafting one.
 ///

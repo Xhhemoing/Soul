@@ -118,7 +118,8 @@ pub struct PersonSummary {
     pub source: SummarySource,
     /// A rephrasing from the user's own endpoint, if there is one and it
     /// passed the checks in [`phrase_with`]. It carries no evidence of its
-    /// own, and the points stand on their own without it.
+    /// own, and the points stand on their own without it. One line: [`render`]
+    /// puts one label in front of it, and a label covers one line.
     pub narrative: Option<String>,
     /// `工作假设，非临床结论`.
     pub notice: String,
@@ -185,6 +186,11 @@ pub fn summarize_person(
 /// it is the truth that there are none, said on the line rather than in a
 /// legend somewhere else, because that line is the only one on the screen
 /// nobody on this machine wrote.
+///
+/// That accounting holds because the narrative is one line — `\n` is what this
+/// function joins with, and it is also what would break the narrative into a
+/// labelled line and unlabelled ones. [`phrase_with`] is where a narrative
+/// carrying its own break is refused.
 pub fn render(summary: &PersonSummary) -> DraftResult<String> {
     let mut lines = vec!["关于这个人，本机能说的只有下面这些：".to_owned()];
     for point in &summary.points {
@@ -219,7 +225,7 @@ pub const ENDPOINT_LINE_PREFIX: &str =
 ///
 /// The points and their evidence are not up for negotiation: only
 /// [`PersonSummary::narrative`] changes, and only if what comes back is
-/// something Soul is prepared to show. Four things send it back to the counts,
+/// something Soul is prepared to show. Five things send it back to the counts,
 /// and each is a way an endpoint can answer that the screen must not carry:
 ///
 /// * an answer that does not parse, or is empty;
@@ -228,7 +234,12 @@ pub const ENDPOINT_LINE_PREFIX: &str =
 /// * an answer stating a figure that was not in the counts;
 /// * an answer about something else — 这个人最喜欢榴莲 is the case this was
 ///   written for, and it leaves a summary that says only what the rows
-///   support.
+///   support;
+/// * an answer carrying a line break of its own. [`ENDPOINT_LINE_PREFIX`]
+///   introduces one line, [`render`] joins with `\n`, and the graph view
+///   preserves the breaks it is given — so the second line of such an answer
+///   would reach the screen with nothing in front of it, sitting among lines
+///   this machine did derive and looking like one of them.
 ///
 /// The material the last two are checked against is the body that actually
 /// left, so the comparison is against what the endpoint was given rather than
