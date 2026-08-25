@@ -170,9 +170,11 @@ fn tie_inference(
 #[test]
 fn a_rebuild_after_a_forget_writes_no_live_tie_for_the_person_who_was_forgotten() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut store =
-        SqlCipherStore::open(dir.path().join("soul.db"), &TestKeyProvider::from_seed(SEED))
-            .expect("open");
+    let mut store = SqlCipherStore::open(
+        dir.path().join("soul.db"),
+        &TestKeyProvider::from_seed(SEED),
+    )
+    .expect("open");
     seed(&mut store);
 
     let first = soul_graph::rebuild(&mut store).expect("the first rebuild");
@@ -266,9 +268,11 @@ fn a_rebuild_after_a_forget_writes_no_live_tie_for_the_person_who_was_forgotten(
 #[test]
 fn the_forgotten_persons_stale_edge_stays_and_the_graph_still_resolves() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut store =
-        SqlCipherStore::open(dir.path().join("soul.db"), &TestKeyProvider::from_seed(SEED))
-            .expect("open");
+    let mut store = SqlCipherStore::open(
+        dir.path().join("soul.db"),
+        &TestKeyProvider::from_seed(SEED),
+    )
+    .expect("open");
     seed(&mut store);
     soul_graph::rebuild(&mut store).expect("the first rebuild");
 
