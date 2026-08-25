@@ -17,14 +17,16 @@ use std::sync::Arc;
 use soulcore::commands::session::Session;
 
 const COMMANDS_RS: &str = include_str!("../src/commands.rs");
+const INSTANCE_RS: &str = include_str!("../src/instance.rs");
 const LIB_RS: &str = include_str!("../src/lib.rs");
 const MAIN_RS: &str = include_str!("../src/main.rs");
 const TRAY_RS: &str = include_str!("../src/tray.rs");
 
 /// Every source file in the shell, with the file it came from.
-fn shell_sources() -> [(&'static str, &'static str); 4] {
+fn shell_sources() -> [(&'static str, &'static str); 5] {
     [
         ("src/commands.rs", COMMANDS_RS),
+        ("src/instance.rs", INSTANCE_RS),
         ("src/lib.rs", LIB_RS),
         ("src/main.rs", MAIN_RS),
         ("src/tray.rs", TRAY_RS),

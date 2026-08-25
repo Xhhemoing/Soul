@@ -12,6 +12,9 @@ const MANIFEST: &str = include_str!("../windows/soul.exe.manifest");
 const INSTALLER_HOOKS: &str = include_str!("../windows/installer-hooks.nsh");
 const BUILD_RS: &str = include_str!("../build.rs");
 const TRAY: &str = include_str!("../src/tray.rs");
+const LIB: &str = include_str!("../src/lib.rs");
+const INSTANCE: &str = include_str!("../src/instance.rs");
+const CARGO_TOML: &str = include_str!("../Cargo.toml");
 const CAPABILITY: &str = include_str!("../capabilities/default.json");
 
 const WINDOWS_INSTALL_DIR: &str = r"$LOCALAPPDATA\Programs\Soul";
@@ -65,6 +68,270 @@ fn the_tray_menu_is_the_one_the_manual_checklist_names() {
     assert!(TRAY.contains(r#"MenuItem::with_id(app, MENU_OPEN, "打开 Soul""#));
     assert!(TRAY.contains(r#"MenuItem::with_id(app, MENU_QUIT, "退出 Soul""#));
     assert!(TRAY.contains(r#".tooltip("Soul")"#));
+}
+
+/// The other way back into a Soul that is sitting in the tray, and the one
+/// Windows users reach for first. A left click that opens a menu instead of the
+/// window is Tauri's default, not the platform's convention, so both the
+/// handler and the turned-off default are asserted: with the menu still on the
+/// left button the click event is what the menu ate.
+#[test]
+fn a_left_click_on_the_tray_icon_reveals_the_window_too() {
+    assert!(
+        TRAY.contains("on_tray_icon_event"),
+        "the tray answers menu events only, so a left click does nothing",
+    );
+    assert!(
+        TRAY.contains("TrayIconEvent::Click")
+            && TRAY.contains("button: MouseButton::Left")
+            && TRAY.contains("button_state: MouseButtonState::Up"),
+        "the tray icon handler does not single out the end of a left click",
+    );
+
+    let handler = block_after(TRAY, "on_tray_icon_event");
+    assert!(
+        handler.contains("reveal_main_window"),
+        "the left click is handled but does not reveal the window: {handler}",
+    );
+    assert!(
+        TRAY.contains(".show_menu_on_left_click(false)"),
+        "Tauri's default puts the menu on the left button, which swallows the click",
+    );
+}
+
+/// The text of the `{ ... }` block that follows `needle`, brace-matched so a
+/// nested block does not end it early. Crude, and it is reading Rust that this
+/// test cannot compile against: what is being checked is the shape of `run`,
+/// and the shape is what a merge loses.
+fn block_after<'a>(source: &'a str, needle: &str) -> &'a str {
+    let at = source
+        .find(needle)
+        .unwrap_or_else(|| panic!("the source never says `{needle}`"));
+    let rest = &source[at..];
+    let open = rest.find('{').expect("a block follows");
+    let mut depth = 0usize;
+    for (offset, character) in rest[open..].char_indices() {
+        match character {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &rest[open..open + offset + 1];
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("the block after `{needle}` is never closed");
+}
+
+/// The hole this closes: closing the window leaves Soul in the tray, so the
+/// obvious way to get it back is to start Soul again — and the second process
+/// used to open its own handle on `soul.db` before anything noticed. Two
+/// SQLCipher connections on one file are two write-ahead logs.
+///
+/// Source order is the assertion because it is the thing that can regress: a
+/// claim that happens after the store is opened is not a claim at all.
+#[test]
+fn the_launch_claims_the_instance_before_it_opens_a_store() {
+    let claim = LIB
+        .find("instance::claim()")
+        .expect("run does not claim the single instance at all");
+    let opened = LIB
+        .find("open_platform_directory")
+        .expect("run no longer opens the store; this test is reading the wrong file");
+    assert!(
+        claim < opened,
+        "run opens the store before it claims the instance, so a second launch opens a second one",
+    );
+}
+
+/// And having found the name taken, it leaves without touching anything.
+#[test]
+fn the_second_launch_leaves_without_opening_anything() {
+    let arm = block_after(LIB, "instance::Claim::AlreadyRunning =>");
+    assert!(
+        arm.contains("return"),
+        "the already-running arm falls through into the rest of run: {arm}",
+    );
+    assert!(
+        arm.contains("instance::reveal_running_instance"),
+        "the second launch exits without giving the user their window back: {arm}",
+    );
+    for forbidden in [
+        "open_platform_directory",
+        "open_store",
+        "Session",
+        "SessionState",
+        "tauri::Builder",
+    ] {
+        assert!(
+            !arm.contains(forbidden),
+            "the already-running arm names `{forbidden}`; it may only reveal and leave",
+        );
+    }
+}
+
+/// A claim released at the end of the statement that made it is not a claim.
+/// The guard has to be bound to a name that lives as long as `run` does.
+#[test]
+fn the_claim_is_held_for_as_long_as_the_process_runs() {
+    let line = LIB
+        .lines()
+        .find(|line| line.contains("instance::claim()"))
+        .expect("run claims the instance");
+    let binding = line
+        .trim()
+        .strip_prefix("let ")
+        .and_then(|rest| rest.split_once(" ="))
+        .map(|(name, _)| name.trim())
+        .unwrap_or_else(|| panic!("the claim is not bound to anything: {line}"));
+    assert_ne!(
+        binding, "_",
+        "the guard is dropped where it is made, which releases the name immediately",
+    );
+    assert!(
+        !LIB.contains(&format!("drop({binding})")),
+        "the guard is dropped before run ends",
+    );
+}
+
+/// `Local\` is the logon session. `Global\` would be the machine: two people
+/// signed into the same PC each have their own `%LOCALAPPDATA%\Soul`, so each
+/// is entitled to their own Soul, and the machine-wide namespace can also need
+/// a privilege `soul.exe.manifest` promises not to ask for.
+#[test]
+fn the_instance_name_is_this_user_and_not_the_machine() {
+    let identifier = config()["identifier"]
+        .as_str()
+        .expect("tauri.conf.json names the application")
+        .to_owned();
+
+    assert_eq!(soul_desktop::instance::APP_IDENTIFIER, identifier);
+    assert_eq!(soul_desktop::instance::MUTEX_NAMESPACE, r"Local\");
+    assert_eq!(
+        soul_desktop::instance::MUTEX_NAME,
+        format!(r"Local\{identifier}"),
+        "the mutex is named after something other than this application",
+    );
+    assert!(
+        !soul_desktop::instance::MUTEX_NAME.contains(r"Global\"),
+        "a machine-wide name would keep a second signed-in user out of their own Soul",
+    );
+    // And that constant is the name that is really claimed, rather than one
+    // the test can read while the call uses another.
+    assert!(
+        INSTANCE.contains("create_mutex(MUTEX_NAME)"),
+        "instance.rs claims a name other than MUTEX_NAME",
+    );
+}
+
+/// The window the second launch raises is the first launch's window, found by
+/// the title the configuration gives it. If that title changes, the second
+/// launch silently stops finding anything.
+#[test]
+fn the_second_launch_looks_for_the_window_the_configuration_titles() {
+    let window = &config()["app"]["windows"][0];
+    assert_eq!(
+        window["label"].as_str(),
+        Some(soul_desktop::tray::MAIN_WINDOW),
+    );
+    assert_eq!(
+        window["title"].as_str(),
+        Some(soul_desktop::instance::WINDOW_TITLE),
+        "instance.rs looks for a window title the configuration does not use",
+    );
+    assert!(
+        INSTANCE.contains("FindWindowW") && INSTANCE.contains("SetForegroundWindow"),
+        "nothing in instance.rs finds the running window and brings it forward",
+    );
+}
+
+/// The claim is a kernel object, which the operating system releases when the
+/// process holding it dies however it dies. A lock file would be one more thing
+/// in the data directory to explain, and after a power cut it would be a stale
+/// file that keeps Soul from starting at all.
+#[test]
+fn the_claim_leaves_nothing_on_disk_next_to_the_keys() {
+    assert!(
+        INSTANCE.contains("CreateMutexW"),
+        "the claim is not a named mutex any more",
+    );
+    let set_last = INSTANCE
+        .find("ffi::SetLastError")
+        .expect("CreateMutexW is not preceded by SetLastError(0)");
+    let created = INSTANCE
+        .find("ffi::CreateMutexW")
+        .expect("the claim is not a named mutex any more");
+    assert!(
+        set_last < created,
+        "a stale last-error of 183 would make the first launch look like a second",
+    );
+    for forbidden in [
+        "soul.lock",
+        "File::",
+        "OpenOptions",
+        "std::fs",
+        "fs::write",
+        "create_dir",
+    ] {
+        assert!(
+            !INSTANCE.contains(forbidden),
+            "instance.rs reaches for `{forbidden}`; the claim writes no file",
+        );
+    }
+}
+
+/// The single-instance check is seven Win32 declarations in this crate rather
+/// than a plugin, and a plugin is how an HTTP client or a new capability would
+/// arrive without anyone deciding to add one. `tests/no_egress_path.rs` names
+/// the two plugins that are already banned; this is the wider rule, because
+/// v0.1 uses no Tauri plugin at all.
+#[test]
+fn no_plugin_was_added_to_do_this() {
+    for line in CARGO_TOML.lines().map(str::trim) {
+        assert!(
+            !line.starts_with("tauri-plugin"),
+            "the shell depends on a Tauri plugin: {line}",
+        );
+    }
+    assert_eq!(
+        config()["plugins"],
+        serde_json::json!({}),
+        "a plugin would also need configuring, and v0.1 configures none",
+    );
+}
+
+/// `unsafe` is allowed in exactly one module, and the crate root is what keeps
+/// it there: `deny` on Windows so `instance.rs` can allow it back for its Win32
+/// block, `forbid` everywhere else so it cannot be allowed back at all.
+#[test]
+fn the_only_unsafe_code_in_the_shell_is_the_win32_block() {
+    assert!(
+        LIB.contains("#![cfg_attr(not(windows), forbid(unsafe_code))]")
+            && LIB.contains("#![cfg_attr(windows, deny(unsafe_code))]"),
+        "the crate root no longer states what it does about unsafe code",
+    );
+    for (name, source) in [("lib.rs", LIB), ("tray.rs", TRAY)] {
+        assert!(
+            !source.contains("unsafe {") && !source.contains("unsafe impl"),
+            "{name} contains unsafe code, which belongs in instance.rs",
+        );
+    }
+
+    let win32 = INSTANCE
+        .find("mod win32 {")
+        .expect("instance.rs no longer keeps its Win32 calls in one module");
+    for (at, _) in INSTANCE.match_indices("unsafe {") {
+        assert!(at > win32, "instance.rs has an unsafe block outside win32");
+    }
+    for (at, _) in INSTANCE.match_indices("unsafe impl") {
+        assert!(at > win32, "instance.rs has an unsafe impl outside win32");
+    }
+    assert!(
+        INSTANCE.contains("#![allow(unsafe_code)]"),
+        "the win32 module does not say that it is the exception",
+    );
 }
 
 /// PRODUCT_LOCK names the process. `soulcore` holds the name; the `[[bin]]`

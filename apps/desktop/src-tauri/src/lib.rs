@@ -16,12 +16,20 @@
 //! | the WebView loads only what shipped with it | the CSP in `tauri.conf.json` |
 //! | a tray entry exists | `tray.rs`; the icon itself is author-manual |
 //! | one store handle for the process | [`run`] opens it, `tests/one_store.rs` |
+//! | one Soul per signed-in user | `instance.rs`, `tests/shell_is_local_only.rs` |
 
-#![forbid(unsafe_code)]
+// `instance.rs` declares seven Win32 entry points and is the only place in the
+// crate that may: on Windows the root denies unsafe code rather than forbidding
+// it, so that module can allow it back for itself, and everywhere else the
+// stronger `forbid` still holds. Same arrangement, and same reason, as
+// `crates/soul-collect` and `crates/soul-win-dpapi`.
+#![cfg_attr(not(windows), forbid(unsafe_code))]
+#![cfg_attr(windows, deny(unsafe_code))]
 
 use tauri::Manager;
 
 pub mod commands;
+pub mod instance;
 pub mod tray;
 
 /// State and command registration, kept separate from the window and the tray.
@@ -32,6 +40,11 @@ pub mod tray;
 /// handed to it deliberately. `tests/ipc_roundtrip.rs` passes a session on a
 /// scratch directory and gets the commands the shipped binary registers,
 /// rather than a second list that happens to look the same.
+///
+/// The single-instance claim is not made here for the same reason: it is a
+/// name in the logon session, and a test that took it would be reaching out of
+/// its own process to stop the author's Soul from starting. [`run`] claims it;
+/// `configure` registers commands.
 pub fn configure<R: tauri::Runtime>(
     builder: tauri::Builder<R>,
     session: commands::SessionState,
@@ -79,6 +92,27 @@ pub fn configure<R: tauri::Runtime>(
 }
 
 pub fn run() {
+    // Before anything else, and before a database in particular. Closing the
+    // window leaves Soul in the tray, so the second launch is the ordinary way
+    // back in: the user clicks Soul in the Start menu again. That process must
+    // not reach the store — two handles on one SQLCipher file are two
+    // write-ahead logs — so it claims the name first, hands the window back to
+    // the Soul that already has it, and leaves. Exiting `run` here returns
+    // through `main` with status 0: nothing failed, this launch was answered
+    // by the process that was already running.
+    let _instance = match instance::claim() {
+        instance::Claim::Ours(guard) => guard,
+        instance::Claim::AlreadyRunning => {
+            if !instance::reveal_running_instance() {
+                // The first Soul is still starting and has no window yet.
+                // Leaving is still right: it will finish, and a second store
+                // is not the price of a window that is one second away.
+                eprintln!("soul: Soul is already running in this session");
+            }
+            return;
+        }
+    };
+
     // The one place a database is opened. `soulcore` works out where this
     // machine keeps Soul's data — `%LOCALAPPDATA%\Soul` on the platform this
     // ships to — and a session that could not be built is a Soul that has
