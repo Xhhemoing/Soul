@@ -9,7 +9,7 @@
 //! that a forget cannot happen on a preview nobody read, and that the research
 //! and audit reads are the shapes their acceptance criteria describe.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use soulcore::commands::memory::{ForgetConfirmation, MemoryChange, NewMemory};
 use soulcore::commands::profile::GivenAnswer;
@@ -880,10 +880,12 @@ fn the_research_preview_writes_nothing_and_the_chain_holds_no_prose() {
         })
         .expect("a memory");
 
-    let before: Vec<PathBuf> = std::fs::read_dir(&directory)
-        .expect("read the data directory")
-        .map(|entry| entry.expect("an entry").path())
-        .collect();
+    let before = footprint(&directory);
+    assert!(
+        !before.is_empty(),
+        "the data directory is empty, so the comparison below would hold for a \
+         product that wrote nothing because there was nothing there",
+    );
 
     let research = session.research().expect("a preview");
     assert!(!research.written_to_disk);
@@ -896,11 +898,16 @@ fn the_research_preview_writes_nothing_and_the_chain_holds_no_prose() {
         assert!(!rendered.contains(prose), "the preview carries `{prose}`");
     }
 
-    let after: Vec<PathBuf> = std::fs::read_dir(&directory)
-        .expect("read the data directory")
-        .map(|entry| entry.expect("an entry").path())
-        .collect();
-    assert_eq!(before, after, "a preview-only export left a file behind");
+    // Not a list of names. `soul-store`'s `a_preview_leaves_no_new_file_behind`
+    // compares names and lengths one layer down; what a product wrapper can
+    // still do without either of them noticing is append an audit row, grow
+    // the write-ahead log, or rewrite a file in place — so the bytes are what
+    // is compared here.
+    let after = footprint(&directory);
+    assert_eq!(
+        before, after,
+        "a preview-only export changed what is on disk",
+    );
 
     let chain = session.audit().expect("the chain");
     assert!(chain.verified, "{:?}", chain.verification_problem);
@@ -923,4 +930,151 @@ fn the_research_preview_writes_nothing_and_the_chain_holds_no_prose() {
         "an entry names what it was about, as a bare identifier",
     );
     drop(keep);
+}
+
+/// ----------------------------------------------------------- footprint ---
+///
+/// Everything under a directory, as sorted `(relative path, length, digest)`.
+///
+/// AC-20 says a research preview writes nothing, and a list of paths cannot
+/// tell that apart from a preview that appended an audit row, grew the
+/// write-ahead log, or rewrote a file in place — all of which leave exactly
+/// the same names behind. The digest can.
+///
+/// SQLite's `-shm` is left out on purpose. It is the write-ahead index, it is
+/// rebuilt from the log, it holds none of Soul's data, and it is stamped by
+/// the act of taking a read lock — including it would make every read look
+/// like a write. The `-wal` itself is included, which is where an appended
+/// row would land.
+fn footprint(root: &Path) -> Vec<(String, u64, String)> {
+    fn walk(root: &Path, at: &Path, into: &mut Vec<(String, u64, String)>) {
+        let listing =
+            std::fs::read_dir(at).unwrap_or_else(|error| panic!("read {}: {error}", at.display()));
+        for entry in listing {
+            let path = entry.expect("an entry").path();
+            if path.is_dir() {
+                walk(root, &path, into);
+                continue;
+            }
+            let relative = path
+                .strip_prefix(root)
+                .expect("every entry is under the root")
+                .to_string_lossy()
+                .replace('\\', "/");
+            if relative.ends_with("-shm") {
+                continue;
+            }
+            let bytes = std::fs::read(&path)
+                .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+            into.push((relative, bytes.len() as u64, sha256_hex(&bytes)));
+        }
+    }
+
+    let mut found = Vec::new();
+    walk(root, root, &mut found);
+    found.sort();
+    found
+}
+
+/// FIPS 180-4 SHA-256, spelled out.
+///
+/// `soulcore` has no digest of its own and a comparison in one test is not
+/// worth an edge on the dependency graph `xtask e0-audit` and `deny.toml`
+/// walk. `the_digest_agrees_with_the_published_vectors` is what keeps it
+/// honest — a hash that answered a constant would make the footprint
+/// comparison above pass for a product that rewrote every file it has.
+fn sha256_hex(bytes: &[u8]) -> String {
+    const K: [u32; 64] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
+    ];
+
+    let mut state: [u32; 8] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
+    ];
+
+    let mut padded = bytes.to_vec();
+    let bits = (bytes.len() as u64) * 8;
+    padded.push(0x80);
+    while padded.len() % 64 != 56 {
+        padded.push(0);
+    }
+    padded.extend_from_slice(&bits.to_be_bytes());
+
+    for block in padded.chunks_exact(64) {
+        let mut schedule = [0u32; 64];
+        for (slot, word) in schedule.iter_mut().zip(block.chunks_exact(4)) {
+            *slot = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
+        }
+        for index in 16..64 {
+            let fifteen = schedule[index - 15];
+            let two = schedule[index - 2];
+            let s0 = fifteen.rotate_right(7) ^ fifteen.rotate_right(18) ^ (fifteen >> 3);
+            let s1 = two.rotate_right(17) ^ two.rotate_right(19) ^ (two >> 10);
+            schedule[index] = schedule[index - 16]
+                .wrapping_add(s0)
+                .wrapping_add(schedule[index - 7])
+                .wrapping_add(s1);
+        }
+
+        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = state;
+        for index in 0..64 {
+            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let choose = (e & f) ^ ((!e) & g);
+            let first = h
+                .wrapping_add(s1)
+                .wrapping_add(choose)
+                .wrapping_add(K[index])
+                .wrapping_add(schedule[index]);
+            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let majority = (a & b) ^ (a & c) ^ (b & c);
+            let second = s0.wrapping_add(majority);
+
+            h = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(first);
+            d = c;
+            c = b;
+            b = a;
+            a = first.wrapping_add(second);
+        }
+
+        for (slot, value) in state.iter_mut().zip([a, b, c, d, e, f, g, h]) {
+            *slot = slot.wrapping_add(value);
+        }
+    }
+
+    let mut hex = String::with_capacity(64);
+    for byte in state.iter().flat_map(|word| word.to_be_bytes()) {
+        hex.push(char::from_digit(u32::from(byte >> 4), 16).expect("a nibble is a hex digit"));
+        hex.push(char::from_digit(u32::from(byte & 0x0f), 16).expect("a nibble is a hex digit"));
+    }
+    hex
+}
+
+/// The two vectors FIPS 180-4 publishes, plus one that needs a second block.
+#[test]
+fn the_digest_agrees_with_the_published_vectors() {
+    assert_eq!(
+        sha256_hex(b""),
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    );
+    assert_eq!(
+        sha256_hex(b"abc"),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    );
+    assert_eq!(
+        sha256_hex(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
+        "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
+    );
 }
