@@ -780,12 +780,22 @@ impl Session {
     /// the one `prepare_pasted` built, and [`E1DraftPlan`] gains no field for a
     /// marker or a URL that would then be on the confirmation screen.
     ///
+    /// A store that did not open stops this before anything is described.
+    /// [`Session::append_audit`] returns `Ok(())` on a closed store — it has to,
+    /// or AC-17's local drafting would stop with the database — so a request
+    /// prepared here and approved next would leave a machine with no
+    /// `egress.request` behind it and no way to notice. Refusing at the door is
+    /// what [`Session::person_summary`] already does with E1's other
+    /// user-triggered path, and the paste that stays store-free is
+    /// [`Session::draft_pasted`], which builds no request body.
+    ///
     /// [`Draft::audit`]: soul_draft::draft::Draft::audit
     pub fn prepare_draft(
         &mut self,
         pasted: &str,
         include_original: Option<bool>,
     ) -> Result<E1DraftPlan, SessionRefusal> {
+        self.opened_store()?;
         // Read every time, for the reason `owner_brief` is: a cached set is a
         // set that does not have the person imported five minutes ago in it,
         // and their name is what this call is deciding whether to send.
@@ -816,7 +826,13 @@ impl Session {
     /// `audit.schema.json` already has for it, and until this the chain heard
     /// about generations that succeeded and nothing at all about the ones that
     /// were stopped.
+    ///
+    /// The store is checked here as well as in [`Session::prepare_draft`],
+    /// because the two entries this owes are the whole reason a request may
+    /// leave: a chain that cannot be appended to is not a chain that quietly
+    /// misses one row, it is a socket nobody has to account for.
     pub fn generate_draft(&mut self, approval: &Approval) -> Result<DraftValue, SessionRefusal> {
+        self.opened_store()?;
         let generated = draft::generate_prepared(&mut self.draft, &mut self.policy, approval);
         let drafted = generated.map_err(|refusal| self.refuse_draft(refusal))?;
         self.append_audit(&drafted.audit)?;
