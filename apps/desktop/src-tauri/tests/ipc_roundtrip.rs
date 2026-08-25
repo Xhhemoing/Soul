@@ -601,6 +601,10 @@ fn a_restart_finds_the_endpoint_unconfigured_again() {
 /// still satisfy a test that asked the redactor what it says.
 const THIRD_PARTY_PLACEHOLDER: &str = "[第三人正文已占位]";
 
+/// `soul_policy::redactor::ACCOUNT_PLACEHOLDER`, spelled out for the same
+/// reason.
+const ACCOUNT_PLACEHOLDER: &str = "[账号已占位]";
+
 /// What the mock endpoint answers with.
 ///
 /// A reply has to be non-empty and non-clinical or `soul-draft` throws it away
@@ -742,6 +746,163 @@ fn an_approved_generation_crosses_the_ipc_and_reaches_the_address_the_user_typed
             "the chain carried `{prose}` across the IPC: {chain}",
         );
     }
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
+/// The paste the exemption test sends.
+///
+/// Somebody else's message, with a number and a handle in it that nobody
+/// registered as a contact. A fresh session's contact graph is empty, so what
+/// placeholds those two is the shape scrub rather than anything imported —
+/// which is the case a user who has imported nothing is in.
+const CONFIRMED_PASTE: &str =
+    "周五的场地我已经订好了，你直接过来就行，到了打 13800138000 或者找 @xiaoming";
+
+/// AC-13 at the wire, over the real handler.
+///
+/// `a_second_confirmation_crosses_the_ipc_and_the_paste_does_not_follow_it`
+/// proves the field arrives and changes the plan, but with nothing configured
+/// no request is ever built, so the only evidence that the exemption reaches
+/// the bytes is `soulcore`'s
+/// `a_second_confirmation_sends_this_ones_words_and_the_next_preparation_is_placeheld_again`
+/// — which holds a `Session` directly. What only this side can show is that
+/// the one-shot permission survives Tauri's argument conversion: a shell that
+/// dropped `includeOriginal` on the way down, or that prepared against one
+/// session and generated against another, would leave the confirmed message
+/// behind and the user pressing a button that bought nothing.
+#[test]
+fn a_second_confirmation_crosses_the_ipc_and_this_ones_words_travel_once() {
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    endpoint.set_reply(ENDPOINT_REPLY);
+    let shell = Shell::on(scratch());
+
+    shell
+        .invoke("set_user_endpoint", json!({ "url": endpoint.base_url() }))
+        .expect("a loopback address is an address");
+    assert_eq!(
+        endpoint.request_count(),
+        0,
+        "filling in the address contacted it",
+    );
+
+    // The user read a placeheld plan and pressed 「这一条按原文带上」.
+    let exempted = shell
+        .invoke(
+            "prepare_draft",
+            json!({ "pasted": CONFIRMED_PASTE, "includeOriginal": true }),
+        )
+        .expect("the user confirmed twice");
+    assert_eq!(exempted["carries_exempted_original"], json!(true));
+    assert_eq!(exempted["placeheld_turns"], json!(0));
+    assert_eq!(
+        endpoint.request_count(),
+        0,
+        "an exemption is not a generation",
+    );
+
+    let first = shell
+        .invoke(
+            "generate_draft",
+            json!({
+                "approval": {
+                    "preparation_id": exempted["preparation_id"],
+                    "plan_hash": exempted["plan_hash"],
+                }
+            }),
+        )
+        .expect("the endpoint the user configured answers");
+    assert_eq!(
+        first["source"],
+        json!("user_endpoint"),
+        "the draft came from the template, so nothing was generated: {first}",
+    );
+
+    // Nobody cleared anything, and the next preparation is placeheld again.
+    let after = shell
+        .invoke(
+            "prepare_draft",
+            json!({ "pasted": CONFIRMED_PASTE, "includeOriginal": false }),
+        )
+        .expect("a plan");
+    assert_eq!(after["carries_exempted_original"], json!(false));
+    assert_eq!(after["placeheld_turns"], json!(1));
+    assert_ne!(
+        after["plan_hash"], exempted["plan_hash"],
+        "a differently redacted body is a different plan",
+    );
+
+    let second = shell
+        .invoke(
+            "generate_draft",
+            json!({
+                "approval": {
+                    "preparation_id": after["preparation_id"],
+                    "plan_hash": after["plan_hash"],
+                }
+            }),
+        )
+        .expect("the endpoint the user configured answers");
+    assert_eq!(second["source"], json!("user_endpoint"), "{second}");
+
+    let sent = endpoint.requests();
+    assert_eq!(sent.len(), 2, "two approvals, two requests");
+    for request in &sent {
+        assert_eq!(request.method, "POST");
+    }
+    assert!(
+        sent[0].body.contains("场地"),
+        "the confirmed message did not travel, so the confirmation bought nothing: {}",
+        sent[0].body,
+    );
+    assert!(!sent[0].body.contains(THIRD_PARTY_PLACEHOLDER));
+    assert!(
+        !sent[1].body.contains("场地"),
+        "the exemption was remembered into the next request: {}",
+        sent[1].body,
+    );
+    assert!(sent[1].body.contains(THIRD_PARTY_PLACEHOLDER));
+
+    // The exemption is for one message's prose and nothing else. Confirming to
+    // send what somebody wrote is not confirming to publish how to reach them.
+    for request in &sent {
+        assert!(
+            !request.body.contains("13800138000"),
+            "the number travelled: {}",
+            request.body,
+        );
+        assert!(
+            !request.body.contains("@xiaoming"),
+            "the handle travelled: {}",
+            request.body,
+        );
+        assert!(
+            !request
+                .headers
+                .iter()
+                .any(|(name, _)| name.eq_ignore_ascii_case("authorization")),
+            "this build has no key to send: {:?}",
+            request.headers,
+        );
+    }
+    assert!(
+        sent[0].body.contains(ACCOUNT_PLACEHOLDER),
+        "the exempted body dropped them rather than placeholding them: {}",
+        sent[0].body,
+    );
+
+    // And what crosses back to the WebView is still counts and identifiers:
+    // neither plan, neither draft, nor the chain beside them carries the words
+    // the user confirmed once.
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the chain reads back");
+    assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
+    let answered = format!("{exempted}{first}{after}{second}{chain}");
+    assert!(
+        !answered.contains("场地"),
+        "the IPC answered with the third party's words: {answered}",
+    );
 
     let _ = std::fs::remove_dir_all(&shell.directory);
 }
@@ -1433,6 +1594,83 @@ fn a_hostile_export_preview_is_counted_into_the_chain_over_the_ipc_without_commi
     // A count and a code. Nothing the file tried to say, on either answer.
     let answered = format!("{preview}{chain}");
     for prose in ATTEMPTED {
+        assert!(
+            !answered.contains(prose),
+            "the IPC answered with `{prose}`: {chain}",
+        );
+    }
+
+    // Reading a file writes nothing, and the graph is where that would show.
+    let graph = shell.invoke("people_graph", json!({})).expect("a graph");
+    assert_eq!(
+        graph["people"],
+        json!([]),
+        "a preview put somebody in the store: {graph}",
+    );
+    assert_eq!(graph["ties"], json!([]));
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
+/// The same claim on the other format, where the attempt arrives in pieces.
+///
+/// A `soul-import-v1` body is one JSON string, so the scan above reads the
+/// sentence the way it was written. Telegram cuts a `text` into runs wherever
+/// an entity begins, and this fixture splits 忽略之前指令 across two of them —
+/// so a shell that handed the reader something other than the file text, or a
+/// reader that scanned run by run, would count nothing and tell the user their
+/// export tried nothing at all. Nothing is committed here either.
+#[test]
+fn a_hostile_telegram_preview_is_counted_into_the_chain_over_the_ipc_without_committing() {
+    let text = fixture("import/telegram/result_injection.json");
+    let shell = Shell::on(scratch());
+
+    let preview = match shell.invoke("preview_telegram", json!({ "text": text })) {
+        Ok(preview) => preview,
+        // No key, no store, no preview — same refusal, same early return.
+        Err(refusal) => {
+            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+            return;
+        }
+    };
+    assert_eq!(preview["source"], json!("telegram-desktop"));
+    assert_eq!(
+        preview["messages_with_injection_markers"],
+        json!(2),
+        "the split phrase and the address, one message each: {preview}",
+    );
+    assert_eq!(preview["writes_anything"], json!(false));
+
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the preview read the store, so the chain reads back too");
+    assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
+
+    let blocked = chain["entries"]
+        .as_array()
+        .expect("a chain is a list of entries")
+        .iter()
+        .find(|entry| entry["action"] == json!("injection.blocked"))
+        .unwrap_or_else(|| {
+            panic!("the export asked to be obeyed and the IPC chain never heard about it: {chain}")
+        });
+    assert_eq!(blocked["decision"], json!("denied"));
+    assert_eq!(blocked["reason_code"], json!("INJECTION_MARKERS_FOUND"));
+    assert_eq!(
+        blocked["items"],
+        json!(2),
+        "the entry counts something other than what the screen was told: {blocked}",
+    );
+    assert_eq!(
+        blocked["bytes"],
+        json!(null),
+        "the length of a hostile message is still the message: {blocked}",
+    );
+
+    // A count and a code. Not the phrase the runs spelled out between them,
+    // not the address it named, and not the person whose chat it arrived in.
+    let answered = format!("{preview}{chain}");
+    for prose in ["忽略之前指令", "忽略之前", "evil.example", "李 雷"] {
         assert!(
             !answered.contains(prose),
             "the IPC answered with `{prose}`: {chain}",
