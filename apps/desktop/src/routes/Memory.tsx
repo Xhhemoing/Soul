@@ -121,13 +121,23 @@ export function Memory(): React.JSX.Element {
     );
   };
 
-  /** Pay it, with the core's own answer echoed back unchanged. */
+  /**
+   * Pay it, with the core's own answer echoed back unchanged.
+   *
+   * The preview stays on screen until the core says the forget ran. A refusal
+   * leaves the held preview standing on the other side — `Session::forget_
+   * memory` matches before it takes, so a confirmation that named the wrong
+   * preview costs the click and not the price the user read — and a screen
+   * that cleared the panel anyway would make one refused click the reason to
+   * walk the irreversible screen again. Retries that get clicked through
+   * rather than read are the thing this whole page is built to avoid.
+   */
   const forget = (quoted: ForgetPreview): void => {
     setBusy(true);
     setRefusal(null);
-    setPreview(null);
     forgetMemory({ preview_id: quoted.preview_id, memory_id: quoted.memory_id }).then(
       (value) => {
+        setPreview(null);
         setReceipt(value);
         setOpen(null);
         setBusy(false);
@@ -412,6 +422,10 @@ interface PriceProps {
  * but that it sends back the `preview_id` printed above it: the core refuses a
  * forget that names a preview it is not holding, so approving a stale set of
  * numbers destroys nothing.
+ *
+ * The panel stays up through a refusal. The core kept the preview it issued —
+ * it matches before it takes — so these are still the numbers it is holding,
+ * and the button beneath them is still the one that pays for them.
  */
 function Price({ preview, busy, onForget, onKeep }: PriceProps): React.JSX.Element {
   return (

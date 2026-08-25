@@ -957,12 +957,24 @@ export function installFakeCore(
   const files = options.files ?? NO_ROOTS;
   const questions = options.questions ?? QUESTIONS;
   const calls: RecordedCall[] = [];
-  /** The three pieces of state the double keeps, because the core keeps them
-   *  too: a consent ledger, an endpoint that lives for one run, and a profile
-   *  that a questionnaire or a correction writes to and the next read sees. */
+  /** The four pieces of state the double keeps, because the core keeps them
+   *  too: a consent ledger, an endpoint that lives for one run, a profile that
+   *  a questionnaire or a correction writes to and the next read sees, and the
+   *  one forget the user has been quoted a price for. */
   let collect = options.collect ?? COLLECT_OFF;
   let configuration = snapshot;
   let profile: ProfileScreen | null = null;
+  /**
+   * `Session::held_forget`, as far as this page can tell.
+   *
+   * The core issues a preview, remembers it, and matches both halves of the
+   * confirmation against it before taking it: a wrong id leaves the preview
+   * standing, and the forget that runs spends it. A double that only compared
+   * a constant could not tell a screen that keeps the price the user read from
+   * one that throws it away on a refusal, nor a core that consumes a spent
+   * preview from one that would run the same forget twice.
+   */
+  let heldForget: { readonly preview_id: string; readonly memory_id: string } | null = null;
 
   /** Read on demand, so a `profile` option that refuses still refuses. */
   const profileNow = (): ProfileScreen => {
@@ -1126,22 +1138,38 @@ export function installFakeCore(
         };
         return (options.editing ?? changed)(asked.memoryId ?? "", asked.change);
       }
-      case "preview_forget":
-        return (options.pricing ?? (() => aForgetPreview()))(
-          (payload as { memoryId?: string }).memoryId ?? "",
-        );
+      case "preview_forget": {
+        const memoryId = (payload as { memoryId?: string }).memoryId ?? "";
+        // What this core is holding is always the id it issues, `PREVIEW_ID`,
+        // for the memory it was asked about. `pricing` shapes the document the
+        // screen is handed, so a test hands the screen a different id to say
+        // that the panel is quoting a preview the core is not holding — a
+        // stale window, or a WebView echoing the id it kept rather than the
+        // one it was shown. Asking again replaces the held one.
+        heldForget = { preview_id: PREVIEW_ID, memory_id: memoryId };
+        return (options.pricing ?? (() => aForgetPreview()))(memoryId);
+      }
       case "forget_memory": {
         const confirmation = (payload as {
           confirmation: { preview_id: string; memory_id: string };
         }).confirmation;
         if (options.forgetting !== undefined) return options.forgetting(confirmation);
-        // The core holds the preview it issued and refuses anything else.
-        if (confirmation.preview_id !== PREVIEW_ID) {
+        // Match both halves before taking, the way `Session::forget_memory`
+        // does. A confirmation that names the wrong preview or the wrong
+        // memory costs the click and leaves the price the user read standing;
+        // the one that runs spends it, so a replay reaches nothing.
+        const held = heldForget;
+        if (
+          held === null ||
+          held.preview_id !== confirmation.preview_id ||
+          held.memory_id !== confirmation.memory_id
+        ) {
           throw {
             reason_code: "PLAN_HASH_MISMATCH",
             explanation: "这次遗忘对不上你刚才看过的那份影响面预览。什么都没有销毁。",
           };
         }
+        heldForget = null;
         return aForgetReceipt({ memory_id: confirmation.memory_id });
       }
       case "research_preview":
