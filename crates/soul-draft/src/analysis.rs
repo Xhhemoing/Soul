@@ -238,11 +238,15 @@ const SUMMARY_TURN_ID: Uuid = Uuid::from_u128(0x0192b0c0_5020_7a20_8b20_00000000
 
 // ------------------------------------------------------------- internals ---
 
-/// Five things counts can support, each citing the rows that produced it.
+/// The things counts can support, each citing the rows that produced it.
+///
+/// The last of them — the one that files the tie under a band — is the only one
+/// that is not a count, and it is left out on an edge the user has corrected.
+/// See [`points_for`]'s filing branch for why.
 fn points_for(edge: &TieEdge, resolved: &[SoulEvidence]) -> DraftResult<Vec<SummaryPoint>> {
     let strength = &edge.tie_strength;
     let band = strength.band;
-    let all: Vec<Uuid> = edge.evidence_ids.clone();
+    let all = counted_rows(edge, resolved);
 
     let mut points = vec![
         SummaryPoint::new(
@@ -263,15 +267,57 @@ fn points_for(edge: &TieEdge, resolved: &[SoulEvidence]) -> DraftResult<Vec<Summ
         points.push(point);
     }
 
-    points.push(SummaryPoint::new(
-        format!(
-            "按上面的计数，这段往来归在「{}」一档；这是一个工作假设，不是对这个人的判断。",
-            band_word(band),
-        ),
-        band,
-        all,
-    )?);
+    // The filing sentence says two things that stop being true the moment the
+    // user has ruled on this edge: that the band follows from the counts above,
+    // and that it is a working hypothesis. On a corrected edge the band came
+    // from the user and is a verdict, so the sentence would be false twice
+    // over. Rewording it is not this crate's to do — `docs/algorithms/COPY_ZH.md`
+    // is frozen and holds no variant for a user-set band, and inventing one
+    // here would be a second source of user-facing copy beside the frozen one.
+    // So the summary says nothing about filing until COPY_ZH gains the key.
+    // Nothing is hidden by the silence: the band, who set it and what the
+    // machine makes of the counts all reach the interface through the graph
+    // view, which carries the three lock fields as tokens.
+    if !strength.is_locked_by_user() {
+        points.push(SummaryPoint::new(
+            format!(
+                "按上面的计数，这段往来归在「{}」一档；这是一个工作假设，不是对这个人的判断。",
+                band_word(band),
+            ),
+            band,
+            all,
+        )?);
+    }
     Ok(points)
+}
+
+/// The rows a count rests on: everything the edge cites, minus the user's own
+/// corrections.
+///
+/// A correction row is a verdict about the band, not an exchange anybody had,
+/// so counting it would make "六次往来（依据七条记录）" — a line whose own
+/// arithmetic does not add up, and the summary's whole claim is that the user
+/// can check it.
+///
+/// The fallback matters on an edge whose observations have all been forgotten
+/// and whose correction is the only row left: cite what is actually there
+/// rather than refuse to say anything at all.
+fn counted_rows(edge: &TieEdge, resolved: &[SoulEvidence]) -> Vec<Uuid> {
+    let counted: Vec<Uuid> = edge
+        .evidence_ids
+        .iter()
+        .copied()
+        .filter(|cited| {
+            resolved
+                .iter()
+                .find(|row| row.evidence_id == *cited)
+                .is_none_or(|row| soul_graph::corrected_relationship(row).is_none())
+        })
+        .collect();
+    match counted.is_empty() {
+        true => edge.evidence_ids.clone(),
+        false => counted,
+    }
 }
 
 fn direction_statement(strength: &TieStrength) -> String {
