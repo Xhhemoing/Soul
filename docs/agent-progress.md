@@ -89,3 +89,9 @@ Merge状态     跳过（11.11：先保存成果）
 ## 下一轮重点（ROUND 2 预告）
 
 Review O1–O3；补 B04 沉浸指引或 B05 库存（看哪块先可接）；未覆盖面优先。
+
+### ROUND 1 · F1 交付（全库地图）
+
+- 交付：`docs/bead/reviews/round1-map.md`（15 面地图、共存硬约束、WP 精化、ROUND 2 建议）。分支 `cursor/bead-r1-map-c441`，基线 `75e3c70`。
+- 最要紧的三条共存约束（WP 原文没写）：① `xtask e0-audit` 扫 `apps/**` 与 `crates/**` 的 URL 字面量，bead 代码不得含外网 URL（含 tsconfig/package.json 的 `$schema`、bead-core Cargo.toml 的 `repository`/`homepage`）；② `denylist-audit` 扫 `crates/**/*.rs`，bead-core 禁用 `score`/`得分`/`分数` 等词（置信度叫 `confidence`）；③ `apps/bead` 落地必须同一提交重生成 `pnpm-lock.yaml` 并给 `.gitignore` 加 `apps/bead/dist/`，否则本线 `just ci` 的 `pnpm install --frozen-lockfile` 红。
+- 待父代理拍板（建议记 BD14）：派单表把 O3 写成 `packages/bead-algo`，与 WP-B03 的 `apps/bead` 内嵌矛盾；建议 v0 收敛为 `apps/bead/src/algo/`，免改 `pnpm-workspace.yaml`。
