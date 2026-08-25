@@ -21,7 +21,11 @@
 |---|---|---|---|
 | fable-a | `claude-fable-5-thinking-xhigh` | 未关闭 DAG | `.agent_workspace/orchestrator-c441/round2/fable-a.md` |
 | fable-b | `claude-fable-5-thinking-xhigh` | 独立 AUDIT | `.agent_workspace/orchestrator-c441/round2/fable-b.md` |
-| opus-a | `claude-opus-5-thinking-high-fast` | 文件页空态诚实 | `apps/desktop/src/routes/Files.tsx`、`Files.test.tsx` |
+| opus-a | `claude-opus-5-thinking-high-fast` | 文件页空态诚实 | `Files.tsx` / `Files.test.tsx` → **done `1f52ca5`** |
+| gpt-sol-a | `gpt-5.6-sol-xhigh-fast` | 文案-行为探针 | `round2/gpt-sol-a.md` → **done `9ec20a8`**：1 P0（起草确认屏）+ 6 P1 + 1 P2 |
+| gpt-sol-b | `gpt-5.6-sol-xhigh-fast` | 出网/边界探针 | `round2/gpt-sol-b.md` → **done `82af9c0`**：0 P0，3 P1（E1 换端点不使计划失效为最重）+ 3 P2 |
+
+下一刀：fable-a/b 仍在跑。P0 起草确认屏与 gpt-sol-b P1-1（换端点不废 plan hash）待 fable-b 交叉后派 opus，避免与只读审计抢同一文件。
 | gpt-sol-a | `gpt-5.6-sol-xhigh-fast` | 文案-行为探针 | `.agent_workspace/orchestrator-c441/round2/gpt-sol-a.md` |
 | gpt-sol-b | `gpt-5.6-sol-xhigh-fast` | 出网/边界探针 | `.agent_workspace/orchestrator-c441/round2/gpt-sol-b.md` |
 
