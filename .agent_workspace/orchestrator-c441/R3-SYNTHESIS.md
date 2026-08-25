@@ -44,4 +44,4 @@ opus 三路返回后：fable 只读复核；残留 P0 不得称收口。N4/N5/N6
 
 ## 落笔结果（本机，核于 2026-08-25）
 
-三路 opus 已提交在 `cursor/goal1-build-audit-c441` 尖端 `c0a6295`。`soul-policy` redactor_exemption 9 / redactor_leakage 9 本机绿。远端 PR #13 未更新：GitHub 令牌无效，用户跳过刷新，**不重要同一项凭证**。fable R3 复核进行中。
+探针四路、opus-a/b/c、fable R3 复核、opus-d 残留收口均已在本树落地。尖端见 `cursor/goal1-build-audit-c441`（opus-d 报告 `8a0a061`）。四条 P1 **闭合**。P0 姓名占位：豁免条上「带空格 / 说话动词前的无空格汉字 / 说话动词前的拉丁显示名」已钉死；**不在归属位的未导入姓名仍会出网**，由 `the_name_shapes_cannot_reach_a_label_standing_outside_an_attribution` 记账，不得称全称闭合。PRODUCT_LOCK 76 行未改。IPv6 维持停车。LOOP20 仍 QUEUED。N4/N5/N6 仍 blocked-on-user。远端 PR #13 是否跟上取决于 GitHub 推送令牌。

@@ -869,7 +869,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 ## BUILD R3（架构确认 + 探针，核于 2026-08-25）
 
-对照图 `.agent_workspace/orchestrator-c441/ARCHITECTURE_LOCK.md`（过程稿）。16 个 crate 对照 `GOAL1_PLAN` 钉死核过，**无 DAG 漂移**。R3 opus 已在本树落地（尖端 `c0a6295`；fable 复核 `63c9da6`）：四条 P1 **闭合**；P0 姓名占位 **残留**（`李 雷` 已钉死，无空格 `李雷` 与拉丁 `Wang Xiao` 在空图豁免条仍可出网，与无条件承诺同类）。IPv6 origin 括号维持停车。LOOP20 仍排队。**本机超前 origin；GitHub 推送令牌仍拒。** 复核 `.agent_workspace/orchestrator-c441/round3/fable-r3-review.md`。
+对照图 `.agent_workspace/orchestrator-c441/ARCHITECTURE_LOCK.md`（过程稿）。16 个 crate 对照 `GOAL1_PLAN` 钉死核过，**无 DAG 漂移**。R3 四条 P1 **闭合**。P0 姓名占位：带空格 `李 雷`、无空格 `李雷说…`、拉丁 `Wang Xiao said…` 在空图豁免条已钉死（`f53c3ae`/`92623b1`）；**不在说话动词前的未导入姓名仍会出网**，由测试记账而非假装全称闭合。IPv6 维持停车。LOOP20 仍排队。本机超前 origin 约 18 提交；GitHub 推送仍拒。复核 `round3/fable-r3-review.md`，opus-d `round3/opus-d.md`。
 
 ## 下一步
 
