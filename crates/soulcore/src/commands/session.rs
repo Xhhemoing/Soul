@@ -205,6 +205,19 @@ pub const IMPORT_ROLLED_BACK_NOTICE: &str = "这个文件没有导入：写到�
     整份导入已经回滚，库里一行都没有留下。同一个文件可以直接再导一次，不会多出一份事件。\
     下面写的是哪里出的问题：";
 
+/// What a questionnaire that started writing and then stopped is told.
+///
+/// The counterpart of [`IMPORT_ROLLED_BACK_NOTICE`] for the other way a
+/// profile gets made. It says the same thing about what is left — nothing —
+/// and a different thing about what to do next, because there is no file to
+/// point at: the answers are still on the screen the user just filled in, and
+/// handing them in again is the whole of the retry. The axes replace their
+/// citations rather than accumulating them, so answering twice does not leave
+/// a profile that rests on two accounts of the same questionnaire.
+pub const INTAKE_ROLLED_BACK_NOTICE: &str = "这份问卷没有记下来：写到一半出了问题，\
+    整次录入已经回滚，库里一行都没有留下，档案还是原来的样子。\
+    答案还在这一页上，直接再交一次就行，不会多出一份记录。下面写的是哪里出的问题：";
+
 /// Where this machine keeps Soul's data.
 pub fn data_directory() -> Result<PathBuf, DirectoryError> {
     if let Some(named) = non_empty_var(DATA_DIRECTORY_OVERRIDE) {
@@ -1075,7 +1088,7 @@ impl Session {
                     let build = graph_commands::rebuild(store, at)?;
                     Ok(ImportReceiptView::of(&receipt, build.edges_written.len()))
                 })
-                .map_err(rolled_back)?
+                .map_err(|refusal| rolled_back(IMPORT_ROLLED_BACK_NOTICE, refusal))?
         };
         // The people this file added are people whose names must not travel.
         // The guard above is released first: `sync_identifiers` takes it again
@@ -1102,6 +1115,18 @@ impl Session {
     /// left blank is refused, because it would leave the profile exactly as
     /// empty as it was and reporting that as a completed intake would be a
     /// lie the wizard then repeats to the user.
+    ///
+    /// The intake is one transaction, for the reason [`Self::commit_import`]
+    /// is: what is being written is the questionnaire, not the answers one at
+    /// a time. `soul-profile`'s intake records every answer as a sealed event
+    /// and a `user_stated` evidence row, then writes the profile those rows
+    /// support, then appends the audit entry the run owes; an answer whose
+    /// event and evidence landed while the profile never did is a row nothing
+    /// cites and no screen shows. Re-running the questionnaire is safe — the
+    /// axes replace their `evidence_ids` — so the leftovers were never wrong,
+    /// only permanent: nothing in the product deletes them, and 遗忘 works on
+    /// memories rather than on unclaimed evidence. Wrapped, a questionnaire
+    /// either landed whole or was never here.
     pub fn answer_questionnaire(
         &mut self,
         answers: &[GivenAnswer],
@@ -1115,13 +1140,17 @@ impl Session {
         let at = now_unix_seconds();
         let store = self.opened_store()?;
         let mut store = hold(&store);
-        Ok(profile_commands::intake_from(
-            &mut store,
-            OWNER_PROFILE_ID,
-            answers,
-            &rfc3339_utc(at),
-            at,
-        )?)
+        store
+            .transact(|store| -> Result<IntakeReceipt, SessionRefusal> {
+                Ok(profile_commands::intake_from(
+                    store,
+                    OWNER_PROFILE_ID,
+                    answers,
+                    &rfc3339_utc(at),
+                    at,
+                )?)
+            })
+            .map_err(|refusal| rolled_back(INTAKE_ROLLED_BACK_NOTICE, refusal))
     }
 
     /// The profile screen: axes, voice, the pointers to what the user stated.
@@ -1624,19 +1653,22 @@ fn hold(store: &Arc<Mutex<SqlCipherStore>>) -> MutexGuard<'_, SqlCipherStore> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-/// Say, in front of whatever refused, that the import it refused is gone.
+/// Say, in front of whatever refused, that the write it refused is gone.
 ///
-/// Three layers can stop a commit and none of them knows it was wrapped: the
-/// store, `soul-import`, and the graph rebuild that runs before the
-/// transaction closes. Each explains what went wrong and none of them can say
-/// what is left, which is the one thing the user has to know before deciding
-/// whether to press 导入 again. See [`IMPORT_ROLLED_BACK_NOTICE`].
+/// Several layers can stop a wrapped write and none of them knows it was
+/// wrapped: for an import the store, `soul-import` and the graph rebuild that
+/// runs before the transaction closes; for a questionnaire the store,
+/// `soul-import`'s recorder and `soul-profile`. Each explains what went wrong
+/// and none of them can say what is left, which is the one thing the user has
+/// to know before deciding whether to press the button again. Which sentence
+/// says so is the caller's, because 导入 and 问卷 are not undone the same way:
+/// see [`IMPORT_ROLLED_BACK_NOTICE`] and [`INTAKE_ROLLED_BACK_NOTICE`].
 ///
 /// The reason code is left alone. It is the vocabulary an audit reader shares
 /// with the screen, and rolling back is not a different reason to refuse.
-fn rolled_back(refusal: SessionRefusal) -> SessionRefusal {
+fn rolled_back(notice: &str, refusal: SessionRefusal) -> SessionRefusal {
     SessionRefusal {
-        explanation: format!("{IMPORT_ROLLED_BACK_NOTICE}\n{}", refusal.explanation),
+        explanation: format!("{notice}\n{}", refusal.explanation),
         ..refusal
     }
 }
