@@ -80,10 +80,13 @@ export {
   aspectTarget,
   BOARD_28,
   BOARD_56,
+  collapseLattice,
   cropImage,
   DEFAULT_MAX_SIDE,
+  latticeCells,
   resampleBox,
   resampleNearest,
+  type CellLattice,
   type CropRect,
   type Framing,
 } from "./framing.ts";

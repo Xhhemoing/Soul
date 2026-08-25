@@ -163,27 +163,105 @@ export function resampleBox(image: RgbaImage, targetWidth: number, targetHeight:
   return out;
 }
 
-/** Nearest-neighbour sampling; only used to undo an integer pixel-art up-scale. */
+/** Nearest-neighbour sampling at cell centres, from the target/source ratio. */
 export function resampleNearest(
   image: RgbaImage,
   targetWidth: number,
   targetHeight: number,
-  offsetX = 0,
-  offsetY = 0,
 ): RgbaImage {
-  const out = createImage(targetWidth, targetHeight);
+  if (!Number.isInteger(targetWidth) || !Number.isInteger(targetHeight)) {
+    throw new AlgoError("InvalidDimensions", "目标尺寸必须是整数");
+  }
+  if (targetWidth <= 0 || targetHeight <= 0) {
+    throw new AlgoError("InvalidDimensions", `目标尺寸 ${targetWidth}×${targetHeight} 必须为正`);
+  }
   const scaleX = image.width / targetWidth;
   const scaleY = image.height / targetHeight;
+  const out = createImage(targetWidth, targetHeight);
   for (let ty = 0; ty < targetHeight; ty += 1) {
-    const sy = clamp(Math.floor(ty * scaleY) + offsetY, 0, image.height - 1);
+    const sy = clamp(Math.floor((ty + 0.5) * scaleY), 0, image.height - 1);
     for (let tx = 0; tx < targetWidth; tx += 1) {
-      const sx = clamp(Math.floor(tx * scaleX) + offsetX, 0, image.width - 1);
-      const src = (sy * image.width + sx) * 4;
-      const dst = (ty * targetWidth + tx) * 4;
-      out.data[dst] = image.data[src]!;
-      out.data[dst + 1] = image.data[src + 1]!;
-      out.data[dst + 2] = image.data[src + 2]!;
-      out.data[dst + 3] = image.data[src + 3]!;
+      const sx = clamp(Math.floor((tx + 0.5) * scaleX), 0, image.width - 1);
+      copyPixel(image, sx, sy, out, tx, ty);
+    }
+  }
+  return out;
+}
+
+/**
+ * The lattice a detected up-scale describes: cell borders sit at
+ * `offset + k·cell`, so a non-zero offset means the source was cropped part-way
+ * through the first logical pixel.
+ */
+export interface CellLattice {
+  readonly cellWidth: number;
+  readonly cellHeight: number;
+  readonly offsetX: number;
+  readonly offsetY: number;
+}
+
+/**
+ * Logical pixels along one axis. Both a leading remnant (`offset > 0`) and a
+ * truncated trailing cell count as logical pixels: a cropped screenshot of
+ * pixel art has really lost part of those cells, not the cells themselves.
+ */
+export function latticeCells(span: number, cell: number, offset: number): number {
+  const lead = offset > 0 ? 1 : 0;
+  return Math.max(1, lead + Math.ceil((span - offset) / cell));
+}
+
+/** The span `[start, end)` of source pixels logical pixel `index` covers. */
+function latticeSpan(
+  index: number,
+  span: number,
+  cell: number,
+  offset: number,
+): { start: number; end: number } {
+  if (offset > 0 && index === 0) return { start: 0, end: Math.min(offset, span) };
+  const start = offset + (index - (offset > 0 ? 1 : 0)) * cell;
+  return { start, end: Math.min(start + cell, span) };
+}
+
+function copyPixel(
+  source: RgbaImage,
+  sx: number,
+  sy: number,
+  target: RgbaImage,
+  tx: number,
+  ty: number,
+): void {
+  const src = (sy * source.width + sx) * 4;
+  const dst = (ty * target.width + tx) * 4;
+  target.data[dst] = source.data[src]!;
+  target.data[dst + 1] = source.data[src + 1]!;
+  target.data[dst + 2] = source.data[src + 2]!;
+  target.data[dst + 3] = source.data[src + 3]!;
+}
+
+/**
+ * Undo an integer up-scale by reading one source pixel per lattice cell.
+ *
+ * The sample point comes from the detected geometry, never from a
+ * `sourceSize / targetSize` ratio: when the last cell is truncated the two
+ * disagree, and the ratio walks the sample point across cell borders until a
+ * whole logical column is read from the wrong cell.
+ */
+export function collapseLattice(image: RgbaImage, lattice: CellLattice): RgbaImage {
+  const { cellWidth, cellHeight, offsetX, offsetY } = lattice;
+  if (cellWidth < 1 || cellHeight < 1) {
+    throw new AlgoError("InvalidDimensions", `格尺寸 ${cellWidth}×${cellHeight} 必须 ≥ 1`);
+  }
+  const cols = latticeCells(image.width, cellWidth, offsetX);
+  const rows = latticeCells(image.height, cellHeight, offsetY);
+
+  const out = createImage(cols, rows);
+  for (let ty = 0; ty < rows; ty += 1) {
+    const row = latticeSpan(ty, image.height, cellHeight, offsetY);
+    const sy = clamp(Math.floor((row.start + row.end) / 2), 0, image.height - 1);
+    for (let tx = 0; tx < cols; tx += 1) {
+      const column = latticeSpan(tx, image.width, cellWidth, offsetX);
+      const sx = clamp(Math.floor((column.start + column.end) / 2), 0, image.width - 1);
+      copyPixel(image, sx, sy, out, tx, ty);
     }
   }
   return out;

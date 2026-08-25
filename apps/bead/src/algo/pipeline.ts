@@ -24,7 +24,7 @@ import {
   type ImageKind,
 } from "./classify.ts";
 import { quantize } from "./dither.ts";
-import { applyFraming, resampleNearest, type Framing } from "./framing.ts";
+import { applyFraming, collapseLattice, type Framing } from "./framing.ts";
 import type { Grid } from "./grid.ts";
 import { AlgoError, type RgbaImage } from "./image.ts";
 import { GENERIC_5MM, type Palette } from "./palette.ts";
@@ -54,14 +54,10 @@ export interface PipelineResult {
 
 /** Undo an integer pixel-art up-scale, sampling each detected cell once. */
 function collapseUpscale(image: RgbaImage, geometry: GridGeometry): RgbaImage {
-  const { cellWidth, cellHeight, offsetX, offsetY } = geometry;
+  const { cellWidth, cellHeight } = geometry;
   if (cellWidth <= 1 && cellHeight <= 1) return image;
   if (cellWidth >= image.width && cellHeight >= image.height) return image;
-
-  const logicalWidth = Math.max(1, Math.ceil((image.width - offsetX) / cellWidth));
-  const logicalHeight = Math.max(1, Math.ceil((image.height - offsetY) / cellHeight));
-  const out = resampleNearest(image, logicalWidth, logicalHeight, offsetX, offsetY);
-  return out;
+  return collapseLattice(image, geometry);
 }
 
 export function imageToPattern(image: RgbaImage, options: PipelineOptions): PipelineResult {
