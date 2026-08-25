@@ -1,9 +1,10 @@
 # Goal 1 unblock — PROGRESS
 
 Branch: `cursor/goal1-unblock-a073` (not `agent/` — FORMAL §11.5).
-Base: `origin/cursor/soul-goal1-7b1c` @ `80c9011` + merge `origin/main` (T4D/A0 crates).
+Base: `origin/cursor/soul-goal1-7b1c` @ `80c9011` + merge `origin/main` (T4D/A0 crates), now absorbing `origin/main` plan-doc freeze (PR #8: D41–D60, typed `tie_strength`, `PLAN_INDEX.md`).
 Parent run: `bc-b296c4d9-0feb-4f6e-b844-aeaca7a8a073`.
 Do not start Goal 2. Do not silent-patch F04c. Do not pull SQLCipher into algo crates.
+Plan-polish workspace notes live under `.agent_workspace/plan-polish/` (historical; not the live header).
 
 ## Already true on Goal 1 HEAD (do not redo)
 
@@ -16,7 +17,7 @@ Do not start Goal 2. Do not silent-patch F04c. Do not pull SQLCipher into algo c
 
 | ID | Work | Owner round |
 |---|---|---|
-| M2 | Absorb main — **done** (merge commit) | parent |
+| M2 | Absorb main T4D/A0 crates — **done**; absorb plan-doc freeze (PR #8) — **this merge** | parent |
 | M3 | Exact fileplan corpus guard + runtime case probe; reject `>= 25` / `cfg(unix)` decoy | **done** (marker-file probe) |
 | G2 | `intake` skips locked axes (`apply_intake` semantics) | R1 opus-a |
 | G1+ | Owner group messages must not fan Outgoing to historical speakers | R1 opus-b |

@@ -1,0 +1,437 @@
+{
+  "model_slug": "gpt-5.6-sol-xhigh-fast",
+  "round": 3,
+  "sources": {
+    "binding": ".agent_workspace/plan-polish/R2-SYNTHESIS.md",
+    "acceptance_criteria": "docs/FORMAL_WORK_PROMPT.md",
+    "slices": "docs/PRODUCT_LOCK.md",
+    "negative_scope": [
+      "README.md",
+      "docs/PLAN_INDEX.md",
+      "docs/PRODUCT_LOCK.md",
+      "docs/DECISIONS.md",
+      "docs/FORMAL_WORK_PROMPT.md",
+      "docs/SECURITY.md",
+      "docs/STATUS.md"
+    ]
+  },
+  "snapshot": {
+    "git_head": "c3d59602a4e718e1468fa321275a7432e69dc8b5",
+    "branch": "cursor/polish-project-plan-5280",
+    "product_lock_sha256": {
+      "docs/PRODUCT_LOCK.md": "50bbe63a62fd185857731c10f4eef04b6de14bff3facf4c6d8e9e4ddfbec5ad1",
+      ".agent_workspace/context/plan/PRODUCT_LOCK.md": "9fa335f00c287e739e37e28d5ac93d077c630196c2ecb1f24fff1bc98cc5e5c7",
+      "diverged": true,
+      "expected": true,
+      "reason": "The context copy is explicitly a non-authoritative historical snapshot; docs/ is authoritative."
+    }
+  },
+  "extracted": {
+    "goal1_matrix_ac_ids": [
+      "AC-01",
+      "AC-02",
+      "AC-03",
+      "AC-04",
+      "AC-05",
+      "AC-06",
+      "AC-07",
+      "AC-08",
+      "AC-09",
+      "AC-10",
+      "AC-11",
+      "AC-12",
+      "AC-13",
+      "AC-14",
+      "AC-15",
+      "AC-16",
+      "AC-17",
+      "AC-18",
+      "AC-19",
+      "AC-20",
+      "AC-21",
+      "AC-22",
+      "AC-23",
+      "AC-24",
+      "AC-25",
+      "AC-26",
+      "AC-28",
+      "AC-29",
+      "AC-30",
+      "AC-31",
+      "AC-32",
+      "AC-33",
+      "AC-34"
+    ],
+    "deferred_ac_ids": [
+      "AC-27"
+    ],
+    "goal1_matrix_ac_count": 33,
+    "slice_count": 13,
+    "duplicate_matrix_ac_ids": []
+  },
+  "slice_items": [
+    {
+      "slice_id": "SLICE-01",
+      "number": 1,
+      "text": "安装、托盘、灵魂向导（权限默认全关）。",
+      "backed_by": [
+        "AC-01",
+        "AC-02"
+      ],
+      "coverage": "full",
+      "assessment": "AC-01 covers installation, tray, and no elevation; AC-02 covers the default-off post-onboarding configuration."
+    },
+    {
+      "slice_id": "SLICE-02",
+      "number": 2,
+      "text": "问卷 + soul-import-v1 JSONL / Telegram result.json。",
+      "backed_by": [
+        "AC-03",
+        "AC-04",
+        "AC-05",
+        "AC-25"
+      ],
+      "coverage": "full",
+      "assessment": "AC-03/04/05 cover the questionnaire and both named imports; AC-25 covers hostile imported content."
+    },
+    {
+      "slice_id": "SLICE-03",
+      "number": 3,
+      "text": "可编辑档案（特质轴/偏好/边界）+ 人脉图 v0；推断带证据与证据档。",
+      "backed_by": [
+        "AC-03",
+        "AC-06",
+        "AC-08",
+        "AC-28",
+        "AC-29",
+        "AC-30",
+        "AC-32",
+        "AC-34"
+      ],
+      "coverage": "partial",
+      "assessment": "AC-34 belongs here: its import is the stimulus, but its asserted outputs are graph edges and graph last_contact attribution. AC-28–30 pin T4D and global as_of; AC-32 pins effective corrected band. No row explicitly edits and verifies both preferences and boundaries, so the compound slice remains partial."
+    },
+    {
+      "slice_id": "SLICE-04",
+      "number": 4,
+      "text": "用户纠正锁定，后续推断不覆盖；起草语气立即改变。",
+      "backed_by": [
+        "AC-07",
+        "AC-31",
+        "AC-32"
+      ],
+      "coverage": "full",
+      "assessment": "AC-07 verifies immediate drafting change and no overwrite; AC-31 verifies locked-axis intake/replay; AC-32 verifies locked relationship correction through rebuild and graph/A2 consumption."
+    },
+    {
+      "slice_id": "SLICE-05",
+      "number": 5,
+      "text": "自传记忆 CRUD + 遗忘（销毁内容密钥）+ 影响面预览。",
+      "backed_by": [
+        "AC-14",
+        "AC-15"
+      ],
+      "coverage": "full",
+      "assessment": "AC-14 covers CRUD and content-free audit; AC-15 covers impact preview, key destruction, restart, orphaning, and retained audit."
+    },
+    {
+      "slice_id": "SLICE-06",
+      "number": 6,
+      "text": "单人人事分析摘要（无 key 时统计降级，禁止诊断词）。",
+      "backed_by": [
+        "AC-16",
+        "AC-17",
+        "AC-32",
+        "AC-33"
+      ],
+      "coverage": "full",
+      "assessment": "AC-16/17 cover evidence, non-diagnostic output, and fallback. AC-32/33 pin effective-band consumption and split-field rendering without recomputation."
+    },
+    {
+      "slice_id": "SLICE-07",
+      "number": 7,
+      "text": "可选前台应用采集；关闭后 1 秒内无新事件；未同意时事件数为 0。",
+      "backed_by": [
+        "AC-09",
+        "AC-10"
+      ],
+      "coverage": "full",
+      "assessment": "AC-09/10 cover disabled zero events, enabled collection, and the one-second stop bound."
+    },
+    {
+      "slice_id": "SLICE-08",
+      "number": 8,
+      "text": "粘贴消息按档案语气起草，不发送；默认 E1 请求体第三人正文已占位。",
+      "backed_by": [
+        "AC-07",
+        "AC-11",
+        "AC-12",
+        "AC-13",
+        "AC-17",
+        "AC-25"
+      ],
+      "coverage": "full",
+      "assessment": "AC-11/12/13 cover no-send, exact E1 origin, redaction, and one-shot exception; AC-07/17 cover tone and fallback; AC-25 covers injection."
+    },
+    {
+      "slice_id": "SLICE-09",
+      "number": 9,
+      "text": "授权目录后只读扫描并生成整理计划预览；v0.1 不执行写；未授权路径 100% 拒绝。",
+      "backed_by": [
+        "AC-18",
+        "AC-19",
+        "AC-25"
+      ],
+      "coverage": "full",
+      "assessment": "AC-18 covers read-only preview, disk invariance, and unauthorized rejection; AC-19/25 cover refusal boundaries and hostile filenames."
+    },
+    {
+      "slice_id": "SLICE-10",
+      "number": 10,
+      "text": "研究导出只预览；第三人行数为 0；不写文件。",
+      "backed_by": [
+        "AC-20"
+      ],
+      "coverage": "full",
+      "assessment": "AC-20 directly covers zero third-party rows and written_to_disk=false."
+    },
+    {
+      "slice_id": "SLICE-11",
+      "number": 11,
+      "text": "云端开关「尚未启用」；零 E0。",
+      "backed_by": [
+        "AC-11",
+        "AC-17",
+        "AC-21",
+        "AC-22"
+      ],
+      "coverage": "full",
+      "assessment": "AC-21/22 cover zero E0 and the disabled cloud toggle; AC-11/17 delimit the distinct user-directed E1 path."
+    },
+    {
+      "slice_id": "SLICE-12",
+      "number": 12,
+      "text": "审计覆盖采集、导入、推断、纠正、记忆、遗忘、起草、E1、文件计划、拒绝。",
+      "backed_by": [
+        "AC-14",
+        "AC-15",
+        "AC-23",
+        "AC-24",
+        "AC-32"
+      ],
+      "coverage": "partial",
+      "assessment": "AC-14/15/32 name memory, forgetting, and correction audit; AC-23/24 cover broad replay and crash recovery. AC-23 still does not enumerate all ten named action kinds as separate expected records."
+    },
+    {
+      "slice_id": "SLICE-13",
+      "number": 13,
+      "text": "CI + 安装 smoke。",
+      "backed_by": [
+        "AC-01",
+        "AC-26"
+      ],
+      "coverage": "full",
+      "assessment": "AC-01 includes installation smoke and AC-26 is the repository CI gate."
+    }
+  ],
+  "ac_to_slice": {
+    "AC-01": [
+      "SLICE-01",
+      "SLICE-13"
+    ],
+    "AC-02": [
+      "SLICE-01"
+    ],
+    "AC-03": [
+      "SLICE-02",
+      "SLICE-03"
+    ],
+    "AC-04": [
+      "SLICE-02"
+    ],
+    "AC-05": [
+      "SLICE-02"
+    ],
+    "AC-06": [
+      "SLICE-03"
+    ],
+    "AC-07": [
+      "SLICE-04",
+      "SLICE-08"
+    ],
+    "AC-08": [
+      "SLICE-03"
+    ],
+    "AC-09": [
+      "SLICE-07"
+    ],
+    "AC-10": [
+      "SLICE-07"
+    ],
+    "AC-11": [
+      "SLICE-08",
+      "SLICE-11"
+    ],
+    "AC-12": [
+      "SLICE-08"
+    ],
+    "AC-13": [
+      "SLICE-08"
+    ],
+    "AC-14": [
+      "SLICE-05",
+      "SLICE-12"
+    ],
+    "AC-15": [
+      "SLICE-05",
+      "SLICE-12"
+    ],
+    "AC-16": [
+      "SLICE-06"
+    ],
+    "AC-17": [
+      "SLICE-06",
+      "SLICE-08",
+      "SLICE-11"
+    ],
+    "AC-18": [
+      "SLICE-09"
+    ],
+    "AC-19": [
+      "SLICE-09"
+    ],
+    "AC-20": [
+      "SLICE-10"
+    ],
+    "AC-21": [
+      "SLICE-11"
+    ],
+    "AC-22": [
+      "SLICE-11"
+    ],
+    "AC-23": [
+      "SLICE-12"
+    ],
+    "AC-24": [
+      "SLICE-12"
+    ],
+    "AC-25": [
+      "SLICE-02",
+      "SLICE-08",
+      "SLICE-09"
+    ],
+    "AC-26": [
+      "SLICE-13"
+    ],
+    "AC-27": [],
+    "AC-28": [
+      "SLICE-03"
+    ],
+    "AC-29": [
+      "SLICE-03"
+    ],
+    "AC-30": [
+      "SLICE-03"
+    ],
+    "AC-31": [
+      "SLICE-04"
+    ],
+    "AC-32": [
+      "SLICE-03",
+      "SLICE-04",
+      "SLICE-06",
+      "SLICE-12"
+    ],
+    "AC-33": [
+      "SLICE-06"
+    ],
+    "AC-34": [
+      "SLICE-03"
+    ]
+  },
+  "summary": {
+    "full_slice_count": 11,
+    "partial_slice_count": 2,
+    "partial_slice_items": [
+      "SLICE-03",
+      "SLICE-12"
+    ],
+    "slice_items_without_any_ac": [],
+    "goal1_matrix_acs_without_slice": [],
+    "deferred_acs_outside_13_item_slice": [
+      "AC-27"
+    ],
+    "ac34_primary_slice": "SLICE-03",
+    "ac34_mapping_passed": true
+  },
+  "negative_scope": {
+    "file_write_execution_not_required_in_v0_1": {
+      "passed": true,
+      "evidence": [
+        "docs/PRODUCT_LOCK.md:126 requires a read-only preview and says v0.1 does not execute writes.",
+        "docs/PRODUCT_LOCK.md:136 defers file execution and undo to v0.1.1.",
+        "docs/FORMAL_WORK_PROMPT.md:112 says v0.1 does not implement file writes.",
+        "docs/FORMAL_WORK_PROMPT.md:159 marks AC-27 write execution and undo as v0.1.1.",
+        "docs/SECURITY.md:47 says v0.1 does not consume file-write tokens."
+      ]
+    },
+    "oauth_not_required_in_v0_1": {
+      "passed": true,
+      "evidence": [
+        "docs/PRODUCT_LOCK.md:51 excludes OAuth from v0.1.",
+        "docs/PRODUCT_LOCK.md:140 defers OAuth to v0.2.",
+        "docs/DECISIONS.md:14 says v0.1 has no OAuth."
+      ]
+    },
+    "e0_http_not_required_in_v0_1": {
+      "passed": true,
+      "evidence": [
+        "docs/PRODUCT_LOCK.md:94 makes E0 a no-code-path, always-denied class.",
+        "docs/FORMAL_WORK_PROMPT.md:34 says v0.1 has no cloud HTTP.",
+        "docs/FORMAL_WORK_PROMPT.md:106 says no E0.",
+        "docs/DECISIONS.md:23 says v0.1 E0 has no implementation, domain, or HTTP client.",
+        "docs/SECURITY.md:13 eliminates E0 at build time."
+      ]
+    },
+    "all_passed": true,
+    "interpretation": "All mentions in the scoped plan surface are prohibitions, deferred roadmap items, or denial tests. E1 is a separate user-directed class."
+  },
+  "keyword_obligation": {
+    "T4D": {
+      "required_files": [
+        "docs/PRODUCT_LOCK.md",
+        "docs/FORMAL_WORK_PROMPT.md"
+      ],
+      "passed": true,
+      "matches": {
+        "docs/PRODUCT_LOCK.md": [
+          55,
+          71
+        ],
+        "docs/FORMAL_WORK_PROMPT.md": [
+          20,
+          42,
+          132,
+          151,
+          152,
+          163
+        ]
+      }
+    }
+  },
+  "workspace_members": {
+    "source": "Cargo.toml",
+    "members": [
+      "crates/soul-algo-tie",
+      "crates/soul-algo-trait"
+    ],
+    "member_count": 2,
+    "only_algo_members": true
+  },
+  "json_parse": {
+    "authoritative_docs_schema_json_count": 12,
+    "all_repository_schema_artifact_count": 18,
+    "failed": [],
+    "passed": true
+  }
+}
