@@ -71,6 +71,70 @@ fn the_url_scanner_accepts_the_allowlist() {
     assert_eq!(scan.files_scanned, 1);
 }
 
+/// A host is allowed to carry an allowlisted name as one of its labels, so
+/// `localhost.attacker.invalid` starts with `localhost` and resolves wherever
+/// its DNS says. The allowlist has to be anchored at the whole host or it
+/// clears exactly the domain a vendor would reach for, and it would clear it
+/// while `soul-policy`'s `Origin::is_loopback` still refused the same address
+/// at runtime.
+#[test]
+fn the_url_scanner_fails_on_a_domain_that_only_begins_with_a_loopback_name() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    write(
+        dir.path(),
+        "crates/pretend/src/lib.rs",
+        concat!(
+            "const A: &str = \"http://localhost.attacker.invalid/collect\";\n",
+            "const B: &str = \"http://127.0.0.1.attacker.invalid/collect\";\n",
+        ),
+    );
+
+    let scan = egress::scan_tree_for_urls(dir.path()).expect("scan");
+    let flagged: Vec<&str> = scan.hits.iter().map(|hit| hit.url.as_str()).collect();
+    assert_eq!(
+        flagged,
+        vec![
+            "http://localhost.attacker.invalid/collect",
+            "http://127.0.0.1.attacker.invalid/collect",
+        ],
+        "a host that merely starts with an allowlisted one is a different host",
+    );
+}
+
+/// The boundary cases the anchoring turns on, stated one at a time so a
+/// regression names itself.
+#[test]
+fn the_allowlist_matches_the_host_and_not_the_leading_characters() {
+    for covered in [
+        "http://localhost",
+        "http://localhost/rpc",
+        "http://localhost:1420",
+        "https://localhost:1420/index.html",
+        "http://127.0.0.1:11434/v1/chat/completions",
+        "https://soul.local/schemas/event.schema.json",
+    ] {
+        assert!(egress::is_allowed_url(covered), "{covered} is a local URL");
+    }
+
+    for reported in [
+        "http://localhost.attacker.invalid",
+        "http://localhost.attacker.invalid/collect",
+        "http://127.0.0.1.attacker.invalid",
+        "https://localhostess.example",
+        "http://127.0.0.10",
+        // The host is `evil.invalid`; everything before the `@` is a username.
+        "http://localhost@evil.invalid/collect",
+        // `soul.local` is allowlisted for schema identifiers, not as a host.
+        "https://soul.local/collect",
+        "https://soul.local.attacker.invalid/schemas/event.schema.json",
+    ] {
+        assert!(
+            !egress::is_allowed_url(reported),
+            "{reported} does not address this machine",
+        );
+    }
+}
+
 /// Packaging scripts are scanned too: fetching a bundler or a runtime is one
 /// line of PowerShell, and it would otherwise be the one line in the
 /// repository nothing looks at.
