@@ -11,7 +11,7 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 | Field | Value |
 |---|---|
-| Current task | Fable still running: consent, name-harvest, collect/E1, AC-31, key-blob TOCTOU, Graph same-band, security. Done: 7B NO_HIGH_VALUE; synthesis dispatch table; §6 Session pin brief. Opus: session_projection.rs in flight. COPY_ZH §6 `{天数}` collision fixed in the frozen file (doc-only) |
+| Current task | Opus in flight: Session §6 pin; Graph+Profile same-band pin; name-harvest fold. Fable still running: key-blob TOCTOU, security, AC-31 if not yet returned. Consent/collect/7B: NO_HIGH_VALUE |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
 | Exclusive tip | `d16e4cf` / PR #15 |
