@@ -14,7 +14,7 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 仓库地图（Soul 桌面 + 无 bead 代码） |
-| 当前任务 | F2/F3 审查已合入；F1 仍在跑；O1 core + O2 shell 在写 |
+| 当前任务 | F1/F2/F3 审查已收；O1/O2 在写；F5 在钉 CI 隔离清单 |
 | PR | https://github.com/Xhhemoing/Soul/pull/16 （draft → first-test-candidate） |
 | Merge | F2/F3 审查已合进专属线；不合 unique trunk |
 | Blocked | VM 上限仍在。O3/F4/F5/S1/S2 排队；O1 的契约 resume 等空闲 |
@@ -57,14 +57,14 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 
 | # | 模型 | 方向 | 状态 |
 |---|---|---|---|
-| F1 | claude-fable-5-thinking-xhigh | 全库地图 + WP 精化 | **在跑** [bc-0a27702c](https://cursor.com/agents/bc-0a27702c-9927-5f5d-bb10-ac67dcbe5136) 分支 `cursor/bead-r1-map-c441` |
+| F1 | claude-fable-5-thinking-xhigh | 全库地图 + WP 精化 | **完成** `0c59fb9`。`docs/bead/reviews/round1-map.md` 已收进专属线。拍板 BD14–BD16 |
 | F2 | claude-fable-5-thinking-xhigh | 前端 IA | **完成** `7dcc8ad` → 已 merge 进专属线。`docs/bead/reviews/round1-frontend.md`。子代理 GitHub token 只读，PR 由父代理补 |
 | F3 | claude-fable-5-thinking-xhigh | 算法契约 | **完成** `e3cb62d` → 已 merge。`docs/bead/reviews/round1-algorithms.md`。O1 仍在跑，契约 follow-up 等它空闲再 resume |
 | F4 | claude-fable-5-thinking-xhigh | 数据 / 存储 / 权限 | **BLOCKED** 等 VM |
-| F5 | claude-fable-5-thinking-xhigh | 测试 / CI 隔离 | **BLOCKED** 等 VM |
+| F5 | claude-fable-5-thinking-xhigh | 测试 / CI 隔离 | **在跑** [bc-812ed3b3](https://cursor.com/agents/bc-812ed3b3-6075-519b-b527-c3f4f424b448) 分支 `cursor/bead-r1-ci-c441` |
 | O1 | claude-opus-5-thinking-high-fast | **唯一实现** WP-B01 `crates/bead-core` | **在跑** [bc-701ecb28](https://cursor.com/agents/bc-701ecb28-1059-5f1e-84c2-e85f513717ce) 分支 `cursor/bead-r1-core-c441` |
 | O2 | claude-opus-5-thinking-high-fast | **唯一实现** WP-B02 `apps/bead` | **在跑** [bc-f8aa23d9](https://cursor.com/agents/bc-f8aa23d9-4b9d-5991-bcb2-b64ca1b2a72c) 分支 `cursor/bead-r1-shell-c441` |
-| O3 | claude-opus-5-thinking-high-fast | **唯一实现** `packages/bead-algo` | **BLOCKED** 等 VM |
+| O3 | claude-opus-5-thinking-high-fast | **唯一实现** `apps/bead/src/algo/`（BD14） | **BLOCKED** 等 O2 壳合入，避免互盖 |
 | S1 | gpt-5.6-sol-xhigh-fast | 覆盖缺口探针 | **BLOCKED** 等 VM |
 | S2 | gpt-5.6-sol-xhigh-fast | 构建/CI/性能探针 | **BLOCKED** 等 VM |
 
@@ -79,7 +79,9 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] F2 前端 IA 合入专属线
 - [ ] O1 bead-core；O2 壳已在跑（须遵守 D-UI id 前缀与 /assemble 双壳）
 - [x] F3 算法契约合入（#18）
-- [ ] F1 完成后合入；再派 F4/F5/O3/S1/S2
+- [x] F1 地图收进专属线；BD14–BD16 已拍
+- [ ] F5 CI 清单；其后 F4/S1/S2
+- [ ] O1/O2 空闲后转发 BD15/BD16（现仍在跑，resume 会拒）
 - [ ] O1 空闲后 resume，令其按 round1-algorithms.md 补测
 - [ ] 第一份可运行转图 + 壳
 
