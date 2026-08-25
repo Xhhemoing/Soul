@@ -2,7 +2,7 @@
 
 - 会话：云端父代理子会话（父 run `bc-4efce4bb-1286-4d06-badf-5c61280bc441`）。
 - 模型：`claude-fable-5-thinking-xhigh`（无降级）。
-- 工作分支：`cursor/goal1-closeout-c441-2d70`，起点 = 唯一实现主干 `cursor/soul-goal1-7b1c` @ `650b0f2`。
+- 工作分支：`cursor/goal1-closeout-c441-2d70`，起点 = 唯一实现主干 `cursor/soul-goal1-7b1c` @ `650b0f2`，已 rebase 到 `a9a7490`。
 
 ## 模式选择
 
@@ -41,6 +41,6 @@
 - [t0] 读完 PLAN_INDEX / STATUS（本树+#7 线）/ PRODUCT_LOCK / DECISIONS / FORMAL / SECURITY / algorithms/DECISION / PARENT_ORCHESTRATOR / BLOCKERS。开分支，落本文件。
 - [t1] 基线全绿：workspace 92 测试二进制 ok、ui 161 项 ok。
 - [t2] AUDIT：dpapi unsafe / 采集线程 / 单实例 / Origin / egress 超时 / 审计词表 / ci.yml / 概览——判无缺陷；文件页空态文案判假。
-- [t3] 修复 `791f4d3`（Files 空态句 + 测试钉），全套本机门禁复绿（fmt/clippy/xtask×4/deny 四项/ui-lint/ui-test 161/桌面壳 6+50+3+3+21）。
+- [t3] 修复 `c4f8ce5`（Files 空态句 + 测试钉；rebase 前为 `791f4d3`），全套本机门禁复绿（fmt/clippy/xtask×4/deny 四项/ui-lint/ui-test 161/桌面壳 6+50+3+3+21）。
 - [t4] 写 R1-SYNTHESIS；STATUS 加「收口审计一轮」一节（D57：只写本树可验证事实，跨分支带提交号与核于日期）。
 - 完：LOOP20 仍排队；Goal 2 未启动；无 empty-commit；PR 走本分支 → 主干 `cursor/soul-goal1-7b1c`。

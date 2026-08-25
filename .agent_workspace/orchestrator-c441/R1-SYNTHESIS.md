@@ -1,6 +1,6 @@
 # R1-SYNTHESIS — 收口审计一轮（orchestrator-c441）
 
-日期：2026-08-25。分支 `cursor/goal1-closeout-c441-2d70`（起点主干 `650b0f2`）。
+日期：2026-08-25。分支 `cursor/goal1-closeout-c441-2d70`（起点主干 `650b0f2`，已 rebase 到 `a9a7490`）。
 
 ## 为什么不是 LOOP3 / 多代理并发
 
@@ -30,7 +30,7 @@
 
 **找到并修掉的缺陷（1 条，文案-行为不一致，红线「文案与实现一致」）：**
 
-- `Files.tsx` 空态旧句「授权之前，Soul 读不到你机器上的任何文件。」为假：导入页亲手挑的文件不走目录授权就被读，Soul 也读自己的 config/库。与 `17b56e9` 修向导那句同类同法。改成只对目录扫描许诺、点名导入例外；`Files.test.tsx` 钉新句并断言旧句已不在。提交 `791f4d3`。
+- `Files.tsx` 空态旧句「授权之前，Soul 读不到你机器上的任何文件。」为假：导入页亲手挑的文件不走目录授权就被读，Soul 也读自己的 config/库。与 `17b56e9` 修向导那句同类同法。改成只对目录扫描许诺、点名导入例外；`Files.test.tsx` 钉新句并断言旧句已不在。提交 `c4f8ce5`（rebase 后的修复提交；原 tip 为 `791f4d3`）。
 
 ## 判定为「不做」的（含理由）
 
@@ -40,7 +40,7 @@
 - `Authorization` 头 / 导入去重（D55）/ `collect_status` 计数查询 / 语气自由 JSON：文档在案的刻意取舍，非缺陷。
 - AC-27、Goal 2、LOOP20：硬停。**LOOP20 保持排队，未启动。**
 
-## 本轮验证（本机，分支 `791f4d3`）
+## 本轮验证（本机，修复提交 `c4f8ce5`）
 
 - `cargo fmt --check` / `clippy -D warnings`：绿。
 - `xtask schema-freeze --check` / `e0-audit` / `denylist-audit` / `sbom`：绿。
