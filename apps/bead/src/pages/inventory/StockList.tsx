@@ -30,7 +30,7 @@ export function StockList({
           <Card className="stock-row">
             <ColorSwatch code={entry.code} hex={entry.hex} name={entry.name} />
             <span className="stock-row__hex">{entry.hex}</span>
-            <label className="stock-row__beads">
+            <span className="stock-row__beads">
               <input
                 type="number"
                 min={0}
@@ -41,7 +41,7 @@ export function StockList({
                 onChange={(event) => onSetBeads(entry.code, Number(event.target.value))}
               />
               <span>颗</span>
-            </label>
+            </span>
             <button className="button" type="button" onClick={() => onRemove(entry.code)}>
               删除 {entry.code}
             </button>
