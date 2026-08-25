@@ -58,6 +58,15 @@ describe("人脉图页", () => {
     expect(localOnly).toHaveTextContent("研究预览");
     expect(localOnly).toHaveTextContent("摘要");
     expect(localOnly).toHaveTextContent(/往来次数|发给/);
+    // 发出去的不止「往来次数」：`soul-draft` 的 summary_body 把这条边上算出来的
+    // 整组陈述都带上——天数、会话数、双方各发多少、有没有一对一、最近一次的日期，
+    // 还有本机给的档位。只写「往来次数」等于少说了五件事。
+    expect(localOnly).toHaveTextContent("有往来的天数与会话数");
+    expect(localOnly).toHaveTextContent("你和对方各发出多少条");
+    expect(localOnly).toHaveTextContent("有没有一对一说过话");
+    expect(localOnly).toHaveTextContent("最近一次往来的日期");
+    expect(localOnly).toHaveTextContent("关系档位");
+    expect(localOnly).not.toHaveTextContent("会把这一页上的往来次数发给那个地址");
     expect(localOnly).not.toHaveTextContent("都不进任何出网请求");
     expect(localOnly).not.toHaveTextContent(
       "别人的数据只留在本机：这些节点和边都不进任何出网请求，也不进研究预览。",

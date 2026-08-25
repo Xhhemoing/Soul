@@ -127,9 +127,18 @@ export function Graph(): React.JSX.Element {
               <Tie key={tie.relationship_id} tie={tie} />
             ))}
           </ul>
+          {/*
+            The outgoing half has to name what goes, not just that something
+            does. `soul-draft`'s summary body is the whole set of statements
+            the core derived from this edge — interaction count, active days,
+            conversations, who sent how many, whether there was a one-to-one
+            exchange, the date of the last one, and the band those counts put
+            the tie in — under a fixed rewriting instruction. Saying only
+            往来次数 understates that by five facts.
+          */}
           <p className="muted" data-testid="local-only">
             {graph.third_party_data_is_local_only
-              ? "别人的密封姓名和节点、边本身只留在本机，也不进研究预览。若你填了语言模型地址，按「看这个人的摘要」会把这一页上的往来次数发给那个地址（不带姓名，也不会再问你一次）。"
+              ? "别人的密封姓名和节点、边本身只留在本机，也不进研究预览。若你填了语言模型地址，按「看这个人的摘要」会把本机从这条边上算出来的那一整组统计发给那个地址：往来次数、有往来的天数与会话数、你和对方各发出多少条、有没有一对一说过话、最近一次往来的日期，还有本机按这些计数给出的关系档位，外加一句固定的改写要求——都是聚合出来的计数和结论，不带姓名，也不带任何人说过的原话，中间不会再问你一次。"
               : "有节点或边没有标成只留本机，请把这件事报告出来。"}
           </p>
         </section>
