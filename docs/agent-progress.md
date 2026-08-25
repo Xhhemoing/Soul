@@ -118,6 +118,7 @@ Commit        331b513 merge AL；本提交记进度
 PR            #16 更新；AL 子支对专属线已无独立 diff（先合后开 PR 被拒）
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B04 IA → B04 实现（只存游标）；B05；B10
+在途          [R2 Fable review AL](https://cursor.com/agents/bc-7b365534-e6fd-5e45-bc50-769cc93d4454) · [R2 Fable B04 IA](https://cursor.com/agents/bc-d265c746-7f1f-5358-9493-9e49856a4b82)
 ```
 
 ### ROUND 2 · AL-1/2/3 吸收
