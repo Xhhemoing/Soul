@@ -1,4 +1,10 @@
-import { EMPTY_STATE, type InventoryEntry, type PersistedState, type Project } from "./types.ts";
+import {
+  EMPTY_STATE,
+  type BackdropKind,
+  type InventoryEntry,
+  type PersistedState,
+  type Project,
+} from "./types.ts";
 import { isPatternId, isProjectId, type PatternId } from "./ids.ts";
 
 // D-UI-5: every signature here is async even though B02 stores to
@@ -21,6 +27,11 @@ export type Repository = ProjectRepository & InventoryRepository;
 
 export const STORAGE_KEY = "bead.state";
 
+const BACKDROP_KINDS: readonly BackdropKind[] = ["black", "white", "custom"];
+
+// localStorage is a boundary the user can hand-edit, so `backdrop` is checked
+// like the rest: a record without it survives the filter and then makes
+// `readableTextColor(undefined)` throw the first time /assemble renders it.
 function isProject(value: unknown): value is Project {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
@@ -28,7 +39,9 @@ function isProject(value: unknown): value is Project {
     typeof candidate["id"] === "string" &&
     isProjectId(candidate["id"]) &&
     typeof candidate["title"] === "string" &&
-    typeof candidate["status"] === "string"
+    typeof candidate["status"] === "string" &&
+    BACKDROP_KINDS.includes(candidate["backdrop"] as BackdropKind) &&
+    typeof candidate["backdropColor"] === "string"
   );
 }
 
