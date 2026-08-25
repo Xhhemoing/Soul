@@ -24,6 +24,7 @@ import { describe, expect, it } from "vitest";
 import { Profile } from "./Profile";
 import { denylistHits, diagnosticTerms, renderedText } from "../test/denylist";
 import {
+  anIntakeReceipt,
   aProfileScreen,
   forbidNetwork,
   installFakeCore,
@@ -34,6 +35,13 @@ import {
 
 const AXIS_ID = "0192b0c0-5001-7a01-8b01-000000000001";
 const ORDERLINESS_AXIS_ID = "0192b0c0-5001-7a02-8b02-000000000002";
+
+/** COPY_ZH §7's sentence for `axis_locked_by_user`, as the page renders it. */
+const LOCKED_LINE =
+  "你纠正过的轴还锁着：这几条已经记进证据里，但没有改动那几条轴的方向。想改方向，就在上面那条轴上直接按你要的那一端。";
+
+/** The same section's fallback, for a reason this build has no line for. */
+const OTHER_LINE = "这几条已经记进证据里，但档案没有跟着动。";
 
 async function open(options: FakeCoreOptions = {}) {
   const core = installFakeCore(options);
@@ -60,6 +68,28 @@ function choicesFor(questionId: string): HTMLElement {
 function boxFor(questionId: string): HTMLElement {
   const prompt = QUESTIONS.find((question) => question.question_id === questionId)?.prompt ?? "";
   return screen.getByRole("textbox", { name: prompt });
+}
+
+/** 条理与执行 as the user left it: pinned themselves, and locked (AC-07). */
+function withCorrectedOrderliness() {
+  return aProfileScreen({
+    axes: aProfileScreen().axes.map((axis) =>
+      axis.axis_id === ORDERLINESS_AXIS_ID
+        ? {
+            ...axis,
+            position: "leans_low",
+            reading: "条理与执行：偏向随性推进",
+            locked_by_user: true,
+          }
+        : axis,
+    ),
+  });
+}
+
+/** The frozen copy file, read the way `projection_sentences.rs` reads it. */
+function frozenCopy(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return readFileSync(join(here, "..", "..", "..", "..", "docs", "algorithms", "COPY_ZH.md"), "utf8");
 }
 
 function answersSentBy(core: Awaited<ReturnType<typeof open>>) {
@@ -402,5 +432,143 @@ describe("在档案页上再答几题", () => {
     expect(screen.getByText("这份问卷核心不收。")).toBeVisible();
     expect(core.callsTo("profile_screen")).toHaveLength(1);
     expect(screen.queryByTestId("profile-receipt")).toBeNull();
+  });
+
+  /**
+   * 以你最后说的为准 was true of every question until AC-07's lock arrived. It
+   * is true now of the axes the user has not corrected and false of the ones
+   * they have (D46), so the promise has to carry the qualifier wherever it is
+   * made — a user who reads it, re-answers a corrected axis and watches
+   * nothing move was told the wrong thing by this page.
+   */
+  it("最后说的为准只管没锁的轴，锁上的轴写明再答只记证据", async () => {
+    await open();
+    const said = (screen.getByTestId("ask-again-explanation").textContent ?? "").replace(
+      /\s+/g,
+      "",
+    );
+
+    expect(said).toContain("没锁住的那些答过也可以改口，以你最后说的为准");
+    expect(said).toContain("纠正过的轴已经锁住了，再答一次不会把它改回去");
+    expect(said).toContain("照样记进证据里");
+    expect(said).toContain("不动那条轴的方向");
+    // Never the bare promise: every 以你最后说的为准 on this page is the tail
+    // of a clause that has already said which axes it is about.
+    for (const found of said.matchAll(/以你最后说的为准/g)) {
+      expect(said.slice(0, found.index)).toMatch(/没锁[^。]*$/);
+    }
+  });
+
+  /**
+   * D46 reached from the product path: an answer that lands on an axis the
+   * user corrected is written and not applied, and the receipt says so. A run
+   * that reported only 记下了 N 条 would be describing an intake that did more
+   * than it did — and the axis on screen would be the only clue.
+   */
+  it("答在锁住的轴上，这一条没有生效，收据说得出来是哪几条", async () => {
+    const core = await open({ profile: withCorrectedOrderliness });
+    const user = userEvent.setup();
+    await askAgain(user);
+
+    await user.click(
+      within(choicesFor("q.axis.curiosity")).getByRole("button", { name: "偏这一端" }),
+    );
+    await user.click(
+      within(choicesFor("q.axis.orderliness")).getByRole("button", { name: "偏那一端" }),
+    );
+    await user.click(screen.getByRole("button", { name: "写进档案" }));
+
+    const ignored = await screen.findByTestId("profile-ignored");
+    expect(ignored).toHaveTextContent("这一次有 1 条没有改动档案");
+    expect(ignored).toHaveTextContent(LOCKED_LINE);
+    // The other answer did land, and the receipt counts that one alone.
+    expect(screen.getByTestId("profile-receipt")).toHaveTextContent("记下了 1 条");
+    expect(core.callsTo("answer_questionnaire")).toHaveLength(1);
+    expect(
+      within(screen.getByTestId(`axis-${ORDERLINESS_AXIS_ID}`)).getByText(
+        "条理与执行：偏向随性推进",
+      ),
+    ).toBeVisible();
+    expect(screen.getByTestId(`axis-locked-${ORDERLINESS_AXIS_ID}`)).toBeVisible();
+  });
+
+  /** Nothing was refused, so nothing is said about refusals. */
+  it("没有被拒的答案时，这一段一个字都不出现", async () => {
+    await open();
+    const user = userEvent.setup();
+    await askAgain(user);
+
+    await user.click(
+      within(choicesFor("q.axis.orderliness")).getByRole("button", { name: "偏那一端" }),
+    );
+    await user.click(screen.getByRole("button", { name: "写进档案" }));
+
+    expect(await screen.findByTestId("profile-receipt")).toHaveTextContent("记下了 1 条");
+    expect(screen.queryByTestId("profile-ignored")).toBeNull();
+    expect(renderedText()).not.toContain("没有改动档案");
+  });
+
+  /**
+   * `axis_locked_by_user` is a word for a machine to match on. The page looks
+   * the token up and prints the sentence COPY_ZH froze for it; two answers
+   * stopped by the same lock are one sentence, because the count beside it is
+   * what says how many there were. A reason this build has never heard of
+   * prints what is true of any refused answer — and still not the token.
+   */
+  it("屏幕上出现的是话不是机器词，同一个理由只说一次", async () => {
+    await open({
+      recording: () =>
+        anIntakeReceipt({
+          answered: 1,
+          ignored: [
+            { question_id: "q.axis.curiosity", reason: "axis_locked_by_user" },
+            { question_id: "q.axis.orderliness", reason: "axis_locked_by_user" },
+            { question_id: "q.axis.social_energy", reason: "a_reason_this_build_never_heard_of" },
+          ],
+        }),
+    });
+    const user = userEvent.setup();
+    await askAgain(user);
+
+    await user.click(
+      within(choicesFor("q.axis.curiosity")).getByRole("button", { name: "偏这一端" }),
+    );
+    await user.click(screen.getByRole("button", { name: "写进档案" }));
+
+    const ignored = await screen.findByTestId("profile-ignored");
+    expect(ignored).toHaveTextContent("这一次有 3 条没有改动档案");
+    expect((ignored.textContent ?? "").split(LOCKED_LINE)).toHaveLength(2);
+    expect(ignored).toHaveTextContent(OTHER_LINE);
+    for (const token of ["axis_locked_by_user", "a_reason_this_build_never_heard_of"]) {
+      expect(renderedText()).not.toContain(token);
+    }
+  });
+
+  /**
+   * Copy reaches COPY_ZH before it reaches a screen, the way
+   * `projection_sentences.rs` pins the demotion clock's four templates: the
+   * key is the token the core sends, and the line under it is word for word
+   * what this page renders.
+   */
+  it("这几句话逐字来自冻结的话术文件", async () => {
+    const copy = frozenCopy();
+    const lineFor = (key: string): string =>
+      copy.split("\n").find((line) => line.includes(key)) ?? "";
+
+    expect(lineFor("profile.intake.ignored_count")).toContain("这一次有 {条数} 条没有改动档案。");
+    expect(lineFor("profile.intake.axis_locked_by_user")).toContain(LOCKED_LINE);
+    expect(lineFor("profile.intake.ignored_other")).toContain(OTHER_LINE);
+
+    await open({ profile: withCorrectedOrderliness });
+    const user = userEvent.setup();
+    await askAgain(user);
+    await user.click(
+      within(choicesFor("q.axis.orderliness")).getByRole("button", { name: "偏那一端" }),
+    );
+    await user.click(screen.getByRole("button", { name: "写进档案" }));
+
+    expect((await screen.findByTestId("profile-ignored")).textContent).toBe(
+      `这一次有 1 条没有改动档案。${LOCKED_LINE}`,
+    );
   });
 });
