@@ -7,29 +7,44 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 ## Current round
 
-**ROUND 10** — remaining shell/reliability surfaces. Do not re-open closed R4–R9 items (D55, D61–D63, P2 E1 mutex, fileplan write-absence, config.json pin, COMMANDS=38, research_export, projection-on-Graph, closed-store E1, events_by_source, HITL/redirect/cap, Tauri core:default, as_of clock, A2-only render, collect Bucket).
+**ROUND 11** — review the grouped-phone landing and remaining identifier/honesty leftovers. Do not re-open closed R4–R10 items (D55, D61–D63, P2 E1 mutex, fileplan, config.json, COMMANDS=38, the contiguous+grouped phone shape itself, tray mutex, NSIS data-dir hook, keys.dpapi create_new, cloud toggle inert, import-tx wrap).
 
 | Field | Value |
 |---|---|
-| Current task | Round 9 closed, all ten NO_HIGH_VALUE. Round 10 Fable: tray/single-instance; NSIS hooks; keys.dpapi create_new; redactor exemption; Settings cloud toggle; denylist/clinical; fixture corpus; fakeCore vs core notices; crash/WAL; IPC roundtrip coverage vs 38. |
+| Current task | Round 10 closed. Landed grouped-phone placeholder. Round 11 Fable: landing review; remaining +86/paren shapes; denylist frozen-ten note; questionnaire intake crash; endpoint digit-reuse; NSIS comment; SECURITY DPAPI tense; fakeCore truncation; PendingForget; landable vs author-machine. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
-| Exclusive tip | Round 9 close; PR #15 |
+| Exclusive tip | `a311598`; PR #15 |
 
-### Round 10 Fable dispatch
+### Round 11 Fable dispatch
 
 | # | Direction |
 |---|---|
-| 1 | Tray + single-instance mutex remaining (`Local\local.soul.desktop` before store open) |
-| 2 | NSIS installer-hooks vs data-dir collision remaining; install-smoke honesty |
-| 3 | `keys.dpapi` `create_new` + in-place fs4 lock remaining (do not re-open parked empty-file TOCTOU unless P0) |
-| 4 | Redactor exemption one-shot + KnownIdentifiers remaining (not D61 NER) |
-| 5 | Settings cloud toggle remaining: still inert, still no E0 |
-| 6 | Runtime denylist / clinical screen remaining vs algo-crate exemption |
-| 7 | Fixture corpus vs live importers remaining |
-| 8 | `fakeCore.ts` vs core notice remaining (R9 leftover: forget-mismatch mock truncation) |
-| 9 | Crash / WAL remaining after import-tx wrap |
-| 10 | IPC roundtrip coverage vs the 38 commands: which lack a product-path roundtrip |
+| 1 | Review the grouped-phone landing (`911e6d0` / merge `a311598`) for regressions |
+| 2 | Remaining account shapes after grouped phones: `+86`, parentheses, leading country code |
+| 3 | Denylist frozen-ten vs runtime `diagnostic_terms.txt` honesty (R10 below-bar) |
+| 4 | Questionnaire mid-intake crash leftover (unwrapped per-answer writes) |
+| 5 | Endpoint narrative digit-reuse residual (`reply.rs` known limit) |
+| 6 | NSIS PREUNINSTALL comment vs pre-hook uninstallers |
+| 7 | SECURITY.md DPAPI present tense vs last windows-latest run on `2e72ddf` |
+| 8 | `fakeCore.ts` forget-mismatch truncation vs `FORGET_NOT_PREVIEWED_NOTICE` |
+| 9 | `ForgetState::PendingForget` unreachable vs Graph/Memory `== Forgotten` checks |
+| 10 | Synthesis: remaining landable v0.1 slices vs author-machine-only |
+
+## ROUND 10 record
+
+| Field | Value |
+|---|---|
+| ROUND | 10 |
+| 子代理任务 | 10× Fable + Opus: tray/single-instance; NSIS hooks; keys.dpapi; redactor exemption; cloud toggle; denylist; fixture corpus; fakeCore; crash/WAL; IPC roundtrip; grouped-phone shape |
+| 发现问题 | Grouped phones (`138 0013 8000`, `138-0013-8000`) skipped the 7-digit contiguous shape and reached the exempted turn |
+| 修复问题 | `phone_shape_end` counts digit groups joined by one space/ideographic-space/hyphen/dot; ISO `2026-08-25` is the accepted false positive |
+| 测试结果 | redactor_exemption 15; redactor_leakage 13; leakage_checker 7; fixture_corpus 9. ipc_roundtrip still covers all 38 commands |
+| Commit | `911e6d0` on `cursor/phone-group-shape-4a8e`; merge `a311598` |
+| PR | #15 |
+| Merge状态 | Exclusive has the merge. → `main` still `BLOCKED`. PR #7 still not merged |
+| 下一轮重点 | Landing review; remaining +86/paren shapes; denylist frozen-ten; intake crash; digit-reuse; NSIS comment; SECURITY tense; fakeCore; PendingForget; synthesis |
+| NO_HIGH_VALUE | Tray/single-instance; NSIS data-dir hook; keys.dpapi create_new; cloud toggle; denylist/clinical; fixture corpus; fakeCore (truncation stays below bar); crash/WAL; IPC 38/38 roundtrips |
 
 ## ROUND 9 record
 
