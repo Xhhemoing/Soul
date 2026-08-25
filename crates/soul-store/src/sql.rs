@@ -13,12 +13,24 @@
 //! needs an index to join against, which is what `inference_evidence`,
 //! `memory_evidence`, `memory_content_keys` and `relationship_evidence` are for.
 
-/// Value of `meta.schema_version`, bumped when a migration is added.
+/// Value of `meta.schema_version`, bumped when the schema gains something.
 ///
 /// 2 added `destroyed_content_keys`. Every statement below is
 /// `IF NOT EXISTS`, so a version 1 file gains the table the next time it is
 /// opened; what it cannot gain is a record of the forgets that already
 /// happened, and ids destroyed before this version can still be re-minted.
+///
+/// `docs/DECISIONS.md` D62 is the whole policy, and it has no fourth clause.
+/// Forward is additive `IF NOT EXISTS` DDL, applied on open, followed by
+/// moving the stamp up — which is exactly the 1→2 path above. A file stamped
+/// *newer* than this constant is refused by [`crate::store::SqlCipherStore::open`]
+/// before anything is written to it, stamp included: an older build has no way
+/// to know what the newer schema promises, and writing this number over a
+/// larger one would turn a recoverable "wrong Soul installed" into a file every
+/// later launch mistakes for its own. Nothing here ever recreates a database —
+/// the forget ledger and the hash-chained audit cannot be built a second time —
+/// and there is deliberately no migrations table and no numbered migration
+/// files to fall out of step with the schema they claim to describe.
 pub const STORE_SCHEMA_VERSION: i64 = 2;
 
 pub const DDL: &str = r#"

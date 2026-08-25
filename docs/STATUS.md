@@ -94,7 +94,7 @@ Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应
 5. **时间桶按 UTC 小时切。** `ts` 以 `Z` 结尾时取 `substr(ts,1,13)`；带偏移量的时间戳降级成日期级桶，而不是把本地小时贴上 `time_bucket_utc` 的标签。v0.1 写入方一律用 UTC，这条是防御性的。
 6. **`zeroize` 不开 `derive`。** `zeroize_derive` 1.5 需要 edition 2024，工作区钉 1.83。`SecretKey` 手写 `Drop` 调 `[u8; 32]::zeroize`，`Debug` 打印 `<redacted>`，有测试。
 7. **`soulcore` 现在通过 `soul-store` 间接依赖 `rusqlite` + vendored OpenSSL。** `e0-audit` 与 `cargo deny` 都还是绿的（禁的是 HTTP client），但 `cargo build -p soulcore` 从此要编 OpenSSL；WP01 遗留里关于 windows-latest 需要 perl 与 NASM 的那条现在也适用于主二进制，不只是测试。
-8. **`meta.schema_version = 1`，还没有迁移器。** 表结构变了要么加迁移，要么在开发期删库重来。WP03–WP06 加列前先决定是哪一种。
+8. ~~**`meta.schema_version = 1`，还没有迁移器。**~~ **已由 D62 定案，当前 `STORE_SCHEMA_VERSION = 2`**（2 加的是 `destroyed_content_keys`）。只有两条规则，没有第三条：向前是**加法**——`sql::DDL` 每条都是 `IF NOT EXISTS`，版本 1 的库开一次就补齐缺的表，再把戳往上写（1→2 走的就是这条路）；比本构建**新**的库一律拒绝开，且在拒绝之前**不碰文件**——不跑 pragma、不跑 DDL、尤其不改戳。开库过去无条件把戳 upsert 成 2，等于把新库贴上「本构建写的」标签，之后每次启动都读到这个假标签，还会按旧 schema 往里写。不设独立迁移框架、不建 migrations 表、不写编号迁移文件；也不许删库重建——遗忘账本与哈希审计链重做不出来。证据：`crates/soul-store/tests/schema_version.rs`（戳 99 的库拒开、报错同时说出 99 与 2 和路径、文件字节与戳原样不动；戳 1 且缺表的库开完补表并升到 2；无戳的库照旧收编）。
 
 ## 阻塞
 

@@ -110,6 +110,75 @@ pub(crate) fn as_text(ids: &[Uuid]) -> Vec<String> {
     ids.iter().map(Uuid::to_string).collect()
 }
 
+/// What `meta.schema_version` says about a file this build is about to open.
+enum StampedVersion {
+    /// No `meta` table, or no `schema_version` row in it: a fresh file, or one
+    /// written before the stamp existed.
+    Unstamped,
+    /// A version this build can read, at or below [`sql::STORE_SCHEMA_VERSION`].
+    Readable,
+    /// Written by a build that knew a schema this one does not, or stamped
+    /// with something that is not a version at all.
+    Unreadable(String),
+}
+
+/// Read `meta.schema_version` without writing anything.
+///
+/// `docs/DECISIONS.md` D62 gives this build two moves and no others. Forward
+/// is additive: every statement in [`sql::DDL`] is `IF NOT EXISTS`, so a
+/// version 1 file gains `destroyed_content_keys` and is re-stamped. Backward
+/// is not a move at all — this build cannot know what a newer schema promises,
+/// and the damage was never the read that fails afterwards but the stamp, which
+/// used to be upserted to [`sql::STORE_SCHEMA_VERSION`] unconditionally and so
+/// relabelled a newer file as one this build had written. Every later launch
+/// then believed the label.
+///
+/// So this runs before the pragmas, before the DDL and before the upsert, and
+/// an [`StampedVersion::Unreadable`] answer must leave the file exactly as it
+/// was found. Recreating it is not on the table either: the forget ledger and
+/// the hash-chained audit are not things that can be built again.
+fn stamped_version(conn: &Connection, path: &Path) -> StoreResult<StampedVersion> {
+    let read_failed = |what: &str, error: rusqlite::Error| {
+        StoreError::Backend(format!(
+            "the database at {} opened under this key but {what} could not be read: {error}",
+            path.display()
+        ))
+    };
+
+    let meta_tables: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| read_failed("its table list", error))?;
+    if meta_tables == 0 {
+        return Ok(StampedVersion::Unstamped);
+    }
+
+    // `CAST(... AS TEXT)` so a stamp somebody stored as an integer, or as a
+    // float, is something this build reads and judges rather than something it
+    // fails to fetch.
+    let stamp: Option<Option<String>> = conn
+        .query_row(
+            "SELECT CAST(value AS TEXT) FROM meta WHERE key = 'schema_version'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| read_failed("its schema version", error))?;
+
+    Ok(match stamp {
+        None => StampedVersion::Unstamped,
+        Some(None) => StampedVersion::Unreadable("NULL".into()),
+        Some(Some(text)) => match text.trim().parse::<i64>() {
+            Ok(version) if version <= sql::STORE_SCHEMA_VERSION => StampedVersion::Readable,
+            Ok(version) => StampedVersion::Unreadable(version.to_string()),
+            Err(_) => StampedVersion::Unreadable(format!("{text:?}")),
+        },
+    })
+}
+
 /// SQLCipher-backed [`soul_store_api::SoulStore`].
 #[derive(Debug)]
 pub struct SqlCipherStore {
@@ -167,6 +236,22 @@ impl SqlCipherStore {
             ))
         })?;
 
+        // Everything below this line writes to the file, so the question of
+        // whether this build may write to it at all is settled here.
+        if let StampedVersion::Unreadable(found) = stamped_version(&conn, &path)? {
+            return Err(StoreError::Backend(format!(
+                "the database at {} is stamped meta.schema_version = {found}, and this build \
+                 understands {}: it was written by a newer Soul, or by something that is not \
+                 this one. Nothing has been written to it — not a pragma, not a table, and not \
+                 the stamp — because an older build cannot know what a newer schema promises, \
+                 and stamping the file down to {} would hide where it came from from every \
+                 launch after this one. Install the newer Soul, or move this database aside.",
+                path.display(),
+                sql::STORE_SCHEMA_VERSION,
+                sql::STORE_SCHEMA_VERSION,
+            )));
+        }
+
         conn.pragma_update(None, "journal_mode", "WAL")
             .map_err(backend)?;
         conn.pragma_update(None, "synchronous", "FULL")
@@ -190,6 +275,9 @@ impl SqlCipherStore {
             )));
         }
         conn.execute_batch(sql::DDL).map_err(backend)?;
+        // Only ever reached for a file at or below this version, so this moves
+        // the stamp forward — 1 to 2 once the additive DDL above has given the
+        // file what version 2 means — and never back down.
         conn.execute(
             "INSERT INTO meta (key, value) VALUES ('schema_version', ?1)
              ON CONFLICT (key) DO UPDATE SET value = excluded.value",
