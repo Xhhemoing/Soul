@@ -165,6 +165,10 @@ fn a_group_flood_with_one_direct_hello_each_way_is_weak_at_the_store() {
     assert_eq!(strength.group_in_count, 15);
     assert_eq!(strength.interaction_count, 32);
     assert_eq!(strength.active_day_count, 10);
+    // The number the verdict turns on: ten days in the room together, one
+    // afternoon of private hellos.
+    assert_eq!(strength.direct_active_day_count, 1);
+    assert!(strength.direct_active_day_count < strength.active_day_count);
 
     // The observed shapes are what was seen, not what it was worth: these two
     // did speak privately, and both of them have written.

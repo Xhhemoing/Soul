@@ -32,8 +32,8 @@ use soul_schema::inference::UserVerdict;
 use soul_schema::relationship::SoulRelationship;
 use soul_store_api::{AuditLog, GraphStore, ProfileStore};
 
-use crate::build::is_tie_statement_about;
-use crate::error::GraphResult;
+use crate::build::{is_tie_statement_about, rebuild};
+use crate::error::{GraphError, GraphResult};
 use crate::model::TieStrength;
 use crate::view::read_strength;
 
@@ -86,6 +86,9 @@ impl TieCorrection {
 ///
 /// Correcting an edge that is already corrected is allowed and simply records
 /// the newer verdict.
+///
+/// An edge written before the frozen rule landed is scored before it is
+/// locked; see [`scored`] for why the lock cannot go straight onto one.
 pub fn correct_tie<S>(
     store: &mut S,
     relationship_id: Uuid,
@@ -95,8 +98,7 @@ pub fn correct_tie<S>(
 where
     S: GraphStore + ProfileStore + AuditLog,
 {
-    let stored = store.get_relationship(relationship_id)?;
-    let mut strength = read_strength(&stored)?;
+    let (stored, mut strength) = scored(store, relationship_id, at_unix_seconds)?;
     let machine_band = machine_reading(&strength);
 
     let evidence_id = Uuid::now_v7();
@@ -132,7 +134,8 @@ where
 ///
 /// Releasing an edge nobody locked leaves the band where it already was, and is
 /// still recorded — the user asked for the counts to speak, and after the call
-/// they do.
+/// they do. On an edge written before the frozen rule landed, [`scored`] is
+/// what makes there be counts for them to speak from.
 pub fn release_tie<S>(
     store: &mut S,
     relationship_id: Uuid,
@@ -141,8 +144,7 @@ pub fn release_tie<S>(
 where
     S: GraphStore + ProfileStore + AuditLog,
 {
-    let stored = store.get_relationship(relationship_id)?;
-    let mut strength = read_strength(&stored)?;
+    let (stored, mut strength) = scored(store, relationship_id, at_unix_seconds)?;
     let machine_band = machine_reading(&strength);
 
     let evidence_id = Uuid::now_v7();
@@ -194,6 +196,56 @@ pub fn corrected_relationship(evidence: &SoulEvidence) -> Option<Uuid> {
 
 // ------------------------------------------------------------- internals ---
 
+/// The edge this call is about, with a strength the frozen rule stands behind.
+///
+/// An edge written before that rule landed carries an empty `algorithm_id`,
+/// and the contract has no word for that: `tie_strength.algorithm_id` admits
+/// `T4D` and `T4` and nothing else, and once it is present the whole
+/// reviewable surface — the split counts, the one-to-one days, the silence,
+/// the `as_of` — is required with it. Writing the lock straight onto such a
+/// row would hand the store `algorithm_id: ""` and be refused, at the one
+/// moment the product has promised to work: the user is looking at the edge
+/// and disagreeing with it.
+///
+/// So the rebuild that was going to replace this edge at the next import runs
+/// first, and the lock lands on the T4D row it leaves behind. It reads only
+/// what is already stored and is idempotent, and it happens before this module
+/// writes anything of its own, so the refusal below still leaves no correction
+/// behind.
+///
+/// A rebuilt edge is returned unchanged, which is every edge on a store that
+/// has run one since the rule landed.
+fn scored<S>(
+    store: &mut S,
+    relationship_id: Uuid,
+    at_unix_seconds: i64,
+) -> GraphResult<(SoulRelationship, TieStrength)>
+where
+    S: GraphStore + ProfileStore + AuditLog,
+{
+    let stored = store.get_relationship(relationship_id)?;
+    let strength = read_strength(&stored)?;
+    if !strength.algorithm_id.is_empty() {
+        return Ok((stored, strength));
+    }
+
+    let build = rebuild(store)?;
+    for content in build.audit {
+        append_or_store_error(store, content, at_unix_seconds)?;
+    }
+
+    let rescored = store.get_relationship(relationship_id)?;
+    let strength = read_strength(&rescored)?;
+    if strength.algorithm_id.is_empty() {
+        // The rebuild found nothing to score this edge with — the peer's
+        // observations are gone, most likely along with the contact row. The
+        // band cannot be made reviewable, and an unreviewable band is not one
+        // to hang the user's decision on.
+        return Err(GraphError::UnscoredEdge { relationship_id });
+    }
+    Ok((rescored, strength))
+}
+
 /// What the counts say, whether or not the user has overruled it.
 ///
 /// An edge written before the lock fields existed carries no `machine_band`,
@@ -215,7 +267,7 @@ fn rewritten(
     }
     Ok(SoulRelationship {
         tie_strength: Some(serde_json::to_value(strength).map_err(|_| {
-            crate::error::GraphError::UnreadableEdge {
+            GraphError::UnreadableEdge {
                 relationship_id: stored.relationship_id,
                 field: "tie_strength",
             }

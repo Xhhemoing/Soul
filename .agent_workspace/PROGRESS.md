@@ -1,5 +1,8 @@
 # Goal 1 unblock — PROGRESS
 
+Live stacked loop: `.agent_workspace/close-loop/PROGRESS.md` on `cursor/goal1-close-loop-a073`.
+Do not treat this file’s historical unblock rounds as the live work order.
+
 Branch: `cursor/goal1-unblock-a073` (not `agent/` — FORMAL §11.5).
 Base: `origin/cursor/soul-goal1-7b1c` @ `80c9011` + merge `origin/main` (T4D/A0 crates), now absorbing `origin/main` plan-doc freeze (PR #8: D41–D60, typed `tie_strength`, `PLAN_INDEX.md`).
 Parent run: `bc-b296c4d9-0feb-4f6e-b844-aeaca7a8a073`.

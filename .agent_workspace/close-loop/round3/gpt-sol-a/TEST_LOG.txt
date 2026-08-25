@@ -1,0 +1,53 @@
+2026-08-25 UTC
+Branch: cursor/goal1-close-loop-a073
+HEAD: 029d8d6739f79c7390dfec803d7c92f98d5bc2d3
+
+PASS (exit 0)
+Command: cargo test -p soul-graph -p soul-import -p soul-schema -p soul-draft -p soul-profile --offline
+Result: 190 passed; 0 failed; 0 ignored; all doc-tests passed (0 tests).
+Breakdown:
+  soul-graph: 47 passed
+    src/lib.rs: 2
+    ego_graph.rs: 7
+    graph_correction.rs: 11
+    t4d_band.rs: 11
+    t4d_product.rs: 16
+  soul-import: 45 passed
+    src/lib.rs: 4
+    import_to_graph.rs: 6
+    injection_is_data.rs: 6
+    questionnaire.rs: 8
+    soul_import_v1.rs: 11
+    telegram.rs: 10
+  soul-schema: 21 passed
+    src/lib.rs: 0
+    roundtrip.rs: 11
+    schema_wiring.rs: 10
+  soul-draft: 51 passed
+    src/lib.rs: 3
+    injection.rs: 7
+    locked_tie_summary.rs: 5
+    never_sends.rs: 4
+    people_summary.rs: 14
+    voice_and_template.rs: 9
+    wire.rs: 9
+  soul-profile: 26 passed
+    src/lib.rs: 0
+    axes_and_evidence.rs: 5
+    correction_lock.rs: 5
+    intake_replay.rs: 1
+    one_questionnaire.rs: 5
+    questionnaire_intake.rs: 7
+    user_stated_sink.rs: 3
+  doc-tests:
+    soul_graph: 0
+    soul_import: 0
+    soul_schema: 0
+    soul_draft: 0
+    soul_profile: 0
+
+PASS (exit 0)
+Command: cargo run -p xtask -- schema-freeze --check
+Result: schema-freeze: docs/schemas matches the lock
+
+Workspace-root Cargo.lock: unchanged

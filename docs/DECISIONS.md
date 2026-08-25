@@ -69,6 +69,7 @@
 | D58 | `tie_strength` schema | 计划义务：字段清单（band、分列计数、last_contact、silent_days、as_of、algorithm_id）写入规范。本计划 PR 先采纳 Goal 1 已接线的 schema 正文，避免把裸 string 版推回 `main`。进一步收紧 `tie_strength` 须与 Goal 1 `schemas.lock.json` 同批重算 | Round 1 探针：两条线 `tie_strength` 仍是裸 object；9 份 schema 正文已分叉 |
 | D59 | `tie_strength` 收紧已执行 | 本 PR 将 `tie_strength` 从裸 object 改为 T4D 可复核面；`algorithm_id` 触发整包必填；空对象仍合法。必须同时允许 `machine_band` / `user_band` / `locked_by_user`（D32/D48），否则 Goal 1 重建边会被 `additionalProperties:false` 打红。Goal 1 合并后跑 `xtask schema-freeze` 复核 lock | Round 2 P0 |
 | D60 | COPY_ZH P4 触发比较符 | 近因句触发写成闭区间 `>= DEMOTE_ONE_BAND_DAYS`，与降档常量同一点。用户可见句子「你们最近半年没有往来」不动 | Round 3：原稿「超过 180 天」是已作废的 `>` 写法；crate 实现与测试已是 `>=` |
+| D61 | 唯一实现主干是哪条分支（承接 D49） | 主干由 `cursor/soul-goal1-7b1c` 更替为 `cursor/goal1-unblock-a073`（PR #7，合入路径）。D49 其余裁决不变：停 `agent/dev-sota`、关 PR #4、分支一律 `cursor/` 前缀。`cursor/soul-goal1-7b1c` 降为历史祖先，不是合入路径 | D49 拍板时 PR #7 尚不存在。PLAN_INDEX §3、FORMAL「计划面与代码面」、STATUS 均已按新主干写，本条使 DECISIONS 自身对齐。只追加，不改写 D49 原行 |
 
 `agent/dev-sota` 线上另有一条「e0 发送 crate 禁令」曾被 BLOCKERS 称作 D32。**不是**本文件的 D32。PR #6 整份合入时，必须把 BLOCKERS 正文里的那个「D32」改写为届时下一个空闲 ID，或加括注「dev-sota 编号，非 docs/DECISIONS.md 之 D32」。樱桃摘时禁止复用本表号。
 

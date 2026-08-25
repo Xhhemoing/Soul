@@ -9,7 +9,7 @@
 | # | 文件 | 它是什么的唯一权威 | 冻结标记 |
 |---|---|---|---|
 | 1 | [`PRODUCT_LOCK.md`](PRODUCT_LOCK.md) | 产品是什么、不是什么；v0.1 的 13 条垂直切片；砍/留；出网分级 E0/E1/L；不可协商约束 | `PLAN_FROZEN` |
-| 2 | [`DECISIONS.md`](DECISIONS.md) | 已拍板的选择（D1–D60）。想重开某个方向战，先在这里找它有没有被拍过 | `PLAN_FROZEN` |
+| 2 | [`DECISIONS.md`](DECISIONS.md) | 已拍板的选择（D1–D61）。想重开某个方向战，先在这里找它有没有被拍过 | `PLAN_FROZEN` |
 | 3 | [`algorithms/DECISION.md`](algorithms/DECISION.md) | 灵魂层算法：人脉 = T4D，特质 = A0，摘要 = A2 渲染器，A1 默认规则；常量表；as_of 纪律；已知代价；回退链 | `ALGO_FROZEN` |
 | 4 | [`FORMAL_WORK_PROMPT.md`](FORMAL_WORK_PROMPT.md) | Goal 1 怎么开工：工作包清单、实现者红线、**验收矩阵（唯一门禁）**。开工路径只认末尾的「开工第一动作」；中段「历史段」是作者开工原话的存档，**不是工作指令** | 随 `PLAN_FROZEN` |
 
@@ -22,8 +22,8 @@
 | 一件事算不算做完 | `FORMAL_WORK_PROMPT.md` 验收矩阵。**散文不作门禁**（D29）。问「Goal 1 整体算不算关闭」是另一回事：矩阵与 `PRODUCT_LOCK.md` 十三片切片必须同时过（D54） |
 | 现在到哪一步了、谁没合入 | `STATUS.md` |
 | 数据长什么样 | `schemas/`（十份正文 = 九份存储契约 + 一份导入契约，另有 `_defs` 与 `schemas.lock.json`）。`tie_strength` 收紧见 D58/D59 |
-| 接手时该不该重开 Goal 1 / 重派 planner | 不该。`FORMAL_WORK_PROMPT.md`「开工第一动作」；理由见 D49（唯一实现主干）与 `STATUS.md`。同文件「历史段」写于 Goal 1 开工之前，照做即重开第二条线 |
-| 判档阈值到底是多少 | 只有两处：`algorithms/DECISION.md` 第 3 节常量表（语义）与 `crates/soul-algo-tie` 常量模块（取值）。产品锁 / 拍板 / FORMAL / STATUS / README / PLAN_INDEX / SECURITY 只写常量名。`algorithms/COPY_ZH.md` 与 `REJECTED.md` 允许引用常量表已钉的数字（D60） |
+| 接手时该不该重开 Goal 1 / 重派 planner | 不该。`FORMAL_WORK_PROMPT.md`「开工第一动作」；理由见 D49/D61（唯一实现主干）与 `STATUS.md`。同文件「历史段」写于 Goal 1 开工之前，照做即重开第二条线 |
+| 判档阈值到底是多少 | 只有两处：`algorithms/DECISION.md` 第 3 节常量表（语义）与 `crates/soul-algo-tie` 常量模块（取值）。产品锁 / 拍板 / FORMAL / STATUS / README / PLAN_INDEX / SECURITY 只写常量名。`docs/algorithms/` 三份冻结文档（`DECISION.md`、`COPY_ZH.md`、`REJECTED.md`）是裁决记录本身，允许出现常量表已钉的数字；COPY_ZH 的比较符写法以 D60 为准 |
 | 加密、密钥、遗忘、审计的规范 | `SECURITY.md` |
 | 关系强度为什么是这个档 | `algorithms/DECISION.md` 第 3 节；中文话术在 `algorithms/COPY_ZH.md`；被否决的候选在 `algorithms/REJECTED.md` |
 | Goal 1 的 DAG 与实现细节 | [`GOAL1_PLAN.md`](GOAL1_PLAN.md)（本树已有；历史对照仍可看 `origin/cursor/soul-goal1-7b1c`，那不是合入路径） |

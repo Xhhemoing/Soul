@@ -814,18 +814,20 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 | 线 | 尖端 | 有什么 | 状态 |
 |---|---|---|---|
-| 本树 `cursor/goal1-unblock-a073`（PR #7） | 吸收 `origin/main`（计划文档 PR #8）中 | 应用代码 + 计划权威面 D1–D60 + 类型化 `tie_strength` | **现行唯一实现主干与合入路径** |
+| 本树 `cursor/goal1-unblock-a073`（PR #7） | 已吸收 `origin/main`（计划文档 PR #8，`a30bd6f`） | 应用代码 + 计划权威面 D1–D61 + 类型化 `tie_strength` | **现行唯一实现主干与合入路径** |
 | `main` | `a0ec14b`（计划文档已合入） | 计划面 + 算法 crate；合入本 PR 前没有应用 | 等 PR #7 |
 | `cursor/soul-goal1-7b1c`（PR #2） | 历史祖先 | Goal 1 实现主干的来源 | **不是合入路径** |
 | `cursor/blockers-analysis-a073`（PR #6） | 远程 | `docs/BLOCKERS.md` | 待在 PR #7 之后合 |
 | `agent/dev-sota`（PR #4） | 远程 | 分叉后重做的 WP10/WP11 | 按 D49 应停并关闭 |
+
+`docs/DECISIONS.md` 现已追加 D61（承接 D49）：主干由 `cursor/soul-goal1-7b1c` 更替为 `cursor/goal1-unblock-a073`（PR #7，合入路径），上表第一行与第三行在 DECISIONS 自身也有了对应拍板，表尾因此从 D60 走到 D61。D61 只裁决主干归属，不是 Goal 1 关闭，也不是 hosted 绿。
 
 ## 下一步
 
 批 3–5 与 WP13、DPAPI、T4D/A2/G1+/G3 接线都已完成。本 merge 把 `main` 上的计划权威面（D41–D60、`PLAN_INDEX.md`、类型化 `tie_strength`）吸收进本树。`2e72ddf` 上 CI 五门全绿。HEAD 本机 `session_collect` 9 / `ipc_roundtrip` 32 / vitest 151 在 `a643eaf` 上绿（含概览徽章跟采集同意走、Home 重读快照、空的「还没有的东西」不画），hosted 五门没有 runner。原先写在这里的产品缺口已经做完，剩下的是 hosted 与真机：
 
 1. ~~**向导还没有画那十一道题。**~~ **已完成**，见「WP09 完成情况（第三段）」。
-2. **HEAD hosted CI。** 恢复 Actions minutes 后 `workflow_dispatch` 本分支。空 runner 不是产品回归。workflow 已收窄：只自动 `push` 本分支与 `main`，没有 `pull_request` 触发，纯文档改动不开五门。已知最新一次空 run：[32796349061](https://github.com/Xhhemoing/Soul/actions/runs/32796349061)（`a643eaf`）。本机证据不是 hosted 证据。在 HEAD package 绿之前，不要用 `2e72ddf` 的 `windows-binaries` 做卸载 / `keys.dpapi`——那次构建还把程序装进数据目录。
+2. **HEAD hosted CI。** 恢复 Actions minutes 后 `workflow_dispatch` 本分支。空 runner 不是产品回归。workflow 已收窄：只自动 `push` `main` 与 `cursor/goal1-unblock-a073`，没有 `pull_request` 触发，纯文档改动不开五门。历史分支 `cursor/soul-goal1-7b1c` **不再**自动开五门（D61；该线仍在推无关提交，恢复分钟后不要烧在那里）。这只是触发面，hosted 仍未跑过、更谈不上绿。已知最新一次空 run：[32796349061](https://github.com/Xhhemoing/Soul/actions/runs/32796349061)（`a643eaf`）。本机证据不是 hosted 证据。在 HEAD package 绿之前，不要用 `2e72ddf` 的 `windows-binaries` 做卸载 / `keys.dpapi`——那次构建还把程序装进数据目录。
 3. **`scripts/author-manual-checklist.md` 要在一台 Windows 11 真机上过一遍**，七条结果填回「WP13 的 Windows 手动缺口」（第 8 节的界面导入、第 9 节的本机端点是可选的，不属于门禁）。托盘图标、UAC、任务管理器里的进程名、WebView2 的网络行为、真机采集这几条没有任何 CI 能替。真装真卸从 **HEAD（`a643eaf` 或之后）** 在本机 `tauri build`，不要用过期工件。采集现在有产品路径：打开 `/collect`，按「开始采集」，切二十秒窗口，按「停止采集」。要一份带秒数的两段测量仍然用探针：`soul-headless collect-probe --i-consent --seconds 20`。端点现在有产品路径：打开 `/settings`，填地址，按「保存端点」，再去起草页生成。AC-13 的二次确认也有了：在起草页的确认屏上按「这一条按原文带上」，再按「确认，开始生成」，看本机模型这一次收到的是原文、下一次又回到占位。人事摘要：导入之后去 `/graph` 按「看这个人的摘要」，没填端点应看到「本机根据往来次数写的统计」；填了端点再点一次应看到「你自己的端点根据本机统计改写的」并且模型多一次 POST。档案页「再答几题」把向导里那十一道再走一遍。语气与审计：先去 `/profile` 把「温度」设成「热络」，回起草页按「写一版草稿」，屏幕上应当出现「先谢谢你专门说一声。」；再去 `/audit`，那次起草、那次生成、那次目录预览应当各留下 `draft.create` / `egress.request` / `file.plan`；对不上的遗忘确认与对不上的生成批准应当各留下「你当场拒绝了」，敌意文件名留下「挡下了注入」且没有那个名字。
 4. ~~**DPAPI 要真的实现**~~ **已实现，且 windows-latest 已跑过。** 真机上仍要确认有登录用户配置文件时 `%LOCALAPPDATA%\Soul\keys.dpapi` 存在且 `/graph` 不再给拒绝。卸载脚本不能删这个文件。NTFS 不能同时放下 `Alpha` 和 `alpha`，授权扫描的第三目录因此只在 Unix 上种。AC-21 的套接字观察在 Linux CI 读 `/proc`，在 Windows CI 由 `scripts/install-smoke.ps1` 从进程外看 TCP 表。
 5. PR #6（`BLOCKERS.md`）在本 PR 合入 `main` 之后再合。合入时处理 BLOCKERS 文中的 D32 撞号。不要静默给 F04c 加第三道降档门。

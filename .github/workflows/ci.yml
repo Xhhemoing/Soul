@@ -1,8 +1,12 @@
 name: CI
 
 on:
-  # Push stays on the Goal 1 branch: a pull_request-only trigger left HEAD
-  # with no run at all.
+  # Push stays on the Goal 1 trunk: a pull_request-only trigger left HEAD
+  # with no run at all. The Goal 1 trunk is `cursor/goal1-unblock-a073`
+  # (PR #7, D61). `cursor/soul-goal1-7b1c` is a historical ancestor, not a
+  # merge path, and it is still receiving unrelated product pushes — do not
+  # auto-spend restored Actions minutes there. `workflow_dispatch` still
+  # runs from any ref.
   #
   # Automatic runs are otherwise narrowed on purpose. Hosted AC-26 on this
   # private repo has been failing in ~3s with 0 steps and an empty
@@ -15,11 +19,11 @@ on:
   # No `pull_request` trigger: GitHub evaluates `paths-ignore` against the
   # whole PR, not the latest commit, so a STATUS-only follow-up on this
   # branch would still open five jobs. Push events on the head branch
-  # already show up as checks on PR #2.
+  # already show up as checks on PR #7.
   push:
     branches:
       - main
-      - cursor/soul-goal1-7b1c
+      - cursor/goal1-unblock-a073
     paths-ignore:
       - "docs/**"
       - "*.md"
@@ -42,7 +46,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch'
       || github.ref == 'refs/heads/main'
-      || github.ref == 'refs/heads/cursor/soul-goal1-7b1c'
+      || github.ref == 'refs/heads/cursor/goal1-unblock-a073'
     steps:
       - uses: actions/checkout@v4
 
@@ -98,7 +102,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch'
       || github.ref == 'refs/heads/main'
-      || github.ref == 'refs/heads/cursor/soul-goal1-7b1c'
+      || github.ref == 'refs/heads/cursor/goal1-unblock-a073'
     steps:
       - uses: actions/checkout@v4
 
@@ -157,7 +161,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch'
       || github.ref == 'refs/heads/main'
-      || github.ref == 'refs/heads/cursor/soul-goal1-7b1c'
+      || github.ref == 'refs/heads/cursor/goal1-unblock-a073'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -229,7 +233,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch'
       || github.ref == 'refs/heads/main'
-      || github.ref == 'refs/heads/cursor/soul-goal1-7b1c'
+      || github.ref == 'refs/heads/cursor/goal1-unblock-a073'
     steps:
       - uses: actions/checkout@v4
 
@@ -262,7 +266,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch'
       || github.ref == 'refs/heads/main'
-      || github.ref == 'refs/heads/cursor/soul-goal1-7b1c'
+      || github.ref == 'refs/heads/cursor/goal1-unblock-a073'
     steps:
       - uses: actions/checkout@v4
 

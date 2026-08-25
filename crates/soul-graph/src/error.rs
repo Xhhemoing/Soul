@@ -41,6 +41,17 @@ pub enum GraphError {
         field: &'static str,
     },
 
+    /// A stored edge carries a band no run of the frozen rule stands behind —
+    /// an edge written before the rule landed, on a store that no longer holds
+    /// the observations to score it. The band cannot be made reviewable, so it
+    /// is not one the user can be allowed to lock either.
+    #[error(
+        "edge {relationship_id} carries a band no algorithm produced, and a rebuild did not \
+         score it; the observations behind this tie have to be in the store and rebuilt before \
+         the band can be corrected"
+    )]
+    UnscoredEdge { relationship_id: Uuid },
+
     /// Two contacts are marked `self`. The graph is an ego network and would
     /// otherwise silently pick one.
     #[error("the store holds {count} contacts of class `self`; there must be exactly one")]

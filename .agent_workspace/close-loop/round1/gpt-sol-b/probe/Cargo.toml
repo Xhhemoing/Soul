@@ -1,0 +1,13 @@
+[package]
+name = "r1-empty-algorithm-probe"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.83"
+publish = false
+
+[workspace]
+
+[dependencies]
+serde_json = "1"
+soul-graph = { path = "../../../../../crates/soul-graph" }
+soul-schema = { path = "../../../../../crates/soul-schema" }

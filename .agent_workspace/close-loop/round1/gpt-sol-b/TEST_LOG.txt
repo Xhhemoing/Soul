@@ -1,0 +1,131 @@
+Round 1 probe log — 2026-08-25 UTC
+
+[PASS] CI branch inventory
+
+Baseline:
+  git show origin/cursor/goal1-unblock-a073:.github/workflows/ci.yml
+  origin/cursor/goal1-unblock-a073 = 6133307
+
+Observed baseline branch names:
+  push.branches:
+    main
+    cursor/soul-goal1-7b1c
+  five job gates:
+    refs/heads/main
+    refs/heads/cursor/soul-goal1-7b1c
+  cursor/goal1-unblock-a073 occurrences: 0
+
+Concurrent owner landing:
+  f8fe32f ci: trigger auto push on the Goal 1 trunk cursor/goal1-unblock-a073
+
+Final current-file branch names:
+  push.branches:
+    main
+    cursor/goal1-unblock-a073
+    cursor/soul-goal1-7b1c
+  all five job gates contain the same three refs.
+
+[PASS] R-1 real-model serialization/schema probe
+
+Probe:
+  .agent_workspace/close-loop/round1/gpt-sol-b/probe/
+
+Build/run command used for the successful source build:
+  RUSTC_BOOTSTRAP=1 CARGO_TARGET_DIR=/tmp/gpt-sol-b-r1-target \
+    cargo -Zmsrv-policy \
+    --config .agent_workspace/close-loop/round1/gpt-sol-b/probe/.cargo/config.toml \
+    run \
+    --manifest-path .agent_workspace/close-loop/round1/gpt-sol-b/probe/Cargo.toml
+
+Exit: 0
+
+Key output:
+  serialized TieStrength:
+  {
+    "active_day_count": 2,
+    "algorithm_id": "",
+    "band": "moderate",
+    "conversation_count": 1,
+    "direct_active_day_count": 0,
+    "direct_in_count": 0,
+    "direct_out_count": 0,
+    "first_contact_utc": "2026-08-01T00:00:00Z",
+    "group_in_count": 0,
+    "group_out_count": 0,
+    "incoming_count": 2,
+    "interaction_count": 4,
+    "last_contact_utc": "2026-08-02T00:00:00Z",
+    "outgoing_count": 2,
+    "silent_days": 0
+  }
+  relationship schema valid: false
+  relationship.schema.json rejected the instance:
+    - "" is not one of ["T4D","T4"] at /tie_strength/algorithm_id
+    - "as_of_utc" is a required property at /tie_strength
+
+Post-format binary rerun:
+  /tmp/gpt-sol-b-r1-target/debug/r1-empty-algorithm-probe
+Exit: 0
+Output: same enum and as_of_utc rejection shown above.
+
+Formatting:
+  cargo fmt \
+    --manifest-path .agent_workspace/close-loop/round1/gpt-sol-b/probe/Cargo.toml \
+    -- --check
+Exit: 0
+
+Resolver note:
+  The first standalone run selected post-Rust-1.83 dependencies and failed
+  before compiling the probe. The committed probe lockfile was then generated
+  with Cargo's Rust-1.83-aware resolver. This was probe setup drift, not a
+  product result.
+
+Concurrent-edit note:
+  A later `cargo run --locked` rebuild reached unrelated, uncommitted owner
+  edits in soul-graph/src/correct.rs and failed on an unfinished `scored`
+  reference. Those files were not touched by this agent. The successful source
+  build and binary rerun above predate/do not consume that in-progress source.
+
+[PASS] second-threshold audit
+
+Focused pattern:
+  \b(MODERATE_MIN_INTERACTIONS|STRONG_MIN_INTERACTIONS|
+  STRONG_MIN_ACTIVE_DAYS|DEMOTE_ONE_BAND_DAYS|FORCE_WEAK_DAYS)\b
+  or a comparison against 3, 10, 180, 360
+
+Scopes:
+  crates/soul-graph/src/*.rs
+  crates/soul-draft/src/*.rs
+
+Focused output:
+  soul-graph/src: no matches
+  soul-draft/src: no matches
+
+Raw-token output after excluding #[cfg(test)] sections:
+  crates/soul-graph/src/correct.rs:4
+    documentation-only "constraint 10"
+  crates/soul-graph/src/t4d_adapt.rs:97,135,163,169,182
+    RFC 3339 offsets/radix/calendar calculations
+  crates/soul-draft/src/a2_adapt.rs:155,192,219,225,238
+    RFC 3339 offsets/radix/calendar calculations
+  raw 180/360:
+    no matches
+
+Excluded test hit:
+  crates/soul-graph/src/t4d_adapt.rs:277
+    assert_eq!(interner.peer_count(), 3);
+
+[PASS] merge capability inventory
+
+  command -V gh
+  gh is hashed (/exec-daemon/gh)
+
+  Dynamic tool catalog search:
+    pattern: (?i)(managepullrequest|pull.?request|merge)
+    matches: []
+
+  gh pr merge --help
+  Exit: 0 (static upstream CLI help only)
+
+Cloud Agent runtime capability: gh is read-only. No merge/write command was
+attempted. There is no ManagePullRequest merge action available.
