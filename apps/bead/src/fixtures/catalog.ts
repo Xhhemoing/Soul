@@ -3,6 +3,10 @@ import type { Creator, Pattern } from "../stores/types.ts";
 
 // Small on purpose (R3): localStorage is the B02 backing, so the fixture keeps
 // palettes short. WP-B08 grows this set; nothing else here should change.
+//
+// Every board here is square: map §3 defers hex and round past v0, and these
+// patterns are instantiable, so a non-square one would reach WP-B04's assembler
+// as a shape it cannot lay out.
 
 export const TAGS = ["二次元", "像素游戏", "立体拼豆", "节日限定"] as const;
 
@@ -78,7 +82,7 @@ export const PATTERNS: Pattern[] = [
     difficulty: 2,
     beadCount: 760,
     estimatedMinutes: 70,
-    board: "hex",
+    board: "square-28",
     palette: [
       { code: "R04", name: "朱红", hex: "#d8412f", beads: 320 },
       { code: "Y01", name: "明黄", hex: "#f5d13b", beads: 250 },
@@ -93,7 +97,7 @@ export const PATTERNS: Pattern[] = [
     difficulty: 2,
     beadCount: 980,
     estimatedMinutes: 90,
-    board: "round",
+    board: "square-56",
     palette: [
       { code: "N06", name: "浅灰", hex: "#c9ccd4", beads: 420 },
       { code: "B05", name: "墨黑", hex: "#1b1b1f", beads: 330 },
