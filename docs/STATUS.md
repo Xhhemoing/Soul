@@ -513,7 +513,7 @@ Goal 1 剩下的三件事里的第三件：`DpapiKeyProvider` 不再是骨架。
 3. **`keys.dpapi` 是这台机器上唯一能打开 `soul.db` 的东西。** 删掉它、或者换一个 Windows 账户、或者重装系统丢了主密钥，库就永久打不开了。v0.1 没有导出/恢复这把密钥的入口，也没有在 UI 上说这件事。要不要有恢复码是产品决定，不是这一单能定的；**在有之前，卸载脚本不能删这个文件**（`scripts/author-manual-checklist.md` 第 7 节「卸载会不会删掉用户数据」现在多了一层意思）。
 4. **secondary entropy 是常量，写在源码里，不是秘密。** `soul/v1/dpapi/key-blob`。它买到的是「Soul 保护的 blob 不会被同账户下另一个程序顺手解开」，以及将来第二处用 DPAPI 时可以换一个串从而拿到独立的 blob。保护强度全部来自用户凭据，文档里写清楚了这一点，免得有人把它当成第二把密钥。
 5. **每次取密钥都读一遍文件、调一次 DPAPI，不缓存。** `SqlCipherStore::open` 会取两次（DEK 一次、KEK 一次），于是一次开库两次 `CryptUnprotectData`。缓存意味着 KEK 在内存里活得和 provider 一样久，而不是和一次调用一样久；两次系统调用换这个，划算。
-6. **`keys.dpapi` 先写 `.partial` 再 rename，但没有 fsync。** 和 `config.json` 同一个写法。断在中间时下次启动看到的是「没有 blob」，那时库也还不存在，所以从零开始是对的状态。真正的风险窗口是「blob 写成了、库还没建」和它的反面，两者都只会让下一次启动重建缺的那一半。
+6. ~~**`keys.dpapi` 先写 `.partial` 再 rename，但没有 fsync。**~~ **已改成 `create_new` 抢最终文件名，并且写完 `sync_all`。** 先写 `.partial` 再 rename 对一个写者是原子的，对两个写者什么都不保证：两次首次运行都看不到 blob，都造一把 DEK，都 rename，后到的那个把前一个刚建好的 `soul.db` 永久锁死。现在只有建得了这个文件名的进程算数，其余进程拿 `AlreadyExists`、读回盘上那份、用它开库；`TestKeyProvider` 的种子文件同一个洞同一个修法。剩下的窗口只有一个：文件名建出来了、内容还没写就断电，那时里面没有密钥材料也就没有库是用它开的，下一次启动清掉重铸。竞态测试在 Linux CI 上跑（`crates/soul-store/tests/key_blob_race.rs` 与 `keys.rs` 的单元测试），因为抢文件名这一步没有平台。「blob 写成了、库还没建」和它的反面仍然只会让下一次启动重建缺的那一半。
 7. **`KeyError` 多了一个 `Corrupt` 变体。** 现有的 `Malformed` 说的是「文件长度不对」，对 `TestKeyProvider` 的定长种子文件够用，对一个有结构的 blob 不够。没有复用 `Unavailable`，因为这两种要给用户的话不一样：一个是「这台机器解不开」，一个是「这个文件不是这一版认得的形状」。
 8. **UI 上那句话没有改。** `KeyProtection::Dpapi.notice()` 一直写着「数据库密钥由 Windows 的用户级密钥保护接管。」——在这一单之前它是提前写好的，现在它是真的。屏幕上没有一个字需要动，这正好说明当初把 `KeyProtection` 分成两个变体是对的。
 
