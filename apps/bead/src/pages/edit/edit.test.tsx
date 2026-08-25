@@ -174,13 +174,18 @@ describe("T-ED-9 守卫链四态（D-ED-18）", () => {
     expect(await screen.findByText(/这个项目不存在/)).toBeInTheDocument();
   });
 
-  it("画廊项目：只读，文案点名 WP-B08", async () => {
+  // D-GAL-14 ①: 守卫行为一字未动，改的是它说的话——WP-B08 到了，画廊项目的出路
+  // 不再是「等下一个工作包」，而是回详情页 Fork 一份副本。
+  it("画廊项目：只读，文案指路详情页 Fork", async () => {
     const project = blankProject({ sourcePatternId: asPatternId("gal-slime-01") });
     const { router } = renderApp({ route: `/edit/${project.id}`, seed: { projects: [project] } });
 
-    expect(await screen.findByText(/WP-B08/)).toBeInTheDocument();
-    expect(screen.getByText(/只读/)).toBeInTheDocument();
+    const note = await screen.findByText(/只读/);
+    expect(note).toHaveTextContent(/Fork/);
+    expect(note).toHaveTextContent(/详情页/);
+    expect(screen.queryByText(/WP-B08/)).not.toBeInTheDocument();
     expect(screen.queryByTestId("editor-grid")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "回拼装台" })).toBeInTheDocument();
     expect(currentPath(router)).toBe(`/edit/${project.id}`);
   });
 
