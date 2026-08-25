@@ -55,6 +55,28 @@ describe("Repository（D-UI-5：接口全 async）", () => {
     ).toEqual({ projects: [], favorites: [], inventory: [], progress: [] });
   });
 
+  // T-INV-14: 库存条目每个字段都要过检。缺 hex 会让色块拿到 undefined 背景，
+  // NaN / 小数颗数会顺着缺口求和一路污染下去。
+  it("畸形库存条目被丢掉，好的那条留下（WP-B05）", () => {
+    const good = { code: "H02", name: "薄荷绿", hex: "#7fd6a2", beads: 200 };
+    const parsed = parsePersistedState(
+      JSON.stringify({
+        inventory: [
+          good,
+          { code: "R04", name: "朱红", beads: 10 },
+          { code: "Y01", name: "明黄", hex: "#f5d13b", beads: Number.NaN },
+          { code: "B05", name: "墨黑", hex: "#1b1b1f", beads: 12.5 },
+          { code: "C01", name: "纯白", hex: "#ffffff", beads: -3 },
+          { code: "N06", hex: "#c9ccd4", beads: 1 },
+          { name: "没有码", hex: "#000000", beads: 1 },
+          null,
+          "库存",
+        ],
+      }),
+    );
+    expect(parsed.inventory).toEqual([good]);
+  });
+
   it("缺 backdrop 或 backdrop 不是预设的记录被丢掉", () => {
     const withoutBackdrop: Partial<Project> = project();
     delete withoutBackdrop.backdrop;

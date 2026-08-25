@@ -105,11 +105,27 @@ describe("Workspace 三段零态", () => {
   });
 });
 
+// D-INV-8 取代了 round1 的「录入库存后才能做缺口预警」：零库存正是备料的第一
+// 用例，缺口 = 全部需求。库存区的零态因此只指回页顶那张表单，缺口区照常出行。
 describe("Inventory 零态", () => {
-  it("没有库存时说明为什么要先录入", async () => {
+  it("没有库存时指回页顶的录入表单，不再链去 /create", async () => {
     renderApp({ route: "/inventory" });
-    expect(await screen.findByText("录入库存后才能做缺口预警")).toBeInTheDocument();
-    expect(screen.getByText(/库存录入与编辑归 WP-B05/)).toBeInTheDocument();
+    const stock = await screen.findByRole("region", { name: "色号库存" });
+    expect(
+      within(stock).getByText("还没有库存记录：先在上方录入色号和颗数"),
+    ).toBeInTheDocument();
+    expect(within(stock).queryByRole("link")).not.toBeInTheDocument();
+    expect(within(stock).getByRole("button", { name: "加入库存" })).toBeInTheDocument();
+  });
+
+  it("零库存不让缺口区停摆：在拼项目的需求全额进缺口", async () => {
+    renderApp({
+      route: "/inventory",
+      seed: { projects: [project({ sourcePatternId: asPatternId("gal-lantern-04") })] },
+    });
+    const shortage = await screen.findByRole("region", { name: "缺口预警" });
+    expect(within(shortage).getByText("缺 152 颗")).toBeInTheDocument();
+    expect(within(shortage).getAllByText("库存 0 颗")).toHaveLength(3);
   });
 });
 

@@ -61,10 +61,20 @@ function isProject(value: unknown): value is Project {
   );
 }
 
+// Every field is checked, not just the identity key: a stored entry missing
+// `hex` renders a swatch with `background: undefined`, and a fractional or NaN
+// `beads` poisons every shortage sum downstream of it.
 function isInventoryEntry(value: unknown): value is InventoryEntry {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
-  return typeof candidate["code"] === "string" && typeof candidate["beads"] === "number";
+  const beads = candidate["beads"];
+  return (
+    typeof candidate["code"] === "string" &&
+    typeof candidate["name"] === "string" &&
+    typeof candidate["hex"] === "string" &&
+    Number.isInteger(beads) &&
+    (beads as number) >= 0
+  );
 }
 
 function isCount(value: unknown): value is number {

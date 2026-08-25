@@ -12,6 +12,7 @@ import {
 
 import { createRepository, type Repository } from "./repository.ts";
 import { createProjectFromPattern } from "./projects.ts";
+import { clampBeads, normalizeCode } from "./inventory.ts";
 import type { PatternId, ProjectId } from "./ids.ts";
 import {
   EMPTY_STATE,
@@ -42,7 +43,9 @@ type Action =
   | { kind: "setProjectStatus"; id: ProjectId; status: ProjectStatus }
   | { kind: "setBackdrop"; id: ProjectId; backdrop: BackdropKind; color?: string }
   | { kind: "toggleFavorite"; id: PatternId }
-  | { kind: "setInventory"; entries: InventoryEntry[] }
+  | { kind: "addInventoryEntry"; entry: InventoryEntry }
+  | { kind: "setInventoryBeads"; code: string; beads: number }
+  | { kind: "removeInventoryEntry"; code: string }
   | { kind: "upsertProgress"; cursor: ProgressCursor };
 
 function reduce(state: StoreState, action: Action): StoreState {
@@ -78,8 +81,32 @@ function reduce(state: StoreState, action: Action): StoreState {
           ? state.favorites.filter((id) => id !== action.id)
           : [...state.favorites, action.id],
       };
-    case "setInventory":
-      return { ...state, inventory: action.entries };
+    // D-INV-6: the code is the identity key, so adding a code that is already
+    // there is a no-op rather than a silent merge — the form reports it inline
+    // and the user edits the existing row instead.
+    case "addInventoryEntry": {
+      const entry = {
+        ...action.entry,
+        code: normalizeCode(action.entry.code),
+        beads: clampBeads(action.entry.beads),
+      };
+      if (state.inventory.some((existing) => existing.code === entry.code)) return state;
+      return { ...state, inventory: [...state.inventory, entry] };
+    }
+    case "setInventoryBeads": {
+      const code = normalizeCode(action.code);
+      const beads = clampBeads(action.beads);
+      return {
+        ...state,
+        inventory: state.inventory.map((entry) =>
+          entry.code === code ? { ...entry, beads } : entry,
+        ),
+      };
+    }
+    case "removeInventoryEntry": {
+      const code = normalizeCode(action.code);
+      return { ...state, inventory: state.inventory.filter((entry) => entry.code !== code) };
+    }
     case "upsertProgress": {
       const others = state.progress.filter(
         (cursor) => cursor.projectId !== action.cursor.projectId,
@@ -95,7 +122,10 @@ export interface StoreActions {
   setProjectStatus(id: ProjectId, status: ProjectStatus): void;
   setProjectBackdrop(id: ProjectId, backdrop: BackdropKind, color?: string): void;
   toggleFavorite(id: PatternId): void;
-  setInventory(entries: InventoryEntry[]): void;
+  /** D-INV-5: three narrow inventory actions, all of them driven by `/inventory`. */
+  addInventoryEntry(entry: InventoryEntry): void;
+  setInventoryBeads(code: string, beads: number): void;
+  removeInventoryEntry(code: string): void;
   /** BD19: one cursor per project, overwritten in place. Never called per timer tick. */
   upsertProgress(cursor: ProgressCursorInput): void;
 }
@@ -180,8 +210,16 @@ export function StoreProvider({
     dispatch({ kind: "toggleFavorite", id });
   }, []);
 
-  const setInventory = useCallback<StoreActions["setInventory"]>((entries) => {
-    dispatch({ kind: "setInventory", entries });
+  const addInventoryEntry = useCallback<StoreActions["addInventoryEntry"]>((entry) => {
+    dispatch({ kind: "addInventoryEntry", entry });
+  }, []);
+
+  const setInventoryBeads = useCallback<StoreActions["setInventoryBeads"]>((code, beads) => {
+    dispatch({ kind: "setInventoryBeads", code, beads });
+  }, []);
+
+  const removeInventoryEntry = useCallback<StoreActions["removeInventoryEntry"]>((code) => {
+    dispatch({ kind: "removeInventoryEntry", code });
   }, []);
 
   const upsertProgress = useCallback<StoreActions["upsertProgress"]>((cursor) => {
@@ -196,7 +234,9 @@ export function StoreProvider({
       setProjectStatus,
       setProjectBackdrop,
       toggleFavorite,
-      setInventory,
+      addInventoryEntry,
+      setInventoryBeads,
+      removeInventoryEntry,
       upsertProgress,
     }),
     [
@@ -206,7 +246,9 @@ export function StoreProvider({
       setProjectStatus,
       setProjectBackdrop,
       toggleFavorite,
-      setInventory,
+      addInventoryEntry,
+      setInventoryBeads,
+      removeInventoryEntry,
       upsertProgress,
     ],
   );
