@@ -148,8 +148,14 @@ pub fn parse_with(schemas: &SchemaSet, text: &str) -> Result<StagedImport, Impor
     }
 
     // Every sender that ever wrote with `sender_scope: self` is the user. A
-    // file may use more than one identifier for them, and all of them belong
-    // to the same contact.
+    // file may use more than one identifier for them — an old account, a
+    // second device — and all of them belong to the same contact. Which is
+    // why the fold has to survive having already seen the second identifier:
+    // the file does not say the two are one person until the later line
+    // arrives, so by then both have been observed. `ParticipantIndex::alias`
+    // merges rather than skipping for exactly this reason. Two participants
+    // marked as the user means two contacts of class `self` in the store, and
+    // that makes every graph rebuild after this import fail, permanently.
     let mut owner_handle: Option<ParticipantHandle> = None;
     for (_, message) in &raw_messages {
         let handle = ParticipantHandle::platform_uid(message.sender_id.clone());
