@@ -451,6 +451,21 @@ fn forgetting_a_contact_with_no_label_destroys_the_bodies_sealed_under_their_key
             ))
             .expect("seal what somebody else wrote");
 
+        // An edge between the two, and something inferred from it. SECURITY.md
+        // states the whole testable semantics of a forget as three things —
+        // the key is destroyed, the prose will not open, and what rested on
+        // the evidence is demoted — and the third only happens if the contact
+        // was reached at all.
+        store
+            .put_evidence(evidence(id("73"), Subject::ThirdParty))
+            .expect("edge evidence");
+        store
+            .put_relationship(relationship(id("45"), id(OTHER), id(NAMELESS), &[id("73")]))
+            .expect("edge");
+        store
+            .put_inference(inference(id("83"), &[id("73")]))
+            .expect("inference resting on the edge");
+
         let impact = store
             .preview_impact(ForgetUnit::Contact(id(NAMELESS)))
             .expect("preview");
@@ -464,6 +479,7 @@ fn forgetting_a_contact_with_no_label_destroys_the_bodies_sealed_under_their_key
             impact.sealed_blobs_destroyed, 2,
             "the anchor and the one body sealed under the same key",
         );
+        assert_eq!(impact.inferences_orphaned, 1);
 
         let receipt = store
             .execute_forget(ForgetUnit::Contact(id(NAMELESS)))
@@ -494,5 +510,10 @@ fn forgetting_a_contact_with_no_label_destroys_the_bodies_sealed_under_their_key
     assert_eq!(
         store.get_contact(id(OTHER)).expect("row").forget_state,
         ForgetState::Active,
+    );
+    assert_eq!(
+        store.inference_state(id("83")).expect("state"),
+        InferenceState::Orphaned,
+        "what rested on the edge to a forgotten person cannot go on standing",
     );
 }
