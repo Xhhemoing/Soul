@@ -239,6 +239,84 @@ fn an_owner_group_message_does_not_write_one_outgoing_row_per_speaker() {
         .all(|edge| edge.tie_strength.outgoing_count == 0));
 }
 
+/// AC-34, the half the fan-out test does not reach: a group message the user
+/// sent later than anything the peers said.
+///
+/// Dropping the outgoing rows is only half of not crediting it. `last_contact`
+/// is what the recency clock reads, and it is derived from the observations an
+/// edge carries — so an owner group message that had slipped into A's evidence
+/// would move A's last contact to the day the user typed, and a tie nobody has
+/// heard from since spring would read as current. The peers here speak in
+/// August and the user answers three weeks later, which is the gap that makes
+/// the difference visible.
+#[test]
+fn an_owner_group_message_does_not_refresh_when_the_peers_were_last_heard_from() {
+    let lines = [
+        r#"{"type":"header","format":"soul-import-v1","version":1,"exported_at":"2026-08-24T08:00:00Z"}"#,
+        r#"{"type":"message","id":"g-0001","occurred_at":"2026-08-01T09:00:00Z","sender_scope":"third_party","conversation_id":"g-01","sender_id":"u-a","text":"排期我看过了"}"#,
+        r#"{"type":"message","id":"g-0002","occurred_at":"2026-08-02T09:00:00Z","sender_scope":"third_party","conversation_id":"g-01","sender_id":"u-b","text":"我这边也跟上"}"#,
+        r#"{"type":"message","id":"g-0003","occurred_at":"2026-08-23T09:00:00Z","sender_scope":"self","conversation_id":"g-01","sender_id":"u-self","text":"那就按这个来"}"#,
+    ];
+
+    let staged = soul_import::soul_import_v1::parse(&lines.join("\n")).expect("valid");
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = SqlCipherStore::open(
+        dir.path().join("soul.db"),
+        &TestKeyProvider::from_seed(SEED),
+    )
+    .expect("open");
+    let receipt = soul_import::commit::commit(&mut store, &staged).expect("commit");
+    let owner = receipt.self_contact_id.expect("the file names the user");
+
+    assert_eq!(
+        receipt.evidence_written.len(),
+        2,
+        "two peers spoke; the user's own line names nobody",
+    );
+
+    soul_graph::rebuild(&mut store).expect("rebuild");
+    let graph = soul_graph::load(&store).expect("load");
+
+    // Each peer's last contact is their own message, not the user's answer.
+    for (handle, said) in [
+        ("u-a", "2026-08-01T09:00:00Z"),
+        ("u-b", "2026-08-02T09:00:00Z"),
+    ] {
+        let peer = contact_for(&store, handle);
+        let edges = graph.edges_for(peer);
+        assert_eq!(edges.len(), 1, "one edge for {handle}");
+        let strength = &edges[0].tie_strength;
+        assert_eq!(
+            strength.last_contact_utc.as_str(),
+            said,
+            "{handle} was last heard from when {handle} spoke, not when the user did",
+        );
+        assert_eq!(strength.outgoing_count, 0);
+        assert_eq!(strength.incoming_count, 1);
+        assert_eq!(strength.last_direct_contact_utc, None);
+    }
+
+    // And nothing was attributed to the user's side of the room at all.
+    let observations: Vec<_> = store
+        .list_evidence()
+        .expect("evidence")
+        .iter()
+        .flat_map(interaction::interactions_in)
+        .collect();
+    assert!(observations
+        .iter()
+        .all(|observation| observation.direction == soul_graph::Direction::Incoming));
+    assert!(observations
+        .iter()
+        .all(|observation| observation.self_contact_id == owner));
+    assert!(
+        observations
+            .iter()
+            .all(|observation| observation.occurred_at.as_str() != "2026-08-23T09:00:00Z"),
+        "the message the user sent to the group is an event and not an observation",
+    );
+}
+
 /// The contact the file called `handle`, by the digest the importer stored.
 fn contact_for(store: &SqlCipherStore, handle: &str) -> Uuid {
     let wanted = soul_import::ParticipantHandle::platform_uid(handle)

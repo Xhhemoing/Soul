@@ -35,6 +35,10 @@ uuid = { workspace = true }
 # rather than against a re-serialization of it. `xtask e0-audit` does not
 # follow dev edges, so this does not make the crate an egress path.
 [dev-dependencies]
+# Only for `tests/day_constants_agree.rs`, which pins the tie rule's demotion
+# clock against A2's dormancy clock (D52). The product path never reaches for
+# the tie rule from here: the band and the silent-day count arrive on the edge.
+soul-algo-tie = { workspace = true }
 soul-egress = { workspace = true }
 soul-store-api = { workspace = true }
 soul-testkit = { workspace = true }
