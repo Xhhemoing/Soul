@@ -139,8 +139,13 @@ ui-build: ui-install
 #   sudo apt-get install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
 #                        librsvg2-dev libxdo-dev build-essential
 #
-# Not chained into `ci`: the Linux job would then need that GUI stack for a
-# platform Soul does not target. The Windows CI job runs `desktop-test`.
+# Not chained into `ci`: a Linux author without that GUI stack still has to be
+# able to run the documented entry point. CI installs it as a separate step —
+# the ubuntu job runs ipc_roundtrip, command_surface and no_egress_path against
+# Tauri's mock runtime, which needs no display, so the argument conversion the
+# WebView depends on is exercised there. The Windows job runs the rest of the
+# desktop tests and compiles ipc_roundtrip with `--no-run`, because that
+# runner's WebView2Loader cannot start the harness.
 
 # cargo equivalent: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets
 desktop-check:

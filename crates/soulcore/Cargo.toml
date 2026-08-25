@@ -33,6 +33,12 @@ uuid = { workspace = true }
 [dev-dependencies]
 soul-testkit = { workspace = true }
 tempfile = { workspace = true }
+# AC-24 through the product session, which needs the store's `fail_point!`
+# sites to be live. They are compiled out unless something in the build turns
+# the feature on, and this is a dev-dependency for exactly that reason: a
+# shipped `soulcore` enables no failpoints, and `cargo test -p soulcore`
+# unifies the feature into `soul-store` the same way `soul-policy` does.
+fail = { workspace = true, features = ["failpoints"] }
 
 [[bin]]
 name = "soul-headless"

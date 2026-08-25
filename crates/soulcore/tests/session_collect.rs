@@ -144,6 +144,100 @@ fn granting_collects_and_revoking_stops_within_the_second() {
     drop(keep);
 }
 
+/// AC-23 for collection: both halves of the switch are things the chain heard
+/// about, and neither of them says what was on screen.
+///
+/// `soul-policy`'s `consent.rs` proves the ledger builds the entries and
+/// `soul-collect`'s own tests prove the collector builds its two. What is only
+/// checkable here is that somebody writes them: the ledger has no store and
+/// the collector has no consent, so the session is the one object that could
+/// drop either on the floor — and a capability opened with nothing in the
+/// chain is a capability the 审计 page cannot account for.
+#[test]
+fn granting_and_revoking_are_both_written_into_the_chain_without_an_application_name() {
+    let (keep, directory) = scratch();
+    let mut session = Session::open(&directory);
+    let source = FakeForegroundSource::showing(APPS[0]).expect("a valid application name");
+
+    session
+        .grant_collect_consent_with_source(
+            source.clone(),
+            CollectorConfig::every(TEST_POLL_INTERVAL),
+        )
+        .expect("the store opened, so consent can be recorded");
+    let mut index = 0usize;
+    wait_until(FIRST_EVENT_DEADLINE, || {
+        source
+            .switch_to(APPS[index % APPS.len()])
+            .expect("a valid application name");
+        index += 1;
+        collected(&session) > 0
+    });
+
+    let granted = session.audit().expect("the store opened");
+    assert!(granted.verified, "{:?}", granted.verification_problem);
+    let consent = granted
+        .entries
+        .iter()
+        .find(|entry| entry.action == "consent.grant" && entry.decision == "allowed")
+        .unwrap_or_else(|| {
+            panic!(
+                "a capability was opened and the chain never heard about it: {:?}",
+                granted.entries,
+            )
+        });
+    assert_eq!(consent.reason_code.as_deref(), Some("CONSENT_GRANTED"));
+    assert!(
+        granted
+            .entries
+            .iter()
+            .any(|entry| entry.action == "collect.start"),
+        "something started watching and the chain never heard about it: {:?}",
+        granted.entries,
+    );
+
+    session.revoke_collect_consent().expect("revoking works");
+
+    let chain = session.audit().expect("the store opened");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    // Taking it back is the same action with the other decision: the frozen
+    // vocabulary has no revoke verb, and `soul-policy`'s `ConsentLedger`
+    // explains why inventing one would be worse than reusing this one.
+    let revoked = chain
+        .entries
+        .iter()
+        .find(|entry| entry.action == "consent.grant" && entry.decision == "denied")
+        .unwrap_or_else(|| {
+            panic!(
+                "the user took a capability back and the chain never heard about it: {:?}",
+                chain.entries,
+            )
+        });
+    assert_eq!(revoked.reason_code.as_deref(), Some("CONSENT_REVOKED"));
+    let stopped = chain
+        .entries
+        .iter()
+        .find(|entry| entry.action == "collect.stop")
+        .unwrap_or_else(|| panic!("the run ended unrecorded: {:?}", chain.entries));
+    assert_eq!(stopped.decision, "allowed");
+    assert!(chain.entries.iter().all(|entry| entry.follows_previous));
+
+    // The other half of AC-23: the chain says a run happened and how much it
+    // wrote, and not one word about what was in front of the user.
+    let played = serde_json::to_string(&chain).expect("serialize the chain");
+    for app in APPS {
+        assert!(
+            !played.contains(app),
+            "`{app}` was collected and then written into the chain: {played}",
+        );
+    }
+    assert!(
+        !played.contains(".exe"),
+        "an executable name reached the chain: {played}",
+    );
+    drop(keep);
+}
+
 /// AC-09 through the session: nobody granted anything, so nothing is sampled.
 ///
 /// The strong form of the assertion is the sample count rather than the event

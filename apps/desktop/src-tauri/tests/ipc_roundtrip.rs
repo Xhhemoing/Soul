@@ -1130,6 +1130,417 @@ fn the_collection_status_carries_no_name_of_anything() {
     );
 }
 
+/// ------------------------------------------------------------- profile ---
+///
+/// The wizard, the profile screen, and the two corrections on it, over the
+/// real handler. `soulcore`'s `session_screens.rs` proves what a
+/// questionnaire leaves behind and what a correction pins; what only this
+/// side can show is that the five commands are registered and that `axisId`
+/// — the spelling `core.ts` sends — is still the one that arrives as
+/// `axis_id`. If that conversion ever broke, 灵魂档案 would be unable to
+/// correct anything while every `soulcore` and vitest test stayed green,
+/// because neither of them crosses Tauri.
+#[test]
+fn the_questionnaire_answers_and_leaves_a_profile_the_screen_can_correct() {
+    let shell = Shell::on(scratch());
+
+    let questions = shell
+        .invoke("questionnaire", json!({}))
+        .expect("the wizard draws its questions before anything is open");
+    assert_eq!(
+        questions.as_array().map(Vec::len),
+        Some(11),
+        "the wizard is handed a different number of questions than it draws: {questions}",
+    );
+
+    let receipt = match shell.invoke(
+        "answer_questionnaire",
+        json!({
+            "answers": [
+                { "question_id": "q.axis.curiosity", "given": "leans_high" },
+                { "question_id": "q.voice.register", "given": "formal" },
+            ]
+        }),
+    ) {
+        Ok(receipt) => receipt,
+        // No key, no store, nowhere to record an intake — and the screen has
+        // to be told which.
+        Err(refusal) => {
+            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+            return;
+        }
+    };
+    // AC-03 over the IPC: a questionnaire and no import file leaves a profile
+    // behind, and the axes nobody answered for stay unknown.
+    assert_eq!(receipt["answered"], json!(2));
+    assert_eq!(receipt["axes_known"], json!(1));
+    assert_eq!(receipt["axes_unknown"], json!(4));
+    assert_eq!(receipt["profile_is_empty"], json!(false), "AC-03");
+
+    let screen = shell
+        .invoke("profile_screen", json!({}))
+        .expect("the profile reads back");
+    let axis = screen["axes"]
+        .as_array()
+        .expect("the profile has axes on it")
+        .iter()
+        .find(|axis| axis["position"] == json!("leans_high"))
+        .unwrap_or_else(|| panic!("no axis moved: {screen}"))
+        .clone();
+    assert_eq!(axis["locked_by_user"], json!(false));
+    let axis_id = axis["axis_id"].as_str().expect("an axis id").to_owned();
+
+    // `axisId` is what `core.ts` sends and `axis_id` is what the command
+    // takes. This is the one call that proves the two are the same argument.
+    let corrected = shell
+        .invoke(
+            "correct_axis",
+            json!({ "axisId": axis_id, "position": "leans_low" }),
+        )
+        .expect("the user read the axis and said it is wrong");
+    let axis = corrected["axes"]
+        .as_array()
+        .expect("axes")
+        .iter()
+        .find(|row| row["axis_id"] == json!(axis_id))
+        .expect("the same axis");
+    assert_eq!(axis["position"], json!("leans_low"));
+    assert_eq!(
+        axis["locked_by_user"],
+        json!(true),
+        "AC-07: the correction did not pin the axis: {axis}",
+    );
+
+    // The field and the option are read off the screen rather than written
+    // out here, so the pair a test sets is one the profile page could offer.
+    let field = corrected["voice"]["fields"]
+        .as_array()
+        .expect("the voice has fields on it")[0]
+        .clone();
+    let name = field["field"].as_str().expect("a field name").to_owned();
+    let option = field["options"]
+        .as_array()
+        .expect("a field offers options")
+        .iter()
+        .map(|option| option["value"].clone())
+        .find(|value| *value != field["value"])
+        .unwrap_or_else(|| field["options"][0]["value"].clone());
+
+    let voiced = shell
+        .invoke("set_voice", json!({ "field": name, "option": option }))
+        .expect("the user sets one field by hand");
+    let set = voiced["voice"]["fields"]
+        .as_array()
+        .expect("voice fields")
+        .iter()
+        .find(|row| row["field"] == json!(name))
+        .expect("the field that was just set");
+    assert_eq!(set["value"], option);
+    assert_eq!(set["locked_by_user"], json!(true));
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
+/// `axisId` is what `core.ts` sends, and a command that tolerated it missing
+/// would hide a renamed one — the same argument
+/// `the_webview_spelling_of_the_argument_is_the_one_that_arrives` makes about
+/// the cloud switch, on the two commands the profile page has.
+#[test]
+fn the_profile_arguments_are_required_and_spelled_the_way_the_webview_spells_them() {
+    for body in [
+        json!({}),
+        json!({ "position": "mixed" }),
+        json!({ "axisId": "0192f000-0000-7000-8000-000000000004" }),
+    ] {
+        assert!(
+            invoke("correct_axis", body.clone()).is_err(),
+            "a half-filled correction resolved to something: {body}",
+        );
+    }
+    for body in [json!({}), json!({ "field": "warmth" }), json!({ "option": "warm" })] {
+        assert!(
+            invoke("set_voice", body.clone()).is_err(),
+            "a half-filled voice setting resolved to something: {body}",
+        );
+    }
+
+    // Both arguments present and naming something that is not one of the
+    // five: the command has to answer, and the answer has to be a refusal
+    // with a code on it rather than a panic.
+    let refusal = invoke(
+        "correct_axis",
+        json!({ "axisId": "not-an-axis", "position": "mixed" }),
+    )
+    .expect_err("that is not one of the five");
+    assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+}
+
+/// -------------------------------------------------------------- memory ---
+///
+/// What one memory says. Written here so the leakage checks below have
+/// something specific to look for on every answer the 记忆 page receives.
+const MEMORY_TITLE: &str = "搬家那天";
+const MEMORY_SUMMARY: &str = "下午三点交的钥匙。";
+const MEMORY_RETITLED: &str = "交钥匙那天";
+
+/// WP04 over the real handler, both halves: the four writes the 记忆 page
+/// makes, and the forget that ends them.
+///
+/// `soulcore`'s `session_screens.rs` proves the forget refuses a preview
+/// nobody read and that the key destruction is real. What only this side can
+/// show is that all six commands are registered, that `memoryId` survives
+/// Tauri's conversion into `memory_id`, and that the JSON crossing back is a
+/// digest until somebody opens one — a list that carried the prose would put
+/// every memory on a screen the user only asked for an index of.
+#[test]
+fn a_memory_is_written_read_edited_and_forgotten_over_the_ipc() {
+    let shell = Shell::on(scratch());
+
+    let written = match shell.invoke(
+        "create_memory",
+        json!({
+            "memory": {
+                "memory_type": "episodic",
+                "title": MEMORY_TITLE,
+                "summary": MEMORY_SUMMARY,
+            }
+        }),
+    ) {
+        Ok(written) => written,
+        // No key, no store, nowhere to put a memory — and the screen has to
+        // be told which.
+        Err(refusal) => {
+            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+            return;
+        }
+    };
+    let memory_id = written["memory_id"].as_str().expect("a memory id").to_owned();
+    assert_eq!(written["title"], json!(MEMORY_TITLE));
+    assert_eq!(written["memory_type"], json!("episodic"));
+
+    let listed = shell.invoke("memory_list", json!({})).expect("the list");
+    assert_eq!(listed["memories"].as_array().map(Vec::len), Some(1));
+    assert_eq!(listed["memories"][0]["forget_state"], json!("active"));
+    let rendered = listed.to_string();
+    for prose in [MEMORY_TITLE, MEMORY_SUMMARY] {
+        assert!(
+            !rendered.contains(prose),
+            "the list carries `{prose}`, and a list is character counts: {listed}",
+        );
+    }
+
+    let detail = shell
+        .invoke("memory_detail", json!({ "memoryId": memory_id }))
+        .expect("the user asked for this one");
+    assert_eq!(detail["title"], json!(MEMORY_TITLE));
+    assert_eq!(detail["summary"], json!(MEMORY_SUMMARY));
+
+    let edited = shell
+        .invoke(
+            "update_memory",
+            json!({ "memoryId": memory_id, "change": { "title": MEMORY_RETITLED } }),
+        )
+        .expect("an edit");
+    assert_eq!(edited["title"], json!(MEMORY_RETITLED));
+    assert_eq!(
+        edited["summary"],
+        json!(MEMORY_SUMMARY),
+        "an absent field is left as it is, and this one was rewritten: {edited}",
+    );
+    assert_eq!(
+        edited["content_key_id"], written["content_key_id"],
+        "an edit reseals under the same key, so the memory stays one forget unit",
+    );
+
+    let preview = shell
+        .invoke("preview_forget", json!({ "memoryId": memory_id }))
+        .expect("the price");
+    assert_eq!(preview["destroys_anything"], json!(false));
+    assert_eq!(preview["memory_id"], json!(memory_id));
+    assert_eq!(preview["content_key_count"], json!(1));
+
+    // A confirmation that does not echo the preview the user was shown
+    // destroys nothing, and the memory still opens afterwards.
+    let refusal = shell
+        .invoke(
+            "forget_memory",
+            json!({
+                "confirmation": {
+                    "preview_id": "0192f000-0000-7000-8000-0000000000f1",
+                    "memory_id": memory_id,
+                }
+            }),
+        )
+        .expect_err("that is not the preview on screen");
+    assert_eq!(refusal["reason_code"], json!("PLAN_HASH_MISMATCH"));
+    assert!(
+        shell
+            .invoke("memory_detail", json!({ "memoryId": memory_id }))
+            .is_ok(),
+        "a refused forget destroyed something",
+    );
+
+    // The refusal spent the held preview, so the user reads the price again
+    // before the one that runs.
+    let preview = shell
+        .invoke("preview_forget", json!({ "memoryId": memory_id }))
+        .expect("the price again");
+    let receipt = shell
+        .invoke(
+            "forget_memory",
+            json!({
+                "confirmation": {
+                    "preview_id": preview["preview_id"],
+                    "memory_id": memory_id,
+                }
+            }),
+        )
+        .expect("the user read it and said yes");
+    assert_eq!(receipt["content_keys_destroyed"], json!(1));
+    assert_eq!(
+        receipt["matched_preview"],
+        json!(true),
+        "the receipt charged something other than what the preview quoted: {receipt}",
+    );
+
+    assert!(
+        shell
+            .invoke("memory_detail", json!({ "memoryId": memory_id }))
+            .is_err(),
+        "the content key is gone and the prose came back anyway",
+    );
+    let listed = shell.invoke("memory_list", json!({})).expect("the list");
+    assert_eq!(
+        listed["memories"][0]["forget_state"],
+        json!("forgotten"),
+        "the row stays as a tombstone: {listed}",
+    );
+
+    // AC-15 is key destruction rather than a flag on a row, so the launch
+    // after it cannot open the memory either.
+    let next_launch = shell.restart();
+    assert!(
+        next_launch
+            .invoke("memory_detail", json!({ "memoryId": memory_id }))
+            .is_err(),
+        "a restart decrypted a memory whose content key was destroyed",
+    );
+
+    // AC-23 for all of it: the chain heard about the writes and the forget,
+    // and none of it says what the memory was about.
+    let chain = next_launch
+        .invoke("audit_chain", json!({}))
+        .expect("the chain reads back");
+    assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
+    let played = chain.to_string();
+    for prose in [MEMORY_TITLE, MEMORY_SUMMARY, MEMORY_RETITLED] {
+        assert!(
+            !played.contains(prose),
+            "the chain carried `{prose}` across the IPC: {chain}",
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&next_launch.directory);
+}
+
+/// `memoryId` is what `core.ts` sends, for the three commands that name one.
+#[test]
+fn the_memory_arguments_are_required_and_spelled_the_way_the_webview_spells_them() {
+    for command in ["memory_detail", "preview_forget"] {
+        assert!(
+            invoke(command, json!({})).is_err(),
+            "{command} resolved a memory from a missing argument, which would hide a renamed one",
+        );
+    }
+    for (command, body) in [
+        ("update_memory", json!({ "change": { "title": "一句话" } })),
+        ("create_memory", json!({})),
+        ("forget_memory", json!({})),
+    ] {
+        assert!(
+            invoke(command, body.clone()).is_err(),
+            "{command} wrote from a missing argument: {body}",
+        );
+    }
+
+    // A well-formed identifier for a memory that is not in the store: the
+    // command has to answer, and the answer has to be a refusal with a code.
+    let refusal = invoke(
+        "memory_detail",
+        json!({ "memoryId": "0192f000-0000-7000-8000-000000000003" }),
+    )
+    .expect_err("nothing is in an empty store");
+    assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+}
+
+/// ------------------------------------------------------------ research ---
+///
+/// AC-20 over the real handler. `soulcore`'s `session_screens.rs` proves the
+/// preview writes no file; what only this side can show is that the command
+/// is registered and that the JSON the 研究 page receives has no third-party
+/// row on it — asked of a store with an export already in it, which is when
+/// there is something to exclude rather than nothing to find.
+#[test]
+fn the_research_preview_crosses_the_ipc_as_counts_and_no_third_party_row() {
+    let text = fixture("import/soul-import-v1/three_partners.jsonl");
+    let shell = Shell::on(scratch());
+
+    let receipt = match shell.invoke("commit_soul_import_v1", json!({ "text": text })) {
+        Ok(receipt) => receipt,
+        // No key, no store, no import — and the screen has to be told which.
+        Err(refusal) => {
+            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+            return;
+        }
+    };
+    assert_eq!(
+        receipt["events_written"],
+        json!(16),
+        "the store has to hold third-party rows for this test to mean anything",
+    );
+
+    let before: Vec<PathBuf> = std::fs::read_dir(&shell.directory)
+        .expect("read the data directory")
+        .map(|entry| entry.expect("an entry").path())
+        .collect();
+
+    let research = shell
+        .invoke("research_preview", json!({}))
+        .expect("a preview");
+    assert_eq!(research["written_to_disk"], json!(false));
+    assert_eq!(research["third_party_rows"], json!(0));
+    assert_eq!(research["export_kind"], json!("research_preview"));
+    assert_eq!(research["third_party_body"], json!("excluded"));
+
+    let after: Vec<PathBuf> = std::fs::read_dir(&shell.directory)
+        .expect("read the data directory")
+        .map(|entry| entry.expect("an entry").path())
+        .collect();
+    assert_eq!(before, after, "a preview-only export left a file behind");
+
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the chain reads back");
+    assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
+
+    // Sixteen messages went into that store, and not one of them may come
+    // back out — on the preview the 研究 page draws or on the chain beside it.
+    let answered = format!("{research}{chain}");
+    for line in text.lines().filter(|line| line.contains("\"text\"")) {
+        let said = line
+            .rsplit_once("\"text\":\"")
+            .and_then(|(_, rest)| rest.split_once('"'))
+            .map(|(said, _)| said)
+            .expect("every message line carries a body");
+        assert!(
+            !answered.contains(said),
+            "the research preview answered with something the export said: {said}",
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
 /// The screen's empty state is the core's sentence, and its answer about
 /// sending is fixed.
 #[test]

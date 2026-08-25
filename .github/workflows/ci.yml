@@ -128,6 +128,28 @@ jobs:
       - name: just ci
         run: just ci
 
+      # The GUI stack `apps/desktop/src-tauri` links against. Deliberately not
+      # part of `just ci`: a Linux author who has not installed webkit still has
+      # to be able to run the documented entry point.
+      - name: install the webview stack
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+
+      # `just ci` never builds the desktop workspace, so until this step the
+      # twelve commands behind the profile, memory and research screens crossed
+      # `invoke_handler` on no runner at all: Windows can compile ipc_roundtrip
+      # but cannot load its harness (WebView2Loader, see the job below). These
+      # tests drive Tauri's mock runtime, which needs no display, so the
+      # camelCase-to-snake_case argument conversion the WebView depends on is
+      # finally exercised somewhere automatic.
+      - name: cargo test (desktop shell, mock runtime)
+        run: >
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+          --test ipc_roundtrip
+          --test command_surface
+          --test no_egress_path
+
   test-windows:
     name: test (windows-latest)
     runs-on: windows-latest
