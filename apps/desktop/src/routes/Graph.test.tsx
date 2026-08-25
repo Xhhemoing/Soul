@@ -8,7 +8,7 @@
  * somebody in it still has no name on it.
  */
 
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -19,9 +19,13 @@ import {
   aPersonSummary,
   forbidNetwork,
   installFakeCore,
+  NOT_A_BAND_NOTICE,
   WORKING_HYPOTHESIS_NOTICE,
   type FakeCoreOptions,
 } from "../test/fakeCore";
+
+/** The tie `aPeopleGraph` carries, which every correction below is about. */
+const TIE_ID = "0192f000-0000-7000-8000-00000000000a";
 
 async function open(options: FakeCoreOptions = {}) {
   const core = installFakeCore(options);
@@ -73,6 +77,115 @@ describe("人脉图页", () => {
     expect(localOnly).not.toHaveTextContent(
       "别人的数据只留在本机：这些节点和边都不进任何出网请求，也不进研究预览。",
     );
+  });
+
+  /**
+   * The band under a tie is a working hypothesis, and a working hypothesis the
+   * user cannot overrule is the black box constraint 10 rules out. Pressing one
+   * of the three band words is the whole gesture: the core writes the
+   * correction and answers with the graph, and the screen renders what came
+   * back rather than patching the row it just pressed.
+   *
+   * What has to stay on screen afterwards is the machine's own reading. A lock
+   * that hid what it overruled would leave the user unable to tell what the
+   * counts say about the edge they pinned — which is the same page's promise
+   * read backwards.
+   */
+  it("按下一个档位就是一次纠正：档位改了、锁上了，机器那一读还在屏幕上", async () => {
+    const core = await open({ graph: aPeopleGraph() });
+    const user = userEvent.setup();
+    const tie = () => screen.getByTestId(`tie-${TIE_ID}`);
+
+    expect(within(tie()).queryByTestId(`tie-locked-${TIE_ID}`)).toBeNull();
+    await user.click(within(tie()).getByRole("button", { name: "强" }));
+
+    expect(core.callsTo("correct_tie")[0]?.payload).toEqual({
+      relationshipId: TIE_ID,
+      band: "strong",
+    });
+    expect(await screen.findByTestId(`tie-locked-${TIE_ID}`)).toHaveTextContent(
+      "你改过这一档，重算不再动它",
+    );
+    expect(tie()).toHaveTextContent("强：往来 6 次");
+    // The counts are what a correction does not touch: what was overruled is
+    // the one word derived from them.
+    expect(tie()).toHaveTextContent("发出 3");
+    expect(screen.getByTestId(`tie-machine-${TIE_ID}`)).toHaveTextContent(
+      "机器按这些计数算的是「中等」",
+    );
+    // The row that changed the band is evidence like any other, and the core
+    // hands it back resolved with the rest.
+    expect(screen.getByTestId("tie-evidence")).toHaveTextContent("依据 3 条证据");
+    expect(screen.getByTestId("tie-evidence")).toHaveTextContent("user_correction");
+  });
+
+  /**
+   * The way back out. A lock with no visible release is a lock whose support
+   * burden lands on the user, and the core has `release_tie` for exactly this;
+   * what this checks is that the screen offers it only where there is a lock,
+   * and that pressing it puts the counts back in charge.
+   */
+  it("锁住之后才有「按计数重新算」，按下去档位交回给计数", async () => {
+    const core = await open({ graph: aPeopleGraph() });
+    const user = userEvent.setup();
+    const tie = () => screen.getByTestId(`tie-${TIE_ID}`);
+
+    expect(within(tie()).queryByRole("button", { name: "按计数重新算" })).toBeNull();
+    await user.click(within(tie()).getByRole("button", { name: "弱" }));
+    await screen.findByTestId(`tie-locked-${TIE_ID}`);
+
+    await user.click(within(tie()).getByRole("button", { name: "按计数重新算" }));
+
+    expect(core.callsTo("release_tie")[0]?.payload).toEqual({ relationshipId: TIE_ID });
+    await waitFor(() => expect(screen.queryByTestId(`tie-locked-${TIE_ID}`)).toBeNull());
+    expect(screen.queryByTestId(`tie-machine-${TIE_ID}`)).toBeNull();
+    expect(tie()).toHaveTextContent("中等：往来 6 次");
+    expect(within(tie()).queryByRole("button", { name: "按计数重新算" })).toBeNull();
+  });
+
+  /**
+   * Three words and no fourth: COPY_ZH allows 弱 / 中等 / 强 for a 档位 and the
+   * core's `band_named` is a closed set of the same three. The button for the
+   * band already in force is grey, the way the profile page greys the position
+   * an axis already holds — pressing it would write a correction that changes
+   * nothing.
+   */
+  it("只有那三个档位词，当前这一档的按钮是灰的", async () => {
+    await open({ graph: aPeopleGraph() });
+    const tie = screen.getByTestId(`tie-${TIE_ID}`);
+
+    const bands = within(tie)
+      .getAllByRole("button")
+      .map((button) => button.textContent);
+    expect(bands).toEqual(["弱", "中等", "强"]);
+    expect(within(tie).getByRole("button", { name: "中等" })).toBeDisabled();
+    expect(within(tie).getByRole("button", { name: "强" })).toBeEnabled();
+    expect(screen.getByTestId("ties-explanation")).toHaveTextContent("工作假设");
+  });
+
+  /**
+   * A refused correction is a value with a reason code on it, and the graph
+   * the user was reading stays where it was. The core refuses a word that is
+   * not one of the three before it reaches the store, which is the case this
+   * fixture stands in for.
+   */
+  it("核心拒绝这次纠正的时候，屏幕给出理由码，图还是原来那张", async () => {
+    await open({
+      graph: aPeopleGraph(),
+      correctingTie: () => {
+        throw { reason_code: "ROUTINE", explanation: NOT_A_BAND_NOTICE };
+      },
+    });
+    const user = userEvent.setup();
+
+    await user.click(
+      within(screen.getByTestId(`tie-${TIE_ID}`)).getByRole("button", { name: "强" }),
+    );
+
+    expect(await screen.findByTestId("tie-refusal-code")).toHaveTextContent("ROUTINE");
+    expect(screen.getByRole("alert")).toHaveTextContent(NOT_A_BAND_NOTICE);
+    expect(screen.getByTestId(`tie-${TIE_ID}`)).toHaveTextContent("中等：往来 6 次");
+    expect(screen.queryByTestId(`tie-locked-${TIE_ID}`)).toBeNull();
   });
 
   /**
@@ -226,6 +339,10 @@ describe("人脉图页", () => {
 
     await user.click(screen.getAllByRole("button", { name: "看这个人的摘要" })[0]!);
     await screen.findByTestId("summary-text");
+    await user.click(
+      within(screen.getByTestId(`tie-${TIE_ID}`)).getByRole("button", { name: "强" }),
+    );
+    await screen.findByTestId(`tie-locked-${TIE_ID}`);
 
     expect(attempts).toEqual([]);
   });
