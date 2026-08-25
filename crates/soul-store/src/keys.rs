@@ -23,13 +23,14 @@
 
 use std::fmt;
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use chacha20poly1305::aead::rand_core::RngCore;
 use chacha20poly1305::aead::{Aead, AeadCore, KeyInit, OsRng, Payload};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
+use fs4::FileExt;
 use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
 
@@ -237,49 +238,68 @@ fn mint_key_file(path: &Path, len: usize) -> KeyResult<Vec<u8>> {
 // first one just created away from it — its DEK is gone and `soul.db` never
 // opens again.
 //
-// `create_new` is the one filesystem operation that settles the question:
-// exactly one caller creates the name, everyone else is told `AlreadyExists`
-// and reads what the winner wrote.
+// `create_new` settles half of that: exactly one caller creates the name,
+// everyone else is told `AlreadyExists` and reads what the winner wrote. It
+// says nothing about the other half — a name that was created by a process
+// that died before writing a byte into it. Somebody has to fill that empty
+// file, and the obvious repair, unlink it and `create_new` again, puts the
+// original race straight back: two recoverers both unlink and both create,
+// the second one's file is the one that survives, and the first walks off
+// with key material that is on nobody's disk. An unlink is worse than that
+// even, because it can land after a third process has already filled the
+// name, deleting a key some database is already open under.
+//
+// So the name is never unlinked. Nothing in this module deletes it, and
+// nothing may be added that does. An empty file is settled where it lies,
+// under an exclusive lock on the file itself: whoever takes the lock first
+// looks at the length, writes if it is zero, reads if it is not, and the next
+// holder of the lock therefore finds bytes rather than a decision to make.
 
 /// How long a caller that lost the race waits for the winner's bytes.
 ///
 /// The window it covers is the moment between the winner creating the name
-/// and its single `write_all` landing — microseconds on a local disk. The
-/// budget is this generous because the cost of running out is a wrong answer
-/// and the cost of waiting is a first run that takes a quarter of a second.
+/// and its single `write_all` landing — microseconds on a local disk. Running
+/// out of it is neither an error nor a wrong answer any more: it hands the
+/// question to the claim lock in [`fill_or_adopt`], which is slower and
+/// certain. Polling first is worth it because it is much the cheaper of the
+/// two on the ordinary second-launch path.
 const CLAIM_SETTLE_TIMEOUT: Duration = Duration::from_millis(250);
 
 /// Gap between looks at a file another process has claimed.
 const CLAIM_SETTLE_POLL: Duration = Duration::from_millis(2);
 
 /// Put `bytes` at `path` if and only if nothing is there yet, and hand back
-/// whatever ended up there — our bytes if we created the name, the winner's if
-/// somebody else did.
+/// whatever ended up there — our bytes if we were the caller that filled the
+/// file, the winner's if somebody else was.
 ///
 /// The caller must use the returned bytes and not the ones it passed in. That
 /// is the whole point: a process that lost the race has to open the database
 /// with the key that is on disk, not with the key it happened to mint.
 fn publish_once(path: &Path, bytes: &[u8]) -> std::io::Result<Vec<u8>> {
-    // Two passes at most. The second one exists only for a name that was
-    // created and then left empty by a process that died mid-write; see
-    // `settled_contents`.
-    for attempt in 0..2 {
-        match OpenOptions::new().write(true).create_new(true).open(path) {
-            Ok(mut file) => {
-                file.write_all(bytes)?;
-                file.sync_all()?;
-                return Ok(bytes.to_vec());
-            }
+    // The loop is not a retry of the claim — `fill_or_adopt` settles that in
+    // one pass. It bounds how many times the name may be seen to exist and
+    // then be gone again by the time it is opened. Nothing here unlinks it, so
+    // one turn is the whole story unless somebody is deleting the key file by
+    // hand while Soul starts, and eight turns of that is enough to say so.
+    for _ in 0..8 {
+        match OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(path)
+        {
+            Ok(file) => return fill_or_adopt(file, bytes),
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 if let Some(existing) = settled_contents(path)? {
                     return Ok(existing);
                 }
-                if attempt == 0 {
-                    // An empty file holds no key material, so no database was
-                    // ever opened with it and clearing it destroys nothing.
-                    // That is what makes this safe and it is why the recovery
-                    // is limited to exactly this case.
-                    let _ = std::fs::remove_file(path);
+                // Still empty. Somebody created the name and did not fill it,
+                // which is what an interrupted first run leaves behind. Open
+                // what is there and settle it under the lock.
+                match OpenOptions::new().read(true).write(true).open(path) {
+                    Ok(file) => return fill_or_adopt(file, bytes),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(error) => return Err(error),
                 }
             }
             Err(error) => return Err(error),
@@ -288,27 +308,66 @@ fn publish_once(path: &Path, bytes: &[u8]) -> std::io::Result<Vec<u8>> {
 
     Err(std::io::Error::new(
         std::io::ErrorKind::InvalidData,
-        format!(
-            "{} exists and is empty, which is what an interrupted first run leaves behind; \
-             remove it and start again",
-            path.display(),
-        ),
+        format!("{} kept vanishing while being claimed", path.display()),
     ))
+}
+
+/// Fill an already-created key file, or adopt what is already in it.
+///
+/// The exclusive lock is what makes the length check mean anything. Without
+/// it, two recoverers of the same abandoned empty name both see zero bytes
+/// and both write, and only one of those writes is the file anybody else will
+/// read. With it the second one blocks, wakes up looking at a non-zero
+/// length, and adopts.
+///
+/// The adopting read is issued on the locked handle rather than through a
+/// second open of the path, and that is not a convenience. Windows locks a
+/// byte range, so an unlocked read of a range a peer holds fails outright;
+/// Unix `flock` is only advisory, so an unlocked read is free to come back
+/// with half of a write that is still in progress. Neither is a hazard for a
+/// reader that is holding the lock itself.
+fn fill_or_adopt(mut file: std::fs::File, bytes: &[u8]) -> std::io::Result<Vec<u8>> {
+    FileExt::lock(&file)?;
+    let outcome = if file.metadata()?.len() == 0 {
+        file.write_all(bytes)
+            .and_then(|_| file.sync_all())
+            .map(|_| bytes.to_vec())
+    } else {
+        let mut existing = Vec::new();
+        file.seek(SeekFrom::Start(0))
+            .and_then(|_| file.read_to_end(&mut existing))
+            .map(|_| existing)
+    };
+    // Closing the handle would release the lock anyway; unlocking first keeps
+    // the window shut for exactly as long as the answer took to produce, and
+    // a failure to unlock is not something the caller can act on.
+    let _ = FileExt::unlock(&file);
+    outcome
 }
 
 /// Read a file somebody else claimed, waiting out the gap between the claim
 /// and the write that fills it.
 ///
 /// `None` means the gap never closed: the file is still empty after
-/// [`CLAIM_SETTLE_TIMEOUT`], or it has gone away again.
+/// [`CLAIM_SETTLE_TIMEOUT`], or it has gone away again. Both answers send the
+/// caller to [`fill_or_adopt`], which settles the question under the lock.
 fn settled_contents(path: &Path) -> std::io::Result<Option<Vec<u8>>> {
     let deadline = Instant::now() + CLAIM_SETTLE_TIMEOUT;
     loop {
         match std::fs::read(path) {
             Ok(bytes) if !bytes.is_empty() => return Ok(Some(bytes)),
             Ok(_) => {}
+            // A name that is not there is not a slow claim, so there is
+            // nothing to wait for.
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => return Err(error),
+            // Anything else is treated as the transient it usually is. This
+            // read is unlocked, and on Windows an unlocked read of a range a
+            // peer holds the claim lock over fails with a lock violation —
+            // which is precisely the moment this function exists to wait out.
+            // An error that outlives the deadline is not swallowed: the
+            // caller's next move is to open the same path, and a real
+            // failure is reported from there.
+            Err(_) => {}
         }
         if Instant::now() >= deadline {
             return Ok(None);
@@ -748,7 +807,8 @@ mod tests {
 
     /// The one state the claim can leave behind: a name created by a process
     /// that died before it wrote. Nothing was ever opened with those zero
-    /// bytes, so the next run may clear them and mint for real.
+    /// bytes, so the next run may fill them in place and mint for real —
+    /// without the name ever leaving the filesystem.
     #[test]
     fn a_name_claimed_and_left_empty_is_reclaimed_rather_than_reported() {
         let directory = scratch();
@@ -757,6 +817,67 @@ mod tests {
 
         assert_eq!(publish_once(&path, b"minted").expect("mint"), b"minted");
         assert_eq!(std::fs::read(&path).expect("the file"), b"minted");
+    }
+
+    /// The same recovery, but with eight processes attempting it at once.
+    ///
+    /// This is the harder half of the empty-file case and the one that used to
+    /// be wrong. Every racer sees the same abandoned name, so every racer is a
+    /// recoverer; the file has to end up holding exactly one of their keys and
+    /// all eight have to be handed that one. A recovery that unlinks the name
+    /// before minting cannot promise that — two recoverers both unlink it and
+    /// both create it, and the loser walks away with key material that is not
+    /// on disk. Four rounds because the divergence is a timing window and one
+    /// round can miss it.
+    #[test]
+    fn racing_recoverers_of_an_abandoned_empty_file_agree_on_one_key() {
+        let racers = 8;
+
+        for round in 0..4 {
+            let directory = scratch();
+            let path = directory.path().join("keys.dpapi");
+            std::fs::write(&path, b"").expect("an interrupted first run");
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(racers));
+
+            let settled: Vec<Vec<u8>> = std::thread::scope(|scope| {
+                let handles: Vec<_> = (0..racers)
+                    .map(|index| {
+                        let barrier = std::sync::Arc::clone(&barrier);
+                        let path = path.clone();
+                        scope.spawn(move || {
+                            // Distinct payloads, so the answer names its author.
+                            let mine = vec![index as u8 + 1; 128];
+                            barrier.wait();
+                            publish_once(&path, &mine).expect("reclaim the key file")
+                        })
+                    })
+                    .collect();
+                handles
+                    .into_iter()
+                    .map(|handle| handle.join().expect("racer"))
+                    .collect()
+            });
+
+            let on_disk = std::fs::read(&path).expect("the key file");
+            assert!(
+                !on_disk.is_empty(),
+                "round {round} left the abandoned name still empty",
+            );
+            for (index, answer) in settled.iter().enumerate() {
+                assert_eq!(
+                    answer, &on_disk,
+                    "round {round}: recoverer {index} was handed key material that is not the \
+                     one on disk",
+                );
+            }
+            assert_eq!(
+                std::fs::read_dir(directory.path())
+                    .expect("read the directory")
+                    .count(),
+                1,
+                "round {round} left something behind beside the key file",
+            );
+        }
     }
 
     /// The same race through the provider that Linux CI actually uses.
