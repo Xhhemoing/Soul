@@ -57,8 +57,9 @@ use soul_fileplan::{Refusal, ScanLimits};
 use soul_policy::audit::{append_or_store_error, AuditContent};
 use soul_policy::clock::{now_unix_millis, now_unix_seconds, rfc3339_utc};
 use soul_policy::hitl::{RequestOrigin, TokenIssuer};
+use soul_policy::injection::{self, UntrustedText};
 use soul_policy::ReasonCode;
-use soul_schema::audit::AuditAction;
+use soul_schema::audit::{AuditAction, AuditCounts};
 use soul_store::SqlCipherStore;
 use soul_store_api::forget::ForgetImpact;
 
@@ -695,6 +696,17 @@ impl Session {
     /// answer to a caller who said nothing is decided here rather than in the
     /// shell: an absent second confirmation is not a confirmation, and that is
     /// the sort of thing `soulcore` should be the one to say.
+    ///
+    /// A paste that tried to give instructions is counted into the chain here
+    /// rather than at the far end. [`Draft::audit`] carries the same entry, but
+    /// only for a generation that came back, so a user who read the plan and
+    /// pressed 取消 left AC-25's paste channel with nothing recorded — while the
+    /// local path through [`Session::draft_pasted`] recorded it every time. The
+    /// count is written down and nothing here reads it: the plan handed back is
+    /// the one `prepare_pasted` built, and [`E1DraftPlan`] gains no field for a
+    /// marker or a URL that would then be on the confirmation screen.
+    ///
+    /// [`Draft::audit`]: soul_draft::draft::Draft::audit
     pub fn prepare_draft(
         &mut self,
         pasted: &str,
@@ -712,7 +724,9 @@ impl Session {
             pasted,
             include_original == Some(true),
         );
-        prepared.map_err(|refusal| self.refuse_draft(refusal))
+        let plan = prepared.map_err(|refusal| self.refuse_draft(refusal))?;
+        self.note_injection(injection::scan(&UntrustedText::new(pasted)).len() as u64)?;
+        Ok(plan)
     }
 
     /// Step two: the user approved the plan they were shown.
@@ -870,10 +884,20 @@ impl Session {
     /// itself needs nothing — `soul-import` never touches a database — but a
     /// screen that counted up somebody's export and only then said there is
     /// nowhere to put it would have read the file for no reason.
+    ///
+    /// The count of lines that tried to give instructions has been on
+    /// [`ImportPreview`] since WP06 and went to the screen and nowhere else, so
+    /// an export previewed and then abandoned left AC-25's import channel
+    /// unrecorded. A commit writes its own entry through `import_commands`, and
+    /// that one stays: a file that was read and a file that was sealed are two
+    /// facts, and two rows of counts is what an honest chain looks like when
+    /// both happened.
     pub fn preview_soul_import_v1(&self, text: &str) -> Result<ImportPreview, SessionRefusal> {
         self.opened_store()?;
         let staged = import_commands::read_soul_import_v1(text)?;
-        Ok(ImportPreview::of(&staged))
+        let preview = ImportPreview::of(&staged);
+        self.note_injection(preview.messages_with_injection_markers)?;
+        Ok(preview)
     }
 
     /// The same for a Telegram Desktop `result.json`. AC-05.
@@ -884,7 +908,9 @@ impl Session {
     pub fn preview_telegram(&self, text: &str) -> Result<ImportPreview, SessionRefusal> {
         self.opened_store()?;
         let staged = import_commands::read_telegram(&telegram_document(text)?)?;
-        Ok(ImportPreview::of(&staged))
+        let preview = ImportPreview::of(&staged);
+        self.note_injection(preview.messages_with_injection_markers)?;
+        Ok(preview)
     }
 
     /// Seal a `soul-import-v1` file into the store. AC-04.
@@ -1348,6 +1374,31 @@ impl Session {
             append_or_store_error(&mut *store, content.clone(), at)?;
         }
         Ok(())
+    }
+
+    /// Record that external content tried something, `count` times over.
+    ///
+    /// The shape is the one [`DirectoryScan::injection_audit`] and
+    /// [`Draft::audit`] already write: denied, `INJECTION_MARKERS_FOUND`, a
+    /// count of what tried, and no `bytes` — the length of a hostile sentence
+    /// is still information about the sentence. A count of zero writes nothing,
+    /// so a clean paste or a clean export does not leave a row saying it was
+    /// suspected.
+    ///
+    /// [`DirectoryScan::injection_audit`]: soul_fileplan::DirectoryScan::injection_audit
+    /// [`Draft::audit`]: soul_draft::draft::Draft::audit
+    fn note_injection(&self, count: u64) -> Result<(), SessionRefusal> {
+        if count == 0 {
+            return Ok(());
+        }
+        self.append_audit(&[AuditContent::denied(
+            AuditAction::InjectionBlocked,
+            ReasonCode::InjectionMarkersFound,
+        )
+        .counting(AuditCounts {
+            items: Some(count),
+            bytes: None,
+        })])
     }
 
     fn opened_store(&self) -> Result<Arc<Mutex<SqlCipherStore>>, SessionRefusal> {
