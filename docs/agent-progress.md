@@ -14,8 +14,8 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core 已合入；CI/IA/算法/地图审查齐 |
-| 当前任务 | ROUND 2 数据审查已合入；Opus 修 DATA-1；IndexedDB 等第一次 Grid 落盘 |
-| PR | #16 专属线；#20–#29（#29 数据审查） |
+| 当前任务 | 对齐复查已合入；Opus 修 DATA-1 与 AL-2/AL-3 |
+| PR | #16 专属线；#20–#30（#30 对齐复查） |
 | Merge | 壳、core、壳 Review 文档已合进专属线；不合 unique trunk |
 | Blocked | F4/S1/S2 等 VM |
 
