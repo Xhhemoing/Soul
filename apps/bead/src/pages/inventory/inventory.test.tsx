@@ -5,14 +5,25 @@ import type { UserEvent } from "@testing-library/user-event";
 import { FlakyStorage } from "../../test/flaky-storage.ts";
 import { renderApp } from "../../test/render.tsx";
 import { asPatternId, mintProjectId } from "../../stores/ids.ts";
-import { createRepository } from "../../stores/repository.ts";
+import { createGrid } from "../../algo/grid.ts";
+import { createPatternDoc } from "../../stores/patterns.ts";
+import {
+  createInMemoryRepository,
+  createRepository,
+  type Repository,
+} from "../../stores/repository.ts";
 import {
   buildPurchaseText,
   selectRequirements,
   selectShortages,
   selectSubstituteGroups,
 } from "../../stores/inventory.ts";
-import type { InventoryEntry, Project, ProjectStatus } from "../../stores/types.ts";
+import {
+  GALLERY_PALETTE,
+  type InventoryEntry,
+  type Project,
+  type ProjectStatus,
+} from "../../stores/types.ts";
 
 // 画廊 gal-lantern-04 的 palette 就是这一页的 BOM 真源（D-INV-1）：
 // R04 朱红 #d8412f 112 / Y01 明黄 #f5d13b 76 / B05 墨黑 #1b1b1f 152。
@@ -32,7 +43,7 @@ function project(patternId: string | null = LANTERN, status: ProjectStatus = "ac
 }
 
 function stock(code: string, hex: string, beads: number, name = `名-${code}`): InventoryEntry {
-  return { code, name, hex, beads };
+  return { paletteId: GALLERY_PALETTE, code, name, hex, beads };
 }
 
 function shortageRegion(): HTMLElement {
@@ -292,6 +303,58 @@ describe("T-INV-12 导出采购文本（D-INV-11）", () => {
     const download = screen.getByRole("link", { name: "下载采购清单" });
     expect(download).toHaveAttribute("download", "bead-purchase-list.txt");
     expect(download.getAttribute("href")).toMatch(/^blob:/);
+  });
+});
+
+describe("T-UP-19 转换项目需求并入缺口（BD20 / §4.3）", () => {
+  // generic-5mm 第 7 条是 G07 Silver；画廊 gal-moss-07 的 G07 是苔绿。
+  // 同一个码、两个命名空间，页面上必须是两行。
+  const converted = project(null, "todo");
+  const doc = createPatternDoc(
+    converted.id,
+    createGrid(4, 1, [6, 6, 6, 6]),
+    { kind: "PixelArt", ditherApplied: false },
+  );
+
+  it("豆图读回来之后 generic-5mm 的缺口行在场，且带命名空间标签", async () => {
+    renderApp({ route: "/inventory", seed: { projects: [converted] }, patterns: [doc] });
+    await screen.findByRole("heading", { level: 1, name: "资产" });
+
+    const row = (await within(shortageRegion()).findByText("G07 Silver")).closest("li");
+    expect(row).not.toBeNull();
+    expect(within(row!).getByText("【通用5mm】")).toBeInTheDocument();
+    expect(within(row!).getByText("缺 4 颗")).toBeInTheDocument();
+  });
+
+  it("画廊 G07 库存不抵扣转换项目的 G07（T-UP-18 的页面一半）", async () => {
+    renderApp({
+      route: "/inventory",
+      seed: {
+        projects: [converted, project(LANTERN)],
+        inventory: [stock("G07", "#4c7a44", 500, "苔绿")],
+      },
+      patterns: [doc],
+    });
+    await screen.findByRole("heading", { level: 1, name: "资产" });
+
+    const region = shortageRegion();
+    expect(await within(region).findByText("G07 Silver")).toBeInTheDocument();
+    expect(within(region).queryByText("G07 苔绿")).not.toBeInTheDocument();
+    expect(within(region).getByText("缺 4 颗")).toBeInTheDocument();
+  });
+
+  it("读取窗口有显式状态，不假装缺口已经算全（R-UP-4）", async () => {
+    // 永不 settle 的 loadPatternDoc：加载窗口被钉住，好让状态可断言。
+    const repository: Repository = {
+      ...createInMemoryRepository({ projects: [converted] }),
+      loadPatternDoc: () => new Promise(() => {}),
+    };
+    renderApp({ route: "/inventory", repository });
+    await screen.findByRole("heading", { level: 1, name: "资产" });
+
+    expect(
+      within(shortageRegion()).getByText("正在读取转换项目豆图……"),
+    ).toBeInTheDocument();
   });
 });
 

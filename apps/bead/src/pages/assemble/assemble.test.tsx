@@ -4,10 +4,17 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import { currentPath, renderApp } from "../../test/render.tsx";
 import { FlakyStorage } from "../../test/flaky-storage.ts";
 import { fixtureGridFor } from "../../fixtures/grids.ts";
-import { createRepository } from "../../stores/repository.ts";
-import { asPatternId, mintProjectId } from "../../stores/ids.ts";
+import {
+  createInMemoryRepository,
+  createRepository,
+  type Repository,
+} from "../../stores/repository.ts";
+import { asPatternId, asProjectId, mintProjectId } from "../../stores/ids.ts";
+import { createGrid } from "../../algo/grid.ts";
 import { splitSteps } from "../../algo/steps.ts";
-import type { ProgressCursor, Project } from "../../stores/types.ts";
+import { createPatternDoc } from "../../stores/patterns.ts";
+import type { PatternDoc, ProgressCursor, Project } from "../../stores/types.ts";
+import { LOADING_GRID_NOTE, NO_GRID_NOTE } from "./AssemblePage.tsx";
 
 const SLIME = asPatternId("gal-slime-01");
 const SIDE = 28;
@@ -380,6 +387,110 @@ describe("暂无网格态与框架不变量（T-ASM-17 / D-ASM-12）", () => {
     expect(screen.queryByTestId("assemble-grid")).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "拼装控制" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("assemble-clock")).not.toBeInTheDocument();
+  });
+});
+
+describe("转换项目走同一条会话（T-UP-16 / T-UP-17）", () => {
+  // generic-5mm 下标 5 是 G06 Black，14 是 G15 Red。两色 4×2，单色模式两步。
+  const CONVERTED_CELLS = [5, 5, 14, 14, 5, null, 14, null];
+
+  function converted(): { seeded: Project; doc: PatternDoc } {
+    const seeded = project({ sourcePatternId: null, title: "上传转出来的图" });
+    const doc = createPatternDoc(asProjectId(seeded.id), createGrid(4, 2, CONVERTED_CELLS), {
+      kind: "PixelArt",
+      ditherApplied: false,
+    });
+    return { seeded, doc };
+  }
+
+  /** `currentRows` is wired to the 28-wide fixture; this board is 4 wide. */
+  function convertedCurrentRows(): number[] {
+    const grid = screen.getByTestId("assemble-grid");
+    const rows = new Set<number>();
+    [...grid.children].forEach((cell, index) => {
+      if (cell.getAttribute("data-cell-state") === "current") rows.add(Math.floor(index / 4));
+    });
+    return [...rows].sort((a, b) => a - b);
+  }
+
+  it("豆图读回来后渲染 assemble-grid，色号文本来自 generic-5mm", async () => {
+    const { seeded, doc } = converted();
+    renderApp({
+      route: `/assemble/${seeded.id}`,
+      seed: { projects: [seeded] },
+      patterns: [doc],
+    });
+
+    const grid = await screen.findByTestId("assemble-grid");
+    // AssembleCanvas 的 API 没变：同一个 {grid, palette} 适配器，同一套三态。
+    expect(grid.getAttribute("aria-label")).toMatch(/第 1\/2 步 · 色号 G06 Black/);
+    expect(beads("current")).toHaveLength(3);
+    expect(beads("pending")).toHaveLength(3);
+    expect(beads("done")).toHaveLength(0);
+  });
+
+  it("步进 / 模式 / 游标与画廊项目同一套行为", async () => {
+    const { seeded, doc } = converted();
+    const { user, repository } = renderApp({
+      route: `/assemble/${seeded.id}`,
+      seed: { projects: [seeded] },
+      patterns: [doc],
+    });
+
+    await screen.findByTestId("assemble-grid");
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    expect(beads("done")).toHaveLength(3);
+    expect(screen.getByTestId("assemble-grid").getAttribute("aria-label")).toMatch(
+      /第 2\/2 步 · 色号 G15 Red/,
+    );
+
+    await user.click(screen.getByRole("radio", { name: "逐行扫描" }));
+    expect(beads("done")).toHaveLength(0);
+    expect(convertedCurrentRows()).toEqual([0]);
+    await waitFor(async () => {
+      const stored = await repository.loadProgress();
+      expect(stored[0]).toMatchObject({ projectId: seeded.id, mode: "row-by-row", stepIndex: 0 });
+    });
+  });
+
+  it("种进去的游标照样恢复，四个模式都在", async () => {
+    const { seeded, doc } = converted();
+    renderApp({
+      route: `/assemble/${seeded.id}`,
+      seed: {
+        projects: [seeded],
+        progress: [cursorFor(seeded, { mode: "row-by-row", stepIndex: 1 })],
+      },
+      patterns: [doc],
+    });
+
+    await screen.findByTestId("assemble-grid");
+    expect(screen.getByRole("radio", { name: "逐行扫描" })).toBeChecked();
+    expect(convertedCurrentRows()).toEqual([1]);
+    expect(screen.getAllByRole("radio", { name: /推进|扫描|填充/ })).toHaveLength(4);
+  });
+
+  it("T-UP-17：仓里没有豆图 → 新版 NO_GRID_NOTE，且不提上传", async () => {
+    const seeded = project({ sourcePatternId: null, title: "没有豆图的转换项目" });
+    renderApp({ route: `/assemble/${seeded.id}`, seed: { projects: [seeded] } });
+
+    expect(await screen.findByText(/还没有豆图网格/)).toBeInTheDocument();
+    expect(screen.getByText(/还没有豆图网格/)).toHaveTextContent(NO_GRID_NOTE);
+    expect(screen.getByText(/还没有豆图网格/)).not.toHaveTextContent("WP-B03");
+    expect(screen.queryByTestId("assemble-grid")).not.toBeInTheDocument();
+  });
+
+  it("T-UP-17：读取窗口是显式加载态，不是「没有网格」", async () => {
+    const seeded = project({ sourcePatternId: null, title: "读取中的转换项目" });
+    const repository: Repository = {
+      ...createInMemoryRepository({ projects: [seeded] }),
+      loadPatternDoc: () => new Promise(() => {}),
+    };
+    renderApp({ route: `/assemble/${seeded.id}`, repository });
+
+    const note = await screen.findByText(LOADING_GRID_NOTE);
+    expect(note).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByText(/还没有豆图网格/)).not.toBeInTheDocument();
   });
 });
 
