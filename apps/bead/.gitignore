@@ -1,0 +1,3 @@
+# Build products stay inside the isolated tree, so the ignore rule does too.
+dist/
+coverage/

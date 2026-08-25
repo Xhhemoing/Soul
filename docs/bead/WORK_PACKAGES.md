@@ -10,7 +10,8 @@
 
 ## WP-B01 — bead-core（算法源）
 
-独立 Cargo 包：`crates/bead-core/Cargo.toml`，`[workspace]` 只有自己。
+独立 Cargo 包：`crates/bead-core/Cargo.toml`，`[workspace]` 只有自己。  
+共存硬约束（BD15）：Cargo.toml 不要写 `repository`/`homepage` URL；Rust 源里置信度叫 `confidence`，禁止出现 `score`/`得分`/`分数`/`评分`。
 
 必须实现并单测：
 
@@ -27,7 +28,8 @@
 7. **BOM**：色号、显示名、颗数。
 8. **替代色**：库存缺色时，在库存内找 ΔE00&lt;3 的候选，按 ΔE 升序。
 
-完成标准：`cargo test` 在该包内绿；有 README 说明如何运行。
+完成标准：`cargo test` 在该包内绿；有 README 说明如何运行。  
+验收钉死：`docs/bead/reviews/round1-algorithms.md`（G1–G8 与 T-* 测试号）。Sharma 数值以 `docs/bead/fixtures-ciede2000.md` 为准；文中 #34 若夹具未列，标 TODO，禁止编造。
 
 ## WP-B02 — 应用壳
 
@@ -39,11 +41,13 @@
 - 黑/白主题 token；后续组装页可全屏沉浸。
 - 不要引用 `@soul/desktop` 或任何 `soul-*` crate。
 
-完成标准：`pnpm --filter @bead/app test` 绿；导航与空状态有测试。
+完成标准：`pnpm --filter @bead/app test` 绿；导航与空状态有测试。  
+共存硬约束（BD15/BD16）：清单与源码不要写外网 URL（含 JSON `$schema`）；落地提交必须重生成根 `pnpm-lock.yaml`，并给 `.gitignore` 加 `apps/bead/dist/`。
 
 ## WP-B03 — 图像转豆图（浏览器管线）
 
-在 `apps/bead` 用 TypeScript 复刻 B01 的公开契约（同一 fixture 必须得到同一色号序列）。  
+落点已拍板（BD14）：只写 `apps/bead/src/algo/`。不要建 `packages/bead-algo`。等 WP-B02 壳合入后再开工。  
+在该目录用 TypeScript 复刻 B01 的公开契约（同一 fixture 必须得到同一色号序列，比对色号而非裸 ΔE 浮点）。  
 v0 不强制 wasm；Rust 包是算法 oracle。  
 支持上传 png/jpg、像素图/正常图切换、三种框定、抖动开关、板型预设。
 
