@@ -24,8 +24,9 @@ DPAPI → KEK → DB DEK → 每单元 CK。正文字段 AEAD，AAD=行 id+字�
 
 - 开库时 `PRAGMA secure_delete = ON`，释放的页内字节被清零而不是留着。SQLCipher 在 codec 挂上时本来就会把它打开，但那是依赖内部的行为，本仓库任何地方都没写过；现在是显式设置并**读回校验**，`SqlCipherStore::open` 读到的不是 1 就直接报错退出。
 - `execute_forget` 提交之后立刻 `wal_checkpoint(TRUNCATE)`，把日志折回主库并截到 0 字节。这一步此前没有，日志会一直留着旧页直到应用下次碰巧 flush。
+- 被销毁的 CK id 记进 `destroyed_content_keys`（只有裸 UUID，没有第二列；`SECURITY.md` 本来就允许被遗忘对象的 UUID 活在审计链里）。删掉那一行只是把 id 空了出来，而 `ensure_content_key` 对任何自己没有的 id 都会新铸一把——于是下一次以同一个 id 密封会成功，那些已经标成 `forgotten` 的墓碑行背后又有了活密钥。有了这张表，这种密封直接返回 `ContentKeyDestroyed`。`meta.schema_version` 因此升到 2：旧库下次开库自动建表，但**它记不住升级之前发生过的遗忘**，那之前销毁的 id 仍可被重铸。
 
-于是可测语义变成：CK 那一行没了，包裹字节在主库页与 WAL 里都不再是可读的形态，正文解不出来。`crates/soul-store/tests/forget.rs` 断言 pragma 读回 1（关库重开后仍是 1，它是连接属性不是文件属性）、`execute_forget` 之后 `-wal` 是 0 字节（去掉 checkpoint 这条测试就红）。**没有**做解密后的逐页扫描：SQLite 唯一能做这件事的接口是 `sqlite_dbpage`，`libsqlite3-sys` 的 bundled 构建只开了 `SQLITE_ENABLE_DBSTAT_VTAB`，而且那张虚表可写，开它等于给任何拿到 DEK 的东西一条改原始页的路；测试里以「这个构建确实没有 `sqlite_dbpage`」的断言记着这件事，哪天有了就该把真扫描补上。同一个测试用明文库做对照，证明这个构建里关掉 pragma 删除的字节确实还在文件里、打开就没了。
+于是可测语义变成：CK 那一行没了，包裹字节在主库页与 WAL 里都不再是可读的形态，那个 id 也不会再有第二把密钥，正文解不出来。`crates/soul-store/tests/forget.rs` 断言 pragma 读回 1（关库重开后仍是 1，它是连接属性不是文件属性）、`execute_forget` 之后 `-wal` 是 0 字节（去掉 checkpoint 这条测试就红）、以及遗忘之后再拿同一个 CK id 密封被拒且重开库仍然被拒（去掉台账这条测试也红）。**没有**做解密后的逐页扫描：SQLite 唯一能做这件事的接口是 `sqlite_dbpage`，`libsqlite3-sys` 的 bundled 构建只开了 `SQLITE_ENABLE_DBSTAT_VTAB`，而且那张虚表可写，开它等于给任何拿到 DEK 的东西一条改原始页的路；测试里以「这个构建确实没有 `sqlite_dbpage`」的断言记着这件事，哪天有了就该把真扫描补上。同一个测试用明文库做对照，证明这个构建里关掉 pragma 删除的字节确实还在文件里、打开就没了。
 
 仍然不承诺 SSD 物理擦除：盘上更早的物理块可能仍带着旧密文，wear leveling 与 TRIM 不在本文件的承诺范围内。
 

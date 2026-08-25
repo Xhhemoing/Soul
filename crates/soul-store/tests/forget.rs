@@ -322,6 +322,88 @@ fn after_a_forget_and_a_restart_the_prose_is_unreadable_and_the_audit_chain_stil
     );
 }
 
+/// A forgotten content key id must be dead, not merely unclaimed.
+///
+/// Deleting the wrapped key leaves the id itself free, and `ensure_content_key`
+/// mints a key for any id it is asked for and does not already hold. So the
+/// next seal naming a forgotten id would succeed, and the rows that still name
+/// it — tombstones, marked forgotten — would have a live key behind them
+/// again. Only the ledger of destroyed ids makes that impossible.
+#[test]
+fn a_content_key_id_that_has_been_forgotten_cannot_be_minted_again() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("forget-ledger.db");
+    let keys = TestKeyProvider::from_seed(SEED);
+
+    {
+        let mut store = SqlCipherStore::open(&path, &keys).expect("open");
+        seed(&mut store);
+        store
+            .execute_forget(ForgetUnit::Memory(id(MEMORY_TRIP)))
+            .expect("forget the trip");
+
+        let refused = store.seal(owner_seal(
+            id(KEY_TITLE),
+            id(MEMORY_TRIP),
+            "title_ref",
+            "北京，写第二遍",
+        ));
+        assert!(
+            matches!(&refused, Err(StoreError::ContentKeyDestroyed(refused_id))
+                if *refused_id == id(KEY_TITLE)),
+            "sealing under a forgotten id must be refused rather than quietly given a \
+             fresh key; got {refused:?}",
+        );
+        assert!(
+            !store.has_content_key(id(KEY_TITLE)),
+            "and the refusal must not have minted one on its way out",
+        );
+        assert_eq!(
+            store.content_key_count().expect("count keys"),
+            1,
+            "still only the note's key",
+        );
+
+        // A key the forget never touched has to go on working, or the ledger
+        // would be indistinguishable from a store that refuses everything.
+        store
+            .seal(owner_seal(
+                id(KEY_NOTE),
+                id(MEMORY_NOTE),
+                "summary_ref",
+                "第二段记忆的补充",
+            ))
+            .expect("an untouched key must still seal");
+        store.close().expect("close, as if the application exited");
+    }
+
+    let mut store = SqlCipherStore::open(&path, &keys).expect("reopen after a restart");
+    assert!(
+        store
+            .content_key_destroyed(id(KEY_TITLE))
+            .expect("read the ledger"),
+        "the ledger is the durable part; a restart must not clear it",
+    );
+    assert!(
+        matches!(
+            store.seal(owner_seal(
+                id(KEY_TITLE),
+                id(MEMORY_TRIP),
+                "title_ref",
+                "北京，写第三遍"
+            )),
+            Err(StoreError::ContentKeyDestroyed(_)),
+        ),
+        "a restart must not turn a forgotten id back into a mintable one",
+    );
+    assert!(
+        !store
+            .content_key_destroyed(id(KEY_NOTE))
+            .expect("read the ledger"),
+        "the ledger must name what was forgotten and nothing else",
+    );
+}
+
 /// Destroying the wrapped key only means something if the bytes go with it.
 ///
 /// Two things have to be true for that, and they are true for different

@@ -284,6 +284,17 @@ impl ForgetOps for SqlCipherStore {
             )
             .map_err(backend)?;
 
+            // Deleting the row frees the id. `ensure_content_key` mints a key
+            // for any id it does not already hold, so without this the next
+            // seal naming a forgotten id would quietly give the tombstones
+            // that name it a live key again. Same transaction as the delete,
+            // so a crash cannot leave one without the other.
+            tx.execute(
+                "INSERT OR IGNORE INTO destroyed_content_keys (content_key_id) VALUES (?1)",
+                [content_key_id.to_string()],
+            )
+            .map_err(backend)?;
+
             // AC-15 injects between one destruction and the next. The whole
             // forget runs in one transaction, so a crash here leaves every key
             // intact rather than half the unit readable and half not.

@@ -247,9 +247,30 @@ impl SqlCipherStore {
         Ok(Some(SecretKey::from_bytes(bytes)))
     }
 
+    /// Whether this id has already been through a forget.
+    ///
+    /// The wrapped key is gone by then, and nothing else in the database says
+    /// the id ever existed, so a caller asking to seal under it again would be
+    /// handed a brand new key — and the tombstoned rows that name the id would
+    /// have a live key behind them once more.
+    pub fn content_key_destroyed(&self, content_key_id: Uuid) -> StoreResult<bool> {
+        self.conn
+            .query_row(
+                "SELECT 1 FROM destroyed_content_keys WHERE content_key_id = ?1",
+                [content_key_id.to_string()],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .map(|row| row.is_some())
+            .map_err(backend)
+    }
+
     fn ensure_content_key(&mut self, content_key_id: Uuid) -> StoreResult<SecretKey> {
         if let Some(existing) = self.content_key(content_key_id)? {
             return Ok(existing);
+        }
+        if self.content_key_destroyed(content_key_id)? {
+            return Err(StoreError::ContentKeyDestroyed(content_key_id));
         }
         let fresh = SecretKey::random();
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
