@@ -1,0 +1,2468 @@
+{
+ "palette": "generic-5mm",
+ "note": "WP-B01 与 WP-B03 共享的 parity fixture：同一 RGBA 输入必须得到同一色号序列。",
+ "deltaEMarginFloor": 0.000001,
+ "cases": [
+  {
+   "name": "pixel-art-upscaled-4x",
+   "purpose": "像素图路径：detectGrid 撤销 4× 放大，抖动被强制关闭",
+   "width": 28,
+   "height": 28,
+   "rgbaHex": "0000000000000000000000000000000000000000000000000000000000000000fadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000fadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000fadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000fadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cfffadc3cff000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff0000000000000000000000000000000000000000000000000000000000000000e62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff0000000000000000000000000000000000000000000000000000000000000000e62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff0000000000000000000000000000000000000000000000000000000000000000e62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff00000000000000000000000000000000e62832ffe62832ffe62832ffe62832ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffffffffffffffffffffffffffffffffff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffffffffffffffffffffffffffffffffff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffffffffffffffffffffffffffffffffff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffffffffffffffffffffffffffffffffff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff2878c8ff2878c8ff2878c8ff2878c8ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff2878c8ff2878c8ff2878c8ff2878c8ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff2878c8ff2878c8ff2878c8ff2878c8ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff2878c8ff2878c8ff2878c8ff2878c8ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff2878c8ff2878c8ff2878c8ff2878c8ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff2878c8ff2878c8ff2878c8ff2878c8ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff2878c8ff2878c8ff2878c8ff2878c8ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff2878c8ff2878c8ff2878c8ff2878c8ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffffffffffffffffffffffffffffffffff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffffffffffffffffffffffffffffffffff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffffffffffffffffffffffffffffffffff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffffffffffffffffffffffffffffffffff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ff2878c8ffe62832ffe62832ffe62832ffe62832ff00000000000000000000000000000000e62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff0000000000000000000000000000000000000000000000000000000000000000e62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff0000000000000000000000000000000000000000000000000000000000000000e62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff0000000000000000000000000000000000000000000000000000000000000000e62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ffe62832ff000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff785032ff0000000000000000000000000000000000000000000000000000000000000000",
+   "options": {
+    "framing": {
+     "mode": "aspect",
+     "maxSide": 7
+    },
+    "dither": true
+   },
+   "expected": {
+    "kind": "PixelArt",
+    "ditherApplied": false,
+    "detectedGrid": {
+     "cellWidth": 4,
+     "cellHeight": 4,
+     "offsetX": 0,
+     "offsetY": 0
+    },
+    "gridWidth": 7,
+    "gridHeight": 7,
+    "codes": [
+     null,
+     null,
+     "G12",
+     "G12",
+     "G12",
+     null,
+     null,
+     null,
+     "G08",
+     "G08",
+     "G08",
+     "G08",
+     "G08",
+     null,
+     "G08",
+     "G21",
+     "G21",
+     "G01",
+     "G21",
+     "G21",
+     "G08",
+     "G08",
+     "G21",
+     "G01",
+     "G01",
+     "G01",
+     "G21",
+     "G08",
+     "G08",
+     "G21",
+     "G21",
+     "G01",
+     "G21",
+     "G21",
+     "G08",
+     null,
+     "G08",
+     "G08",
+     "G08",
+     "G08",
+     "G08",
+     null,
+     null,
+     null,
+     "G29",
+     "G29",
+     "G29",
+     null,
+     null
+    ],
+    "bom": [
+     {
+      "code": "G08",
+      "count": 16
+     },
+     {
+      "code": "G21",
+      "count": 10
+     },
+     {
+      "code": "G01",
+      "count": 5
+     },
+     {
+      "code": "G12",
+      "count": 3
+     },
+     {
+      "code": "G29",
+      "count": 3
+     }
+    ],
+    "steps": {
+     "color-by-color": [
+      {
+       "part": "all",
+       "group": 0,
+       "color": "G12",
+       "count": 3,
+       "first": "2,0",
+       "last": "4,0"
+      },
+      {
+       "part": "all",
+       "group": 1,
+       "color": "G29",
+       "count": 3,
+       "first": "2,6",
+       "last": "4,6"
+      },
+      {
+       "part": "all",
+       "group": 2,
+       "color": "G01",
+       "count": 5,
+       "first": "3,2",
+       "last": "3,4"
+      },
+      {
+       "part": "all",
+       "group": 3,
+       "color": "G21",
+       "count": 10,
+       "first": "1,2",
+       "last": "5,4"
+      },
+      {
+       "part": "all",
+       "group": 4,
+       "color": "G08",
+       "count": 16,
+       "first": "1,1",
+       "last": "5,5"
+      }
+     ],
+     "tile": [
+      {
+       "part": "all",
+       "group": 0,
+       "color": null,
+       "count": 37,
+       "first": "2,0",
+       "last": "4,6"
+      }
+     ],
+     "outline-infill": [
+      {
+       "part": "outline",
+       "group": 0,
+       "color": null,
+       "count": 24,
+       "first": "2,0",
+       "last": "4,6"
+      },
+      {
+       "part": "fill",
+       "group": 0,
+       "color": null,
+       "count": 13,
+       "first": "3,1",
+       "last": "3,5"
+      }
+     ],
+     "row-by-row": [
+      {
+       "part": "all",
+       "group": 0,
+       "color": null,
+       "count": 3,
+       "first": "2,0",
+       "last": "4,0"
+      },
+      {
+       "part": "all",
+       "group": 1,
+       "color": null,
+       "count": 5,
+       "first": "1,1",
+       "last": "5,1"
+      },
+      {
+       "part": "all",
+       "group": 2,
+       "color": null,
+       "count": 7,
+       "first": "0,2",
+       "last": "6,2"
+      },
+      {
+       "part": "all",
+       "group": 3,
+       "color": null,
+       "count": 7,
+       "first": "0,3",
+       "last": "6,3"
+      },
+      {
+       "part": "all",
+       "group": 4,
+       "color": null,
+       "count": 7,
+       "first": "0,4",
+       "last": "6,4"
+      },
+      {
+       "part": "all",
+       "group": 5,
+       "color": null,
+       "count": 5,
+       "first": "1,5",
+       "last": "5,5"
+      },
+      {
+       "part": "all",
+       "group": 6,
+       "color": null,
+       "count": 3,
+       "first": "2,6",
+       "last": "4,6"
+      }
+     ]
+    }
+   },
+   "minRunnerUpMargin": 8.596708605663798
+  },
+  {
+   "name": "photo-no-dither",
+   "purpose": "照片路径，抖动关",
+   "width": 16,
+   "height": 16,
+   "rgbaHex": "080880ff180880ff280880ff380880ff480880ff580880ff680880ff780880ff880880ff980880ffa80880ffb80880ffc80880ffd80880ffe80880fff80880ff081880ff181880ff281880ff381880ff481880ff581880ff681880ff781880ff881880ff981880ffa81880ffb81880ffc81880ffd81880ffe81880fff81880ff082880ff182880ff282880ff382880ff482880ff582880ff682880ff782880ff882880ff982880ffa82880ffb82880ffc82880ffd82880ffe82880fff82880ff083880ff183880ff283880ff383880ff483880ff583880ff683880ff783880ff883880ff983880ffa83880ffb83880ffc83880ffd83880ffe83880fff83880ff084880ff184880ff284880ff384880ff484880ff584880ff684880ff784880ff884880ff984880ffa84880ffb84880ffc84880ffd84880ffe84880fff84880ff085880ff185880ff285880ff385880ff485880ff585880ff685880ff785880ff885880ff985880ffa85880ffb85880ffc85880ffd85880ffe85880fff85880ff086880ff186880ff286880ff386880ff486880ff586880ff686880ff786880ff886880ff986880ffa86880ffb86880ffc86880ffd86880ffe86880fff86880ff087880ff187880ff287880ff387880ff487880ff587880ff687880ff787880ff887880ff987880ffa87880ffb87880ffc87880ffd87880ffe87880fff87880ff088880ff188880ff288880ff388880ff488880ff588880ff688880ff788880ff888880ff988880ffa88880ffb88880ffc88880ffd88880ffe88880fff88880ff089880ff189880ff289880ff389880ff489880ff589880ff689880ff789880ff889880ff989880ffa89880ffb89880ffc89880ffd89880ffe89880fff89880ff08a880ff18a880ff28a880ff38a880ff48a880ff58a880ff68a880ff78a880ff88a880ff98a880ffa8a880ffb8a880ffc8a880ffd8a880ffe8a880fff8a880ff08b880ff18b880ff28b880ff38b880ff48b880ff58b880ff68b880ff78b880ff88b880ff98b880ffa8b880ffb8b880ffc8b880ffd8b880ffe8b880fff8b880ff08c880ff18c880ff28c880ff38c880ff48c880ff58c880ff68c880ff78c880ff88c880ff98c880ffa8c880ffb8c880ffc8c880ffd8c880ffe8c880fff8c880ff08d880ff18d880ff28d880ff38d880ff48d880ff58d880ff68d880ff78d880ff88d880ff98d880ffa8d880ffb8d880ffc8d880ffd8d880ffe8d880fff8d880ff08e880ff18e880ff28e880ff38e880ff48e880ff58e880ff68e880ff78e880ff88e880ff98e880ffa8e880ffb8e880ffc8e880ffd8e880ffe8e880fff8e880ff08f880ff18f880ff28f880ff38f880ff48f880ff58f880ff68f880ff78f880ff88f880ff98f880ffa8f880ffb8f880ffc8f880ffd8f880ffe8f880fff8f880ff",
+   "options": {
+    "framing": {
+     "mode": "aspect",
+     "maxSide": 8
+    },
+    "dither": false,
+    "kind": "Photo"
+   },
+   "expected": {
+    "kind": "Photo",
+    "ditherApplied": false,
+    "detectedGrid": null,
+    "gridWidth": 8,
+    "gridHeight": 8,
+    "codes": [
+     "G26",
+     "G26",
+     "G26",
+     "G26",
+     "G25",
+     "G27",
+     "G27",
+     "G27",
+     "G22",
+     "G22",
+     "G26",
+     "G26",
+     "G25",
+     "G27",
+     "G27",
+     "G27",
+     "G22",
+     "G22",
+     "G22",
+     "G25",
+     "G25",
+     "G27",
+     "G27",
+     "G28",
+     "G36",
+     "G36",
+     "G21",
+     "G05",
+     "G27",
+     "G28",
+     "G28",
+     "G28",
+     "G19",
+     "G19",
+     "G19",
+     "G04",
+     "G04",
+     "G30",
+     "G37",
+     "G37",
+     "G16",
+     "G16",
+     "G16",
+     "G16",
+     "G16",
+     "G32",
+     "G32",
+     "G11",
+     "G16",
+     "G16",
+     "G16",
+     "G15",
+     "G15",
+     "G15",
+     "G13",
+     "G32",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G13"
+    ],
+    "bom": [
+     {
+      "code": "G15",
+      "count": 10
+     },
+     {
+      "code": "G27",
+      "count": 9
+     },
+     {
+      "code": "G16",
+      "count": 8
+     },
+     {
+      "code": "G26",
+      "count": 6
+     },
+     {
+      "code": "G22",
+      "count": 5
+     },
+     {
+      "code": "G25",
+      "count": 4
+     },
+     {
+      "code": "G28",
+      "count": 4
+     },
+     {
+      "code": "G19",
+      "count": 3
+     },
+     {
+      "code": "G32",
+      "count": 3
+     },
+     {
+      "code": "G04",
+      "count": 2
+     },
+     {
+      "code": "G13",
+      "count": 2
+     },
+     {
+      "code": "G36",
+      "count": 2
+     },
+     {
+      "code": "G37",
+      "count": 2
+     },
+     {
+      "code": "G05",
+      "count": 1
+     },
+     {
+      "code": "G11",
+      "count": 1
+     },
+     {
+      "code": "G21",
+      "count": 1
+     },
+     {
+      "code": "G30",
+      "count": 1
+     }
+    ],
+    "steps": {
+     "color-by-color": [
+      {
+       "part": "all",
+       "group": 0,
+       "color": "G05",
+       "count": 1,
+       "first": "3,3",
+       "last": "3,3"
+      },
+      {
+       "part": "all",
+       "group": 1,
+       "color": "G11",
+       "count": 1,
+       "first": "7,5",
+       "last": "7,5"
+      },
+      {
+       "part": "all",
+       "group": 2,
+       "color": "G21",
+       "count": 1,
+       "first": "2,3",
+       "last": "2,3"
+      },
+      {
+       "part": "all",
+       "group": 3,
+       "color": "G30",
+       "count": 1,
+       "first": "5,4",
+       "last": "5,4"
+      },
+      {
+       "part": "all",
+       "group": 4,
+       "color": "G04",
+       "count": 2,
+       "first": "3,4",
+       "last": "4,4"
+      },
+      {
+       "part": "all",
+       "group": 5,
+       "color": "G13",
+       "count": 2,
+       "first": "6,6",
+       "last": "7,7"
+      },
+      {
+       "part": "all",
+       "group": 6,
+       "color": "G36",
+       "count": 2,
+       "first": "0,3",
+       "last": "1,3"
+      },
+      {
+       "part": "all",
+       "group": 7,
+       "color": "G37",
+       "count": 2,
+       "first": "6,4",
+       "last": "7,4"
+      },
+      {
+       "part": "all",
+       "group": 8,
+       "color": "G19",
+       "count": 3,
+       "first": "0,4",
+       "last": "2,4"
+      },
+      {
+       "part": "all",
+       "group": 9,
+       "color": "G32",
+       "count": 3,
+       "first": "5,5",
+       "last": "7,6"
+      },
+      {
+       "part": "all",
+       "group": 10,
+       "color": "G25",
+       "count": 4,
+       "first": "4,0",
+       "last": "4,2"
+      },
+      {
+       "part": "all",
+       "group": 11,
+       "color": "G28",
+       "count": 4,
+       "first": "7,2",
+       "last": "7,3"
+      },
+      {
+       "part": "all",
+       "group": 12,
+       "color": "G22",
+       "count": 5,
+       "first": "0,1",
+       "last": "2,2"
+      },
+      {
+       "part": "all",
+       "group": 13,
+       "color": "G26",
+       "count": 6,
+       "first": "0,0",
+       "last": "3,1"
+      },
+      {
+       "part": "all",
+       "group": 14,
+       "color": "G16",
+       "count": 8,
+       "first": "0,5",
+       "last": "2,6"
+      },
+      {
+       "part": "all",
+       "group": 15,
+       "color": "G27",
+       "count": 9,
+       "first": "5,0",
+       "last": "4,3"
+      },
+      {
+       "part": "all",
+       "group": 16,
+       "color": "G15",
+       "count": 10,
+       "first": "3,6",
+       "last": "6,7"
+      }
+     ],
+     "tile": [
+      {
+       "part": "all",
+       "group": 0,
+       "color": null,
+       "count": 64,
+       "first": "0,0",
+       "last": "7,7"
+      }
+     ],
+     "outline-infill": [
+      {
+       "part": "outline",
+       "group": 0,
+       "color": null,
+       "count": 28,
+       "first": "0,0",
+       "last": "7,7"
+      },
+      {
+       "part": "fill",
+       "group": 0,
+       "color": null,
+       "count": 36,
+       "first": "1,1",
+       "last": "6,6"
+      }
+     ],
+     "row-by-row": [
+      {
+       "part": "all",
+       "group": 0,
+       "color": null,
+       "count": 8,
+       "first": "0,0",
+       "last": "7,0"
+      },
+      {
+       "part": "all",
+       "group": 1,
+       "color": null,
+       "count": 8,
+       "first": "0,1",
+       "last": "7,1"
+      },
+      {
+       "part": "all",
+       "group": 2,
+       "color": null,
+       "count": 8,
+       "first": "0,2",
+       "last": "7,2"
+      },
+      {
+       "part": "all",
+       "group": 3,
+       "color": null,
+       "count": 8,
+       "first": "0,3",
+       "last": "7,3"
+      },
+      {
+       "part": "all",
+       "group": 4,
+       "color": null,
+       "count": 8,
+       "first": "0,4",
+       "last": "7,4"
+      },
+      {
+       "part": "all",
+       "group": 5,
+       "color": null,
+       "count": 8,
+       "first": "0,5",
+       "last": "7,5"
+      },
+      {
+       "part": "all",
+       "group": 6,
+       "color": null,
+       "count": 8,
+       "first": "0,6",
+       "last": "7,6"
+      },
+      {
+       "part": "all",
+       "group": 7,
+       "color": null,
+       "count": 8,
+       "first": "0,7",
+       "last": "7,7"
+      }
+     ]
+    }
+   },
+   "minRunnerUpMargin": 0.24743091910359993
+  },
+  {
+   "name": "photo-dither",
+   "purpose": "照片路径，抖动开",
+   "width": 16,
+   "height": 16,
+   "rgbaHex": "080880ff180880ff280880ff380880ff480880ff580880ff680880ff780880ff880880ff980880ffa80880ffb80880ffc80880ffd80880ffe80880fff80880ff081880ff181880ff281880ff381880ff481880ff581880ff681880ff781880ff881880ff981880ffa81880ffb81880ffc81880ffd81880ffe81880fff81880ff082880ff182880ff282880ff382880ff482880ff582880ff682880ff782880ff882880ff982880ffa82880ffb82880ffc82880ffd82880ffe82880fff82880ff083880ff183880ff283880ff383880ff483880ff583880ff683880ff783880ff883880ff983880ffa83880ffb83880ffc83880ffd83880ffe83880fff83880ff084880ff184880ff284880ff384880ff484880ff584880ff684880ff784880ff884880ff984880ffa84880ffb84880ffc84880ffd84880ffe84880fff84880ff085880ff185880ff285880ff385880ff485880ff585880ff685880ff785880ff885880ff985880ffa85880ffb85880ffc85880ffd85880ffe85880fff85880ff086880ff186880ff286880ff386880ff486880ff586880ff686880ff786880ff886880ff986880ffa86880ffb86880ffc86880ffd86880ffe86880fff86880ff087880ff187880ff287880ff387880ff487880ff587880ff687880ff787880ff887880ff987880ffa87880ffb87880ffc87880ffd87880ffe87880fff87880ff088880ff188880ff288880ff388880ff488880ff588880ff688880ff788880ff888880ff988880ffa88880ffb88880ffc88880ffd88880ffe88880fff88880ff089880ff189880ff289880ff389880ff489880ff589880ff689880ff789880ff889880ff989880ffa89880ffb89880ffc89880ffd89880ffe89880fff89880ff08a880ff18a880ff28a880ff38a880ff48a880ff58a880ff68a880ff78a880ff88a880ff98a880ffa8a880ffb8a880ffc8a880ffd8a880ffe8a880fff8a880ff08b880ff18b880ff28b880ff38b880ff48b880ff58b880ff68b880ff78b880ff88b880ff98b880ffa8b880ffb8b880ffc8b880ffd8b880ffe8b880fff8b880ff08c880ff18c880ff28c880ff38c880ff48c880ff58c880ff68c880ff78c880ff88c880ff98c880ffa8c880ffb8c880ffc8c880ffd8c880ffe8c880fff8c880ff08d880ff18d880ff28d880ff38d880ff48d880ff58d880ff68d880ff78d880ff88d880ff98d880ffa8d880ffb8d880ffc8d880ffd8d880ffe8d880fff8d880ff08e880ff18e880ff28e880ff38e880ff48e880ff58e880ff68e880ff78e880ff88e880ff98e880ffa8e880ffb8e880ffc8e880ffd8e880ffe8e880fff8e880ff08f880ff18f880ff28f880ff38f880ff48f880ff58f880ff68f880ff78f880ff88f880ff98f880ffa8f880ffb8f880ffc8f880ffd8f880ffe8f880fff8f880ff",
+   "options": {
+    "framing": {
+     "mode": "aspect",
+     "maxSide": 8
+    },
+    "dither": true,
+    "kind": "Photo"
+   },
+   "expected": {
+    "kind": "Photo",
+    "ditherApplied": true,
+    "detectedGrid": null,
+    "gridWidth": 8,
+    "gridHeight": 8,
+    "codes": [
+     "G26",
+     "G26",
+     "G26",
+     "G26",
+     "G25",
+     "G27",
+     "G27",
+     "G27",
+     "G22",
+     "G22",
+     "G26",
+     "G25",
+     "G38",
+     "G27",
+     "G27",
+     "G08",
+     "G22",
+     "G22",
+     "G22",
+     "G25",
+     "G27",
+     "G38",
+     "G27",
+     "G27",
+     "G36",
+     "G36",
+     "G05",
+     "G05",
+     "G04",
+     "G27",
+     "G37",
+     "G28",
+     "G17",
+     "G36",
+     "G16",
+     "G04",
+     "G04",
+     "G33",
+     "G37",
+     "G37",
+     "G16",
+     "G19",
+     "G16",
+     "G19",
+     "G33",
+     "G03",
+     "G33",
+     "G11",
+     "G16",
+     "G16",
+     "G16",
+     "G15",
+     "G15",
+     "G15",
+     "G32",
+     "G32",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G13"
+    ],
+    "bom": [
+     {
+      "code": "G15",
+      "count": 10
+     },
+     {
+      "code": "G27",
+      "count": 9
+     },
+     {
+      "code": "G16",
+      "count": 6
+     },
+     {
+      "code": "G22",
+      "count": 5
+     },
+     {
+      "code": "G26",
+      "count": 5
+     },
+     {
+      "code": "G04",
+      "count": 3
+     },
+     {
+      "code": "G25",
+      "count": 3
+     },
+     {
+      "code": "G33",
+      "count": 3
+     },
+     {
+      "code": "G36",
+      "count": 3
+     },
+     {
+      "code": "G37",
+      "count": 3
+     },
+     {
+      "code": "G05",
+      "count": 2
+     },
+     {
+      "code": "G19",
+      "count": 2
+     },
+     {
+      "code": "G32",
+      "count": 2
+     },
+     {
+      "code": "G38",
+      "count": 2
+     },
+     {
+      "code": "G03",
+      "count": 1
+     },
+     {
+      "code": "G08",
+      "count": 1
+     },
+     {
+      "code": "G11",
+      "count": 1
+     },
+     {
+      "code": "G13",
+      "count": 1
+     },
+     {
+      "code": "G17",
+      "count": 1
+     },
+     {
+      "code": "G28",
+      "count": 1
+     }
+    ],
+    "steps": {
+     "color-by-color": [
+      {
+       "part": "all",
+       "group": 0,
+       "color": "G03",
+       "count": 1,
+       "first": "5,5",
+       "last": "5,5"
+      },
+      {
+       "part": "all",
+       "group": 1,
+       "color": "G08",
+       "count": 1,
+       "first": "7,1",
+       "last": "7,1"
+      },
+      {
+       "part": "all",
+       "group": 2,
+       "color": "G11",
+       "count": 1,
+       "first": "7,5",
+       "last": "7,5"
+      },
+      {
+       "part": "all",
+       "group": 3,
+       "color": "G13",
+       "count": 1,
+       "first": "7,7",
+       "last": "7,7"
+      },
+      {
+       "part": "all",
+       "group": 4,
+       "color": "G17",
+       "count": 1,
+       "first": "0,4",
+       "last": "0,4"
+      },
+      {
+       "part": "all",
+       "group": 5,
+       "color": "G28",
+       "count": 1,
+       "first": "7,3",
+       "last": "7,3"
+      },
+      {
+       "part": "all",
+       "group": 6,
+       "color": "G05",
+       "count": 2,
+       "first": "2,3",
+       "last": "3,3"
+      },
+      {
+       "part": "all",
+       "group": 7,
+       "color": "G19",
+       "count": 2,
+       "first": "1,5",
+       "last": "3,5"
+      },
+      {
+       "part": "all",
+       "group": 8,
+       "color": "G32",
+       "count": 2,
+       "first": "6,6",
+       "last": "7,6"
+      },
+      {
+       "part": "all",
+       "group": 9,
+       "color": "G38",
+       "count": 2,
+       "first": "4,1",
+       "last": "5,2"
+      },
+      {
+       "part": "all",
+       "group": 10,
+       "color": "G04",
+       "count": 3,
+       "first": "4,3",
+       "last": "4,4"
+      },
+      {
+       "part": "all",
+       "group": 11,
+       "color": "G25",
+       "count": 3,
+       "first": "4,0",
+       "last": "3,2"
+      },
+      {
+       "part": "all",
+       "group": 12,
+       "color": "G33",
+       "count": 3,
+       "first": "5,4",
+       "last": "6,5"
+      },
+      {
+       "part": "all",
+       "group": 13,
+       "color": "G36",
+       "count": 3,
+       "first": "0,3",
+       "last": "1,4"
+      },
+      {
+       "part": "all",
+       "group": 14,
+       "color": "G37",
+       "count": 3,
+       "first": "6,3",
+       "last": "7,4"
+      },
+      {
+       "part": "all",
+       "group": 15,
+       "color": "G22",
+       "count": 5,
+       "first": "0,1",
+       "last": "2,2"
+      },
+      {
+       "part": "all",
+       "group": 16,
+       "color": "G26",
+       "count": 5,
+       "first": "0,0",
+       "last": "2,1"
+      },
+      {
+       "part": "all",
+       "group": 17,
+       "color": "G16",
+       "count": 6,
+       "first": "2,4",
+       "last": "2,6"
+      },
+      {
+       "part": "all",
+       "group": 18,
+       "color": "G27",
+       "count": 9,
+       "first": "5,0",
+       "last": "5,3"
+      },
+      {
+       "part": "all",
+       "group": 19,
+       "color": "G15",
+       "count": 10,
+       "first": "3,6",
+       "last": "6,7"
+      }
+     ],
+     "tile": [
+      {
+       "part": "all",
+       "group": 0,
+       "color": null,
+       "count": 64,
+       "first": "0,0",
+       "last": "7,7"
+      }
+     ],
+     "outline-infill": [
+      {
+       "part": "outline",
+       "group": 0,
+       "color": null,
+       "count": 28,
+       "first": "0,0",
+       "last": "7,7"
+      },
+      {
+       "part": "fill",
+       "group": 0,
+       "color": null,
+       "count": 36,
+       "first": "1,1",
+       "last": "6,6"
+      }
+     ],
+     "row-by-row": [
+      {
+       "part": "all",
+       "group": 0,
+       "color": null,
+       "count": 8,
+       "first": "0,0",
+       "last": "7,0"
+      },
+      {
+       "part": "all",
+       "group": 1,
+       "color": null,
+       "count": 8,
+       "first": "0,1",
+       "last": "7,1"
+      },
+      {
+       "part": "all",
+       "group": 2,
+       "color": null,
+       "count": 8,
+       "first": "0,2",
+       "last": "7,2"
+      },
+      {
+       "part": "all",
+       "group": 3,
+       "color": null,
+       "count": 8,
+       "first": "0,3",
+       "last": "7,3"
+      },
+      {
+       "part": "all",
+       "group": 4,
+       "color": null,
+       "count": 8,
+       "first": "0,4",
+       "last": "7,4"
+      },
+      {
+       "part": "all",
+       "group": 5,
+       "color": null,
+       "count": 8,
+       "first": "0,5",
+       "last": "7,5"
+      },
+      {
+       "part": "all",
+       "group": 6,
+       "color": null,
+       "count": 8,
+       "first": "0,6",
+       "last": "7,6"
+      },
+      {
+       "part": "all",
+       "group": 7,
+       "color": null,
+       "count": 8,
+       "first": "0,7",
+       "last": "7,7"
+      }
+     ]
+    }
+   },
+   "minRunnerUpMargin": 0.21480739122904247
+  },
+  {
+   "name": "transparent-hole",
+   "purpose": "含透明：空格不进 BOM、不进步骤、不中转误差",
+   "width": 16,
+   "height": 16,
+   "rgbaHex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000081880ff181880ff281880ff381880ff481880ff581880ff681880ff781880ff881880ff981880ffa81880ffb81880ffc81880ffd81880ffe81880fff81880ff082880ff182880ff282880ff382880ff482880ff582880ff682880ff782880ff882880ff982880ffa82880ffb82880ffc82880ffd82880ffe82880fff82880ff083880ff183880ff283880ff383880ff483880ff583880ff683880ff783880ff883880ff983880ffa83880ffb83880ffc83880ffd83880ffe83880fff83880ff084880ff184880ff284880ff384880ff484880ff584880ff684880ff784880ff884880ff984880ffa84880ffb84880ffc84880ffd84880ffe84880fff84880ff085880ff185880ff285880ff385880ff485880ff585880ff685880ff785880ff885880ff985880ffa85880ffb85880ffc85880ffd85880ffe85880fff85880ff086880ff186880ff286880ff386880ff486880ff586880ff00000000000000000000000000000000a86880ffb86880ffc86880ffd86880ffe86880fff86880ff087880ff187880ff287880ff387880ff487880ff587880ff00000000000000000000000000000000a87880ffb87880ffc87880ffd87880ffe87880fff87880ff088880ff188880ff288880ff388880ff488880ff588880ff00000000000000000000000000000000a88880ffb88880ffc88880ffd88880ffe88880fff88880ff089880ff189880ff289880ff389880ff489880ff589880ff00000000000000000000000000000000a89880ffb89880ffc89880ffd89880ffe89880fff89880ff08a880ff18a880ff28a880ff38a880ff48a880ff58a880ff68a880ff78a880ff88a880ff98a880ffa8a880ffb8a880ffc8a880ffd8a880ffe8a880fff8a880ff08b880ff18b880ff28b880ff38b880ff48b880ff58b880ff68b880ff78b880ff88b880ff98b880ffa8b880ffb8b880ffc8b880ffd8b880ffe8b880fff8b880ff08c880ff18c880ff28c880ff38c880ff48c880ff58c880ff68c880ff78c880ff88c880ff98c880ffa8c880ffb8c880ffc8c880ffd8c880ffe8c880fff8c880ff08d880ff18d880ff28d880ff38d880ff48d880ff58d880ff68d880ff78d880ff88d880ff98d880ffa8d880ffb8d880ffc8d880ffd8d880ffe8d880fff8d880ff08e880ff18e880ff28e880ff38e880ff48e880ff58e880ff68e880ff78e880ff88e880ff98e880ffa8e880ffb8e880ffc8e880ffd8e880ffe8e880fff8e880ff08f880ff18f880ff28f880ff38f880ff48f880ff58f880ff68f880ff78f880ff88f880ff98f880ffa8f880ffb8f880ffc8f880ffd8f880ffe8f880fff8f880ff",
+   "options": {
+    "framing": {
+     "mode": "board",
+     "size": 28
+    },
+    "dither": true,
+    "kind": "Photo"
+   },
+   "expected": {
+    "kind": "Photo",
+    "ditherApplied": true,
+    "detectedGrid": null,
+    "gridWidth": 28,
+    "gridHeight": 28,
+    "codes": [
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "G22",
+     "G26",
+     "G26",
+     "G26",
+     "G26",
+     "G26",
+     "G26",
+     "G26",
+     "G26",
+     "G26",
+     "G26",
+     "G26",
+     "G25",
+     "G26",
+     "G25",
+     "G38",
+     "G25",
+     "G27",
+     "G38",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G22",
+     "G26",
+     "G26",
+     "G22",
+     "G26",
+     "G22",
+     "G26",
+     "G26",
+     "G26",
+     "G26",
+     "G25",
+     "G26",
+     "G25",
+     "G38",
+     "G25",
+     "G27",
+     "G38",
+     "G25",
+     "G27",
+     "G38",
+     "G27",
+     "G38",
+     "G27",
+     "G27",
+     "G08",
+     "G27",
+     "G08",
+     "G27",
+     "G22",
+     "G26",
+     "G22",
+     "G26",
+     "G22",
+     "G26",
+     "G22",
+     "G26",
+     "G26",
+     "G26",
+     "G26",
+     "G25",
+     "G26",
+     "G25",
+     "G38",
+     "G25",
+     "G27",
+     "G38",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G25",
+     "G26",
+     "G25",
+     "G26",
+     "G25",
+     "G38",
+     "G27",
+     "G26",
+     "G27",
+     "G25",
+     "G38",
+     "G27",
+     "G38",
+     "G27",
+     "G27",
+     "G08",
+     "G27",
+     "G08",
+     "G27",
+     "G28",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G26",
+     "G26",
+     "G26",
+     "G26",
+     "G26",
+     "G25",
+     "G26",
+     "G25",
+     "G38",
+     "G27",
+     "G38",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G08",
+     "G27",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G25",
+     "G22",
+     "G25",
+     "G25",
+     "G38",
+     "G25",
+     "G27",
+     "G26",
+     "G27",
+     "G25",
+     "G27",
+     "G38",
+     "G27",
+     "G38",
+     "G27",
+     "G27",
+     "G08",
+     "G27",
+     "G27",
+     "G27",
+     "G22",
+     "G21",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G22",
+     "G25",
+     "G22",
+     "G25",
+     "G05",
+     "G25",
+     "G25",
+     "G38",
+     "G25",
+     "G38",
+     "G27",
+     "G38",
+     "G27",
+     "G25",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G27",
+     "G28",
+     "G08",
+     "G27",
+     "G05",
+     "G22",
+     "G18",
+     "G21",
+     "G36",
+     "G22",
+     "G21",
+     "G05",
+     "G21",
+     "G05",
+     "G25",
+     "G05",
+     "G05",
+     "G25",
+     "G29",
+     "G27",
+     "G05",
+     "G27",
+     "G27",
+     "G27",
+     "G09",
+     "G27",
+     "G08",
+     "G27",
+     "G08",
+     "G28",
+     "G27",
+     "G28",
+     "G21",
+     "G18",
+     "G36",
+     "G22",
+     "G18",
+     "G36",
+     "G05",
+     "G05",
+     "G05",
+     "G21",
+     "G05",
+     "G25",
+     "G05",
+     "G05",
+     "G27",
+     "G36",
+     "G27",
+     "G04",
+     "G05",
+     "G28",
+     "G04",
+     "G28",
+     "G28",
+     "G08",
+     "G28",
+     "G28",
+     "G08",
+     "G28",
+     "G36",
+     "G05",
+     "G21",
+     "G17",
+     "G21",
+     "G18",
+     "G21",
+     "G21",
+     "G05",
+     "G05",
+     "G05",
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "G28",
+     "G05",
+     "G28",
+     "G29",
+     "G28",
+     "G04",
+     "G28",
+     "G08",
+     "G28",
+     "G37",
+     "G36",
+     "G18",
+     "G36",
+     "G36",
+     "G17",
+     "G36",
+     "G34",
+     "G05",
+     "G36",
+     "G05",
+     "G36",
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "G04",
+     "G08",
+     "G04",
+     "G28",
+     "G30",
+     "G28",
+     "G37",
+     "G28",
+     "G37",
+     "G28",
+     "G36",
+     "G18",
+     "G36",
+     "G18",
+     "G36",
+     "G05",
+     "G36",
+     "G05",
+     "G36",
+     "G05",
+     "G04",
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "G04",
+     "G28",
+     "G04",
+     "G30",
+     "G28",
+     "G30",
+     "G28",
+     "G08",
+     "G37",
+     "G37",
+     "G36",
+     "G17",
+     "G36",
+     "G36",
+     "G17",
+     "G36",
+     "G17",
+     "G36",
+     "G34",
+     "G36",
+     "G34",
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "G30",
+     "G04",
+     "G30",
+     "G28",
+     "G30",
+     "G37",
+     "G30",
+     "G37",
+     "G37",
+     "G37",
+     "G17",
+     "G19",
+     "G17",
+     "G19",
+     "G17",
+     "G36",
+     "G19",
+     "G34",
+     "G19",
+     "G04",
+     "G34",
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "G04",
+     "G30",
+     "G30",
+     "G30",
+     "G28",
+     "G30",
+     "G37",
+     "G37",
+     "G37",
+     "G37",
+     "G19",
+     "G17",
+     "G19",
+     "G17",
+     "G19",
+     "G17",
+     "G19",
+     "G17",
+     "G16",
+     "G36",
+     "G16",
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "G30",
+     "G04",
+     "G30",
+     "G04",
+     "G30",
+     "G30",
+     "G37",
+     "G30",
+     "G37",
+     "G37",
+     "G16",
+     "G19",
+     "G17",
+     "G19",
+     "G16",
+     "G19",
+     "G17",
+     "G19",
+     "G04",
+     "G16",
+     "G04",
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "G04",
+     "G32",
+     "G30",
+     "G04",
+     "G11",
+     "G30",
+     "G31",
+     "G30",
+     "G37",
+     "G31",
+     "G37",
+     "G19",
+     "G16",
+     "G19",
+     "G16",
+     "G36",
+     "G16",
+     "G19",
+     "G16",
+     "G19",
+     "G16",
+     "G36",
+     "G16",
+     "G04",
+     "G16",
+     "G04",
+     "G16",
+     "G32",
+     "G33",
+     "G04",
+     "G32",
+     "G33",
+     "G31",
+     "G30",
+     "G30",
+     "G31",
+     "G30",
+     "G37",
+     "G11",
+     "G16",
+     "G19",
+     "G16",
+     "G19",
+     "G16",
+     "G19",
+     "G16",
+     "G16",
+     "G19",
+     "G16",
+     "G04",
+     "G16",
+     "G15",
+     "G19",
+     "G32",
+     "G16",
+     "G04",
+     "G15",
+     "G33",
+     "G03",
+     "G32",
+     "G33",
+     "G31",
+     "G32",
+     "G30",
+     "G11",
+     "G11",
+     "G11",
+     "G16",
+     "G19",
+     "G16",
+     "G16",
+     "G19",
+     "G16",
+     "G19",
+     "G16",
+     "G19",
+     "G16",
+     "G16",
+     "G19",
+     "G33",
+     "G15",
+     "G04",
+     "G15",
+     "G04",
+     "G15",
+     "G03",
+     "G33",
+     "G32",
+     "G32",
+     "G14",
+     "G32",
+     "G32",
+     "G11",
+     "G11",
+     "G37",
+     "G16",
+     "G16",
+     "G19",
+     "G16",
+     "G16",
+     "G16",
+     "G16",
+     "G16",
+     "G16",
+     "G19",
+     "G15",
+     "G16",
+     "G19",
+     "G15",
+     "G16",
+     "G15",
+     "G15",
+     "G16",
+     "G32",
+     "G15",
+     "G15",
+     "G32",
+     "G15",
+     "G32",
+     "G14",
+     "G32",
+     "G32",
+     "G11",
+     "G16",
+     "G19",
+     "G15",
+     "G16",
+     "G19",
+     "G15",
+     "G19",
+     "G15",
+     "G19",
+     "G15",
+     "G16",
+     "G15",
+     "G15",
+     "G19",
+     "G15",
+     "G19",
+     "G32",
+     "G15",
+     "G15",
+     "G32",
+     "G15",
+     "G33",
+     "G32",
+     "G32",
+     "G13",
+     "G14",
+     "G13",
+     "G11",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G19",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G13",
+     "G15",
+     "G12",
+     "G15",
+     "G32",
+     "G12",
+     "G32",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G16",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G13",
+     "G15",
+     "G32",
+     "G12",
+     "G13",
+     "G12",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G13",
+     "G13",
+     "G13",
+     "G13",
+     "G13",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G13",
+     "G15",
+     "G15",
+     "G12",
+     "G13",
+     "G12",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G19",
+     "G15",
+     "G15",
+     "G19",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G15",
+     "G13",
+     "G12",
+     "G15",
+     "G13",
+     "G13"
+    ],
+    "bom": [
+     {
+      "code": "G15",
+      "count": 135
+     },
+     {
+      "code": "G27",
+      "count": 71
+     },
+     {
+      "code": "G16",
+      "count": 43
+     },
+     {
+      "code": "G22",
+      "count": 42
+     },
+     {
+      "code": "G19",
+      "count": 38
+     },
+     {
+      "code": "G26",
+      "count": 38
+     },
+     {
+      "code": "G25",
+      "count": 30
+     },
+     {
+      "code": "G36",
+      "count": 26
+     },
+     {
+      "code": "G04",
+      "count": 24
+     },
+     {
+      "code": "G05",
+      "count": 24
+     },
+     {
+      "code": "G28",
+      "count": 24
+     },
+     {
+      "code": "G30",
+      "count": 23
+     },
+     {
+      "code": "G32",
+      "count": 22
+     },
+     {
+      "code": "G37",
+      "count": 20
+     },
+     {
+      "code": "G38",
+      "count": 19
+     },
+     {
+      "code": "G13",
+      "count": 15
+     },
+     {
+      "code": "G08",
+      "count": 14
+     },
+     {
+      "code": "G17",
+      "count": 14
+     },
+     {
+      "code": "G21",
+      "count": 10
+     },
+     {
+      "code": "G11",
+      "count": 9
+     },
+     {
+      "code": "G12",
+      "count": 7
+     },
+     {
+      "code": "G18",
+      "count": 7
+     },
+     {
+      "code": "G33",
+      "count": 7
+     },
+     {
+      "code": "G31",
+      "count": 5
+     },
+     {
+      "code": "G34",
+      "count": 5
+     },
+     {
+      "code": "G14",
+      "count": 3
+     },
+     {
+      "code": "G03",
+      "count": 2
+     },
+     {
+      "code": "G29",
+      "count": 2
+     },
+     {
+      "code": "G09",
+      "count": 1
+     }
+    ],
+    "steps": {
+     "color-by-color": [
+      {
+       "part": "all",
+       "group": 0,
+       "color": "G09",
+       "count": 1,
+       "first": "20,9",
+       "last": "20,9"
+      },
+      {
+       "part": "all",
+       "group": 1,
+       "color": "G03",
+       "count": 2,
+       "first": "19,19",
+       "last": "18,20"
+      },
+      {
+       "part": "all",
+       "group": 2,
+       "color": "G29",
+       "count": 2,
+       "first": "14,9",
+       "last": "21,11"
+      },
+      {
+       "part": "all",
+       "group": 3,
+       "color": "G14",
+       "count": 3,
+       "first": "22,20",
+       "last": "25,22"
+      },
+      {
+       "part": "all",
+       "group": 4,
+       "color": "G31",
+       "count": 5,
+       "first": "23,17",
+       "last": "22,19"
+      },
+      {
+       "part": "all",
+       "group": 5,
+       "color": "G34",
+       "count": 5,
+       "first": "6,12",
+       "last": "10,15"
+      },
+      {
+       "part": "all",
+       "group": 6,
+       "color": "G12",
+       "count": 7,
+       "first": "23,23",
+       "last": "24,27"
+      },
+      {
+       "part": "all",
+       "group": 7,
+       "color": "G18",
+       "count": 7,
+       "first": "2,9",
+       "last": "3,13"
+      },
+      {
+       "part": "all",
+       "group": 8,
+       "color": "G33",
+       "count": 7,
+       "first": "17,18",
+       "last": "21,22"
+      },
+      {
+       "part": "all",
+       "group": 9,
+       "color": "G11",
+       "count": 9,
+       "first": "21,17",
+       "last": "27,22"
+      },
+      {
+       "part": "all",
+       "group": 10,
+       "color": "G21",
+       "count": 10,
+       "first": "1,8",
+       "last": "7,11"
+      },
+      {
+       "part": "all",
+       "group": 11,
+       "color": "G08",
+       "count": 14,
+       "first": "24,3",
+       "last": "25,13"
+      },
+      {
+       "part": "all",
+       "group": 12,
+       "color": "G17",
+       "count": 14,
+       "first": "3,11",
+       "last": "6,17"
+      },
+      {
+       "part": "all",
+       "group": 13,
+       "color": "G13",
+       "count": 15,
+       "first": "24,22",
+       "last": "27,27"
+      },
+      {
+       "part": "all",
+       "group": 14,
+       "color": "G38",
+       "count": 19,
+       "first": "15,2",
+       "last": "17,8"
+      },
+      {
+       "part": "all",
+       "group": 15,
+       "color": "G37",
+       "count": 20,
+       "first": "27,11",
+       "last": "27,20"
+      },
+      {
+       "part": "all",
+       "group": 16,
+       "color": "G32",
+       "count": 22,
+       "first": "18,17",
+       "last": "24,24"
+      },
+      {
+       "part": "all",
+       "group": 17,
+       "color": "G30",
+       "count": 23,
+       "first": "22,12",
+       "last": "24,19"
+      },
+      {
+       "part": "all",
+       "group": 18,
+       "color": "G04",
+       "count": 24,
+       "first": "17,10",
+       "last": "16,20"
+      },
+      {
+       "part": "all",
+       "group": 19,
+       "color": "G05",
+       "count": 24,
+       "first": "10,8",
+       "last": "9,13"
+      },
+      {
+       "part": "all",
+       "group": 20,
+       "color": "G28",
+       "count": 24,
+       "first": "27,5",
+       "last": "22,15"
+      },
+      {
+       "part": "all",
+       "group": 21,
+       "color": "G36",
+       "count": 26,
+       "first": "4,9",
+       "last": "10,18"
+      },
+      {
+       "part": "all",
+       "group": 22,
+       "color": "G25",
+       "count": 30,
+       "first": "12,2",
+       "last": "11,10"
+      },
+      {
+       "part": "all",
+       "group": 23,
+       "color": "G19",
+       "count": 38,
+       "first": "1,15",
+       "last": "8,27"
+      },
+      {
+       "part": "all",
+       "group": 24,
+       "color": "G26",
+       "count": 38,
+       "first": "1,2",
+       "last": "15,7"
+      },
+      {
+       "part": "all",
+       "group": 25,
+       "color": "G22",
+       "count": 42,
+       "first": "0,2",
+       "last": "3,10"
+      },
+      {
+       "part": "all",
+       "group": 26,
+       "color": "G16",
+       "count": 43,
+       "first": "8,16",
+       "last": "15,24"
+      },
+      {
+       "part": "all",
+       "group": 27,
+       "color": "G27",
+       "count": 71,
+       "first": "17,2",
+       "last": "16,10"
+      },
+      {
+       "part": "all",
+       "group": 28,
+       "color": "G15",
+       "count": 135,
+       "first": "12,19",
+       "last": "25,27"
+      }
+     ],
+     "tile": [
+      {
+       "part": "all",
+       "group": 0,
+       "color": null,
+       "count": 680,
+       "first": "0,2",
+       "last": "27,27"
+      }
+     ],
+     "outline-infill": [
+      {
+       "part": "outline",
+       "group": 0,
+       "color": null,
+       "count": 104,
+       "first": "0,2",
+       "last": "27,27"
+      },
+      {
+       "part": "inner-border",
+       "group": 0,
+       "color": null,
+       "count": 32,
+       "first": "10,10",
+       "last": "17,18"
+      },
+      {
+       "part": "fill",
+       "group": 0,
+       "color": null,
+       "count": 544,
+       "first": "1,3",
+       "last": "26,26"
+      }
+     ],
+     "row-by-row": [
+      {
+       "part": "all",
+       "group": 2,
+       "color": null,
+       "count": 28,
+       "first": "0,2",
+       "last": "27,2"
+      },
+      {
+       "part": "all",
+       "group": 3,
+       "color": null,
+       "count": 28,
+       "first": "0,3",
+       "last": "27,3"
+      },
+      {
+       "part": "all",
+       "group": 4,
+       "color": null,
+       "count": 28,
+       "first": "0,4",
+       "last": "27,4"
+      },
+      {
+       "part": "all",
+       "group": 5,
+       "color": null,
+       "count": 28,
+       "first": "0,5",
+       "last": "27,5"
+      },
+      {
+       "part": "all",
+       "group": 6,
+       "color": null,
+       "count": 28,
+       "first": "0,6",
+       "last": "27,6"
+      },
+      {
+       "part": "all",
+       "group": 7,
+       "color": null,
+       "count": 28,
+       "first": "0,7",
+       "last": "27,7"
+      },
+      {
+       "part": "all",
+       "group": 8,
+       "color": null,
+       "count": 28,
+       "first": "0,8",
+       "last": "27,8"
+      },
+      {
+       "part": "all",
+       "group": 9,
+       "color": null,
+       "count": 28,
+       "first": "0,9",
+       "last": "27,9"
+      },
+      {
+       "part": "all",
+       "group": 10,
+       "color": null,
+       "count": 28,
+       "first": "0,10",
+       "last": "27,10"
+      },
+      {
+       "part": "all",
+       "group": 11,
+       "color": null,
+       "count": 21,
+       "first": "0,11",
+       "last": "27,11"
+      },
+      {
+       "part": "all",
+       "group": 12,
+       "color": null,
+       "count": 21,
+       "first": "0,12",
+       "last": "27,12"
+      },
+      {
+       "part": "all",
+       "group": 13,
+       "color": null,
+       "count": 21,
+       "first": "0,13",
+       "last": "27,13"
+      },
+      {
+       "part": "all",
+       "group": 14,
+       "color": null,
+       "count": 21,
+       "first": "0,14",
+       "last": "27,14"
+      },
+      {
+       "part": "all",
+       "group": 15,
+       "color": null,
+       "count": 21,
+       "first": "0,15",
+       "last": "27,15"
+      },
+      {
+       "part": "all",
+       "group": 16,
+       "color": null,
+       "count": 21,
+       "first": "0,16",
+       "last": "27,16"
+      },
+      {
+       "part": "all",
+       "group": 17,
+       "color": null,
+       "count": 22,
+       "first": "0,17",
+       "last": "27,17"
+      },
+      {
+       "part": "all",
+       "group": 18,
+       "color": null,
+       "count": 28,
+       "first": "0,18",
+       "last": "27,18"
+      },
+      {
+       "part": "all",
+       "group": 19,
+       "color": null,
+       "count": 28,
+       "first": "0,19",
+       "last": "27,19"
+      },
+      {
+       "part": "all",
+       "group": 20,
+       "color": null,
+       "count": 28,
+       "first": "0,20",
+       "last": "27,20"
+      },
+      {
+       "part": "all",
+       "group": 21,
+       "color": null,
+       "count": 28,
+       "first": "0,21",
+       "last": "27,21"
+      },
+      {
+       "part": "all",
+       "group": 22,
+       "color": null,
+       "count": 28,
+       "first": "0,22",
+       "last": "27,22"
+      },
+      {
+       "part": "all",
+       "group": 23,
+       "color": null,
+       "count": 28,
+       "first": "0,23",
+       "last": "27,23"
+      },
+      {
+       "part": "all",
+       "group": 24,
+       "color": null,
+       "count": 28,
+       "first": "0,24",
+       "last": "27,24"
+      },
+      {
+       "part": "all",
+       "group": 25,
+       "color": null,
+       "count": 28,
+       "first": "0,25",
+       "last": "27,25"
+      },
+      {
+       "part": "all",
+       "group": 26,
+       "color": null,
+       "count": 28,
+       "first": "0,26",
+       "last": "27,26"
+      },
+      {
+       "part": "all",
+       "group": 27,
+       "color": null,
+       "count": 28,
+       "first": "0,27",
+       "last": "27,27"
+      }
+     ]
+    }
+   },
+   "minRunnerUpMargin": 0.00041288098344693935
+  }
+ ]
+}

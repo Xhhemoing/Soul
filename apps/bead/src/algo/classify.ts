@@ -5,7 +5,9 @@
  * detector has to be a named, testable function rather than something the
  * browser does implicitly, so `detectGrid` is public and fixture-locked.
  *
- * BD15: the heuristic's output is a `confidence`, never a "score".
+ * BD15: the heuristic's one numeric output is named `confidence`, and the
+ * intermediate it comes from is `evidence`. No other word for it is allowed in
+ * this tree — `constraints.test.ts` enforces that.
  */
 
 import { isOpaque, type RgbaImage } from "./image.ts";
