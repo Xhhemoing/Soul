@@ -37,12 +37,29 @@ export const DECODE_OPTIONS = {
   premultiplyAlpha: "none",
 } as const satisfies ImageBitmapOptions;
 
+/**
+ * DATA-3: the source ceiling, in pixels per axis. 4096×4096 is 64MB of RGBA,
+ * which is the largest allocation this path will make on a caller's behalf; a
+ * 20000×20000 PNG header would otherwise ask for 1.6GB before anyone can say
+ * no. The gate lives here rather than in the upload page so that WP-B07's
+ * import path inherits it by construction.
+ */
+export const MAX_SOURCE_SIDE = 4096;
+
 /** Decodes an uploaded png/jpg blob into raw, unresampled RGBA. */
 export async function decodeImage(source: BitmapSource): Promise<RgbaImage> {
   const bitmap = await createImageBitmap(source, DECODE_OPTIONS);
   try {
     if (bitmap.width <= 0 || bitmap.height <= 0) {
       throw new AlgoError("InvalidDimensions", "解码得到零尺寸图像");
+    }
+    // Checked off the bitmap header, before the canvas is sized and before
+    // `drawImage`: past this point the allocation has already happened.
+    if (bitmap.width > MAX_SOURCE_SIDE || bitmap.height > MAX_SOURCE_SIDE) {
+      throw new AlgoError(
+        "SourceTooLarge",
+        `源图 ${bitmap.width}×${bitmap.height} 超过 ${MAX_SOURCE_SIDE}×${MAX_SOURCE_SIDE} 上限`,
+      );
     }
     const canvas = makeCanvas(bitmap.width, bitmap.height);
     const context = canvas.getContext("2d");

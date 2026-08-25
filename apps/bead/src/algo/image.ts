@@ -10,7 +10,9 @@ export type AlgoErrorCode =
   | "InvalidScale"
   | "InvalidCrop"
   | "CropOutOfBounds"
-  | "EmptyPalette";
+  | "EmptyPalette"
+  /** DATA-3: a decode source whose bitmap header is past `MAX_SOURCE_SIDE`. */
+  | "SourceTooLarge";
 
 export class AlgoError extends Error {
   readonly code: AlgoErrorCode;

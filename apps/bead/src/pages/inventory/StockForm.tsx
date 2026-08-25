@@ -6,25 +6,40 @@ import {
   MAX_NAME_LENGTH,
   normalizeCode,
   normalizeHex,
+  paletteCodeKey,
+  type PaletteCode,
 } from "../../stores/inventory.ts";
-import type { InventoryEntry } from "../../stores/types.ts";
+import {
+  GALLERY_PALETTE,
+  PALETTE_NAMESPACES,
+  PALETTE_NAMESPACE_LABEL,
+  isPaletteNamespaceId,
+  type InventoryEntry,
+  type PaletteNamespaceId,
+} from "../../stores/types.ts";
 
 /**
  * D-INV-6: only `beads` is editable in place. Changing a code means deleting
  * the row and re-entering it, because the code is the identity key and an
  * in-place rename would need merge semantics this version does not have.
  *
+ * §4.5: the identity key is now `(paletteId, code)`, so the palette is a field
+ * on the form rather than an assumption. It defaults to 画廊, which is what
+ * every v0 entry was (D-INV-3), and the duplicate check keys on both halves —
+ * owning gallery G07 and generic-5mm G07 at once is a legitimate state.
+ *
  * Errors are inline and per field (D-UI-4 / §7): the entry never reaches the
  * store while one is showing, and nothing is silently merged.
  */
 export function StockForm({
-  codes,
+  entries,
   onAdd,
 }: {
-  codes: readonly string[];
+  entries: readonly PaletteCode[];
   onAdd: (entry: InventoryEntry) => void;
 }) {
   const fieldId = useId();
+  const [paletteId, setPaletteId] = useState<PaletteNamespaceId>(GALLERY_PALETTE);
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [hex, setHex] = useState("");
@@ -34,10 +49,12 @@ export function StockForm({
   function validate(): { entry: InventoryEntry } | { errors: Record<string, string> } {
     const next: Record<string, string> = {};
     const normalizedCode = normalizeCode(code);
+    const taken = new Set(entries.map(paletteCodeKey));
     if (normalizedCode === "") next["code"] = "请填写色号";
     else if (normalizedCode.length > MAX_CODE_LENGTH)
       next["code"] = `色号最多 ${MAX_CODE_LENGTH} 个字符`;
-    else if (codes.includes(normalizedCode)) next["code"] = "色号已存在，请直接修改颗数";
+    else if (taken.has(paletteCodeKey({ paletteId, code: normalizedCode })))
+      next["code"] = "色号已存在，请直接修改颗数";
 
     const trimmedName = name.trim();
     if (trimmedName.length > MAX_NAME_LENGTH) next["name"] = `名称最多 ${MAX_NAME_LENGTH} 个字符`;
@@ -57,7 +74,13 @@ export function StockForm({
 
     if (Object.keys(next).length > 0) return { errors: next };
     return {
-      entry: { code: normalizedCode, name: trimmedName, hex: normalizedHex!, beads: parsedBeads },
+      entry: {
+        paletteId,
+        code: normalizedCode,
+        name: trimmedName,
+        hex: normalizedHex!,
+        beads: parsedBeads,
+      },
     };
   }
 
@@ -101,6 +124,22 @@ export function StockForm({
 
   return (
     <form className="stock-form" onSubmit={handleSubmit} aria-label="录入库存">
+      <p className="stock-form__field">
+        <label htmlFor={`${fieldId}-palette`}>色板</label>
+        <select
+          id={`${fieldId}-palette`}
+          value={paletteId}
+          onChange={(event) => {
+            if (isPaletteNamespaceId(event.target.value)) setPaletteId(event.target.value);
+          }}
+        >
+          {PALETTE_NAMESPACES.map((id) => (
+            <option key={id} value={id}>
+              {PALETTE_NAMESPACE_LABEL[id]}
+            </option>
+          ))}
+        </select>
+      </p>
       {field("code", "色号", code, setCode)}
       {field("name", "名称", name, setName)}
       {field("hex", "色值", hex, setHex)}

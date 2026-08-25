@@ -12,13 +12,15 @@ import {
 
 import { createRepository, type Repository } from "./repository.ts";
 import { createProjectFromPattern } from "./projects.ts";
-import { clampBeads, normalizeCode } from "./inventory.ts";
+import { clampBeads, normalizeCode, paletteCodeKey } from "./inventory.ts";
 import type { PatternId, ProjectId } from "./ids.ts";
 import {
   EMPTY_STATE,
   type BackdropKind,
   type InventoryEntry,
+  type PaletteNamespaceId,
   type Pattern,
+  type PatternDoc,
   type PersistedState,
   type ProgressCursor,
   type Project,
@@ -44,8 +46,8 @@ type Action =
   | { kind: "setBackdrop"; id: ProjectId; backdrop: BackdropKind; color?: string }
   | { kind: "toggleFavorite"; id: PatternId }
   | { kind: "addInventoryEntry"; entry: InventoryEntry }
-  | { kind: "setInventoryBeads"; code: string; beads: number }
-  | { kind: "removeInventoryEntry"; code: string }
+  | { kind: "setInventoryBeads"; paletteId: PaletteNamespaceId; code: string; beads: number }
+  | { kind: "removeInventoryEntry"; paletteId: PaletteNamespaceId; code: string }
   | { kind: "upsertProgress"; cursor: ProgressCursor };
 
 function reduce(state: StoreState, action: Action): StoreState {
@@ -81,31 +83,36 @@ function reduce(state: StoreState, action: Action): StoreState {
           ? state.favorites.filter((id) => id !== action.id)
           : [...state.favorites, action.id],
       };
-    // D-INV-6: the code is the identity key, so adding a code that is already
-    // there is a no-op rather than a silent merge — the form reports it inline
-    // and the user edits the existing row instead.
+    // D-INV-6 with BD20's key: `(paletteId, code)` is the identity, so adding a
+    // pair that is already there is a no-op rather than a silent merge — the
+    // form reports it inline and the user edits the existing row instead. The
+    // same code in the other namespace is a different bead and goes in.
     case "addInventoryEntry": {
       const entry = {
         ...action.entry,
         code: normalizeCode(action.entry.code),
         beads: clampBeads(action.entry.beads),
       };
-      if (state.inventory.some((existing) => existing.code === entry.code)) return state;
+      const key = paletteCodeKey(entry);
+      if (state.inventory.some((existing) => paletteCodeKey(existing) === key)) return state;
       return { ...state, inventory: [...state.inventory, entry] };
     }
     case "setInventoryBeads": {
-      const code = normalizeCode(action.code);
+      const key = paletteCodeKey({ paletteId: action.paletteId, code: normalizeCode(action.code) });
       const beads = clampBeads(action.beads);
       return {
         ...state,
         inventory: state.inventory.map((entry) =>
-          entry.code === code ? { ...entry, beads } : entry,
+          paletteCodeKey(entry) === key ? { ...entry, beads } : entry,
         ),
       };
     }
     case "removeInventoryEntry": {
-      const code = normalizeCode(action.code);
-      return { ...state, inventory: state.inventory.filter((entry) => entry.code !== code) };
+      const key = paletteCodeKey({ paletteId: action.paletteId, code: normalizeCode(action.code) });
+      return {
+        ...state,
+        inventory: state.inventory.filter((entry) => paletteCodeKey(entry) !== key),
+      };
     }
     case "upsertProgress": {
       const others = state.progress.filter(
@@ -119,15 +126,28 @@ function reduce(state: StoreState, action: Action): StoreState {
 export interface StoreActions {
   /** Returns the minted project so the caller can navigate straight to it. */
   instantiatePattern(pattern: Pattern, status: Extract<ProjectStatus, "todo" | "active">): Project;
+  /**
+   * D-UP-10: the second half of the conversion save. The caller has already
+   * awaited `savePatternDoc` for the id this project carries, so a project only
+   * ever appears once its document is on disk.
+   */
+  addProject(project: Project): void;
   setProjectStatus(id: ProjectId, status: ProjectStatus): void;
   setProjectBackdrop(id: ProjectId, backdrop: BackdropKind, color?: string): void;
   toggleFavorite(id: PatternId): void;
   /** D-INV-5: three narrow inventory actions, all of them driven by `/inventory`. */
   addInventoryEntry(entry: InventoryEntry): void;
-  setInventoryBeads(code: string, beads: number): void;
-  removeInventoryEntry(code: string): void;
+  setInventoryBeads(paletteId: PaletteNamespaceId, code: string, beads: number): void;
+  removeInventoryEntry(paletteId: PaletteNamespaceId, code: string): void;
   /** BD19: one cursor per project, overwritten in place. Never called per timer tick. */
   upsertProgress(cursor: ProgressCursorInput): void;
+  /**
+   * The `patterns` store, reached through the same provider every other page
+   * already has. Grids are too big to sit in reducer state, so these stay
+   * promises and their callers own the loading state (D-UP-14 / §4.3).
+   */
+  loadPatternDoc(id: ProjectId): Promise<PatternDoc | null>;
+  savePatternDoc(doc: PatternDoc): Promise<void>;
 }
 
 export type StoreValue = StoreState & PersistenceView & StoreActions;
@@ -195,6 +215,10 @@ export function StoreProvider({
     return project;
   }, []);
 
+  const addProject = useCallback<StoreActions["addProject"]>((project) => {
+    dispatch({ kind: "addProject", project });
+  }, []);
+
   const setProjectStatus = useCallback<StoreActions["setProjectStatus"]>((id, status) => {
     dispatch({ kind: "setProjectStatus", id, status });
   }, []);
@@ -214,23 +238,40 @@ export function StoreProvider({
     dispatch({ kind: "addInventoryEntry", entry });
   }, []);
 
-  const setInventoryBeads = useCallback<StoreActions["setInventoryBeads"]>((code, beads) => {
-    dispatch({ kind: "setInventoryBeads", code, beads });
-  }, []);
+  const setInventoryBeads = useCallback<StoreActions["setInventoryBeads"]>(
+    (paletteId, code, beads) => {
+      dispatch({ kind: "setInventoryBeads", paletteId, code, beads });
+    },
+    [],
+  );
 
-  const removeInventoryEntry = useCallback<StoreActions["removeInventoryEntry"]>((code) => {
-    dispatch({ kind: "removeInventoryEntry", code });
-  }, []);
+  const removeInventoryEntry = useCallback<StoreActions["removeInventoryEntry"]>(
+    (paletteId, code) => {
+      dispatch({ kind: "removeInventoryEntry", paletteId, code });
+    },
+    [],
+  );
 
   const upsertProgress = useCallback<StoreActions["upsertProgress"]>((cursor) => {
     dispatch({ kind: "upsertProgress", cursor: { ...cursor, updatedAt: Date.now() } });
   }, []);
+
+  const loadPatternDoc = useCallback<StoreActions["loadPatternDoc"]>(
+    (id) => repo.loadPatternDoc(id),
+    [repo],
+  );
+
+  const savePatternDoc = useCallback<StoreActions["savePatternDoc"]>(
+    (doc) => repo.savePatternDoc(doc),
+    [repo],
+  );
 
   const value = useMemo<StoreValue>(
     () => ({
       ...state,
       persistenceFailed,
       instantiatePattern,
+      addProject,
       setProjectStatus,
       setProjectBackdrop,
       toggleFavorite,
@@ -238,11 +279,14 @@ export function StoreProvider({
       setInventoryBeads,
       removeInventoryEntry,
       upsertProgress,
+      loadPatternDoc,
+      savePatternDoc,
     }),
     [
       state,
       persistenceFailed,
       instantiatePattern,
+      addProject,
       setProjectStatus,
       setProjectBackdrop,
       toggleFavorite,
@@ -250,6 +294,8 @@ export function StoreProvider({
       setInventoryBeads,
       removeInventoryEntry,
       upsertProgress,
+      loadPatternDoc,
+      savePatternDoc,
     ],
   );
 

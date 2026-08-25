@@ -6,6 +6,7 @@ import { EmptyState } from "../../components/EmptyState.tsx";
 import {
   PURCHASE_FILE_NAME,
   buildPurchaseText,
+  paletteCodeKey,
   type RequirementRow,
   type ShortageRow,
   type SubstituteGroup,
@@ -56,13 +57,24 @@ export function ShortagePanel({
   requirements,
   shortages,
   groups,
+  loadingConversions = false,
 }: {
   hasInProgress: boolean;
   requirements: readonly RequirementRow[];
   shortages: readonly ShortageRow[];
   groups: readonly SubstituteGroup[];
+  /** §4.3: converted demand arrives asynchronously and says so while it does. */
+  loadingConversions?: boolean;
 }) {
   const text = useMemo(() => buildPurchaseText(shortages, groups), [shortages, groups]);
+
+  // R-UP-4: a half-loaded shortage list looks exactly like a complete one, so
+  // the window where only gallery demand is counted is named rather than hidden.
+  const pending = loadingConversions ? (
+    <p className="stub-note" role="status">
+      正在读取转换项目豆图……
+    </p>
+  ) : null;
 
   if (!hasInProgress) {
     return (
@@ -73,19 +85,35 @@ export function ShortagePanel({
     );
   }
   if (requirements.length === 0) {
-    return <EmptyState message="当前项目没有配色清单来源，无法计算缺口" />;
+    return (
+      <>
+        {pending}
+        <EmptyState message="当前项目没有配色清单来源，无法计算缺口" />
+      </>
+    );
   }
   if (shortages.length === 0) {
-    return <EmptyState message="库存足够，当前没有缺口" />;
+    return (
+      <>
+        {pending}
+        <EmptyState message="库存足够，当前没有缺口" />
+      </>
+    );
   }
 
   return (
     <>
+      {pending}
       <ul className="shortage-list">
         {shortages.map((row) => (
-          <li key={row.code}>
+          <li key={paletteCodeKey(row)}>
             <Card className="shortage-row">
-              <ColorSwatch code={row.code} hex={row.hex} name={row.name} />
+              <ColorSwatch
+                code={row.code}
+                hex={row.hex}
+                name={row.name}
+                paletteId={row.paletteId}
+              />
               <span>需求 {row.required} 颗</span>
               <span>库存 {row.inStock} 颗</span>
               <strong>缺 {row.shortage} 颗</strong>
