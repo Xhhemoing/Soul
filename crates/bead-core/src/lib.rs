@@ -12,7 +12,8 @@
 //! * [`fit`] — how many bead cells, and which part of the picture;
 //! * [`quantize`] — mapping pixels to beads, with optional Floyd–Steinberg;
 //! * [`steps`] — the four assembly orders;
-//! * [`bom`] — bill of materials, stock check and ΔE substitutes.
+//! * [`bom`] — bill of materials, stock check and ΔE substitutes;
+//! * [`pipeline`] — all of the above, with the defaults wired up.
 //!
 //! ## Scope
 //!
@@ -21,6 +22,31 @@
 //! the browser implementation in WP-B03 is checked against, so its public
 //! results have to be reproducible: every ordering in here is total, and ties
 //! break on palette code rather than on hash iteration order.
+//!
+//! ## Example
+//!
+//! ```
+//! use bead_core::bom::Bom;
+//! use bead_core::color::Rgb;
+//! use bead_core::fit::{BoardSpec, FitMode};
+//! use bead_core::image::Image;
+//! use bead_core::palette::Palette;
+//! use bead_core::pipeline::{to_pattern, PatternOptions};
+//!
+//! let image = Image::filled(56, 56, Rgb::new(228, 3, 46)).expect("a red square");
+//! let palette = Palette::generic_5mm();
+//! let options = PatternOptions::new(FitMode::FixedBoards {
+//!     board: BoardSpec::square_28(),
+//!     cols: 1,
+//!     rows: 1,
+//! });
+//!
+//! let pattern = to_pattern(&image, &palette, &options).expect("a plan");
+//! assert_eq!(pattern.grid.width(), 28);
+//! assert_eq!(pattern.bom.total_beads(), 28 * 28);
+//! assert_eq!(pattern.bom.lines[0].code, "G15");
+//! # let _: Bom = pattern.bom;
+//! ```
 
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]
@@ -32,6 +58,7 @@ pub mod fit;
 pub mod grid;
 pub mod image;
 pub mod palette;
+pub mod pipeline;
 pub mod quantize;
 pub mod steps;
 
