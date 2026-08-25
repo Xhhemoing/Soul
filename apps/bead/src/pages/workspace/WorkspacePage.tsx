@@ -8,6 +8,21 @@ import { selectDrafts, selectFinished, selectInProgress } from "../../stores/pro
 import { useStore } from "../../stores/store.tsx";
 import type { Project } from "../../stores/types.ts";
 
+/**
+ * D-ED-17 ②: a project with no gallery pattern behind it owns its own grid, so
+ * it can be reopened in the editor. This is the whole of WP-B06's change to
+ * this page — and it is what rescues the draft card, which until now was a
+ * title and no way forward.
+ */
+function EditLink({ project }: { project: Project }) {
+  if (project.sourcePatternId !== null) return null;
+  return (
+    <Link className="button" to={`/edit/${project.id}`}>
+      编辑豆图
+    </Link>
+  );
+}
+
 function ProjectCard({ project }: { project: Project }) {
   return (
     <Card>
@@ -16,6 +31,7 @@ function ProjectCard({ project }: { project: Project }) {
       <Link className="button button--primary" to={`/assemble/${project.id}`}>
         继续拼豆
       </Link>
+      <EditLink project={project} />
     </Card>
   );
 }
@@ -60,6 +76,7 @@ export function WorkspacePage() {
               <li key={project.id}>
                 <Card>
                   <strong>{project.title}</strong>
+                  <EditLink project={project} />
                 </Card>
               </li>
             ))}
@@ -80,6 +97,7 @@ export function WorkspacePage() {
               <li key={project.id}>
                 <Card>
                   <strong>{project.title}</strong>
+                  <EditLink project={project} />
                 </Card>
               </li>
             ))}

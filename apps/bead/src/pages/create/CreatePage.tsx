@@ -2,14 +2,16 @@ import { Link, useSearchParams } from "react-router";
 
 import { Card } from "../../components/Card.tsx";
 import { useDocumentTitle } from "../../app/useDocumentTitle.ts";
+import { BlankBoardForm } from "./BlankBoardForm.tsx";
 import { UploadWorkbench } from "./UploadWorkbench.tsx";
 
 /**
  * R6 in the round-1 IA review: before the work packages that own them land,
  * these entries are explanation panels rather than features, and every panel
  * names the work package that owns it so a tester reads "not built yet"
- * instead of filing a bug. WP-B03 has now landed, so the upload entry is a
- * real workbench and no longer names an owner.
+ * instead of filing a bug. WP-B03 and WP-B06 have now landed, so the upload
+ * entry is a real workbench and the blank entry is a real mint form; neither
+ * names an owner any more.
  *
  * The selected entry lives in `?entry=` rather than component state (D-UI-1),
  * so no new route is needed — D-UP-1 puts the workbench in the same panel slot
@@ -43,8 +45,10 @@ const ENTRIES: CreateEntry[] = [
   {
     key: "blank",
     label: "空白项目",
-    owner: "WP-B06",
-    detail: "空白项目要有像素编辑器才有意义（对称、油漆桶、拾色器、色号替换）。编辑器归 WP-B06。",
+    owner: null,
+    detail:
+      "起一块空板自己画：28×28 或 56×56，画笔与「空」橡皮、四向对称、油漆桶、拾色器、" +
+      "色号替换与用色统计都在编辑器里，色板固定为通用 5mm。新建后直接进编辑器，边画边自动保存。",
   },
   {
     key: "import-pattern",
@@ -89,6 +93,7 @@ export function CreatePage() {
             <h2 className="section__title">{selected.label}</h2>
             <p>{selected.detail}</p>
             {selected.key === "upload" && <UploadWorkbench />}
+            {selected.key === "blank" && <BlankBoardForm />}
             {selected.owner !== null && (
               <p className="stub-note">
                 这是 {selected.owner} 的占位说明页，不是缺陷：功能尚未实现，请勿提 bug。

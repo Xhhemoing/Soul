@@ -49,6 +49,31 @@ export function createProjectFromConversion(
   };
 }
 
+/**
+ * D-ED-4: a blank project is the same record with the same discriminator — no
+ * gallery pattern behind it and a `PatternDoc` that loads. It differs from a
+ * conversion only in what the document holds (all -1) and in landing as a
+ * `draft`, which is the state the Workspace「草稿与设计」section was built for.
+ *
+ * Like the conversion mint, the id comes from the caller: the empty document is
+ * written under it before the project exists (D-UP-10's order, reused).
+ */
+export function createProjectFromBlank(
+  id: ProjectId,
+  title: string,
+  now: number = Date.now(),
+): Project {
+  return {
+    id,
+    title,
+    sourcePatternId: null,
+    status: "draft",
+    createdAt: now,
+    backdrop: "black",
+    backdropColor: DEFAULT_BACKDROP_COLOR,
+  };
+}
+
 export function selectProject(projects: readonly Project[], id: string): Project | undefined {
   return projects.find((project) => project.id === (id as ProjectId));
 }

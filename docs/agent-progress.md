@@ -14,7 +14,7 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core + TS + DATA-1 + AL + B04 + B05 + B10 workflow |
-| 当前任务 | ROUND 3：B03 ACCEPT-WITH-NITS（#47）；本机 29/426 绿；浏览器上传流通过 |
+| 当前任务 | ROUND 3：B06 像素编辑已吸收（#48）；测试/浏览器核/复审在途 |
 | PR | #16 专属线；#20–#46（#45 B03 实现；#46 B07 IA） |
 | Merge | B04 `15ad3b3`；B05 `8526c5c`；B10 本提交；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读；hosted Bead CI 空 runner（非产品失败） |
@@ -23,7 +23,7 @@
 
 | 面 | 现状 | 下一动作 |
 |---|---|---|
-| 前端 | B03 `/create` 上传已吸收（#45） | 本机测试 + 浏览器核；B06/B07 实现后置 |
+| 前端 | B03 上传 + B06 `/edit/:id` 已吸收 | B06 本机测试/浏览器核；B07 实现后置 |
 | 后端 | 无 bead 服务 | v0 本机，不造第二灵魂核 |
 | API | 无 bead API | 本地 store 契约 |
 | 数据库 | Soul 加密 SQLite，与 bead 无关 | `bead-v1` IDB 已随 B03 吸收（BD19） |
@@ -104,6 +104,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] B03 复审合入（#47，ACCEPT-WITH-NITS，0 HIGH/MED / 4 LOW）
 - [x] B03 浏览器核：上传红图 → 28×28 预览 → 转入拼装 → 库存 G15 缺口无 URL → 画廊史莱姆不回归；刷新后网格仍在
 - [x] B06 像素编辑 IA 合入（#44，`round3-pixel-editor.md` D-ED-1..21）
+- [x] B06 实现吸收 #48（`/edit/:id` + blank mint；实现席报 32/488）
 - [x] B07 导入导出 IA 合入（#46，`round3-import-export.md` D-IE-1..20）
 - [x] B05 复审合入（#40，ACCEPT；MED-1 blob URL 后置）
 - [x] B10 独立 `bead.yml` 合入（#41）；Soul `ci.yml` 零 diff
@@ -119,7 +120,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 
 ## 下一轮重点（ROUND 3）
 
-B03 复审 ACCEPT-WITH-NITS，浏览器核通过。下一刀：**B06 像素编辑实现**（切在本 tip 之后）。B07 实现、AL-4、B04/B05 MED-1 后置。
+B06 已吸收（#48）。下一刀：本机测试 + 浏览器核 blank/`/edit` + Fable 复审。B07 实现、AL-4、MED-1 后置。
 
 ```text
 ROUND 2（进行中）
@@ -131,6 +132,7 @@ Commit        15ad3b3 absorb B04；本提交记进度
 PR            #16 #32–#37
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B05 实现；B10 workflow；MED-1 后置
+已收          [R3 Opus B06 implement](https://cursor.com/agents/bc-192bf45d-a57f-5d88-ad19-97fbe830e072) → #48
 已收          [R3 Fable review B03](https://cursor.com/agents/bc-dda3ba42-5efd-5794-893b-ccd3dcd9eace) → #47
 已核          B03 上传流：预览/保存/库存/画廊回归/刷新 IDB 均通过
 已收          [R3 Opus B03 implement](https://cursor.com/agents/bc-2919c00f-1dff-5f7f-bb0a-9107a34f58a1) → #45
