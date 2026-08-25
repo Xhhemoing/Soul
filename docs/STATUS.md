@@ -820,6 +820,8 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 | `cursor/blockers-analysis-a073`（PR #6） | 远程 | `docs/BLOCKERS.md` | 待在 PR #7 之后合 |
 | `agent/dev-sota`（PR #4） | 远程 | 分叉后重做的 WP10/WP11 | 按 D49 应停并关闭 |
 
+`docs/DECISIONS.md` 现已追加 D61（承接 D49）：主干由 `cursor/soul-goal1-7b1c` 更替为 `cursor/goal1-unblock-a073`（PR #7，合入路径），上表第一行与第三行在 DECISIONS 自身也有了对应拍板，表尾因此从 D60 走到 D61。D61 只裁决主干归属，不是 Goal 1 关闭，也不是 hosted 绿。
+
 ## 下一步
 
 批 3–5 与 WP13、DPAPI、T4D/A2/G1+/G3 接线都已完成。本 merge 把 `main` 上的计划权威面（D41–D60、`PLAN_INDEX.md`、类型化 `tie_strength`）吸收进本树。`2e72ddf` 上 CI 五门全绿。HEAD 本机 `session_collect` 9 / `ipc_roundtrip` 32 / vitest 151 在 `a643eaf` 上绿（含概览徽章跟采集同意走、Home 重读快照、空的「还没有的东西」不画），hosted 五门没有 runner。原先写在这里的产品缺口已经做完，剩下的是 hosted 与真机：
