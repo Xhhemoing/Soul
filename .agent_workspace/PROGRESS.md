@@ -22,11 +22,13 @@ Do not start Goal 2. Do not silent-patch F04c. Do not pull SQLCipher into algo c
 | G1+ | Owner group messages must not fan Outgoing to historical speakers | R1 opus-b |
 | G1 | `Tally::band` → `soul_algo_tie::score`; one store-wide `as_of` | R2 opus |
 | G3 | rebuild preserves `user_verdict`; locked effective band | R2–R3 |
-| A2 | `points_for` / COPY_ZH; no second 3/10/3 | R3 |
+| A2 | `points_for` → `a2_render`; P1b from persisted split; no second 3/10/3 | R3 opus-a |
 
 ## Round status
 
-- Round 1: in flight
+- Round 1: done — `.agent_workspace/unblock/R1-SYNTHESIS.md`
+- Round 2: done — `.agent_workspace/unblock/R2-SYNTHESIS.md`（G1 换血、G3 纠正、R3 证据并集、denylist 豁免）
+- Round 3: in flight — SOTA 打磨（A2 接线、IntakeReceipt.ignored、导入时钟、store 近阈值、G2 对拍）
 
 ## Round 1 fable-a — G1 T4D wiring spec delivered (spec only, no code)
 
