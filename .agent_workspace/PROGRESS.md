@@ -60,3 +60,48 @@ Do not start Goal 2. Do not silent-patch F04c. Do not pull SQLCipher into algo c
   direct each way, group-only volume, and a dormant peer scored against a
   newer store-wide observation all return Strong instead of Weak.
 - No constants or scorer code changed.
+
+## Round 2 opus-b — G3 landed: tie correction, GC-9a suppression, evidence union
+
+Branch `cursor/goal1-unblock-a073`. Implements `unblock/round1/fable-b-G3.md` on the
+product crates. Written alongside R1/R2 (opus-a's `814064e`), which is why the two
+touch `build.rs` in different places.
+
+Landed:
+
+- `soul-graph/src/correct.rs`: `correct_tie` / `release_tie` / `TieCorrection` /
+  `corrected_relationship`, the four steps in `correct_axis`'s order. Read the edge first,
+  so a correction to an edge that does not exist fails with the store's own `NotFound`
+  and writes nothing (GC-4). `UserCorrection` row carries three keys — origin,
+  relationship_id, band — and no prose. Audit reuses `ProfileCorrect` with
+  `about = [relationship_id, evidence_id]`; no schema and no audit enum changed.
+- `soul-graph/src/build.rs` R3 (evidence union): the correction rows are collected in the
+  pass that already reads the evidence table and unioned into `edge.evidence_ids`. The
+  inference keeps citing observations only — the row rejecting the machine's statement is
+  not support for it. Both lists come out of a `BTreeSet`, so GC-10 still holds.
+- `soulcore/commands/graph.rs`: two thin passthroughs plus `band_named` (closed set,
+  inverse of `band_word`); `TieEdgeView` gains `locked_by_user` / `user_band` /
+  `machine_band` as tokens. `band` keeps meaning "the band in force", so every existing
+  reader respects a correction without knowing one happened. TS mirror updated.
+- `soul-draft/src/analysis.rs` GC-9a: the filing point is not pushed on a locked edge, and
+  no variant replaces it — COPY_ZH is frozen and holds no wording for a user-set band.
+  Correction rows also stop being counted as support for the count sentences.
+- Tests: `soul-graph/tests/graph_correction.rs` (GC-1..5, GC-10, plus the two corner
+  decisions and the `machine_band`-always-present pin), `soulcore/tests/
+  graph_correction_commands.rs` (GC-8 chain entry, same-clock replay, view tokens,
+  `band_named` closed set), `soul-draft/tests/locked_tie_summary.rs` (GC-9a, the control
+  that an uncorrected edge is still filed, and a tree-wide scan for unfrozen filing copy).
+
+Open for Round 3, unchanged by this work:
+
+- R4 (forget beats lock) and R5 (locked edge whose observations are all forgotten) —
+  rebuild still visits only peers with a tally, so GC-6 and GC-7 are not implementable
+  yet. R5 additionally needs the `first/last_contact_utc` → `Option` ruling in G3 §1.1,
+  which is a decision, not a default.
+- GC-9b waits on an additive COPY_ZH key (fable-a slot).
+- G3 §1.1's "all three lock fields absent while unlocked" does not match what landed:
+  `machine_band` is written on every rebuilt edge. The implementation choice is pinned by
+  `an_unlocked_edge_still_records_what_the_counts_say`; the spec text needs the amendment
+  fable-b's Round 2 review (2.4-1) proposes.
+- G3 §5's tree-wide grep is scoped in the landed test to everything but the enforcing
+  file, per the same review's 2.4-3.
