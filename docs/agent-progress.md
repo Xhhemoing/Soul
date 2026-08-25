@@ -7,29 +7,44 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 ## Current round
 
-**ROUND 12** — review the intake-transaction landing and remaining identifier/honesty leftovers. Do not re-open closed R4–R11 items (D55, D61–D63, P2 E1 mutex, fileplan, config.json, COMMANDS=38, contiguous+grouped phone shape, tray mutex, NSIS data-dir hook, keys.dpapi create_new, cloud toggle inert, import-tx wrap, questionnaire `transact` wrap).
+**ROUND 13** — review the Unicode phone-shape landing and remaining identifier/honesty leftovers. Do not re-open closed R4–R12 items (D55, D61–D63, P2 E1 mutex, fileplan, config.json, COMMANDS=38, contiguous+grouped+fullwidth/dash-family phone shape, tray mutex, NSIS data-dir hook, keys.dpapi create_new, cloud toggle inert, import-tx wrap, questionnaire `transact` wrap).
 
 | Field | Value |
 |---|---|
-| Current task | Round 11 closed. Landed questionnaire intake `transact`. Round 12 Fable: landing review; remaining en-dash/fullwidth hyphen/fullwidth digits; denylist frozen-ten; fakeCore truncation; NSIS comment; intake refusal-notice pin; SECURITY DPAPI tense; PendingForget; Graph source-label digit-reuse; landable vs 20-round floor. |
+| Current task | Round 12 closed. Landed fullwidth/dash-family phone placeholder. Round 13 Fable: landing review; remaining Pd/soft-hyphen; add_account width-literal; intake refusal-notice pin; fakeCore truncation; denylist frozen-ten; NSIS comment; SECURITY DPAPI tense; PendingForget; landable vs 20-round floor. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
-| Exclusive tip | `28601cc` (+ this docs closeout); PR #15 |
+| Exclusive tip | `e893109` (+ this docs closeout); PR #15 |
 
-### Round 12 Fable dispatch
+### Round 13 Fable dispatch
 
 | # | Direction |
 |---|---|
-| 1 | Review the intake-transact landing (`4d827ac` / merge `28601cc`) for regressions |
-| 2 | Remaining account shapes after grouped phones: U+2013, U+FF0D, fullwidth digits |
-| 3 | Denylist frozen-ten vs runtime `diagnostic_terms.txt` honesty |
-| 4 | `fakeCore.ts` forget-mismatch truncation vs `FORGET_NOT_PREVIEWED_NOTICE` |
-| 5 | NSIS PREUNINSTALL comment vs pre-hook uninstallers |
-| 6 | Live (non-crash) pin that a questionnaire refusal carries `INTAKE_ROLLED_BACK_NOTICE` |
-| 7 | SECURITY.md DPAPI present tense vs last windows-latest run on `2e72ddf` |
-| 8 | `ForgetState::PendingForget` unreachable vs Graph/Memory `== Forgotten` checks |
-| 9 | Graph source-label / endpoint narrative digit-reuse residual |
+| 1 | Review the phone-unicode landing (`a988fe2` / merge `e893109`) for regressions |
+| 2 | Remaining dash/hyphen leftovers outside the landed family: U+2015, U+00AD, U+FE58, U+FE63, U+30FC |
+| 3 | `add_account` stays width-literal for non-phone registered identifiers |
+| 4 | Live pin that a questionnaire refusal carries `INTAKE_ROLLED_BACK_NOTICE` |
+| 5 | `fakeCore.ts` forget-mismatch truncation vs `FORGET_NOT_PREVIEWED_NOTICE` |
+| 6 | Denylist frozen-ten vs runtime `diagnostic_terms.txt` honesty |
+| 7 | NSIS PREUNINSTALL comment vs pre-hook uninstallers |
+| 8 | SECURITY.md DPAPI present tense vs last windows-latest run on `2e72ddf` |
+| 9 | `ForgetState::PendingForget` unreachable vs Graph/Memory `== Forgotten` checks |
 | 10 | Synthesis: remaining landable v0.1 slices vs 20-round floor vs author-machine-only |
+
+## ROUND 12 record
+
+| Field | Value |
+|---|---|
+| ROUND | 12 |
+| 子代理任务 | 10× Fable + Opus: intake-transact landing review; fullwidth/en-dash/fullwidth-hyphen phones; denylist frozen-ten; fakeCore truncation; NSIS comment; intake refusal-notice pin; SECURITY DPAPI tense; PendingForget; Graph source-label; landable vs 20-round floor |
+| 发现问题 | Fullwidth digits (`１３８００１３８０００`) never entered `phone_shape_end`; dash-family groups (U+2010–U+2014, U+2212, U+FF0D) left each run under 7 digits; mixed `138-0013–8000` leaked `[账号已占位]–8000` |
+| 修复问题 | `is_phone_digit` (ASCII + U+FF10–U+FF19); `is_group_separator` learns the dash family; leakage checker `digit_skeleton`/`number_needle` in lockstep. No NFKC. Accepted false positives: year range `2019–2026`, fullwidth date `２０２６－０８－２５` |
+| 测试结果 | Parent re-run on merge `e893109`: redactor_exemption 16; redactor_leakage 16; leakage_checker 10; fixture_corpus 9; session_e1 33. Opus mutation: ASCII-only digit kills 3; old separators kill 5; `number_needle` None kills 2 |
+| Commit | `a988fe2` on `cursor/phone-unicode-shape-4a8e`; merge `e893109` |
+| PR | #15 |
+| Merge状态 | Exclusive has the merge. → `main` still `BLOCKED`. PR #7 still not merged |
+| 下一轮重点 | Phone-unicode landing review; remaining Pd/soft-hyphen; add_account width-literal; intake notice pin; fakeCore; denylist; NSIS comment; SECURITY tense; PendingForget; synthesis toward 20-round floor |
+| NO_HIGH_VALUE | Intake-transact landing (already merged); denylist frozen-ten; fakeCore truncation; NSIS comment; intake refusal-notice pin; SECURITY DPAPI tense; PendingForget; Graph source-label |
 
 ## ROUND 11 record
 
