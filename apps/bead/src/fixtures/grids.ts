@@ -292,21 +292,25 @@ function arcadeRows(): string[] {
 
 // 0 湖蓝盒身 / 1 金黄缎带 / 2 墨黑描边 / 3 纯白高光。One face of the box, which is
 // what a 立体 pattern hands you: the other five panels are the same drawing.
-function inGift(x: number, y: number): boolean {
+/** The two bow lobes, the knot and the band that runs down the face. */
+function inGiftRibbon(x: number, y: number): boolean {
   return (
-    inRect(x, y, 2, 4, 25, 8) ||
-    inRect(x, y, 4, 9, 23, 25) ||
-    inRect(x, y, 13, 1, 14, 4) ||
     inDisc(x, y, 10, 2, 2.4) ||
-    inDisc(x, y, 17, 2, 2.4)
+    inDisc(x, y, 17, 2, 2.4) ||
+    inRect(x, y, 13, 1, 14, 8) ||
+    inRect(x, y, 12, 4, 15, 25)
   );
+}
+
+/** Lid, body and ribbon as one silhouette, so the outline wraps the bow too. */
+function inGift(x: number, y: number): boolean {
+  return inRect(x, y, 2, 4, 25, 8) || inRect(x, y, 4, 9, 23, 25) || inGiftRibbon(x, y);
 }
 
 function giftChar(x: number, y: number): string {
   if (!inGift(x, y)) return EMPTY;
   if (isRimOf(inGift, x, y)) return "2";
-  if (inRect(x, y, 12, 4, 15, 25) || inRect(x, y, 13, 1, 14, 8)) return "1";
-  if (inDisc(x, y, 10, 2, 2.4) || inDisc(x, y, 17, 2, 2.4)) return "1";
+  if (inGiftRibbon(x, y)) return "1";
   if (inRect(x, y, 6, 12, 7, 20)) return "3";
   return "0";
 }
@@ -375,8 +379,8 @@ function mushRows(): string[] {
 /* ---- gal-quilt-09 · 56×56 -------------------------------------------- */
 
 // 0 靛蓝外框 / 1 米白内框 / 2 金黄星 / 3 朱红星心。The field between the frames is
-// left empty on purpose: a filled 52×52 would be 2704 beads, twice the board's
-// heaviest fixture, and the lattice is the motif.
+// left empty on purpose: filling it would take 2704 beads, half again the
+// heaviest board in the catalog, and the lattice is the motif either way.
 const QUILT_STAR_AXIS: readonly number[] = [13, 28, 43];
 
 function quiltChar(x: number, y: number): string {
