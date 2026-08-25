@@ -107,6 +107,39 @@ function paint(size: number, charAt: (x: number, y: number) => string): string[]
   );
 }
 
+type Silhouette = (x: number, y: number) => boolean;
+
+/**
+ * The one-cell ring *inside* a silhouette. Asking each cell whether any of its
+ * eight neighbours is outside — rather than subtracting a second inset shape —
+ * is what keeps a join between two rectangles from growing a dark seam, which
+ * is the same reason `isArcadeShell` below counts neighbours.
+ */
+function isRimOf(inside: Silhouette, x: number, y: number): boolean {
+  if (!inside(x, y)) return false;
+  for (let dy = -1; dy <= 1; dy += 1) {
+    for (let dx = -1; dx <= 1; dx += 1) {
+      if (!inside(x + dx, y + dy)) return true;
+    }
+  }
+  return false;
+}
+
+/** The one-cell ring *outside* a silhouette, for motifs outlined from without. */
+function isHaloOf(inside: Silhouette, x: number, y: number): boolean {
+  if (inside(x, y)) return false;
+  for (let dy = -1; dy <= 1; dy += 1) {
+    for (let dx = -1; dx <= 1; dx += 1) {
+      if (inside(x + dx, y + dy)) return true;
+    }
+  }
+  return false;
+}
+
+function inDiamond(x: number, y: number, cx: number, cy: number, radius: number): boolean {
+  return Math.abs(x - cx) + Math.abs(y - cy) <= radius;
+}
+
 /* ---- gal-slime-01 · 28×28 ------------------------------------------- */
 
 // One slime, 12×10. 0 薄荷绿身体 / 1 深松绿底部阴影 / 2 纯白眼白 / 3 墨黑描边。
@@ -151,6 +184,37 @@ function slimeRows(): string[] {
   const canvas = Array.from({ length: BOARD_28 }, () => new Array<string>(BOARD_28).fill(EMPTY));
   for (const anchor of SLIME_ANCHORS) stamp(canvas, SLIME_SPRITE, anchor);
   return canvas.map((row) => row.join(""));
+}
+
+/* ---- gal-torii-02 · 56×56 (DEV-GAL-3) -------------------------------- */
+
+// 0 朱红鸟居 / 1 暖砂夕阳 / 2 苔绿草坡 / 3 墨黑描边。The gate is six rectangles
+// in the order a real torii is built: 笠木 / 岛木 / 贯 / 额束 and the two pillars.
+const TORII_GRASS_TOP = 46;
+
+function inTorii(x: number, y: number): boolean {
+  return (
+    inRect(x, y, 4, 8, 51, 11) ||
+    inRect(x, y, 7, 12, 48, 14) ||
+    inRect(x, y, 9, 20, 46, 23) ||
+    inRect(x, y, 26, 15, 29, 20) ||
+    inRect(x, y, 15, 12, 19, 48) ||
+    inRect(x, y, 36, 12, 40, 48)
+  );
+}
+
+// The outline is drawn outside the vermilion rather than inside it: at four
+// cells wide a pillar has no interior left once a rim is taken out of it.
+function toriiChar(x: number, y: number): string {
+  if (inTorii(x, y)) return "0";
+  if (y >= TORII_GRASS_TOP) return "2";
+  if (isHaloOf(inTorii, x, y)) return "3";
+  if (inDisc(x, y, 27.5, 22, 15)) return "1";
+  return EMPTY;
+}
+
+function toriiRows(): string[] {
+  return paint(BOARD_56, toriiChar);
 }
 
 /* ---- gal-lantern-04 · 28×28 ------------------------------------------ */
@@ -224,6 +288,113 @@ function arcadeRows(): string[] {
   return paint(BOARD_56, arcadeChar);
 }
 
+/* ---- gal-gift-06 · 28×28 --------------------------------------------- */
+
+// 0 湖蓝盒身 / 1 金黄缎带 / 2 墨黑描边 / 3 纯白高光。One face of the box, which is
+// what a 立体 pattern hands you: the other five panels are the same drawing.
+function inGift(x: number, y: number): boolean {
+  return (
+    inRect(x, y, 2, 4, 25, 8) ||
+    inRect(x, y, 4, 9, 23, 25) ||
+    inRect(x, y, 13, 1, 14, 4) ||
+    inDisc(x, y, 10, 2, 2.4) ||
+    inDisc(x, y, 17, 2, 2.4)
+  );
+}
+
+function giftChar(x: number, y: number): string {
+  if (!inGift(x, y)) return EMPTY;
+  if (isRimOf(inGift, x, y)) return "2";
+  if (inRect(x, y, 12, 4, 15, 25) || inRect(x, y, 13, 1, 14, 8)) return "1";
+  if (inDisc(x, y, 10, 2, 2.4) || inDisc(x, y, 17, 2, 2.4)) return "1";
+  if (inRect(x, y, 6, 12, 7, 20)) return "3";
+  return "0";
+}
+
+function giftRows(): string[] {
+  return paint(BOARD_28, giftChar);
+}
+
+/* ---- gal-mochi-07 · 28×28 -------------------------------------------- */
+
+// 0 竹签棕 / 1 樱粉 / 2 纯白 / 3 抹茶绿 / 4 墨黑描边。Three dumplings, no faces:
+// at seven cells across, a dumpling has no interior left for eyes once the rim
+// is taken out of it, and two beads of black touching the rim read as a smudge.
+const MOCHI_CENTERS: ReadonlyArray<readonly [number, string]> = [
+  [6, "1"],
+  [13, "2"],
+  [20, "3"],
+];
+const MOCHI_X = 13.5;
+const MOCHI_RADIUS = 3.4;
+
+function inMochi(x: number, y: number): boolean {
+  if (inRect(x, y, 12, 1, 15, 27)) return true;
+  return MOCHI_CENTERS.some(([cy]) => inDisc(x, y, MOCHI_X, cy, MOCHI_RADIUS));
+}
+
+function mochiChar(x: number, y: number): string {
+  if (!inMochi(x, y)) return EMPTY;
+  if (isRimOf(inMochi, x, y)) return "4";
+  for (const [cy, code] of MOCHI_CENTERS) {
+    if (inDisc(x, y, MOCHI_X, cy, MOCHI_RADIUS)) return code;
+  }
+  return "0";
+}
+
+function mochiRows(): string[] {
+  return paint(BOARD_28, mochiChar);
+}
+
+/* ---- gal-mush-08 · 28×28 --------------------------------------------- */
+
+// 0 朱红菌盖 / 1 纯白斑点 / 2 墨黑描边与眼睛 / 3 暖砂菌柄。
+function inMushCap(x: number, y: number): boolean {
+  return y <= 14 && inEllipse(x, y, 13.5, 14, 11, 9);
+}
+
+function inMush(x: number, y: number): boolean {
+  return inMushCap(x, y) || inRect(x, y, 10, 15, 17, 23);
+}
+
+function mushChar(x: number, y: number): string {
+  if (!inMush(x, y)) return EMPTY;
+  if (isRimOf(inMush, x, y)) return "2";
+  if ((x === 12 || x === 15) && y === 18) return "2";
+  if (!inMushCap(x, y)) return "3";
+  if (inDisc(x, y, 8, 10, 2.6) || inDisc(x, y, 19, 10, 2.6) || inDisc(x, y, 13.5, 7, 2.2)) {
+    return "1";
+  }
+  return "0";
+}
+
+function mushRows(): string[] {
+  return paint(BOARD_28, mushChar);
+}
+
+/* ---- gal-quilt-09 · 56×56 -------------------------------------------- */
+
+// 0 靛蓝外框 / 1 米白内框 / 2 金黄星 / 3 朱红星心。The field between the frames is
+// left empty on purpose: a filled 52×52 would be 2704 beads, twice the board's
+// heaviest fixture, and the lattice is the motif.
+const QUILT_STAR_AXIS: readonly number[] = [13, 28, 43];
+
+function quiltChar(x: number, y: number): string {
+  if (inRect(x, y, 3, 3, 53, 53) && !inRect(x, y, 6, 6, 50, 50)) return "0";
+  if (inRect(x, y, 8, 8, 48, 48) && !inRect(x, y, 9, 9, 47, 47)) return "1";
+  for (const cy of QUILT_STAR_AXIS) {
+    for (const cx of QUILT_STAR_AXIS) {
+      if (inDiamond(x, y, cx, cy, 1)) return "3";
+      if (inDiamond(x, y, cx, cy, 4)) return "2";
+    }
+  }
+  return EMPTY;
+}
+
+function quiltRows(): string[] {
+  return paint(BOARD_56, quiltChar);
+}
+
 /* ---- registry -------------------------------------------------------- */
 
 interface FixtureSpec {
@@ -231,13 +402,19 @@ interface FixtureSpec {
   readonly rows: () => readonly string[];
 }
 
-// gal-cakebox-03 is deliberately absent: 2260 beads do not fit a single 28×28
-// board, multi-board assembly is post-v0 (round1-map §3), and it is the natural
-// in-catalog case for the「暂无网格」state (D-ASM-12).
+// gal-cakebox-03 is deliberately absent and stays that way (D-GAL-3): 2260 beads
+// do not fit a single 28×28 board, multi-board assembly is post-v0 (round1-map
+// §3), and it is the in-catalog case both the「暂无网格」state (D-ASM-12) and the
+// disabled Fork button (D-GAL-10) are tested against.
 const SPECS: ReadonlyMap<string, FixtureSpec> = new Map([
   ["gal-slime-01", { size: BOARD_28, rows: slimeRows }],
+  ["gal-torii-02", { size: BOARD_56, rows: toriiRows }],
   ["gal-lantern-04", { size: BOARD_28, rows: lanternRows }],
   ["gal-arcade-05", { size: BOARD_56, rows: arcadeRows }],
+  ["gal-gift-06", { size: BOARD_28, rows: giftRows }],
+  ["gal-mochi-07", { size: BOARD_28, rows: mochiRows }],
+  ["gal-mush-08", { size: BOARD_28, rows: mushRows }],
+  ["gal-quilt-09", { size: BOARD_56, rows: quiltRows }],
 ]);
 
 /** Ids this file draws, in catalog order. Tests iterate this. */

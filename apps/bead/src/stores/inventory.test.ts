@@ -115,9 +115,11 @@ describe("T-INV-2 需求聚合（D-INV-1 / D-INV-2）", () => {
   it("在拼项目的来源图纸 palette 按码求和", () => {
     const rows = selectRequirements([project("gal-slime-01"), project("gal-torii-02", "todo")]);
     const byCode = new Map(rows.map((row) => [row.code, row.required]));
-    expect(byCode.get("B05")).toBe(108 + 300);
+    // WP-B08 / DEV-GAL-3: 鸟居本轮补上网格，颗数改由 `grids.ts` 派生（D-ASM-2），
+    // 所以这里的两个鸟居数字跟着走——聚合规则本身一字未动。
+    expect(byCode.get("B05")).toBe(108 + 266);
     expect(byCode.get("H02")).toBe(126);
-    expect(byCode.get("R04")).toBe(520);
+    expect(byCode.get("R04")).toBe(790);
     expect(rows.find((row) => row.code === "B05")).toMatchObject({
       name: "墨黑",
       hex: "#1b1b1f",
