@@ -13,10 +13,10 @@
 | 当前轮次 | ROUND 2 |
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
-| 已检查模块 | 壳 + bead-core + TS 管线 + DATA-1 + AL + B04 实现 + B05 IA + S1/S2 |
-| 当前任务 | B04 复审 ACCEPT（#38）；浏览器核对仍在途；下一刀 B05 实现 |
-| PR | #16 专属线；#20–#38（#38 B04 复审） |
-| Merge | B04 `15ad3b3`；不合 unique trunk |
+| 已检查模块 | 壳 + bead-core + TS + DATA-1 + AL + B04 + B05 实现 + S1/S2 |
+| 当前任务 | B05 已合（#39，358 绿）；复审与浏览器核对在途 |
+| PR | #16 专属线；#20–#39（#39 B05 实现） |
+| Merge | B04 `15ad3b3`；B05 `8526c5c`；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读（BLOCKED_PR）；云端异步 VM ≈3 |
 
 ## 已检查模块（11.5）
