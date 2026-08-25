@@ -17,6 +17,7 @@ use uuid::Uuid;
 use soul_graph::correct::{corrected_relationship, CORRECTION_ORIGIN, RELEASE_ORIGIN};
 use soul_graph::interaction::{conversation_ref, interaction_evidence, InteractionRef};
 use soul_graph::{correct_tie, release_tie, Direction, GraphError, Venue};
+use soul_schema::audit::AuditAction;
 use soul_schema::common::{SchemaVersion, Subject, SupportedBand, Timestamp};
 use soul_schema::contact::{ContactClass, SoulContact};
 use soul_schema::evidence::EvidenceKind;
@@ -49,6 +50,12 @@ fn peer() -> Uuid {
     id("002")
 }
 
+/// A second person, whose contact row this file never writes: the rebuild has
+/// no way to resolve them, which is what makes their edge unscoreable.
+fn forgotten_peer() -> Uuid {
+    id("003")
+}
+
 fn open(dir: &std::path::Path) -> SqlCipherStore {
     SqlCipherStore::open(dir.join("soul.db"), &TestKeyProvider::from_seed(SEED)).expect("open")
 }
@@ -65,10 +72,20 @@ fn contact(contact_id: Uuid, class: ContactClass) -> SoulContact {
 }
 
 fn observe(store: &mut SqlCipherStore, evidence_id: Uuid, direction: Direction, at: &str) {
+    observe_peer(store, evidence_id, peer(), direction, at);
+}
+
+fn observe_peer(
+    store: &mut SqlCipherStore,
+    evidence_id: Uuid,
+    peer_contact_id: Uuid,
+    direction: Direction,
+    at: &str,
+) {
     let observation = InteractionRef::new(
         Uuid::now_v7(),
         owner(),
-        peer(),
+        peer_contact_id,
         conversation_ref("test", "c-01"),
         direction,
         Timestamp::new(at),
@@ -125,13 +142,21 @@ fn seeded(store: &mut SqlCipherStore) -> Uuid {
 /// an algorithm has been named — which is why one can be sitting in a store
 /// waiting to be corrected.
 fn pre_wiring_edge(store: &mut SqlCipherStore, evidence_id: Uuid) -> Uuid {
-    let relationship_id = id("321");
+    pre_wiring_edge_to(store, id("321"), peer(), evidence_id)
+}
+
+fn pre_wiring_edge_to(
+    store: &mut SqlCipherStore,
+    relationship_id: Uuid,
+    to_contact_id: Uuid,
+    evidence_id: Uuid,
+) -> Uuid {
     store
         .put_relationship(SoulRelationship {
             schema_version: SchemaVersion,
             relationship_id,
             from_contact_id: owner(),
-            to_contact_id: peer(),
+            to_contact_id,
             types: Some(vec![json!("direct"), json!("one_sided")]),
             tie_strength: Some(json!({
                 "band": "moderate",
@@ -498,6 +523,110 @@ fn an_edge_no_rebuild_can_score_is_refused_and_names_the_rebuild() {
         release_tie(&mut store, relationship_id, NOW),
         Err(GraphError::UnscoredEdge { .. }),
     ));
+}
+
+/// R-1 on a store with two people on it: the refusal is about the one edge, and
+/// the other peer's edge comes out as the rebuild found it.
+///
+/// The refusal runs a whole rebuild before it decides, and that rebuild passes
+/// over every peer the store can still resolve — including one whose band the
+/// user has locked. What must not happen is that peer paying for a neighbour's
+/// missing contact row: the lock, the machine's reading beside it, the verdict
+/// and the row explaining all three have to survive a call that ends in an
+/// error. The only thing the store may gain is the rebuild's own audit entry,
+/// which an import would have written anyway.
+#[test]
+fn refusing_a_forgotten_peer_leaves_the_scoreable_peers_lock_alone() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = open(dir.path());
+    let locked_id = seeded(&mut store);
+    let correction =
+        correct_tie(&mut store, locked_id, SupportedBand::Moderate, NOW).expect("correct");
+    soul_graph::rebuild(&mut store).expect("settle");
+
+    // The other peer: observed once, contact row never written, and holding an
+    // edge from before the frozen rule landed. Older than anything the first
+    // peer said, so the instant the rebuild scores against does not move and
+    // the comparison below is about the refusal rather than about the clock.
+    let observed = id("301");
+    observe_peer(
+        &mut store,
+        observed,
+        forgotten_peer(),
+        Direction::Outgoing,
+        "2026-08-01T09:00:00Z",
+    );
+    let unscoreable_id = pre_wiring_edge_to(&mut store, id("322"), forgotten_peer(), observed);
+
+    let snapshot = |store: &SqlCipherStore| {
+        let json = |relationship_id| {
+            serde_json::to_string(&store.get_relationship(relationship_id).expect("edge"))
+                .expect("edge json")
+        };
+        (
+            json(locked_id),
+            json(unscoreable_id),
+            verdict(store, locked_id),
+            store.list_evidence().expect("evidence").len(),
+            store.list_relationships().expect("edges").len(),
+            store.list_inferences().expect("inferences").len(),
+        )
+    };
+    let before = snapshot(&store);
+    let audit_before = store.list_audit().expect("audit").len();
+
+    let refused = correct_tie(&mut store, unscoreable_id, SupportedBand::Strong, NOW);
+    match &refused {
+        Err(GraphError::UnscoredEdge {
+            relationship_id: named,
+        }) => assert_eq!(*named, unscoreable_id),
+        other => panic!("expected the forgotten peer's edge to be named, got {other:?}"),
+    }
+
+    assert_eq!(
+        before,
+        snapshot(&store),
+        "a refused correction rewrites neither the edge it was about nor anybody else's",
+    );
+
+    // Spelled out as well as compared, so a failure says which part of the lock
+    // went rather than that two long strings differ.
+    let held = strength(&store, locked_id);
+    assert_eq!(held.band, SupportedBand::Moderate, "the user's band");
+    assert_eq!(held.user_band, Some(SupportedBand::Moderate));
+    assert_eq!(held.machine_band, Some(SupportedBand::Strong));
+    assert!(held.is_locked_by_user());
+    assert_eq!(verdict(&store, locked_id), Some(UserVerdict::Corrected));
+    assert!(
+        store
+            .get_relationship(locked_id)
+            .expect("edge")
+            .evidence_ids
+            .contains(&correction.evidence_id),
+        "the row explaining the lock is still cited",
+    );
+
+    let audit = store.list_audit().expect("audit");
+    assert_eq!(
+        audit.len(),
+        audit_before + 1,
+        "the rebuild the refused call had to run is in the chain, and nothing else is",
+    );
+    let entry = audit.last().expect("the entry the rebuild owed");
+    assert_eq!(
+        entry.action,
+        AuditAction::InferenceWrite,
+        "a rebuild artifact; a refused correction records no correction",
+    );
+    let about = entry.subject_refs.clone().unwrap_or_default();
+    assert!(
+        about.contains(&locked_id),
+        "the rebuild passed over the peer it could still score",
+    );
+    assert!(
+        !about.contains(&unscoreable_id),
+        "and not over the one it could not",
+    );
 }
 
 /// GC-5: the correction is evidence, and evidence has to dereference. AC-06
