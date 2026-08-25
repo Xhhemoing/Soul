@@ -1,6 +1,6 @@
 # Cycle 2 Round 3 综合（BINDING 于调研轨）
 
-Parent: cursor-grok-4.6-high。已收：opus-a/b、gpt-sol-a/b、fable-b。**fable-a 本轮未到，不等。**
+Parent: cursor-grok-4.6-high。已收：opus-a/b、gpt-sol-a/b、fable-a/b。迟到的 fable-a 已折入 ESSENCE §2.5（S1/S3 组合架构并列，不提前裁）。
 对外入口：`../ESSENCE.md`。
 
 ## 冻结下来的结构
@@ -29,6 +29,6 @@ Parent: cursor-grok-4.6-high。已收：opus-a/b、gpt-sol-a/b、fable-b。**fab
 | G25 | 无「打开文件字节」同意主题（header vs full 两个主题） |
 | G26 | 无 READS needle 表 / 快照无 atime |
 
-## 未等的槽位
+## 迟到折入（C2R3 fable-a）
 
-Cycle 2 Round 3 fable-a：未写入。若日后到达，只许**减**目录或加杀线，不许在未重跑综合的情况下加默认候选。
+未加默认候选。新增一条测试日并列：S1 作为 `build()` **下游否决 pass**（只打开仍会被提议的文件）vs 短路链上 S1 排在 S3 之前（理由稳定性）。两者都保持 `moves' ⊆ moves`。

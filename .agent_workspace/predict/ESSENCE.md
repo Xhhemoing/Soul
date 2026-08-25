@@ -1,12 +1,12 @@
 # 调研精华：v0.2 浅层行为预测 + 程序/代理层算法
 
 Parent: `cursor-grok-4.6-high`。两个独立 3 轮循环（每轮 2×fable + 2×opus-fast + 2×gpt-sol）。
-**fable 后台独立，不等未完成的 fable。** Cycle 2 Round 3 的 fable-a 未到；本文件以已收槽位为准。
+**fable 后台独立，不等未完成的 fable。** 两轮 12 个 fable 槽位现已全部落盘（含迟到的 Cycle 2 Round 3 fable-a）。
 
 **本文件冻结的是「日后测什么」，不是「哪个算法赢」。** 多种经确认可测的算法并列；赢家由测试日夹具打出。
 **不实现 Goal 2，不改 T4D/A0，不把预测模型写进产品 crate。**
 
-完整杀线与夹具：Cycle 1 看 `cycle1/round3/{opus-a,opus-b,fable-a,fable-b}.md`；Cycle 2 看 `cycle2/round3/{opus-a,opus-b,gpt-sol-a,gpt-sol-b,fable-b}.md`。
+完整杀线与夹具：Cycle 1 看 `cycle1/round3/{opus-a,opus-b,fable-a,fable-b}.md`；Cycle 2 看 `cycle2/round3/{opus-a,opus-b,gpt-sol-a,gpt-sol-b,fable-a,fable-b}.md`。
 
 ---
 
@@ -168,7 +168,7 @@ S1 默认关：收益线（扩展名撒谎频率）必须先读字节才能知�
 | 题 | 侧 A | 侧 B | 怎么测 |
 |---|---|---|---|
 | S2 能否产出 move | 永远只注解（「多余」不是单文件性质） | 最强可逆移入 `重复/` | 先跑「一路径一行」+ 局部性：裁决句里能不能只出现被移动的那一份 |
-| S1 与 S3 能否同时默认开 | 次序纪律即可 | 若过半打开的文件随后被近因抑制 ⇒ 二选一 | 合成夹具数 `opened_then_recent` |
+| S1 与 S3 的组合架构 | **短路内 S1 先于 S3**（理由更稳定：午夜不从 `recently_modified` 翻成 `kind_disputed`） | **S3 先抑制、S1 只嗅剩余 move**（被近因挡下的文件根本不打开；无 `opened_then_recent`） | 同一份「既太新又与头矛盾」的文件：理由是否跨零点变、打开次数是否为零 |
 | SUP-K 支持计数取在 C₀ 还是撤回之后 | 取 C₀：开关不耦合 | 先撤回再数：更精确、开关耦合 | 「一类两文件、其中一个扩展名说谎」语料频率 |
 | n2 地盘线 90% | 背书 90% | 落在 [85%,90%) 必须双报 | 边界带双结论，不许选一个 |
 
