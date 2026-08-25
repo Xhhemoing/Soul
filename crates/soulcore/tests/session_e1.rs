@@ -1984,6 +1984,87 @@ fn an_ordinary_paste_prepared_and_discarded_leaves_no_injection_entry() {
     drop(keep);
 }
 
+// ---------------------------------- AC-23, when the store is the thing gone ---
+
+/// A session whose store did not open sends nothing to a configured endpoint.
+///
+/// `Session::append_audit` returns `Ok(())` when there is no store, and it has
+/// to: AC-17 says drafting on this machine keeps working when the database is
+/// what failed. What that meant for E1 is that `egress.request` and
+/// `draft.create` were built, handed to a chain that was not there, and dropped
+/// — so an approved generation left for the user's endpoint and no row anywhere
+/// recorded that it had. `person_summary` already refused on a closed store,
+/// which is what made this the odd one out rather than a policy.
+///
+/// The endpoint is a real loopback server that the session is genuinely
+/// pointed at, so `request_count() == 0` is a statement about sockets. The
+/// local path is asserted in the same test because refusing too much is the
+/// other way to get this wrong: `draft_pasted` builds no request body and is
+/// the one thing AC-17 promises a machine with no database.
+#[test]
+fn with_no_store_open_a_configured_endpoint_is_never_reached_and_pasting_still_works() {
+    let (keep, directory) = scratch();
+    // A directory whose `soul.db` is a directory cannot be opened as a
+    // database, which is the cheapest honest way to get a closed store.
+    std::fs::create_dir_all(directory.join("soul.db")).expect("create");
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+
+    let mut session = Session::open(&directory);
+    let status = session.status();
+    assert!(!status.store_opened, "{}", status.store_notice);
+
+    // Naming an address is not a store operation, and the settings page is
+    // reachable on a launch whose database did not open.
+    let snapshot = session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+    assert!(snapshot.llm_endpoint_configured);
+
+    let refusal = session
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
+        .expect_err("there is no chain to account for a request");
+    assert_eq!(refusal.reason_code, "ROUTINE");
+    assert!(
+        refusal.explanation.contains("加密库"),
+        "the refusal has to name the closed store: {}",
+        refusal.explanation,
+    );
+
+    // The second step refuses on its own, not merely because the first one
+    // handed back nothing to approve: a plan minted before the store went is
+    // still an approval somebody can press.
+    let refusal = session
+        .generate_draft(&Approval {
+            preparation_id: "00000000-0000-0000-0000-000000000000".to_owned(),
+            plan_hash: "0".repeat(64),
+        })
+        .expect_err("there is no chain to account for a request");
+    assert_eq!(refusal.reason_code, "ROUTINE");
+    assert!(
+        refusal.explanation.contains("加密库"),
+        "the refusal has to name the closed store: {}",
+        refusal.explanation,
+    );
+
+    assert_eq!(
+        endpoint.request_count(),
+        0,
+        "a request left a machine whose chain could not record it",
+    );
+
+    // AC-17: the local template is what a closed store still owes the user.
+    let drafted = session
+        .draft_pasted("周五的场地我已经订好了，你直接过来就行")
+        .expect("drafting on this machine does not need the database");
+    assert!(!drafted.text.is_empty());
+    assert_eq!(
+        endpoint.request_count(),
+        0,
+        "the local path opened a socket",
+    );
+    drop(keep);
+}
+
 /// Clearing puts the session back where it started, guard included.
 #[test]
 fn clearing_the_endpoint_closes_the_guard_again() {
