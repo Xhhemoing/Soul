@@ -75,11 +75,11 @@ impl SqlCipherStore {
             ),
             // A contact owns more than the key behind their display label. An
             // import seals their message bodies under a content key of their
-            // own and anchors it against their row, and a file that carries no
-            // display name — every `soul-import-v1` file does not — leaves the
-            // anchor as the only record that the key was ever theirs. Reading
-            // the label column alone is how forgetting such a person became a
-            // no-op that still issued a receipt.
+            // own and anchors it against their row; when the export gave no
+            // display name — no `soul-import-v1` file does — that anchor is
+            // the only record the key was ever theirs. Reading the label
+            // column alone is how forgetting such a person became a no-op that
+            // still issued a receipt.
             ForgetUnit::Contact(id) => self.uuid_column(
                 "SELECT DISTINCT content_key_id FROM (
                      SELECT display_label_key_id AS content_key_id FROM contacts
