@@ -16,9 +16,9 @@ describe("T-BOM-1 冻结网格的行集", () => {
 
   it("(色号, 显示名, 颗数) 精确", () => {
     expect(buildBom(subject, GENERIC_5MM)).toEqual([
-      { index: 1, code: "G02", displayName: "米白", count: 7 },
-      { index: 0, code: "G01", displayName: "纯白", count: 3 },
-      { index: 2, code: "G03", displayName: "浅灰", count: 2 },
+      { index: 1, code: "G02", displayName: "Cream", count: 7 },
+      { index: 0, code: "G01", displayName: "White", count: 3 },
+      { index: 2, code: "G03", displayName: "Light Grey", count: 2 },
     ]);
   });
 
@@ -37,7 +37,7 @@ describe("T-BOM-2 空网格与单色网格", () => {
 
   it("单色网格恰 1 行", () => {
     const bom = buildBom(grid(["55", "5."]), GENERIC_5MM);
-    expect(bom).toEqual([{ index: 5, code: "G06", displayName: "纯黑", count: 3 }]);
+    expect(bom).toEqual([{ index: 5, code: "G06", displayName: "Black", count: 3 }]);
   });
 });
 

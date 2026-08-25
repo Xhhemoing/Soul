@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { totalBeads } from "./bom.ts";
 import { occupiedCount } from "./grid.ts";
 import { AlgoError, createImage, imageFromPixels } from "./image.ts";
-import { GENERIC_5MM } from "./palette.ts";
+import { entryAt, GENERIC_5MM } from "./palette.ts";
 import { imageToPattern } from "./pipeline.ts";
 
 const SWATCH = [
@@ -34,7 +34,7 @@ describe("像素图路径", () => {
     });
     expect(result.grid.width).toBe(6);
     expect(result.grid.height).toBe(6);
-    expect(result.bom.map((row) => row.code).sort()).toEqual(["G08", "G12", "G21"]);
+    expect(result.bom.map((row) => row.code).sort()).toEqual(["G15", "G22", "G33"]);
   });
 
   it("像素图路径强制关闭抖动，并如实报告", () => {
@@ -57,6 +57,85 @@ describe("像素图路径", () => {
     expect(result.ditherApplied).toBe(true);
     // 判定器的原始结论仍然保留，供 UI 提示「你覆盖了自动判定」。
     expect(result.classification.kind).toBe("PixelArt");
+  });
+});
+
+/**
+ * AT-2 of `docs/bead/reviews/round1-algo-ts-review.md`. A cropped screenshot of
+ * pixel art is exactly the input `detectGrid`'s phase support exists for, and
+ * its last cell is usually cut short. Deriving the nearest-neighbour sample
+ * point from `sourceWidth / targetWidth` instead of the detected geometry made
+ * the point drift across cell borders: the review's 9×4 case came back
+ * `[G08, G08, G15]` under the palette of the day, reading the second logical
+ * pixel out of the red cell and dropping the blue one entirely.
+ */
+describe("AT-2 截断与相位偏移的放大图", () => {
+  // Exact palette swatches, so the assertion is about which cell was sampled
+  // and never about which bead a borderline colour rounds to.
+  const RED = [228, 3, 46, 255] as const;
+  const GREEN = [46, 158, 69, 255] as const;
+  const BLUE = [11, 97, 164, 255] as const;
+  const YELLOW = [255, 212, 0, 255] as const;
+
+  /** A 4×-up-scaled strip whose cell borders sit at `offset + 4k`. */
+  function strip(width: number, offset: number, colors: readonly (readonly number[])[]) {
+    return imageFromPixels(width, 4, (x) => {
+      const index = x < offset ? 0 : Math.floor((x - offset) / 4) + (offset > 0 ? 1 : 0);
+      const c = colors[Math.min(index, colors.length - 1)]!;
+      return [c[0]!, c[1]!, c[2]!, c[3]!];
+    });
+  }
+
+  function codesOf(image: ReturnType<typeof imageFromPixels>, maxSide: number) {
+    const result = imageToPattern(image, {
+      framing: { mode: "aspect", maxSide },
+      kind: "PixelArt",
+    });
+    return {
+      detectedGrid: result.detectedGrid,
+      size: [result.grid.width, result.grid.height],
+      codes: result.grid.cells.map((cell) => entryAt(GENERIC_5MM, cell!).id),
+    };
+  }
+
+  it("末格被截为 1px：三个逻辑像素仍是三个不同色号", () => {
+    const image = strip(9, 0, [RED, GREEN, BLUE]);
+    const actual = codesOf(image, 3);
+    expect(actual.detectedGrid).toEqual({
+      cellWidth: 4,
+      cellHeight: 4,
+      offsetX: 0,
+      offsetY: 0,
+    });
+    expect(actual.size).toEqual([3, 1]);
+    expect(actual.codes).toEqual(["G15", "G26", "G33"]);
+    expect(new Set(actual.codes).size).toBe(3);
+  });
+
+  it("相位偏移 3px、末格完整：前导残格也是一个逻辑像素", () => {
+    const image = strip(11, 3, [RED, GREEN, BLUE]);
+    const actual = codesOf(image, 3);
+    expect(actual.detectedGrid).toEqual({
+      cellWidth: 4,
+      cellHeight: 4,
+      offsetX: 3,
+      offsetY: 0,
+    });
+    expect(actual.size).toEqual([3, 1]);
+    expect(actual.codes).toEqual(["G15", "G26", "G33"]);
+  });
+
+  it("相位偏移 3px 且末格被截：两端的残格都保留", () => {
+    const image = strip(12, 3, [RED, GREEN, BLUE, YELLOW]);
+    const actual = codesOf(image, 4);
+    expect(actual.detectedGrid).toEqual({
+      cellWidth: 4,
+      cellHeight: 4,
+      offsetX: 3,
+      offsetY: 0,
+    });
+    expect(actual.size).toEqual([4, 1]);
+    expect(actual.codes).toEqual(["G15", "G26", "G33", "G22"]);
   });
 });
 

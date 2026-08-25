@@ -1,12 +1,13 @@
 /**
  * WP-B03 — the browser side of the bead pipeline.
  *
- * `crates/bead-core` (WP-B01) stays the oracle: the acceptance bar is that the
- * same fixture yields the same *colour-code* sequence on both sides, compared
- * as codes and never as raw ΔE floats. Every choice this port had to make is
- * written down in `contract.md`, keyed to gaps G1–G8 of
- * `docs/bead/reviews/round1-algorithms.md`, so the Rust side has something to
- * copy rather than re-invent.
+ * `crates/bead-core` (WP-B01) is the oracle (BD18/BD8): the acceptance bar is
+ * that the same fixture yields the same *colour-code* sequence on both sides,
+ * compared as codes and never as raw ΔE floats, and a disagreement is settled
+ * by moving this side. `oracle-parity.test.ts` replays the oracle's own
+ * fixtures to hold that line. Every choice this port had to make, and every
+ * semantic still unconverged, is written down in `contract.md`, keyed to gaps
+ * G1–G8 of `docs/bead/reviews/round1-algorithms.md`.
  */
 
 export {
@@ -80,12 +81,21 @@ export {
   aspectTarget,
   BOARD_28,
   BOARD_56,
+  collapseLattice,
   cropImage,
   DEFAULT_MAX_SIDE,
+  latticeCells,
+  planFixedBoards,
+  renderFit,
   resampleBox,
   resampleNearest,
+  type BoardSpec,
+  type CellLattice,
   type CropRect,
+  type FitPlan,
   type Framing,
+  type Sampling,
+  type SourceRect,
 } from "./framing.ts";
 
 export {

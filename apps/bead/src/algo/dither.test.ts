@@ -44,7 +44,8 @@ describe("T-FS-1 抖动关闭 ⇔ 逐像素独立最近色", () => {
   });
 
   it("单色图在抖动开与关下结果相同（误差恒为同一值，不撕裂）", () => {
-    const flat = imageFromPixels(8, 8, () => [230, 40, 50, 255]);
+    // Exactly G15 Red, so the residual error is zero and nothing can drift.
+    const flat = imageFromPixels(8, 8, () => [228, 3, 46, 255]);
     expect(cells(flat, GENERIC_5MM, true)).toEqual(cells(flat, GENERIC_5MM, false));
   });
 });
