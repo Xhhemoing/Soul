@@ -14,7 +14,12 @@
 //! `memory_evidence`, `memory_content_keys` and `relationship_evidence` are for.
 
 /// Value of `meta.schema_version`, bumped when a migration is added.
-pub const STORE_SCHEMA_VERSION: i64 = 1;
+///
+/// 2 added `destroyed_content_keys`. Every statement below is
+/// `IF NOT EXISTS`, so a version 1 file gains the table the next time it is
+/// opened; what it cannot gain is a record of the forgets that already
+/// happened, and ids destroyed before this version can still be re-minted.
+pub const STORE_SCHEMA_VERSION: i64 = 2;
 
 pub const DDL: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (
@@ -28,6 +33,15 @@ CREATE TABLE IF NOT EXISTS content_keys (
     content_key_id TEXT PRIMARY KEY,
     wrapped_key    BLOB NOT NULL,
     wrap_nonce     BLOB NOT NULL
+);
+
+-- Ids that have been through a forget. Deleting the wrapped key leaves the id
+-- itself free to be asked for again, and minting a fresh key under it would
+-- hand a live key back to rows the forget turned into tombstones. Nothing here
+-- is a secret: it is the bare UUID, which SECURITY.md already lets outlive the
+-- row in the audit chain.
+CREATE TABLE IF NOT EXISTS destroyed_content_keys (
+    content_key_id TEXT PRIMARY KEY
 );
 
 -- Field-level ciphertext. row_id and field are also bound into the AEAD tag,

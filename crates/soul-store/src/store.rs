@@ -142,6 +142,24 @@ impl SqlCipherStore {
             .map_err(backend)?;
         conn.pragma_update(None, "synchronous", "FULL")
             .map_err(backend)?;
+        // Forgetting is a `DELETE` of a wrapped content key, and plain SQLite
+        // would leave those bytes where they were, on a page that has merely
+        // joined the free list — still inside a file the DEK opens. SQLCipher
+        // happens to turn secure deletion on for us when its codec attaches,
+        // which is a fact about a dependency's internals and not something
+        // this crate says anywhere. Asking for it here, and refusing to hand
+        // back a store that answers anything else, makes it ours to keep.
+        conn.pragma_update(None, "secure_delete", "ON")
+            .map_err(backend)?;
+        let secure_delete: i64 = conn
+            .query_row("PRAGMA secure_delete", [], |row| row.get(0))
+            .map_err(backend)?;
+        if secure_delete != 1 {
+            return Err(StoreError::Backend(format!(
+                "this SQLite build answered PRAGMA secure_delete with {secure_delete} after being \
+                 asked for 1, so a destroyed content key would stay legible in a free page"
+            )));
+        }
         conn.execute_batch(sql::DDL).map_err(backend)?;
         conn.execute(
             "INSERT INTO meta (key, value) VALUES ('schema_version', ?1)
@@ -229,9 +247,30 @@ impl SqlCipherStore {
         Ok(Some(SecretKey::from_bytes(bytes)))
     }
 
+    /// Whether this id has already been through a forget.
+    ///
+    /// The wrapped key is gone by then, and nothing else in the database says
+    /// the id ever existed, so a caller asking to seal under it again would be
+    /// handed a brand new key — and the tombstoned rows that name the id would
+    /// have a live key behind them once more.
+    pub fn content_key_destroyed(&self, content_key_id: Uuid) -> StoreResult<bool> {
+        self.conn
+            .query_row(
+                "SELECT 1 FROM destroyed_content_keys WHERE content_key_id = ?1",
+                [content_key_id.to_string()],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .map(|row| row.is_some())
+            .map_err(backend)
+    }
+
     fn ensure_content_key(&mut self, content_key_id: Uuid) -> StoreResult<SecretKey> {
         if let Some(existing) = self.content_key(content_key_id)? {
             return Ok(existing);
+        }
+        if self.content_key_destroyed(content_key_id)? {
+            return Err(StoreError::ContentKeyDestroyed(content_key_id));
         }
         let fresh = SecretKey::random();
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
@@ -329,6 +368,17 @@ impl SqlCipherStore {
                 row.get::<_, i64>(0)
             })
             .map(|_| ())
+            .map_err(backend)
+    }
+
+    /// `PRAGMA secure_delete` as SQLite reports it: 0 off, 1 on, 2 for the
+    /// `FAST` compromise that only zeroes what it can do without extra page
+    /// writes. [`SqlCipherStore::open`] refuses to hand back a store that
+    /// answers anything but 1, because forgetting rests on the freed bytes
+    /// being gone rather than merely unlinked.
+    pub fn secure_delete(&self) -> StoreResult<i64> {
+        self.conn
+            .query_row("PRAGMA secure_delete", [], |row| row.get(0))
             .map_err(backend)
     }
 

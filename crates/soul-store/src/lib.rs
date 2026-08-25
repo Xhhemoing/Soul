@@ -14,8 +14,9 @@
 //!   per-forget-unit content key, with `row_id|field` as additional
 //!   authenticated data, and the content key itself is stored wrapped under the
 //!   KEK;
-//! * forgetting deletes that wrapped key, which is why it is irreversible
-//!   without claiming anything about SSD blocks;
+//! * forgetting deletes that wrapped key and records the id as destroyed, so
+//!   it can be neither unwrapped nor minted again, which is why it is
+//!   irreversible without claiming anything about SSD blocks;
 //! * the audit chain is written by the store, carries no prose, and is never
 //!   touched by a forget.
 //!
