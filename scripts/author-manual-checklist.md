@@ -12,7 +12,7 @@ CI 到此为止。下面每一条都要在一台 **Windows 11 x64、非管理员
 
 打包在作者机器上做，不在 CI 上做：`tauri build` 会去取 NSIS，那是出网，
 CI 不允许（见 `docs/STATUS.md` WP13「Windows 手动缺口」）。
-从 **HEAD of `cursor/soul-goal1-7b1c`（`3af52da` 或之后）**打。不要用 `2e72ddf` 的 `windows-binaries` 做卸载：
+从 **HEAD of `cursor/soul-goal1-7b1c`（`2d2badd` 或之后）**打。不要用 `2e72ddf` 的 `windows-binaries` 做卸载：
 那次构建还把 `soul.exe` 装进 `%LOCALAPPDATA%\Soul`，卸载会碰到 `keys.dpapi`。
 
 ```powershell
@@ -48,6 +48,10 @@ pwsh -File scripts/install-smoke.ps1 `
 - [ ] 安装期间没有任何窗口弹出来（`/S` 是静默）。
 - [ ] 卸载之后 `%LOCALAPPDATA%\Programs\Soul` 没有了，`程序和功能` 里也没有了。
 - [ ] 若安装后曾运行过 Soul，`%LOCALAPPDATA%\Soul` **仍在**（`keys.dpapi` / `soul.db` 还在）。数据目录消失不是成功，是 Goal 1 缺陷。
+
+卸载器还带一道拒绝：`$INSTDIR` 要是数据目录（`%LOCALAPPDATA%\Soul`）就直接 `Abort`，一个文件都不删。
+HEAD 打出来的包装到 `%LOCALAPPDATA%\Programs\Soul`，碰不到这条；碰到了说明手里的安装器是旧产物，
+换一个从 HEAD 打的包重来，别手动去删那个目录。
 
 脚本查的是：安装器返回 0、卸载项在 HKCU（不是 HKLM，说明是按用户装的）、
 装出来的可执行文件在 `%LOCALAPPDATA%\Programs\Soul\soul.exe` 且清单是 `asInvoker`、

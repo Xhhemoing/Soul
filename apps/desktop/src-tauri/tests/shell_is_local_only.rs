@@ -200,6 +200,28 @@ fn nsis_executable_lines(content: &str) -> Vec<&str> {
         .collect()
 }
 
+/// The executable lines of one `!macro NAME ... !macroend` block, so a hook can
+/// be read on its own: `Abort` somewhere else in the file is not the uninstall
+/// refusing.
+fn nsis_macro_body<'a>(content: &'a str, name: &str) -> Vec<&'a str> {
+    let opener = format!("!macro {name}");
+    let mut lines = content.lines().map(str::trim);
+    lines
+        .find(|line| *line == opener)
+        .unwrap_or_else(|| panic!("the hooks file has no `{opener}`"));
+
+    let mut body = Vec::new();
+    for line in lines {
+        if line == "!macroend" {
+            return body;
+        }
+        if !line.is_empty() && !line.starts_with(';') {
+            body.push(line);
+        }
+    }
+    panic!("`{opener}` is never closed");
+}
+
 /// PRODUCT_LOCK keeps soul.db and keys.dpapi under `%LOCALAPPDATA%\Soul`.
 /// Tauri currentUser NSIS defaults to the same folder as the install dir;
 /// these hooks force `%LOCALAPPDATA%\Programs\Soul` so uninstall cannot
@@ -259,6 +281,93 @@ fn the_installer_ships_into_programs_not_the_data_directory() {
         "install dir and data dir must not be the same path",
     );
     assert_ne!(WINDOWS_INSTALL_DIR, r"$LOCALAPPDATA\Soul");
+}
+
+/// Forcing the install directory only fixes installs this build makes. The
+/// uninstaller carries whatever directory it was written with — an artifact
+/// from before that hook, a restored previous install location — and Tauri runs
+/// PREUNINSTALL before it deletes any file, so that hook is the last place that
+/// can refuse to erase keys.dpapi.
+#[test]
+fn the_uninstall_refuses_to_run_in_the_data_directory() {
+    let body = nsis_macro_body(INSTALLER_HOOKS, "NSIS_HOOK_PREUNINSTALL");
+    assert!(
+        !body.is_empty(),
+        "PREUNINSTALL is empty, so an uninstaller pointed at the data directory would run",
+    );
+    assert!(
+        body.iter()
+            .any(|line| line.split_whitespace().next() == Some("Abort")),
+        "PREUNINSTALL never aborts: {body:?}",
+    );
+
+    for spelling in [r"$LOCALAPPDATA\Soul", r"$LOCALAPPDATA\${PRODUCTNAME}"] {
+        assert!(
+            body.iter()
+                .any(|line| line.starts_with("StrCmp")
+                    && line.contains("$INSTDIR")
+                    && line.contains(spelling)),
+            "PREUNINSTALL never compares $INSTDIR against {spelling}: {body:?}",
+        );
+    }
+
+    // A silent uninstall has nobody to answer a dialog, and `install-smoke.ps1`
+    // runs `/S` unattended: a MessageBox here is a hang, not a warning.
+    for line in &body {
+        assert!(
+            !line.to_ascii_uppercase().contains("MESSAGEBOX"),
+            "PREUNINSTALL would block a silent uninstall on a dialog: {line}",
+        );
+    }
+
+    // The hook's whole job is to not delete. Refusing is allowed; removing
+    // anything on the way out is what this file exists to prevent.
+    for hook in [
+        "NSIS_HOOK_PREINSTALL",
+        "NSIS_HOOK_POSTINSTALL",
+        "NSIS_HOOK_PREUNINSTALL",
+        "NSIS_HOOK_POSTUNINSTALL",
+    ] {
+        for line in nsis_macro_body(INSTALLER_HOOKS, hook) {
+            let instruction = line.split_whitespace().next().unwrap_or_default();
+            assert!(
+                !instruction.eq_ignore_ascii_case("Delete")
+                    && !instruction.eq_ignore_ascii_case("RMDir"),
+                "{hook} removes files, which no hook has a reason to do: {line}",
+            );
+        }
+    }
+}
+
+/// AC-01's tray icon comes from `default_window_icon()`, which Tauri fills from
+/// `bundle.icon`. A path listed there and missing on disk fails the bundle, and
+/// on a build that got past it the tray would never appear — the one thing the
+/// author-manual checklist looks for by eye.
+#[test]
+fn every_bundle_icon_exists_on_disk() {
+    let value = config();
+    let icons = value["bundle"]["icon"].as_array().expect("bundle.icon");
+    assert!(!icons.is_empty(), "a bundle with no icon has no tray icon");
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    for icon in icons {
+        let path = icon.as_str().expect("icon paths are strings");
+        assert!(
+            root.join(path).is_file(),
+            "tauri.conf.json lists an icon that is not in the repository: {path}",
+        );
+    }
+
+    assert!(
+        icons
+            .iter()
+            .any(|icon| icon.as_str().is_some_and(|path| path.ends_with(".ico"))),
+        "Windows takes the window and tray icon from the .ico",
+    );
+    assert!(
+        TRAY.contains("default_window_icon()"),
+        "the tray reads the bundled window icon, which is what makes this list load-bearing",
+    );
 }
 
 /// Tauri's permission system is the other place an egress path could be

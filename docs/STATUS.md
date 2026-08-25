@@ -422,7 +422,7 @@ CI 到此为止。下面每一条都要在 Windows 11 x64 真机上由作者过�
 4. **`Get-NetTCPConnection` 只看 TCP。** Windows 的 UDP 端点表没有远端地址，所以脚本看不见 UDP 对端。Linux 侧的 `netwatch` 两个都读，两边合起来才是覆盖。检查清单第 5 节让作者手动看一眼 `Get-NetUDPEndpoint`。
 5. **WebView2 的进程不是 `soul.exe`。** `msedgewebview2.exe` 有它自己的网络行为。云开关那一节明确要求把它单独记一条，不要含糊地算进「Soul 出网了」或者「没事」。
 6. **AC-09 / AC-10 的真机那一半。** 所有采集测试都驱动 `FakeForegroundSource`，因为 runner 没有桌面。`collect-probe` 是给这一半准备的工具，但它要一个人在键盘前切二十秒窗口，所以结果只能手填回来。
-7. **卸载会不会删掉用户数据、Defender/SmartScreen 会不会拦未签名的安装器。** NSIS 安装目录与 `%LOCALAPPDATA%\Soul` 数据目录的碰撞已在 `installer-hooks.nsh` + 测试里关闭；真机上仍要确认卸载后 `keys.dpapi` / `soul.db` 仍在（作者清单 §1 与 §7）。Defender/SmartScreen 两条都要实测并记录，都是发布前要处理的事。
+7. **卸载会不会删掉用户数据、Defender/SmartScreen 会不会拦未签名的安装器。** NSIS 安装目录与 `%LOCALAPPDATA%\Soul` 数据目录的碰撞已在 `installer-hooks.nsh` + 测试里关闭；`NSIS_HOOK_PREUNINSTALL` 现在还多一道：`$INSTDIR` 要是 `$LOCALAPPDATA\Soul` 或 Tauri currentUser 默认的 `$LOCALAPPDATA\${PRODUCTNAME}`，卸载 `Abort`，一个文件都不删。Tauri 在删任何文件之前跑这个钩子，那是最后一个还能拒绝的地方——挡的是 `2e72ddf` 那种旧产物、`RestorePreviousInstallLocation`、以及将来 Tauri 默认值漂移回数据目录。没有 MessageBox：`/S` 卸载没人回答对话框，弹一个等于挂住。HEAD 装出来的仍然落在 `%LOCALAPPDATA%\Programs\Soul`，所以一次**正确**安装的 `/S` 卸载一步没变。这不等于这一条过了：真机上卸载完 `keys.dpapi` / `soul.db` 还在不在，仍然只有作者按清单 §1 与 §7 看得到。Defender/SmartScreen 两条都要实测并记录，都是发布前要处理的事。
 
 ### WP13 的取舍与遗留
 
@@ -750,7 +750,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 | ID | CI / 自动化证据 | 仍缺 |
 |---|---|---|
-| AC-01 | `soul.exe` 内嵌 `asInvoker`；`install-smoke.ps1 -SkipInstall` 验证进程名、清单、`uiAccess=false`（`2e72ddf` package）。HEAD 另用测试钉住托盘文案与 `$INSTDIR=%LOCALAPPDATA%\Programs\Soul` | 托盘图标是否出现、启动不弹 UAC 的肉眼、标准用户 NSIS 真装真卸（须用 `8b856bd` 或之后在 Win11 上 `tauri build`，不要用 `2e72ddf` 工件）——作者清单 1–4 |
+| AC-01 | `soul.exe` 内嵌 `asInvoker`；`install-smoke.ps1 -SkipInstall` 验证进程名、清单、`uiAccess=false`（`2e72ddf` package）。HEAD 另用测试钉住托盘文案、`$INSTDIR=%LOCALAPPDATA%\Programs\Soul`、`PREUNINSTALL` 在数据目录上 `Abort`（不弹 `MessageBox`）、以及 `bundle.icon` 文件都在盘上 | 托盘图标是否出现、启动不弹 UAC 的肉眼、标准用户 NSIS 真装真卸（须用 HEAD 在 Win11 上 `tauri build`，不要用 `2e72ddf` 工件）——作者清单 1–4 |
 | AC-02 | headless 主流程 `fully_closed`；`session_commands` 配置形状拒能力字段；smoke「nothing is switched on」 | — |
 | AC-03 | 问卷 intake 与 `session_screens` / Wizard 测试 | — |
 | AC-04 / AC-05 | 导入 fixture + 无明文残留；Telegram 缺字段可读失败。**壳这一侧也接上了**：`session_import.rs`（过 `Session`、过真库、重开后仍在、数据目录里搜不到原文）、`ipc_roundtrip.rs` 走真的 `invoke_handler`、`Import.test.tsx` 用 fixture 自己的行断言 DOM 上没有正文 | 真机上用界面导一次（作者清单 8，可选，不是门禁项） |
