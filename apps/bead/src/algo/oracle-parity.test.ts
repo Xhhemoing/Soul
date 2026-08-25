@@ -4,10 +4,11 @@ import { describe, expect, it } from "vitest";
 
 import { buildBom } from "./bom.ts";
 import { quantize } from "./dither.ts";
-import { planFixedBoards, renderFit, type BoardSpec, type Sampling } from "./framing.ts";
+import { BOARD_28, planFixedBoards, renderFit, type BoardSpec, type Sampling } from "./framing.ts";
 import { createImage } from "./image.ts";
 import { entryAt, GENERIC_5MM } from "./palette.ts";
 import { imageToPattern } from "./pipeline.ts";
+import { splitSteps, SPLIT_MODES, type SplitMode, type Step } from "./steps.ts";
 
 /**
  * AT-1. `crates/bead-core/fixtures/parity/*.json` is the oracle's own output,
@@ -36,6 +37,11 @@ interface OracleFixture {
     /** Empty string is the oracle's spelling of an empty cell. */
     readonly codes: string[];
     readonly bom: { readonly code: string; readonly name: string; readonly count: number }[];
+    /** One plan per mode of `bead_core::parity::parity_step_modes`, in that order. */
+    readonly steps: {
+      readonly mode: string;
+      readonly groups: { readonly label: string; readonly cells: [number, number][] }[];
+    }[];
   };
 }
 
@@ -43,6 +49,31 @@ const CASES = ["pixel-art", "photo-flat", "photo-dithered", "with-transparency"]
 
 function load(name: string): OracleFixture {
   return JSON.parse(readFileSync(join(ORACLE_FIXTURES, `${name}.json`), "utf8")) as OracleFixture;
+}
+
+/**
+ * `StepGroup.label` is the one piece of a plan this side does not store, so the
+ * comparison rebuilds it from the oracle's own formats
+ * (`bead_core::steps::{color_by_color, tile, outline_infill, row_by_row}`). The
+ * board name is the fixture generator's `BoardSpec::square_28`.
+ */
+function labelOf(step: Step): string {
+  switch (step.mode) {
+    case "color-by-color": {
+      const entry = entryAt(GENERIC_5MM, step.color!);
+      return `${entry.id} ${entry.displayName} ×${step.cells.length}`;
+    }
+    case "tile": {
+      const first = step.cells[0]!;
+      const col = Math.floor(first.x / BOARD_28) + 1;
+      const row = Math.floor(first.y / BOARD_28) + 1;
+      return `Board ${BOARD_28}x${BOARD_28} r${row}c${col}`;
+    }
+    case "outline-infill":
+      return `Region ${step.group + 1} ${step.part}`;
+    case "row-by-row":
+      return `Row ${step.group + 1}`;
+  }
 }
 
 function run(fixture: OracleFixture) {
@@ -134,5 +165,24 @@ describe("AT-1 与 bead-core 共用同一份 parity fixture", () => {
     expect(
       bom.map((row) => ({ code: row.code, name: row.displayName, count: row.count })),
     ).toEqual(fixture.expected.bom);
+  });
+
+  it.each(CASES)("%s 四种步骤划分逐组逐格与 oracle 全等", (name) => {
+    const fixture = load(name);
+    const { grid } = run(fixture);
+
+    // The oracle records the four plans in the order of
+    // `bead_core::parity::parity_step_modes`, which is `SPLIT_MODES`.
+    expect(fixture.expected.steps.map((plan) => plan.mode)).toEqual([...SPLIT_MODES]);
+
+    for (const plan of fixture.expected.steps) {
+      const actual = splitSteps(grid, plan.mode as SplitMode).map((step) => ({
+        label: labelOf(step),
+        cells: step.cells.map((cell) => [cell.x, cell.y]),
+      }));
+      expect(actual).toEqual(
+        plan.groups.map((group) => ({ label: group.label, cells: group.cells })),
+      );
+    }
   });
 });

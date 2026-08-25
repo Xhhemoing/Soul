@@ -68,7 +68,8 @@
 - 外轮廓 = 与「网格外部或外部背景」8 邻接的分量格；
 - 内边界 = 与洞 8 邻接的分量格；
 - 一格只归一类，**外轮廓优先**；空类别不产生空步骤；
-- 分量顺序按首格「最上、再最左」，步骤内格序行优先。
+- 分量顺序按首格「最上、再最左」，步骤内格序行优先；
+- 三个 slug 与 oracle 的 `Phase::slug` 同名：`outline` / `inner-edge` / `fill`。
 
 ## G5 缩放重采样
 
@@ -165,7 +166,9 @@ premultiplyAlpha: "none" })`，再以自然尺寸 1:1 绘制、`imageSmoothingEn
   `photo-dithered` / `with-transparency`）由 `bead_core::parity::build` 写出，
   含原始 RGBA、`fit`/`sampling`/`dither` 与期望色号、BOM；
 - `oracle-parity.test.ts` 按同样的 `plan → render → quantize → BOM` 顺序重放这四条，
-  逐格比色号、逐行比 BOM（码、名、颗数）。它**绕开判定器**：oracle 的生成器也没有
+  逐格比色号、逐行比 BOM（码、名、颗数），并把 `expected.steps` 里四种步骤划分逐组
+  逐格比一遍（组标签按 oracle 的 `StepGroup::label` 格式在测试里重建）。
+  它**绕开判定器**：oracle 的生成器也没有
   判定器，接上去比的就是另一条管线了。它另外走一遍完整 `imageToPattern`
   （`framing: fixed-boards` + `kind: "Photo"`），确认门面与直调同解。
 
@@ -183,11 +186,12 @@ premultiplyAlpha: "none" })`，再以自然尺寸 1:1 绘制、`imageSmoothingEn
 | 框定 | `board` / `aspect` / `manual` | `FixedBoards` / `AspectFit`（整板搜索）/ `ScaleCrop`（parity 只走已共享的 `fixed-boards`） |
 | 网格提取（退化语义） | `detectGrid`：变化位置 < 2 或周期 > 64 ⇒ 该轴整幅算一格；「变化」比 RGBA 四字节 | `detect::detect_grid`：主干同式（gcd + 相位、`MAX_CELL_PROBE = 64`、不要求整除）；变化位置 < 2 ⇒ 该轴 1 像素一格（`GridGeometry::NONE`），周期 > 64 ⇒ 取 ≤ 64 的最大因子而不是放弃；「变化」只比不透明像素的 RGB，透明像素一律等价 |
 | 判定器 | `0.5·flat + 0.3·grid + 0.2·color` | `0.45·flat + 0.35·palette + 0.20·block` |
-| Outline→Infill | 分量在非空掩码上 4 邻接，洞 = 边界洪泛不可达，外轮廓 8 邻接判定并优先归类；内边界 slug `inner-border` | 同式（`steps::outline_infill`）；只有 slug 不同，叫 `inner-edge` |
 | 面积平均 | `resampleBox` 按覆盖面积加权 | 覆盖到的整像素等权（本侧 `renderFit` 已同式） |
 
 已经收敛、不要再「收敛」一次的：**排序次键**——`bom.rs` 与 `steps.rs` 都按 `ColorId`
-（色板索引）升序断尾，与 G6 同键，不是 `code` 字符串序；**抖动查表取整**（G7，AL-2）。
+（色板索引）升序断尾，与 G6 同键，不是 `code` 字符串序；**抖动查表取整**（G7，AL-2）；
+**Outline→Infill**（G4，AL-3）——两侧同为非空掩码 4 邻接分量、洞按边界洪泛判定、
+外轮廓 8 邻接优先，slug 也已同名，四种步骤划分由 `oracle-parity.test.ts` 逐组逐格锁住。
 
 上表的网格提取行只记录退化边角：oracle 的 fixture 生成器不撤放大，这些分支全在 parity
 路径之外，只影响本侧独有的像素图前处理，行为按现状保留。
