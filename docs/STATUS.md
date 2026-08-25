@@ -240,8 +240,8 @@ WP06 那八题的去向：`voice.directness` 与 `voice.register` 从文本框�
 4. **时间取 `date_unixtime`，缺了就拒。** 旁边的 `date` 是本地墙钟没有偏移量，单靠它只能猜时区。fixture 里这两个字段本来就对不上，测试反过来利用了这一点来证明用的是哪一个。
 5. **标识符按来源加盐。** 一个 Telegram 导出里的 user `42` 和一个 `soul-import-v1` 文件里的 user `42` 是两个人，直到有东西把他们连起来。两个节点是用户看得见、能合并的错；一个节点装两个人是看起来对的错图。`import_to_graph.rs::identifiers_are_scoped_to_the_export_they_came_from` 把这个语义连同「两个 self 联系人时图会拒绝构建」一起钉住了。
 6. **同一个文件导入两次会写两遍事件。** v0.1 没有外部 id 索引可以去重，造一个就意味着要有一列存平台的消息 id。联系人是去重的（按标识符摘要），事件不是。要不要去重由调用方决定。
-7. **提交不是一个事务。** `commit` 逐条写联系人、密封、事件、证据；中途失败会留下写了一半的导入。WP02 的遗忘是单事务的，导入不是——`soul-store-api` 上没有可以让调用方开事务的入口，加一个是存储边界的改动，超出本工作单。重跑同一个文件是安全的（联系人会认回来），只是事件会多一份。
-8. **问卷也不是一个事务。** 合并之后 `intake` 是「录制 N 条 → 写档案 → 落审计」，中途失败会留下几条没有档案认领的问卷事件与证据。它们不是坏数据（每条都自洽、都指得回题号），只是没被引用；重跑一遍是安全的，轴上的 `evidence_ids` 是替换语义。要做成原子的，同样得先有一个能让调用方开事务的存储入口。
+7. ~~**提交不是一个事务。**~~ **已完成**，见「SOUL-7C：一次导入是一个事务」。当时的说法是：`commit` 逐条写联系人、密封、事件、证据，中途失败会留下写了一半的导入，而 `soul-store-api` 上没有可以让调用方开事务的入口。入口现在在 `SqlCipherStore::transact` 上（不在 `soul-store-api` 的 trait 上），`Session::commit_import` 把提交与重算包在一个事务里。
+8. **问卷也不是一个事务。** 合并之后 `intake` 是「录制 N 条 → 写档案 → 落审计」，中途失败会留下几条没有档案认领的问卷事件与证据。它们不是坏数据（每条都自洽、都指得回题号），只是没被引用；重跑一遍是安全的，轴上的 `evidence_ids` 是替换语义。**「得先有一个能让调用方开事务的存储入口」这一句已经不成立了**——`SqlCipherStore::transact` 就是那个入口，导入已经在用它。问卷这一条还没接上，缺的只是把 `intake` 包进去，不再缺存储边界。
 9. **`soul-profile` 依赖 `soul-import`，方向是定的。** 合并要有一个 crate 拥有题表，而录制方不能知道档案是什么——反过来接就得让 `soul-import` 认识轴与语气字段。代价是 `soul-profile` 的依赖里多了一个不搞存储也不搞策略的 crate，以及选项那几个 token（`leans_high`、`formal`……）在两边各出现一次：录制方声明它们是为了拒掉没提供过的选项，档案侧解释它们。`one_questionnaire.rs` 把每个 token 拿去 `position_by_key` / `VoiceSetting::from_option` 解一遍，解不开就红。
 
 ## WP07 完成情况
@@ -575,7 +575,7 @@ PRODUCT_LOCK v0.1 第二片要在一台干净的 Win11 上证「问卷 + `soul-i
 
 1. **格式由用户在页面上选，不靠嗅探。** 两种文件都可能叫 `.json`，靠后缀猜等于让一个坏掉的 Telegram 导出去撞 JSONL 解析器，报出来的拒绝信会指错地方。页面上是两个单选，选哪个就调哪条命令。代价是用户要认得自己导出的是什么——那句话写在选项旁边。
 2. **提交时重新解析，不留暂存。** 好处是会话里不存别人的聊天记录，坏处是同一份文件被解析两遍。文本本来就在 WebView 里（用户刚选的那个文件），所以第二遍不需要再读一次磁盘。真正的代价是「预览之后文件在磁盘上被改了」这种情况下两次结果可能不同——但用户点确认时送回去的是浏览器里那份文本，不是路径，所以这条其实关不上也不用关。
-3. **v0.1 的导入不是一个事务。** `commit` 中途失败会留下已经写进去的那一部分。`ImportError` 转成的拒绝信里说了这一点。做成事务要 `soul-store` 那一层给出跨多次写入的边界，那不是这一段能加的。
+3. ~~**v0.1 的导入不是一个事务。**~~ **已完成**，见「SOUL-7C：一次导入是一个事务」。`soul-store` 那一层的跨写入边界就是那一节加的，拒绝信也跟着改了：现在说的是整份回滚、可以直接再导一次。
 4. **同一份文件导入两次仍然会写两遍事件**（WP06 遗留 6）。界面上没有拦：拦就要么记住导入过什么（那要落盘一份文件指纹），要么按内容去重（那要一列外部 id）。现在的做法是回执把 `contacts_matched` 报出来，用户看得见「这些人我已经认识」。
 5. **页面不显示文件名。** 显示的是「读到 N 个字符」。文件名是 `<input type="file">` 自己画的，再回显一遍不多给任何信息，而 `chat_with_某某.json` 这种名字里带的是第三人。
 6. **`/graph` 那句空状态改了。** 原来写着「导入还没有接到界面上」，那句话现在是假的。改成指向「导入」页。
@@ -914,6 +914,26 @@ T4D 端口把 `crates/soul-graph/src/correct.rs` 和 `soulcore::commands::graph:
 补的门禁：`Profile.test.tsx` 从 18 长到 **23**（vitest 全库 177 → **182**）——说明句里每一处「以你最后说的为准」前面都必须带「没锁」的限定；答在锁住的轴上之后收据说得出是哪几条、那条轴仍是用户按的方向、另一条没锁的照常生效；`ignored` 为空时这一段一个字不出现；同一个理由只说一次、认不出的理由走兜底句、两个机器词都不在渲染出来的文字里；最后一条照 `projection_sentences.rs` 的办法把三句话逐字钉回 `COPY_ZH.md`。`test/fakeCore.ts` 的 double 跟着变诚实：答案落在锁住的轴上时它自己产出 `ignored` 且不移动那条轴，`recording` 双替身回的收据里点名的那几条也不再被 apply——一个照单全收的 double 会让上面那条「轴没动」的断言变成空话。
 
 **没有动的**：`COMMANDS`、IPC、`soul-store` 的键、schema 与 `schemas.lock.json`、冻结算法 crate、向导那条路、`Graph.tsx`。作者清单第 10 节多了一条真机项（纠正一条轴之后再答同一条轴）。本机绿：`pnpm --filter @soul/desktop lint` 与 `test`（14 文件 182 项）。**本机绿不是 hosted 绿**，真机上这一段仍然没有人走过。
+
+## SOUL-7C：一次导入是一个事务（核于 2026-08-25）
+
+分支 `cursor/import-tx-wrap-4a8e`，从 `origin/cursor/soul-integration-4a8e`（`826d092`）长出。**没有合 PR、没有合 `main`、没有 rebase 主干。**
+
+两个后果同一个根。`append_event` 每写一条事件开一个自己的事务，`synchronous=FULL` 下每条都要一次提交 fsync：本机（overlay 文件系统，不是 tmpfs）上 8000 条要 **3.57 秒**，十万条的 Telegram 导出会把一次 IPC 调用堵到分钟级。另一头更难看——中途崩了或者中途报错，写进去的那一半就留在库里，而导入的事件没有外部 id 可以对，用户想把这份文件补完就只能整个再导一遍，于是已经落库的每一条都多出一份。D55 的按内容哈希去重还停着，所以「再导一次」在 v0.1 里是有代价的建议。**把一次导入变成一个事务，这两件事一起没了。**
+
+落地内容：`SqlCipherStore::transact`——一个跨多次写入的边界，签名是 `FnOnce(&mut SqlCipherStore) -> Result<T, E>`，`BEGIN IMMEDIATE` 起、成功 `COMMIT`、报错或 panic 都 `ROLLBACK`（panic 那条走 `catch_unwind` 再 `resume_unwind`，因为 `soulcore` 的 `hold` 是把中毒的锁恢复回来用的，连接不能留在事务中间）。它**没有加到 `soul-store-api` 的 trait 上**：那一层是 `FakeStore` 也要实现的存储契约，而这是 SQLCipher 这一个后端的事。为了让它能包住别人，`store.rs` 里那五处 `self.conn.transaction()`（事件、推断、记忆、关系、审计）改成 `self.conn.savepoint()`——没人包的时候最外层 savepoint 自己就是那个事务，`RELEASE` 就是提交（AC-24 在裸 store 上的语义因此一个字没变）；被包住的时候它只是同一个事务里的记账。`forget.rs` 一个字节没动，它那条单事务的路本来就不在导入里。`Session::commit_import` 把 `soul_import::commit` 与 `graph_commands::rebuild` 一起放进 `transact`：**重算在事务里面而不是后面**，因为一张建不出来的图（两个 `self` 联系人是那个例子）本来就是不该留下这次导入的理由。
+
+**时间**：8000 条 3.57 秒 → **0.637 秒**（同一台机器、同一棵树，把 `transact` 换成直接调用测的对照）；十万条 **7.66 秒**。
+
+**重钉 AC-24，没有偷偷改**。`session_crash.rs` 里那条 `STORE_EVENT_COMMIT_MID=2*off->panic` 原来断言「三条里活下来两条」，现在断言活下来 **0** 条，测试名从 `..._reopens_with_one_write_lost_and_a_chain_that_verifies` 改成 `a_session_that_died_mid_import_reopens_with_the_whole_import_rolled_back`。这是把 AC-24 的「最多丢一次未提交的写入」读严了而不是读松了：正在写的那个单位就是这次导入（事件、人、由它们导出的图、提交欠链的那几条审计，缺一个另外几个都不成立），丢掉的正好是一个。store 那一层的承诺一个字没改，`soul-store/tests/crash_recovery.rs` 七项照旧全绿——没人包的 `append_event` 仍然自己提交，那里崩了仍然只丢那一行。测试尾巴上加了这次回滚是为了什么：同一份文件再导一次，`events_written` 是 3，库里也是 3，`contacts_matched` 是 0。
+
+**非崩溃的那一半**在 `session_import.rs`（12 → **13**）：`a_commit_that_fails_after_it_has_written_rows_leaves_none_of_them_behind`。先导 `valid_basic.jsonl`（5 条事件、3 个人），再导一份第二个账号的导出——标识符按来源加盐，两边的 owner 认不回来，于是库里有两个 `self` 联系人，`soul_graph::rebuild` 在事务里拒绝。断言的是事件仍是 5、人与边仍是原来那些、审计条数一条没多、链仍验得过，然后原来那份文件还能再导一次并认回自己那 3 个人，最后按 AC-04 扫一遍数据目录：被回滚掉的那份导出说的话一个字都不在磁盘上。把 `transact` 换成直接调用，这一条会在「事件仍是 5」上红（读到 7），所以它量的是包裹本身而不是别的。
+
+**话也跟着改**。`ImportError` 转出来的拒绝信原来写着「v0.1 的导入不是一个事务，中途失败可能已经写进去一部分；……事件会多一份」——现在这句是假的。改法不是把它换成另一句，而是把「剩下什么」从各层错误里拿出来：新增 `IMPORT_ROLLED_BACK_NOTICE`，`commit_import` 用 `rolled_back` 给**任何一层**的拒绝（store 的、`soul-import` 的、图的）加上同一句「整份导入已经回滚，库里一行都没有留下，同一个文件可以直接再导一次，不会多出一份事件」；理由码不动，回滚不是另一种拒绝的理由。
+
+**没有动的**：D55 的按内容哈希去重（仍停着）、`COMMANDS`（仍 38）、IPC、schema 与 `schemas.lock.json`、E1、采集同意的持久化（`StoredConfig` 仍是两个字段）、`forget.rs`、`keys.rs`、`research_preview.rs`、`soul-graph` 的 `build.rs` 打分与那个 O(peers) 的邻居扫描、`soul-import` 的解析器，也没有加依赖、没有加 fixture、没有动界面一个字节。
+
+本机绿：`cargo fmt --all --check`、`cargo clippy --workspace --all-targets --all-features -- -D warnings`、`cargo test --workspace --all-targets`（**129 个测试二进制全绿，0 失败**）、`xtask schema-freeze --check` / `e0-audit` / `denylist-audit` / `sbom`、`cargo test -p soul-testkit --test fixture_corpus`、`cargo test -p soulcore --test install_smoke_script`、`pnpm --filter @soul/desktop lint` 与 `test`（14 文件 **188** 项，一项没动）、`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets`（`ipc_roundtrip` 56、`command_surface` 6、`no_egress_path` 3、`one_store` 3、`shell_is_local_only` 21）。**本机绿不是 hosted 绿**：hosted 仍是账本/额度阻塞。真机上没有人拿一份十万条的 Telegram 导出走过界面。
 
 ## 下一步
 
