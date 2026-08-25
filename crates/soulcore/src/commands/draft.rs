@@ -91,13 +91,28 @@ pub use soul_policy::redactor::KnownIdentifiers as DraftIdentifiers;
 /// the rendered [`ProfileBrief`] and the pasted turn.
 ///
 /// 「姓名与账号两种情况下都占位」 is unconditional, and `soul_policy::redactor`
-/// is what makes it so rather than this sentence: a registered identifier is
-/// placeheld anywhere in the body, and the one turn a second confirmation
-/// exempts is held to the display-label shape on top of that, so the promise
-/// survives a Soul whose contact graph is empty. It did not always — a build
-/// where it quietly depended on having imported somebody is what
-/// `session_e1.rs::with_nothing_imported_the_same_name_is_placeheld_by_its_shape`
+/// is what has to make it so rather than this sentence. A registered
+/// identifier is placeheld anywhere in the body, and the one turn a second
+/// confirmation exempts is held to two more rules on top of that: the spelling
+/// an export writes (`李 雷`) and the position a chat log writes (`李雷说…`,
+/// `Wang Xiao said…`). Between them the sentence survives a Soul whose contact
+/// graph is empty for a name that is spelled or placed like a name. It did not
+/// always — a build where it quietly depended on having imported somebody is
+/// what `session_e1.rs::with_nothing_imported_the_same_name_is_placeheld_by_its_shape`
 /// pins shut.
+///
+/// What is left is narrow and this comment is the place not to round it off: a
+/// name standing nowhere in particular in the one turn the user confirmed
+/// twice for, on a Soul that has imported nobody, still travels — see
+/// `soul_policy::redactor::scrub_attributed_name_shapes` for why no rule there
+/// guesses at it, and
+/// `session_e1.rs::the_name_shapes_cannot_reach_a_label_standing_outside_an_attribution`
+/// for the case asserted rather than described. Closing that means a step the
+/// user sees before the bytes leave, or a decision about whether this sentence
+/// may be qualified, which is PRODUCT_LOCK's to make and not this file's. The
+/// wording here is unchanged until it is made: `apps/desktop/src/test/fakeCore.ts`
+/// holds a byte-identical twin, and softening the promise on one screen while
+/// PRODUCT_LOCK still states it is a worse answer than leaving both alone.
 pub const E1_PLAN_NOTICE: &str = "确认之后，会发到你自己配置的模型端点的是这些：模型名、\
      一段固定的系统指令，以及一段引用材料——里面是你自己的档案摘要（口吻、口吻来源、\
      有证据支持的要点，和「工作假设，非临床结论」那句），加上你粘贴的这一段。\
