@@ -124,7 +124,8 @@ Commit        15ad3b3 absorb B04；本提交记进度
 PR            #16 #32–#37
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B05 实现；B10 workflow；MED-1 后置
-在途          [Verify B04 assemble](https://cursor.com/agents/bc-4c97c6bc-7424-59e4-86a6-6572b5b45b0f)
+在途          [R2 Opus B05 implement](https://cursor.com/agents/bc-07588339-9d46-582e-9230-b027218aa67b)
+已核          B04 浏览器：史莱姆转入工作台 → 步进/撤销/切模式/1:1 通过；蛋糕盒无网格由 T-ASM-17 锁（手工第三张误截到 /workspace）
 已收          [R2 Opus B04 implement](https://cursor.com/agents/bc-6a5bc9c6-7bdc-528b-bb4a-b9611abce044) → #37；[R2 Fable review B04](https://cursor.com/agents/bc-9087419b-67fc-5fd9-aa37-9f8bd95154cd) → #38
 Blocked       无（B04 已由本机 worktree 落地）
 ```
