@@ -723,6 +723,7 @@ export function aResearchPreview(overrides: Partial<ResearchPreview> = {}): Rese
     third_party_rows: 0,
     candidate_rows_total: 4,
     third_party_rows_excluded: 2,
+    deny_rows_excluded: 0,
     fields: ["event_kind", "time_bucket_utc", "aggregate_count"],
     rows: [
       {

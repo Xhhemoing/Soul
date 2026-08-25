@@ -3399,6 +3399,22 @@ fn the_research_preview_crosses_the_ipc_as_counts_and_no_third_party_row() {
         "the store has to hold third-party rows for this test to mean anything",
     );
 
+    // An import on its own leaves nothing this preview may publish: every row
+    // it wrote is stored `research_export: deny`, the owner's included. The
+    // questionnaire is what puts a trait axis in the store, and a trait axis
+    // is a band rather than a message, which is the difference the preview is
+    // about.
+    shell
+        .invoke(
+            "answer_questionnaire",
+            json!({
+                "answers": [
+                    { "question_id": "q.axis.curiosity", "given": "leans_high" },
+                ]
+            }),
+        )
+        .expect("one answer is an intake");
+
     let before = footprint(&shell.directory);
     assert!(
         !before.is_empty(),
@@ -3439,6 +3455,22 @@ fn the_research_preview_crosses_the_ipc_as_counts_and_no_third_party_row() {
             .unwrap_or_default()
             > 0,
         "the query produced no candidates at all: {research}",
+    );
+
+    // Being the owner's is not what decides it. Sixteen messages went in as
+    // the owner's own hours and every one of them is stored with research
+    // egress denied, so the page has to be able to say how many it withheld
+    // and none of them may be on it.
+    assert!(
+        research["deny_rows_excluded"].as_u64().unwrap_or_default() > 0,
+        "the imported rows are the owner's and are stored `deny`; a zero here means the \
+         disposition was never read: {research}",
+    );
+    assert!(
+        research["rows"]
+            .as_array()
+            .is_some_and(|rows| rows.iter().all(|row| row["event_kind"] != json!("import.item"))),
+        "an imported row reached the 研究 page: {research}",
     );
 
     // Not a list of names: an appended audit row, a grown write-ahead log or a

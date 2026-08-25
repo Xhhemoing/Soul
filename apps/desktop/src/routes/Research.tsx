@@ -95,6 +95,10 @@ export function Research(): React.JSX.Element {
           <li data-testid="research-rows">
             候选一共 {preview.candidate_rows_total} 行，这一页显示 {preview.rows.length} 行。
           </li>
+          <li data-testid="research-own-withheld">
+            你自己的数据里也排除掉了 {preview.deny_rows_excluded}{" "}
+            行：它们存下来的时候标的研究口径不是「按小时计数」，这一页只显示按小时计数的那一种。
+          </li>
           <li>
             清单编号：<code>{preview.manifest_id}</code>（{preview.export_kind}）
           </li>
@@ -121,14 +125,16 @@ export function Research(): React.JSX.Element {
           This page only calls `research_preview`, so it cannot know whether
           collection is running or whether anything was ever imported;
           `candidate_rows_total` is the one number that separates "there was
-          nothing to aggregate" from "everything found belonged to somebody
-          else".
+          nothing to aggregate" from "everything found was excluded". Which
+          exclusion did it is the next question, and there are two of them:
+          saying 全部是别人的数据 when the owner's own imported rows are what
+          got dropped would be the same kind of lie in the other direction.
         */}
         {preview.rows.length === 0 ? (
           <p className="muted" data-testid="no-research-rows">
             {preview.candidate_rows_total === 0
               ? "查询没有找到可以聚合的事件。"
-              : `查询找到了 ${preview.candidate_rows_total} 行，全部是别人的数据，已经排除掉了 ${preview.third_party_rows_excluded} 行。这一页因此没有可显示的行。`}
+              : `查询找到了 ${preview.candidate_rows_total} 行，${whyNothingShows(preview)}这一页因此没有可显示的行。`}
           </p>
         ) : (
           <table className="defaults" data-testid="research-table">
@@ -152,6 +158,22 @@ export function Research(): React.JSX.Element {
       </section>
     </>
   );
+}
+
+/**
+ * Which exclusion emptied the table, named from the counts rather than
+ * guessed. Both can be non-zero at once, and a count that is zero is left
+ * unsaid rather than printed as a reason nothing was shown.
+ */
+function whyNothingShows(preview: ResearchPreview): string {
+  const reasons: string[] = [];
+  if (preview.third_party_rows_excluded > 0) {
+    reasons.push(`别人的数据排除掉了 ${preview.third_party_rows_excluded} 行`);
+  }
+  if (preview.deny_rows_excluded > 0) {
+    reasons.push(`你自己的数据里有 ${preview.deny_rows_excluded} 行不是按小时计数存下来的，也排除掉了`);
+  }
+  return reasons.length === 0 ? "" : `${reasons.join("，")}。`;
 }
 
 /**

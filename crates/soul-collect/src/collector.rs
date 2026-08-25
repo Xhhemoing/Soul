@@ -24,8 +24,8 @@ use uuid::Uuid;
 use soul_policy::audit::{append, AuditContent, ReasonCode};
 use soul_schema::audit::{AuditAction, AuditCounts, AuditDecision};
 use soul_schema::common::{
-    ActorSubject, Derivation, EgressPolicy, Privacy, Purpose, Retention, SchemaVersion,
-    SealedSubject, Subject, Timestamp,
+    ActorSubject, Derivation, E0Deny, E1Disposition, EgressPolicy, Privacy, Purpose,
+    ResearchDisposition, Retention, SchemaVersion, SealedSubject, Subject, Timestamp,
 };
 use soul_schema::event::{EventKind, EventSource, SoulEvent};
 use soul_store_api::types::SealRequest;
@@ -268,16 +268,24 @@ impl<F: ForegroundSource, S: CollectSink> Collector<F, S> {
 /// Privacy for a collected event.
 ///
 /// The user's own data, raw, kept until they forget it, and going nowhere: E0
-/// has no code path, E1 has no reason to see which applications someone used,
-/// and v0.1 research is a local preview rather than an export. `purposes` names
-/// research all the same, because the hourly rollup in `soul-store` reads these
-/// rows and the purpose field is where that has to be declared.
+/// has no code path and E1 has no reason to see which applications someone
+/// used, so both stay denied. `purposes` names research and `research_export`
+/// says in what shape: `bucket`, the hourly count the rollup in `soul-store`
+/// publishes. The disposition is spelled out rather than left to
+/// [`EgressPolicy::default`], which is `deny` — a collected row that inherited
+/// the default would be named as research's feed by `purposes` and refused by
+/// the filter that reads `research_export`, and the preview would be silently
+/// empty. `bucket` is still not an export: v0.1 research never leaves memory.
 fn collected_privacy() -> Privacy {
     Privacy {
         subject: Subject::Owner,
         derivation: Derivation::Raw,
         purposes: vec![Purpose::SoulProfile, Purpose::Research],
         retention: Retention::until_forgotten(),
-        egress: EgressPolicy::default(),
+        egress: EgressPolicy {
+            e0: E0Deny,
+            e1: E1Disposition::Deny,
+            research_export: ResearchDisposition::Bucket,
+        },
     }
 }

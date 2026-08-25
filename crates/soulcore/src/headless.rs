@@ -636,6 +636,20 @@ fn flow(scratch: &Path) -> Flow<FlowOutcome> {
         research.third_party_rows_excluded > 0,
         "no third-party row was excluded, so the exclusion is untested on this corpus",
     )?;
+    // Nothing has been collected in this flow and the import stores its rows
+    // `research_export: deny`, so what is left is the trait axes. An
+    // `import.item` row here would mean the disposition on the row was not
+    // read: those messages are the owner's own, so the subject filter lets
+    // every one of them through.
+    require(
+        "research",
+        research
+            .manifest
+            .rows
+            .iter()
+            .all(|row| row.event_kind.as_deref() != Some("import.item")),
+        "an imported row reached the research preview",
+    )?;
     require(
         "research",
         directory_listing(scratch)? == files_before,
@@ -644,9 +658,11 @@ fn flow(scratch: &Path) -> Flow<FlowOutcome> {
     step(
         "research",
         format!(
-            "{} row(s) published, {} third-party row(s) excluded, written_to_disk=false",
+            "{} row(s) published, {} third-party row(s) excluded, {} owner row(s) withheld by \
+             their own disposition, written_to_disk=false",
             research.row_count(),
             research.third_party_rows_excluded,
+            research.deny_rows_excluded,
         ),
     );
 
