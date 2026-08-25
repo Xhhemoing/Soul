@@ -282,8 +282,8 @@ fn the_days_in_the_copy_are_the_constants_the_rule_acts_on() {
     let step = &projected(SupportedBand::Strong, 0)[0].text_zh;
     assert!(step.contains(&DEMOTE_ONE_BAND_DAYS.to_string()), "{step}");
     assert!(
-        step.contains("从那天起"),
-        "the closed interval, said: {step}"
+        step.contains("天没有联系，从那天起"),
+        "the closed interval, said, and said in one piece: {step}"
     );
 
     let floor = &projected(SupportedBand::Moderate, DEMOTE_ONE_BAND_DAYS)[0].text_zh;
@@ -323,10 +323,38 @@ fn the_frozen_copy_file_holds_every_key_this_module_emits() {
     )
     .expect("the frozen copy file");
 
-    for key in PROJECTION_STATEMENT_KEYS {
-        assert!(copy.contains(key), "COPY_ZH has no template for `{key}`");
+    // One literal per template, checked on both sides: the sentence the crate
+    // renders and the line the frozen file holds for that key. A reworded
+    // template that skipped COPY_ZH fails here, which is the whole point of
+    // the key being stable.
+    let clauses = [
+        (
+            STRONG_TO_MODERATE_KEY,
+            "从那天起这一档会从「强」降到「中等」",
+        ),
+        (MODERATE_TO_WEAK_KEY, "从那天起这一档会从「中等」降到「弱」"),
+        (FORCED_WEAK_KEY, "从那天起这一档会算「弱」"),
+        (GROUP_MAINTAINED_KEY, "靠群里的往来维持的"),
+    ];
+    let rendered = every_sentence();
+    for (key, clause) in clauses {
+        let line = copy
+            .lines()
+            .find(|line| line.contains(key))
+            .unwrap_or_else(|| panic!("COPY_ZH has no template for `{key}`"));
+        assert!(line.contains(clause), "COPY_ZH says something else: {line}");
+        assert!(line.contains(WORKING_HYPOTHESIS_CLOSER), "{line}");
+
+        let sentence = rendered
+            .iter()
+            .find(|bullet| bullet.statement_key == key)
+            .unwrap_or_else(|| panic!("`{key}` was not produced"));
+        assert!(
+            sentence.text_zh.contains(clause),
+            "the crate says something else: {}",
+            sentence.text_zh,
+        );
     }
-    assert!(copy.contains(WORKING_HYPOTHESIS_CLOSER));
     assert!(
         copy.contains("从那天起"),
         "the closed interval is a copy decision, not only an implementation one",
@@ -398,7 +426,7 @@ fn observe(
             },
         ),
         direction,
-        Timestamp::new(&rfc3339(at)),
+        Timestamp::new(rfc3339(at)),
         venue,
     );
     let subject = match direction {

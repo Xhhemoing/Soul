@@ -3486,6 +3486,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "soul-algo-tie",
  "soul-algo-trait",
  "soul-graph",
  "soul-policy",
