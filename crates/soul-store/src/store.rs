@@ -417,6 +417,76 @@ impl SqlCipherStore {
             .query_row("PRAGMA integrity_check", [], |row| row.get(0))
             .map_err(backend)
     }
+
+    /// Run `work` with every write it makes inside one SQLite transaction.
+    ///
+    /// This is the entry point `soul-store-api` deliberately does not have, and
+    /// it exists for one shape of caller: a command that writes many rows which
+    /// only mean something together. An import is the case that forced it. Each
+    /// write below used to commit on its own, so a `synchronous=FULL` commit
+    /// fsync was paid once per message — several seconds for an eight-thousand
+    /// message export, minutes for a hundred thousand — and a crash halfway
+    /// through left an import that could not be re-run without writing every
+    /// surviving event a second time.
+    ///
+    /// Both problems have the same answer. Inside `work` the per-row writes
+    /// nest as savepoints, which are bookkeeping in the same open transaction
+    /// rather than durability points of their own, and the single commit at the
+    /// end is the only fsync. A `work` that returns an error, panics, or is cut
+    /// off by a power loss leaves nothing: the transaction is rolled back, or —
+    /// when the process never got that far — was never committed to begin with.
+    ///
+    /// `BEGIN IMMEDIATE` rather than the deferred default: the write lock is
+    /// taken up front, so a transaction that is going to be refused is refused
+    /// before `work` has sealed anything.
+    ///
+    /// Not reentrant, and it says so by failing rather than by silently joining
+    /// the transaction already open. Nesting these would make the inner one's
+    /// commit look durable while the outer one could still roll it away, which
+    /// is exactly the confusion this method exists to remove.
+    pub fn transact<T, E, F>(&mut self, work: F) -> Result<T, E>
+    where
+        F: FnOnce(&mut SqlCipherStore) -> Result<T, E>,
+        E: From<StoreError>,
+    {
+        self.conn
+            .execute_batch("BEGIN IMMEDIATE")
+            .map_err(|error| E::from(backend(error)))?;
+
+        // A panic inside `work` would otherwise unwind past the rollback and
+        // leave the connection mid-transaction. `soulcore` recovers a poisoned
+        // store mutex rather than propagating it, so the next command would
+        // find a connection whose next write silently joined a transaction
+        // nobody is going to commit.
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| work(self)));
+
+        match outcome {
+            Ok(Ok(value)) => match self.conn.execute_batch("COMMIT") {
+                Ok(()) => Ok(value),
+                Err(error) => {
+                    self.roll_back_quietly();
+                    Err(E::from(backend(error)))
+                }
+            },
+            Ok(Err(refused)) => {
+                self.roll_back_quietly();
+                Err(refused)
+            }
+            Err(panicked) => {
+                self.roll_back_quietly();
+                std::panic::resume_unwind(panicked)
+            }
+        }
+    }
+
+    /// Undo the open transaction, keeping whatever went wrong first.
+    ///
+    /// A `ROLLBACK` that itself fails means SQLite has already ended the
+    /// transaction — the usual cause is a statement that rolled it back — and
+    /// reporting that instead of the original error would name the symptom.
+    fn roll_back_quietly(&self) {
+        let _ = self.conn.execute_batch("ROLLBACK");
+    }
 }
 
 impl EventStore for SqlCipherStore {
@@ -448,7 +518,14 @@ impl EventStore for SqlCipherStore {
             to_doc(&event)?,
         );
 
-        let tx = self.conn.transaction().map_err(backend)?;
+        // A savepoint rather than a transaction, so that the same write is
+        // correct on its own and inside a [`SqlCipherStore::transact`]. On its
+        // own the outermost savepoint *is* the transaction — SQLite opens one
+        // for it and the release below commits it, fsync included, which is
+        // what AC-24's crash tests interrupt. Under an import's wrap it is
+        // bookkeeping in a transaction that has not committed yet, and a crash
+        // here loses the whole import rather than every message after this one.
+        let tx = self.conn.savepoint().map_err(backend)?;
         tx.execute(
             "INSERT INTO events
                 (event_id, ts, source, kind, actor_subject, privacy_subject, body_blob_id, doc)
@@ -632,7 +709,7 @@ impl ProfileStore for SqlCipherStore {
         let id = inference.inference_id;
         let doc = to_doc(&inference)?;
         let live = enum_text(&InferenceState::Live)?;
-        let tx = self.conn.transaction().map_err(backend)?;
+        let tx = self.conn.savepoint().map_err(backend)?;
         tx.execute(
             "INSERT INTO inferences (inference_id, state, doc) VALUES (?1, ?2, ?3)
              ON CONFLICT (inference_id) DO UPDATE
@@ -731,7 +808,7 @@ impl MemoryStore for SqlCipherStore {
             to_doc(&memory)?,
         );
 
-        let tx = self.conn.transaction().map_err(backend)?;
+        let tx = self.conn.savepoint().map_err(backend)?;
         tx.execute(
             "INSERT INTO memories (memory_id, content_key_id, forget_state, doc)
              VALUES (?1, ?2, ?3, ?4)
@@ -868,7 +945,7 @@ impl GraphStore for SqlCipherStore {
         let id = relationship.relationship_id;
         let doc = to_doc(&relationship)?;
 
-        let tx = self.conn.transaction().map_err(backend)?;
+        let tx = self.conn.savepoint().map_err(backend)?;
         tx.execute(
             "INSERT INTO relationships (relationship_id, from_contact_id, to_contact_id, doc)
              VALUES (?1, ?2, ?3, ?4)
@@ -1063,7 +1140,7 @@ impl AuditLog for SqlCipherStore {
             to_doc(&linked.entry)?,
         );
 
-        let tx = self.conn.transaction().map_err(backend)?;
+        let tx = self.conn.savepoint().map_err(backend)?;
         tx.execute(
             "INSERT INTO audit (seq, entry_id, ts, prev_hash, entry_hash, action, decision, doc)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",

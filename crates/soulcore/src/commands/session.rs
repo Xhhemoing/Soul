@@ -1015,6 +1015,22 @@ impl Session {
     /// `/graph` show the people this file just added without a second opening
     /// of anything. `soul-graph::rebuild` is idempotent — a second import
     /// updates the ties rather than growing a parallel graph.
+    ///
+    /// The two of them are one transaction, and that is the whole of what an
+    /// import promises about failure. Writing a message used to be its own
+    /// commit, so a hundred thousand of them were a hundred thousand
+    /// `synchronous=FULL` fsyncs on one IPC call, and anything that went wrong
+    /// partway — a graph that will not build, a machine that lost power — left
+    /// an import nobody could re-run: the events already in the store have no
+    /// external id to match against, so a second attempt would write them
+    /// again. Wrapped, a file either landed whole or was never here, which is
+    /// the state the same file can simply be imported into again.
+    ///
+    /// The rebuild is inside the wrap rather than after it because a graph that
+    /// refuses to build is a reason not to keep the import. Two contacts of
+    /// class `self` is the case that matters: `soul_graph::rebuild` fails on
+    /// them from then on, and before this the events and the second owner row
+    /// that caused it both stayed, on rows the user has no way to edit.
     fn commit_import(
         &mut self,
         staged: &soul_import::model::StagedImport,
@@ -1023,9 +1039,11 @@ impl Session {
         let store = self.opened_store()?;
         let view = {
             let mut store = hold(&store);
-            let receipt = import_commands::commit(&mut store, staged, at)?;
-            let build = graph_commands::rebuild(&mut store, at)?;
-            ImportReceiptView::of(&receipt, build.edges_written.len())
+            store.transact(|store| -> Result<ImportReceiptView, SessionRefusal> {
+                let receipt = import_commands::commit(store, staged, at)?;
+                let build = graph_commands::rebuild(store, at)?;
+                Ok(ImportReceiptView::of(&receipt, build.edges_written.len()))
+            })?
         };
         // The people this file added are people whose names must not travel.
         // The guard above is released first: `sync_identifiers` takes it again
@@ -1732,18 +1750,20 @@ impl From<soul_import::defect::ImportFailure> for SessionRefusal {
 
 /// A file that parsed and then could not be stored.
 ///
-/// Said differently from a parse failure on purpose: a commit is not atomic in
-/// v0.1 — `soul-store-api` has no entry point that lets a caller open a
-/// transaction — so a failure here can leave part of the export behind.
-/// Re-running the same file is safe; the people are matched by identifier
-/// digest and only the events are written a second time.
+/// Said differently from a parse failure on purpose, and no longer for the
+/// reason it used to be: [`Session::commit_import`] runs the commit and the
+/// rebuild in one [`SqlCipherStore::transact`], so a failure here rolls the
+/// whole file back rather than leaving part of the export behind. What the
+/// user is told is that nothing landed and the same file can go in again —
+/// which, unlike the half-written case this replaces, does not cost them a
+/// duplicate copy of every message that had already been written.
 impl From<soul_import::commit::ImportError> for SessionRefusal {
     fn from(error: soul_import::commit::ImportError) -> SessionRefusal {
         SessionRefusal {
             reason_code: ReasonCode::Routine.as_str().to_owned(),
             explanation: format!(
-                "这次导入没有做完：{error}。v0.1 的导入不是一个事务，中途失败可能已经写进去一部分；\
-                 同一个文件再导一次是安全的，人会被认回来，事件会多一份。"
+                "这次导入没有做完：{error}。整份导入是一个事务，中途失败会整个回滚，\
+                 库里不会留下写了一半的导入；把问题解决之后同一个文件重新导一次就行，不会多出一份事件。"
             ),
         }
     }
