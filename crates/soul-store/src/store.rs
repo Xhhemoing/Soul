@@ -77,6 +77,35 @@ pub(crate) fn placeholders(count: usize) -> String {
     out
 }
 
+/// The `WHERE` clause an [`EventFilter`] selects, and the values to bind to it.
+///
+/// Shared by the listing and the count so the two can never drift into
+/// disagreeing about which rows the same filter means.
+fn event_where(filter: &EventFilter) -> StoreResult<(String, Vec<String>)> {
+    let mut clauses: Vec<&str> = Vec::new();
+    let mut bound: Vec<String> = Vec::new();
+
+    if let Some(source) = filter.source.as_ref() {
+        clauses.push("source = ?");
+        bound.push(enum_text(source)?);
+    }
+    if let Some(kind) = filter.kind.as_ref() {
+        clauses.push("kind = ?");
+        bound.push(enum_text(kind)?);
+    }
+    if let Some(since) = filter.since.as_ref() {
+        clauses.push("ts >= ?");
+        bound.push(since.clone());
+    }
+
+    let mut sql = String::new();
+    if !clauses.is_empty() {
+        sql.push_str(" WHERE ");
+        sql.push_str(&clauses.join(" AND "));
+    }
+    Ok((sql, bound))
+}
+
 pub(crate) fn as_text(ids: &[Uuid]) -> Vec<String> {
     ids.iter().map(Uuid::to_string).collect()
 }
@@ -453,27 +482,8 @@ impl EventStore for SqlCipherStore {
     }
 
     fn list_events(&self, filter: &EventFilter) -> StoreResult<Vec<SoulEvent>> {
-        let mut sql = String::from("SELECT doc FROM events");
-        let mut clauses: Vec<&str> = Vec::new();
-        let mut bound: Vec<String> = Vec::new();
-
-        if let Some(source) = filter.source.as_ref() {
-            clauses.push("source = ?");
-            bound.push(enum_text(source)?);
-        }
-        if let Some(kind) = filter.kind.as_ref() {
-            clauses.push("kind = ?");
-            bound.push(enum_text(kind)?);
-        }
-        if let Some(since) = filter.since.as_ref() {
-            clauses.push("ts >= ?");
-            bound.push(since.clone());
-        }
-        if !clauses.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&clauses.join(" AND "));
-        }
-        sql.push_str(" ORDER BY rowid");
+        let (where_clause, bound) = event_where(filter)?;
+        let mut sql = format!("SELECT doc FROM events{where_clause} ORDER BY rowid");
         if let Some(limit) = filter.limit {
             sql.push_str(&format!(" LIMIT {limit}"));
         }
@@ -490,6 +500,28 @@ impl EventStore for SqlCipherStore {
             events.push(from_doc(&row.map_err(backend)?)?);
         }
         Ok(events)
+    }
+
+    /// `count(*)`, rather than the trait default that reads and JSON-parses
+    /// every matching row only to ask for the length of the vector. The collect
+    /// screen asks for this once a second with the store lock held, so the
+    /// default turns an idle-looking status poll into a full table scan.
+    fn count_events(&self, filter: &EventFilter) -> StoreResult<u64> {
+        let (where_clause, bound) = event_where(filter)?;
+        let sql = format!("SELECT count(*) FROM events{where_clause}");
+        let matched: i64 = self
+            .conn
+            .query_row(&sql, rusqlite::params_from_iter(bound.iter()), |row| {
+                row.get(0)
+            })
+            .map_err(backend)?;
+        let matched = u64::try_from(matched).unwrap_or(0);
+
+        // `list_events` stops at `limit`, so counting the same filter must too.
+        Ok(match filter.limit {
+            Some(limit) => matched.min(limit as u64),
+            None => matched,
+        })
     }
 }
 

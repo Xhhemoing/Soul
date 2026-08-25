@@ -86,11 +86,10 @@ pub fn record_consent_change(
 /// may show: the application names are sealed under the run's content key and
 /// nothing on this path opens them.
 pub fn events_collected(store: &SqlCipherStore) -> StoreResult<usize> {
-    Ok(store
-        .list_events(&EventFilter::with_source(
-            EventSource::CollectorForegroundApp,
-        ))?
-        .len())
+    let counted = store.count_events(&EventFilter::with_source(
+        EventSource::CollectorForegroundApp,
+    ))?;
+    Ok(usize::try_from(counted).unwrap_or(usize::MAX))
 }
 
 /// What the user forgets when they ask to forget what a run collected.
