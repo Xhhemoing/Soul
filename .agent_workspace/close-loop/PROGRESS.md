@@ -12,7 +12,9 @@ The user prompt asked for `agent/<task-name>`. Repo policy (FORMAL 11.5, D49) an
 |---|---|
 | 1 | done — `.agent_workspace/close-loop/R1-SYNTHESIS.md` |
 | 2 | done — `.agent_workspace/close-loop/R2-SYNTHESIS.md` |
-| 3 | in progress |
+| 3 | done — `.agent_workspace/close-loop/R3-SYNTHESIS.md` |
+
+Loop complete. Stack back into PR #7. Do not open Goal 2. Do not claim D54 closed.
 
 ## Slot outputs
 
