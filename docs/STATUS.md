@@ -27,7 +27,7 @@
 | WP11 文件计划 | 完成。见下节。`/files` 已接 `PlanPreview`，仍然没有执行按钮（遗留 8 消除）。预览写 `file.plan` 审计是 WP09 第八段；拒绝与 `injection.blocked` 落链是第十段 |
 | WP13 安装 smoke / CI / SBOM / 壳接库 | 两段都完成。见下节。剩下的是 Windows 真机手动那七条 |
 | DPAPI（WP13 遗留） | 完成。见「DPAPI 完成情况」。`unsafe` 隔离在 `crates/soul-win-dpapi`。windows-latest 已跑过 `cfg(windows)` 往返、`dpapi_key_chain`、桌面 `one_store`（`one_session_hands_out_one_store` 过） |
-| v0.1 其余 WP | 无。Goal 1 代码门禁在 `2e72ddf` 上绿；HEAD 另有 NSIS Programs 目录、托盘文案钉死、导入/采集/E1/AC-13/语气与审计/第三人姓名占位/档案页再答/人事摘要走端点/拒绝落链/遗忘拒绝落链/摘要来源上屏，以及补证第二轮（Telegram 拆段注入、批准过的生成过 IPC、AC-05 过 IPC）。hosted 五门尚未真正开跑。剩下的是 HEAD hosted 绿，以及作者 Win11 手动清单 |
+| v0.1 其余 WP | 无。Goal 1 代码门禁在 `2e72ddf` 上绿；HEAD 另有 NSIS Programs 目录、托盘文案钉死、导入/采集/E1/AC-13/语气与审计/第三人姓名占位/档案页再答/人事摘要走端点/拒绝落链/遗忘拒绝落链/摘要来源上屏，以及补证第二轮与第三轮（Telegram 拆段注入、批准过的生成过 IPC、AC-05 过 IPC、AC-13 过 IPC 的线）。hosted 五门尚未真正开跑。剩下的是 HEAD hosted 绿，以及作者 Win11 手动清单 |
 
 ## WP01 完成情况
 
@@ -816,7 +816,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 ## 下一步
 
-批 3–5 与 WP13、DPAPI 都已完成。`2e72ddf` 上 CI 五门全绿。HEAD 本机补证第二轮绿（`ipc_roundtrip` 42、Telegram 拆段注入、批准过的生成过 IPC），hosted 五门没有 runner。原先写在这里的产品缺口已经做完，剩下的是 hosted 与真机：
+批 3–5 与 WP13、DPAPI 都已完成。`2e72ddf` 上 CI 五门全绿。HEAD 本机补证第三轮绿（`ipc_roundtrip` 44、AC-13 过 IPC 的线、Telegram 敌意预览过 IPC），hosted 五门没有 runner。原先写在这里的产品缺口已经做完，剩下的是 hosted 与真机：
 
 1. ~~**向导还没有画那十一道题。**~~ **已完成**，见「WP09 完成情况（第三段）」。
 2. **HEAD hosted CI。** 恢复 Actions minutes 后 `workflow_dispatch` 本分支。空 runner 不是产品回归。workflow 已收窄：只自动 `push` 本分支与 `main`，没有 `pull_request` 触发，纯文档改动不开五门。已知最新一次空 run：[32799578919](https://github.com/Xhhemoing/Soul/actions/runs/32799578919)（`3161e02`）。本机证据不是 hosted 证据。在 HEAD package 绿之前，不要用 `2e72ddf` 的 `windows-binaries` 做卸载 / `keys.dpapi`——那次构建还把程序装进数据目录。
