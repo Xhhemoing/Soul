@@ -38,11 +38,28 @@ function buttonWords(): string[] {
 }
 
 describe("文件计划页", () => {
-  it("还没有授权目录的时候，说清楚 Soul 现在读不到任何文件", async () => {
+  it("还没有授权目录的时候，说清楚现在没有目录可扫", async () => {
     await open();
 
     expect(screen.getByTestId("no-roots")).toHaveTextContent("还没有授权任何目录");
     expect(screen.getByTestId("read-only-notice")).toHaveTextContent(READ_ONLY_NOTICE);
+  });
+
+  /**
+   * The empty state used to say 授权之前 Soul 读不到你机器上的任何文件, and this
+   * build already reads two things that sentence denies: `/import` reads the one
+   * file the user hands it through a file dialog, with no root on this list, and
+   * Soul reads its own config and store on every launch. Authorization gates the
+   * directory scanner — the same correction the wizard's 已授权目录 note got.
+   */
+  it("空状态说清楚要授权的是目录扫描器，不是「什么都读不到」", async () => {
+    await open();
+
+    const empty = screen.getByTestId("no-roots");
+    expect(empty).toHaveTextContent("不看任何目录");
+    expect(empty).toHaveTextContent("导入页");
+    expect(empty).toHaveTextContent("自己的配置与数据库");
+    expect(empty.textContent).not.toContain("读不到你机器上的任何文件");
   });
 
   /**
