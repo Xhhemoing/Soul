@@ -156,8 +156,7 @@ fn a_database_from_a_newer_build_is_refused_and_not_written_to() {
     let names_before = file_names(dir.path());
 
     let refusal = SqlCipherStore::open(&path, &keys())
-        .err()
-        .expect("this build must not open a version 99 database");
+        .expect_err("this build must not open a version 99 database");
 
     let said = refusal.to_string();
     let path_text = path.display().to_string();
