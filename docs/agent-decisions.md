@@ -20,3 +20,4 @@
 | BD14 | O3 / WP-B03 落点 | v0 只写 `apps/bead/src/algo/`，**不**建 `packages/bead-algo`，不改 `pnpm-workspace.yaml` | F1 地图：避免和第二份 workspace glob 打架；等 O2 壳落地后再派 O3 |
 | BD15 | bead 树与 Soul 审计 | bead 源码/清单**禁止**外网 URL 字面量（含 `$schema`、`repository`/`homepage`）；`crates/**/*.rs` 禁用 denylist 词 `score`/`得分`/`分数`/`评分`，置信度字段叫 `confidence` | `xtask e0-audit` 与 `denylist-audit` 跨界全树扫 |
 | BD16 | `apps/bead` 落地提交 | 同一提交更新根 `pnpm-lock.yaml`，`.gitignore` 加 `apps/bead/dist/` | `just ci` 用 `--frozen-lockfile` |
+| BD17 | e0 URL 与 Soul CI 触发 | 注释里的 URL 也算字面量（e0 不跳注释）；出处只进 `.md` 或 `fixtures/`/`tests/`。禁止从 bead ref 对 Soul `CI` 做 `workflow_dispatch` | F5 `round1-cicd.md` I-4 / CI-6 |

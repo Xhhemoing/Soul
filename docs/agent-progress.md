@@ -61,7 +61,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 | F2 | claude-fable-5-thinking-xhigh | 前端 IA | **完成** `7dcc8ad` → 已 merge 进专属线。`docs/bead/reviews/round1-frontend.md`。子代理 GitHub token 只读，PR 由父代理补 |
 | F3 | claude-fable-5-thinking-xhigh | 算法契约 | **完成** `e3cb62d` → 已 merge。`docs/bead/reviews/round1-algorithms.md`。O1 仍在跑，契约 follow-up 等它空闲再 resume |
 | F4 | claude-fable-5-thinking-xhigh | 数据 / 存储 / 权限 | **BLOCKED** 等 VM |
-| F5 | claude-fable-5-thinking-xhigh | 测试 / CI 隔离 | **完成** `814250f` → 已 merge。`docs/bead/reviews/round1-cicd.md` #20 |
+| F5 | claude-fable-5-thinking-xhigh | 测试 / CI 隔离 | **完成** `814250f` → #20 **MERGED**。门禁升为 BD17 |
 | O1 | claude-opus-5-thinking-high-fast | **唯一实现** WP-B01 `crates/bead-core` | **在跑** [bc-701ecb28](https://cursor.com/agents/bc-701ecb28-1059-5f1e-84c2-e85f513717ce) 分支 `cursor/bead-r1-core-c441` |
 | O2 | claude-opus-5-thinking-high-fast | **唯一实现** WP-B02 `apps/bead` | **完成** `dc35ef0` → 已 merge。43 tests（子代理）。#21 |
 | O3 | claude-opus-5-thinking-high-fast | **唯一实现** `apps/bead/src/algo/`（BD14） | **在跑** [bc-18d36cad](https://cursor.com/agents/bc-18d36cad-cd28-5ad7-abf7-a4760b9ea5e6) 分支 `cursor/bead-r1-algo-ts-c441` |
