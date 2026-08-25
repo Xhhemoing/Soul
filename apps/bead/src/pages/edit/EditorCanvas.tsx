@@ -34,6 +34,23 @@ function pointOf(target: EventTarget | null): Point | null {
   return { x: Number(x), y: Number(y) };
 }
 
+/**
+ * Pointer capture retargets every later event of the stroke at the capturing
+ * container, so `event.target` stops naming a cell the moment the stroke
+ * begins — and touch does the same implicitly even without an explicit
+ * capture. The cell under the pointer therefore has to be hit-tested from the
+ * client coordinates, the way `<UploadWorkbench>`'s crop drag already reads
+ * them. jsdom has no layout and no `elementFromPoint`, hence the fall back to
+ * the event target for the uncaptured path.
+ */
+function pointUnder(event: PointerEvent<HTMLDivElement>): Point | null {
+  const hit =
+    typeof document.elementFromPoint === "function"
+      ? document.elementFromPoint(event.clientX, event.clientY)
+      : null;
+  return pointOf(hit) ?? pointOf(event.target);
+}
+
 export const EditorCanvas = memo(function EditorCanvas({
   grid,
   palette,
@@ -60,7 +77,7 @@ export const EditorCanvas = memo(function EditorCanvas({
   function extend(event: PointerEvent<HTMLDivElement>): void {
     const from = last.current;
     if (from === null) return;
-    const point = pointOf(event.target);
+    const point = pointUnder(event);
     if (point === null || (point.x === from.x && point.y === from.y)) return;
     last.current = point;
     // A fast drag skips cells between two pointer events; the segment between
