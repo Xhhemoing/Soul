@@ -212,8 +212,18 @@ where
     // tomorrow, and never per peer, which would make every dormant tie look
     // current.
     let mut as_of_unix: Option<i64> = None;
+    // The rows that say why an edge's band is what it is, gathered in the same
+    // pass. A correction is evidence, and an edge that cited only the messages
+    // would keep the user's band while dropping the one row explaining it.
+    let mut corrections: BTreeMap<Uuid, BTreeSet<Uuid>> = BTreeMap::new();
 
     for evidence in store.list_evidence()? {
+        if let Some(relationship_id) = crate::correct::corrected_relationship(&evidence) {
+            corrections
+                .entry(relationship_id)
+                .or_default()
+                .insert(evidence.evidence_id);
+        }
         for observation in interaction::interactions_in(&evidence) {
             if observation.peer_contact_id == observation.self_contact_id {
                 return Err(GraphError::SelfLoop {
@@ -280,7 +290,17 @@ where
 
         let reading = tie_reading(acc.interned_peer_id, &acc.rows, as_of_unix);
         let strength = tie_strength_of(&reading, acc, held.as_ref());
-        let evidence_ids: Vec<Uuid> = acc.evidence_ids.iter().copied().collect();
+        // What the machine's reading rests on: the observations, and only
+        // those. A row where the user overruled the band is not support for the
+        // band the counts produced.
+        let observed: Vec<Uuid> = acc.evidence_ids.iter().copied().collect();
+        // What the edge rests on: those, plus every correction made to it. Both
+        // lists come out of a `BTreeSet`, so a rebuild that changes nothing
+        // writes the same bytes it wrote last time.
+        let mut cited = acc.evidence_ids.clone();
+        if let Some(rows) = corrections.get(&relationship_id) {
+            cited.extend(rows.iter().copied());
+        }
         let edge = SoulRelationship {
             schema_version: SchemaVersion,
             relationship_id,
@@ -295,7 +315,7 @@ where
             tie_strength: Some(
                 serde_json::to_value(&strength).expect("TieStrength serializes to an object"),
             ),
-            evidence_ids: evidence_ids.clone(),
+            evidence_ids: cited.into_iter().collect(),
             egress_scope: Some(EgressScope::LocalOnly),
         };
         store.put_relationship(edge)?;
@@ -312,7 +332,7 @@ where
             relationship_id,
             *peer_id,
             &strength,
-            &evidence_ids,
+            &observed,
             existing_inference.and_then(|inference| inference.user_verdict),
         ))?;
         build.inferences_written.push(inference_id);
