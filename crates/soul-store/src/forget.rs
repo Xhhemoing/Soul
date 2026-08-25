@@ -73,10 +73,21 @@ impl SqlCipherStore {
                  WHERE memory_id = ? ORDER BY content_key_id",
                 &[id.to_string()],
             ),
+            // A contact owns more than the key behind their display label. An
+            // import seals their message bodies under a content key of their
+            // own and anchors it against their row, and a file that carries no
+            // display name — every `soul-import-v1` file does not — leaves the
+            // anchor as the only record that the key was ever theirs. Reading
+            // the label column alone is how forgetting such a person became a
+            // no-op that still issued a receipt.
             ForgetUnit::Contact(id) => self.uuid_column(
-                "SELECT display_label_key_id FROM contacts
-                 WHERE contact_id = ? AND display_label_key_id IS NOT NULL",
-                &[id.to_string()],
+                "SELECT DISTINCT content_key_id FROM (
+                     SELECT display_label_key_id AS content_key_id FROM contacts
+                      WHERE contact_id = ? AND display_label_key_id IS NOT NULL
+                     UNION ALL
+                     SELECT content_key_id FROM sealed_blobs WHERE row_id = ?
+                 ) ORDER BY content_key_id",
+                &[id.to_string(), id.to_string()],
             ),
         }
     }
@@ -96,12 +107,20 @@ impl SqlCipherStore {
             ),
             &key_text,
         )?;
+        // The same two paths, read the other way round: a label-less contact
+        // is reachable from their key only through the blob anchored to their
+        // row, and without that the row would never become a tombstone.
+        let mut keys_twice = key_text.clone();
+        keys_twice.extend(key_text.clone());
         let contacts = self.uuid_column(
             &format!(
                 "SELECT contact_id FROM contacts
-                 WHERE display_label_key_id IN ({key_slots}) ORDER BY contact_id"
+                 WHERE display_label_key_id IN ({key_slots})
+                    OR contact_id IN (SELECT row_id FROM sealed_blobs
+                                      WHERE content_key_id IN ({key_slots}))
+                 ORDER BY contact_id"
             ),
-            &key_text,
+            &keys_twice,
         )?;
 
         // Evidence a memory cites directly, plus evidence carried by the graph

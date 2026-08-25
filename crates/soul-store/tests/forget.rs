@@ -381,3 +381,118 @@ fn forgetting_a_contact_orphans_what_the_edge_supported() {
         InferenceState::Orphaned,
     );
 }
+
+/// A contact the export never named still owns the key their message bodies
+/// were sealed under.
+///
+/// Nothing in `contacts` can hold that key: the column there is the display
+/// label's, and there is no label. The only record is the blob the importer
+/// anchors against the contact's own row, so the forget has to reach it —
+/// otherwise the preview shows zeros, the receipt says the person was
+/// forgotten, and every sealed body they wrote still opens.
+#[test]
+fn forgetting_a_contact_with_no_label_destroys_the_bodies_sealed_under_their_key() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("forget-unlabelled-contact.db");
+    let keys = TestKeyProvider::from_seed(SEED);
+
+    const NAMELESS: &str = "43";
+    const NAMELESS_KEY: &str = "64";
+    const OTHER: &str = "44";
+    const OTHER_KEY: &str = "65";
+    const THEIR_MESSAGE: &str = "明天上午十点在公司门口见";
+    const SOMEBODY_ELSE_MESSAGE: &str = "这周先把方案定下来";
+
+    let (theirs, somebody_elses) = {
+        let mut store = SqlCipherStore::open(&path, &keys).expect("open");
+
+        // What an import of a file with no display names writes: a contact row
+        // carrying no label, one blob anchoring the key to that row, and the
+        // bodies under the same key.
+        store
+            .put_contact(contact(id(NAMELESS), ContactClass::ThirdParty))
+            .expect("their contact row");
+        store
+            .seal(third_party_seal(
+                id(NAMELESS_KEY),
+                id(NAMELESS),
+                "content_key_anchor",
+                &id(NAMELESS).to_string(),
+            ))
+            .expect("anchor their key to their row");
+        let theirs = store
+            .seal(third_party_seal(
+                id(NAMELESS_KEY),
+                id("53"),
+                "body_ref",
+                THEIR_MESSAGE,
+            ))
+            .expect("seal what they wrote");
+
+        // A second nameless contact, so a forget that reaches by row rather
+        // than by key is visible.
+        store
+            .put_contact(contact(id(OTHER), ContactClass::ThirdParty))
+            .expect("another contact row");
+        store
+            .seal(third_party_seal(
+                id(OTHER_KEY),
+                id(OTHER),
+                "content_key_anchor",
+                &id(OTHER).to_string(),
+            ))
+            .expect("anchor the other key");
+        let somebody_elses = store
+            .seal(third_party_seal(
+                id(OTHER_KEY),
+                id("54"),
+                "body_ref",
+                SOMEBODY_ELSE_MESSAGE,
+            ))
+            .expect("seal what somebody else wrote");
+
+        let impact = store
+            .preview_impact(ForgetUnit::Contact(id(NAMELESS)))
+            .expect("preview");
+        assert_eq!(
+            impact.content_key_ids,
+            vec![id(NAMELESS_KEY)],
+            "the key their bodies are under is theirs, label or no label",
+        );
+        assert_eq!(impact.contacts_affected, 1);
+        assert_eq!(
+            impact.sealed_blobs_destroyed, 2,
+            "the anchor and the one body sealed under the same key",
+        );
+
+        let receipt = store
+            .execute_forget(ForgetUnit::Contact(id(NAMELESS)))
+            .expect("forget them");
+        assert_eq!(receipt.impact, impact, "the receipt charges what it quoted");
+        store.flush().expect("flush");
+        store.close().expect("close");
+        (theirs, somebody_elses)
+    };
+
+    let store = SqlCipherStore::open(&path, &keys).expect("reopen");
+    assert!(
+        matches!(store.open(&theirs), Err(StoreError::ContentKeyDestroyed(_))),
+        "a body sealed under a forgotten contact's key must not open again",
+    );
+    assert!(!store.has_content_key(id(NAMELESS_KEY)));
+    assert_eq!(
+        store.get_contact(id(NAMELESS)).expect("row").forget_state,
+        ForgetState::Forgotten,
+        "the row stays as a tombstone, and it has to say it was forgotten",
+    );
+
+    assert_eq!(
+        String::from_utf8(store.open(&somebody_elses).expect("still readable")).expect("utf-8"),
+        SOMEBODY_ELSE_MESSAGE,
+        "forgetting one nameless contact must not touch another",
+    );
+    assert_eq!(
+        store.get_contact(id(OTHER)).expect("row").forget_state,
+        ForgetState::Active,
+    );
+}
