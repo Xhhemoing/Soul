@@ -17,6 +17,13 @@
  * summary all move, and a screen that updated one of them itself would be
  * guessing at the other two.
  *
+ * Agreeing with an axis is a correction too. `soul_profile::correct_axis` locks
+ * whichever position it is handed, the current one included, while the intake
+ * path leaves the lock alone — so pressing the end an axis already leans is the
+ * only way to say 这一端就对了，别再推它 without first pinning an end the user
+ * does not hold. That end is grey once the axis is locked, and not before. Same
+ * rule as the band buttons on `Graph.tsx`, for the same reason.
+ *
  * ## 再答几题
  *
  * The wizard is a first run and nothing else: `wizard_completed` is written
@@ -181,6 +188,7 @@ export function Profile(): React.JSX.Element {
         <p className="muted" data-testid="axes-explanation">
           方向来自你答过的那些题，和你在这一页按下去的纠正：只有偏向，没有高低，也没有名次。
           你觉得哪一条不对就按下去改；改过之后这条轴就锁住了，以后机器再推出别的方向也不会覆盖你。
+          觉得现在这一端就对、不想让以后的推断动它，就按当前那一端把它锁住。
         </p>
         <ul className="facts" data-testid="axis-list">
           {screen.axes.map((axis) => (
@@ -450,7 +458,7 @@ function Axis({ axis, busy, onCorrect }: AxisProps): React.JSX.Element {
           <button
             key={choice.position}
             type="button"
-            disabled={busy || choice.position === axis.position}
+            disabled={busy || (axis.locked_by_user && choice.position === axis.position)}
             onClick={() => onCorrect(choice.position)}
           >
             {choice.reading}
