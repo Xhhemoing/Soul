@@ -396,6 +396,169 @@ fn a_local_draft_lands_in_the_audit_chain_as_counts_and_a_code() {
     drop(keep);
 }
 
+/// AC-14's Given is three memories, and until now every test on this path
+/// wrote one.
+///
+/// One memory cannot show the thing the cell is about: that a store holding
+/// several hands each of them back as itself. A list has to name three rows
+/// rather than one, opening each has to return the prose that memory was
+/// written with rather than the last one written, and an edit has to land on
+/// the memory it named and leave the other two exactly as they were. The audit
+/// half is the same requirement asked of a chain that has three memories'
+/// worth of writes on it: 读写一致，审计无内容.
+///
+/// Forgetting is deliberately not part of this: `a_forget_only_runs_on_the_
+/// preview_the_user_read` below owns that path, and a memory destroyed here
+/// would be one this test could no longer read back.
+#[test]
+fn three_memories_read_back_as_written_and_the_chain_holds_none_of_their_prose() {
+    let (keep, directory) = scratch();
+    let mut session = Session::open(&directory);
+
+    // 三条记忆，类型、标题、正文都不一样——都一样的话，「读回来的是自己那条」
+    // 就无从谈起。
+    let typed = [
+        NewMemory {
+            memory_type: "episodic".to_owned(),
+            title: "搬家那天".to_owned(),
+            summary: "下午三点交的钥匙。".to_owned(),
+        },
+        NewMemory {
+            memory_type: "commitment".to_owned(),
+            title: "周五之前回信".to_owned(),
+            summary: "答应过对方周五之前给个说法。".to_owned(),
+        },
+        NewMemory {
+            memory_type: "preference".to_owned(),
+            title: "早上不接电话".to_owned(),
+            summary: "十点以前只看文字消息，电话都不接。".to_owned(),
+        },
+    ];
+
+    let written: Vec<_> = typed
+        .iter()
+        .map(|new| session.write_memory(new).expect("a memory"))
+        .collect();
+    for (new, detail) in typed.iter().zip(&written) {
+        assert_eq!(detail.memory_type, new.memory_type);
+        assert_eq!(detail.title, new.title);
+        assert_eq!(detail.summary, new.summary);
+    }
+    let keys: std::collections::BTreeSet<&str> = written
+        .iter()
+        .map(|detail| detail.content_key_id.as_str())
+        .collect();
+    assert_eq!(
+        keys.len(),
+        3,
+        "两条记忆共用一把内容密钥，忘掉一条就会带走另一条",
+    );
+
+    // The list is three rows and no prose, and each row's counts belong to the
+    // memory it names rather than to whichever was written last.
+    let listed = session.memories().expect("the list");
+    assert_eq!(listed.memories.len(), 3);
+    for (new, detail) in typed.iter().zip(&written) {
+        let row = listed
+            .memories
+            .iter()
+            .find(|row| row.memory_id == detail.memory_id)
+            .unwrap_or_else(|| panic!("`{}` is not in the list", new.title));
+        assert_eq!(row.forget_state, "active");
+        assert_eq!(row.memory_type, new.memory_type);
+        assert_eq!(row.title_chars, new.title.chars().count() as u64);
+        assert_eq!(row.summary_chars, new.summary.chars().count() as u64);
+    }
+    let rows = serde_json::to_string(&listed).expect("serialize the list");
+    for new in &typed {
+        assert!(
+            !rows.contains(&new.title),
+            "the list carries `{}`",
+            new.title
+        );
+        assert!(!rows.contains(&new.summary), "the list carries a summary");
+    }
+
+    // Opening each one returns what that one was written with.
+    for (new, detail) in typed.iter().zip(&written) {
+        let read = session.memory(&detail.memory_id).expect("the user asked");
+        assert_eq!(read, *detail, "`{}` did not read back as itself", new.title);
+        assert_eq!(read.title, new.title);
+        assert_eq!(read.summary, new.summary);
+    }
+
+    // An edit lands on the memory it named. The other two are untouched, and
+    // the edited one is resealed under the key it already had.
+    const RETITLED: &str = "交钥匙那天";
+    const RESUMMARIZED: &str = "钥匙是下午三点交的，房东没上来。";
+    let edited = session
+        .edit_memory(
+            &written[0].memory_id,
+            &MemoryChange {
+                title: Some(RETITLED.to_owned()),
+                summary: Some(RESUMMARIZED.to_owned()),
+                ..MemoryChange::default()
+            },
+        )
+        .expect("an edit");
+    assert_eq!(edited.title, RETITLED);
+    assert_eq!(edited.summary, RESUMMARIZED);
+    assert_eq!(
+        edited.memory_type, typed[0].memory_type,
+        "改的是正文，不是类型"
+    );
+    assert_eq!(
+        edited.content_key_id, written[0].content_key_id,
+        "an edit reseals under the same key, so the memory stays one forget unit",
+    );
+    for (new, detail) in typed.iter().zip(&written).skip(1) {
+        let read = session.memory(&detail.memory_id).expect("still readable");
+        assert_eq!(read, *detail, "editing one memory changed `{}`", new.title,);
+    }
+    let listed = session.memories().expect("the list");
+    assert_eq!(listed.memories.len(), 3, "an edit is not a fourth memory");
+    assert!(listed
+        .memories
+        .iter()
+        .all(|row| row.forget_state == "active"));
+
+    // AC-23 across all of it: four writes, verified, and not one word of what
+    // any of the three said. `bytes` stays empty on every entry so the length
+    // of a summary is not a side channel either.
+    let chain = session.audit().expect("the chain");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    assert!(chain.entries.iter().all(|entry| entry.follows_previous));
+    assert_eq!(
+        chain
+            .entries
+            .iter()
+            .filter(|entry| entry.action == "memory.write")
+            .count(),
+        4,
+        "three writes and one edit: {:?}",
+        chain.entries,
+    );
+    assert!(chain.entries.iter().all(|entry| entry.bytes.is_none()));
+
+    let played = serde_json::to_string(&chain).expect("serialize the chain");
+    let debugged = format!("{chain:?}");
+    for prose in typed
+        .iter()
+        .flat_map(|new| [new.title.as_str(), new.summary.as_str()])
+        .chain([RETITLED, RESUMMARIZED])
+    {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
+        assert!(!debugged.contains(prose), "the chain carries `{prose}`");
+    }
+    for detail in &written {
+        assert!(
+            played.contains(&detail.memory_id),
+            "an entry names what it was about, as a bare identifier",
+        );
+    }
+    drop(keep);
+}
+
 /// The forget path, both halves. Reading the price destroys nothing, and the
 /// act refuses anything but the answer the user was actually shown.
 #[test]

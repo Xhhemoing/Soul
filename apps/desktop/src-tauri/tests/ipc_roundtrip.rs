@@ -1354,6 +1354,107 @@ fn a_person_summary_is_rephrased_over_the_ipc_by_the_endpoint_the_user_configure
     let _ = std::fs::remove_dir_all(&shell.directory);
 }
 
+/// AC-16's other half over the same wiring: what the 人物 page receives when
+/// the endpoint answers like a clinician.
+///
+/// `session_e1.rs`'s `a_rephrasing_that_reads_like_a_diagnosis_leaves_the_
+/// counts_standing` proves the drop happens inside the session. What only this
+/// side can show is that the degrade survives serialization to the WebView —
+/// that the JSON says `counts` rather than claiming a rephrasing that was
+/// thrown away, and that the sentence the endpoint sent back is nowhere in the
+/// body the screen renders. The reply is the same string the session test
+/// uses, so the two tests are asking the same denylist the same question.
+#[test]
+fn a_rephrasing_that_reads_like_a_diagnosis_leaves_the_counts_standing_over_the_ipc() {
+    const DIAGNOSTIC: &str = "从往来频率看，对方有明显的焦虑症倾向。";
+
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    endpoint.set_reply(DIAGNOSTIC);
+    let shell = Shell::on(scratch());
+    let text = fixture("import/telegram/result_basic.json");
+
+    let receipt = match shell.invoke("commit_telegram", json!({ "text": text })) {
+        Ok(receipt) => receipt,
+        // No key, no store, no import — and the screen has to be told which.
+        Err(refusal) => {
+            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+            return;
+        }
+    };
+    assert_eq!(receipt["events_written"], json!(6));
+
+    let graph = shell.invoke("people_graph", json!({})).expect("a graph");
+    let contact_id = graph["people"]
+        .as_array()
+        .expect("people")
+        .iter()
+        .filter(|person| {
+            person["is_you"] != json!(true) && person["tie_count"].as_u64().unwrap_or(0) > 0
+        })
+        .max_by_key(|person| person["interaction_count"].as_u64().unwrap_or(0))
+        .expect("the export has somebody in it")["contact_id"]
+        .as_str()
+        .expect("a contact id")
+        .to_owned();
+
+    // Taken before the endpoint exists, so "the points are intact" below is a
+    // comparison rather than an assertion that the list is non-empty.
+    let counts = shell
+        .invoke("person_summary", json!({ "contactId": &contact_id }))
+        .expect("a summary");
+    assert_eq!(counts["source"], json!("counts"));
+    assert!(!counts["points"].as_array().expect("points").is_empty());
+
+    shell
+        .invoke("set_user_endpoint", json!({ "url": endpoint.base_url() }))
+        .expect("a loopback address is an address");
+    let after = shell
+        .invoke("person_summary", json!({ "contactId": &contact_id }))
+        .expect("a summary");
+
+    assert_eq!(
+        after["source"],
+        json!("counts"),
+        "the summary claimed a rephrasing that was thrown away: {after}",
+    );
+    assert_eq!(after["clinical_claim"], json!(false));
+    assert_eq!(
+        after["points"], counts["points"],
+        "the points are not negotiable"
+    );
+    assert_eq!(after["text"], counts["text"]);
+    let body = after.to_string();
+    for prose in [DIAGNOSTIC, "焦虑症", "焦虑"] {
+        assert!(
+            !body.contains(prose),
+            "`{prose}` reached the screen: {after}",
+        );
+    }
+
+    // The request happened, and the chain says so. Degrading is not pretending
+    // nothing left.
+    assert_eq!(endpoint.request_count(), 1, "one summary, one request");
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the chain reads back");
+    assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
+    let played = chain.to_string();
+    assert!(
+        chain["entries"]
+            .as_array()
+            .expect("entries")
+            .iter()
+            .any(|entry| entry["action"] == json!("egress.request")),
+        "a request left this machine and the chain never heard about it: {chain}",
+    );
+    assert!(
+        !played.contains("焦虑"),
+        "the chain carries what the endpoint said: {chain}",
+    );
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
 /// WP11 over the IPC. A directory nobody authorized is not scannable, and the
 /// view the shell starts from says so with the core's own sentence.
 #[test]
@@ -2726,6 +2827,148 @@ fn a_memory_is_written_read_edited_and_forgotten_over_the_ipc() {
     }
 
     let _ = std::fs::remove_dir_all(&next_launch.directory);
+}
+
+/// What three memories say. AC-14's Given is a store with several in it, so
+/// the leakage checks below have three titles and three summaries to look for
+/// on the JSON the 记忆 page receives.
+const THREE_MEMORIES: [(&str, &str, &str); 3] = [
+    ("episodic", "搬家那天", "下午三点交的钥匙。"),
+    ("commitment", "周五之前回信", "答应过对方周五之前给个说法。"),
+    (
+        "preference",
+        "早上不接电话",
+        "十点以前只看文字消息，电话都不接。",
+    ),
+];
+
+/// What the first of them is edited to.
+const THREE_RETITLED: &str = "交钥匙那天";
+const THREE_RESUMMARIZED: &str = "钥匙是下午三点交的，房东没上来。";
+
+/// AC-14 over the real handler, with the Given the matrix actually names.
+///
+/// `a_memory_is_written_read_edited_and_forgotten_over_the_ipc` above carries
+/// one memory the whole way, which cannot show whether the WebView is handed
+/// back the memory it asked for. Three can: the list has to be three rows, a
+/// `memory_detail` on each id has to answer with that memory's prose rather
+/// than the last one written, and an `update_memory` naming one has to leave
+/// the other two alone. The list stays counts across all three, and the chain
+/// after all of it carries none of the six sentences.
+#[test]
+fn three_memories_cross_the_ipc_as_themselves_and_the_chain_holds_none_of_them() {
+    let shell = Shell::on(scratch());
+
+    let mut written: Vec<Value> = Vec::new();
+    for (memory_type, title, summary) in THREE_MEMORIES {
+        let created = match shell.invoke(
+            "create_memory",
+            json!({
+                "memory": {
+                    "memory_type": memory_type,
+                    "title": title,
+                    "summary": summary,
+                }
+            }),
+        ) {
+            Ok(created) => created,
+            // No key, no store, nowhere to put a memory — and the screen has
+            // to be told which.
+            Err(refusal) => {
+                assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+                return;
+            }
+        };
+        assert_eq!(created["memory_type"], json!(memory_type));
+        assert_eq!(created["title"], json!(title));
+        assert_eq!(created["summary"], json!(summary));
+        written.push(created);
+    }
+
+    let listed = shell.invoke("memory_list", json!({})).expect("the list");
+    assert_eq!(listed["memories"].as_array().map(Vec::len), Some(3));
+    for created in &written {
+        let row = listed["memories"]
+            .as_array()
+            .expect("rows")
+            .iter()
+            .find(|row| row["memory_id"] == created["memory_id"])
+            .unwrap_or_else(|| panic!("a memory is missing from the list: {listed}"));
+        assert_eq!(row["forget_state"], json!("active"));
+        assert_eq!(row["memory_type"], created["memory_type"]);
+    }
+    let rendered = listed.to_string();
+    for (_, title, summary) in THREE_MEMORIES {
+        for prose in [title, summary] {
+            assert!(
+                !rendered.contains(prose),
+                "the list carries `{prose}`, and a list is character counts: {listed}",
+            );
+        }
+    }
+
+    // The prose the user asked to open is the prose that memory was written
+    // with, one id at a time.
+    for ((_, title, summary), created) in THREE_MEMORIES.iter().zip(&written) {
+        let detail = shell
+            .invoke("memory_detail", json!({ "memoryId": created["memory_id"] }))
+            .expect("the user asked for this one");
+        assert_eq!(detail, *created, "`{title}` did not read back as itself");
+        assert_eq!(detail["title"], json!(title));
+        assert_eq!(detail["summary"], json!(summary));
+    }
+
+    // An edit names one memory and reaches only that one.
+    let edited = shell
+        .invoke(
+            "update_memory",
+            json!({
+                "memoryId": written[0]["memory_id"],
+                "change": { "title": THREE_RETITLED, "summary": THREE_RESUMMARIZED },
+            }),
+        )
+        .expect("an edit");
+    assert_eq!(edited["title"], json!(THREE_RETITLED));
+    assert_eq!(edited["summary"], json!(THREE_RESUMMARIZED));
+    assert_eq!(
+        edited["content_key_id"], written[0]["content_key_id"],
+        "an edit reseals under the same key, so the memory stays one forget unit",
+    );
+    for created in written.iter().skip(1) {
+        let detail = shell
+            .invoke("memory_detail", json!({ "memoryId": created["memory_id"] }))
+            .expect("still readable");
+        assert_eq!(detail, *created, "editing one memory changed another");
+    }
+    let listed = shell.invoke("memory_list", json!({})).expect("the list");
+    assert_eq!(
+        listed["memories"].as_array().map(Vec::len),
+        Some(3),
+        "an edit is not a fourth memory: {listed}",
+    );
+
+    // AC-23 for all three: verified, and none of what they said crossed.
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the chain reads back");
+    assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
+    let played = chain.to_string();
+    for (_, title, summary) in THREE_MEMORIES {
+        for prose in [title, summary] {
+            assert!(
+                !played.contains(prose),
+                "the chain carried `{prose}` across the IPC: {chain}",
+            );
+        }
+    }
+    for prose in [THREE_RETITLED, THREE_RESUMMARIZED] {
+        assert!(
+            !played.contains(prose),
+            "the chain carried `{prose}` across the IPC: {chain}",
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
 }
 
 /// `memoryId` is what `core.ts` sends, for the three commands that name one.
