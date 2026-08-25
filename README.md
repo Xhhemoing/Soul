@@ -25,6 +25,7 @@
 - Goal 2（Goal 1 关闭后再开）：[`docs/GOAL2_POLISH_PROMPT.md`](docs/GOAL2_POLISH_PROMPT.md)
 - 计划验证提示词（**历史存档**，勿当新工单）：[`docs/PLAN_VERIFY_PROMPT.md`](docs/PLAN_VERIFY_PROMPT.md)
 - 三轮双模型模板：[`docs/templates/THREE_ROUND_DUAL_SCAN.md`](docs/templates/THREE_ROUND_DUAL_SCAN.md)
+- 父代理全流程编排（派单/轮次/Git，不覆盖产品锁）：[`docs/templates/PARENT_ORCHESTRATOR.md`](docs/templates/PARENT_ORCHESTRATOR.md)
 
 ## 跑一下现有的算法 crate
 
