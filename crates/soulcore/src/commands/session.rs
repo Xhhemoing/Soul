@@ -1203,6 +1203,23 @@ impl Session {
     /// alternative is worse than it looks: a refusal that also dropped the
     /// pending would make one mistyped confirmation the reason a user has to
     /// walk the irreversible screen a second time.
+    ///
+    /// Matching the two ids is not enough to say the user read the price they
+    /// are about to pay. The preview is a set of numbers read off the store at
+    /// the moment it was asked for, and `execute_forget` resolves the plan
+    /// again against the store as it is when it runs; between the two, this
+    /// session can have written. An edit reseals under the same content key,
+    /// so the memory stays one forget unit and the confirmation still matches
+    /// — while the impact underneath it has moved. Until this re-read the
+    /// disagreement was reported by `matched_preview` on the receipt, which is
+    /// to say after the destruction, on a screen whose whole purpose was to be
+    /// read before it.
+    ///
+    /// So the price is quoted a second time and compared before anything is
+    /// destroyed, and a forget whose cost has changed is refused rather than
+    /// run at the new number. This refusal does take the preview: the numbers
+    /// on it are no longer true of anything, and the point of turning the user
+    /// away is that they read the current ones.
     pub fn forget_memory(
         &mut self,
         confirmation: &ForgetConfirmation,
@@ -1212,12 +1229,18 @@ impl Session {
                 && held.memory_id.to_string() == confirmation.memory_id
         });
         let Some(held) = matched else {
-            return Err(self.refuse_forget());
+            return Err(self.refuse_forget(FORGET_NOT_PREVIEWED_NOTICE));
         };
 
         let at = now_unix_seconds();
-        let store = self.opened_store()?;
-        let mut store = hold(&store);
+        let handle = self.opened_store()?;
+        let mut store = hold(&handle);
+        if memory_commands::preview_forget(&store, held.memory_id)? != held.impact {
+            // `refuse_forget` writes to the same store, and this lock is not
+            // reentrant.
+            drop(store);
+            return Err(self.refuse_forget(FORGET_IMPACT_CHANGED_NOTICE));
+        }
         let receipt = memory_commands::forget(&mut store, held.memory_id, at)?;
         Ok(ForgetReceiptView::of(
             held.memory_id,
@@ -1236,7 +1259,12 @@ impl Session {
     /// record the denial is reported instead of the refusal — it is the more
     /// serious of the two problems, and returning the refusal would leave
     /// nobody looking at it.
-    fn refuse_forget(&self) -> SessionRefusal {
+    ///
+    /// The two ways to be turned away read differently and are recorded the
+    /// same: which of them happened is a fact about what the user was looking
+    /// at, and the chain says only that a confirmation was denied under
+    /// `PLAN_HASH_MISMATCH`.
+    fn refuse_forget(&self, explanation: &str) -> SessionRefusal {
         let entries = [AuditContent::denied(
             AuditAction::HitlDeny,
             ReasonCode::PlanHashMismatch,
@@ -1244,7 +1272,7 @@ impl Session {
         match self.append_audit(&entries) {
             Ok(()) => SessionRefusal {
                 reason_code: ReasonCode::PlanHashMismatch.as_str().to_owned(),
-                explanation: FORGET_NOT_PREVIEWED_NOTICE.to_owned(),
+                explanation: explanation.to_owned(),
             },
             Err(problem) => problem,
         }
