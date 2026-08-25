@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { EmptyState } from "../../components/EmptyState.tsx";
+import { PersistenceBanner } from "../../components/PersistenceBanner.tsx";
 import { useDocumentTitle } from "../../app/useDocumentTitle.ts";
 import { asProjectId, isProjectId } from "../../stores/ids.ts";
 import { selectProject } from "../../stores/projects.ts";
@@ -67,6 +68,7 @@ export function AssemblePage() {
         style={{ background: backdropColor }}
       />
       <div className="assemble__content">
+        <PersistenceBanner />
         <div className="assemble__bar">
           <h1>{project.title}</h1>
           <Link className="button" to="/workspace">

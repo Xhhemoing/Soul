@@ -23,7 +23,19 @@ export interface InventoryRepository {
   saveInventory(entries: InventoryEntry[]): Promise<void>;
 }
 
-export type Repository = ProjectRepository & InventoryRepository;
+/**
+ * DATA-1: storage that stops accepting writes must become an observable state,
+ * never a quiet in-memory detour. Once this reports true nothing reaches disk
+ * for the rest of the session, so the UI keeps a standing notice up rather than
+ * a one-shot toast.
+ */
+export interface PersistenceStatus {
+  isPersistenceFailed(): boolean;
+  /** `useSyncExternalStore`-shaped: returns the unsubscribe. */
+  subscribeToPersistence(listener: () => void): () => void;
+}
+
+export type Repository = ProjectRepository & InventoryRepository & PersistenceStatus;
 
 export const STORAGE_KEY = "bead.state";
 
@@ -87,6 +99,13 @@ class MemoryBacking {
 /**
  * localStorage is absent in some embeddings and throws in private modes, so the
  * repository degrades to an in-memory backing instead of taking the app down.
+ *
+ * The degradation is one-way and total (DATA-1): the moment a write cannot
+ * reach storage, reads move to the same in-memory copy the writes land in and
+ * `isPersistenceFailed()` flips. Serving the pre-failure localStorage copy to a
+ * later read would make the next read-modify-write rebase onto data that is
+ * already stale, which loses everything written after the first failure with no
+ * signal at all.
  */
 export function createRepository(storage?: Storage): Repository {
   const fallback = new MemoryBacking();
@@ -100,25 +119,55 @@ export function createRepository(storage?: Storage): Repository {
       }
     })();
 
+  // No backing at all is the same condition arrived at early: this session
+  // persists nothing, so say so instead of pretending the memory copy survives.
+  let persistenceFailed = backing === undefined;
+  const listeners = new Set<() => void>();
+
+  const markFailed = (): void => {
+    if (persistenceFailed) return;
+    persistenceFailed = true;
+    for (const listener of [...listeners]) listener();
+  };
+
   const read = (): PersistedState => {
+    if (persistenceFailed || !backing) return parsePersistedState(fallback.read());
     try {
-      return parsePersistedState(backing ? backing.getItem(STORAGE_KEY) : fallback.read());
+      return parsePersistedState(backing.getItem(STORAGE_KEY));
     } catch {
+      // Storage that cannot be read cannot be written either; the writes that
+      // follow would be lost silently, so fail the whole backing now.
+      markFailed();
       return parsePersistedState(fallback.read());
     }
   };
 
   const write = (next: PersistedState): void => {
     const serialized = JSON.stringify(next);
-    try {
-      if (backing) backing.setItem(STORAGE_KEY, serialized);
-      else fallback.write(serialized);
-    } catch {
+    if (persistenceFailed || !backing) {
       fallback.write(serialized);
+      return;
+    }
+    try {
+      backing.setItem(STORAGE_KEY, serialized);
+    } catch {
+      // `next` was merged onto a successful read, so the fallback starts out
+      // complete; from here reads follow it.
+      fallback.write(serialized);
+      markFailed();
     }
   };
 
   return {
+    isPersistenceFailed() {
+      return persistenceFailed;
+    },
+    subscribeToPersistence(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
     async loadProjects() {
       return read().projects;
     },
@@ -144,6 +193,12 @@ export function createRepository(storage?: Storage): Repository {
 export function createInMemoryRepository(seed: Partial<PersistedState> = {}): Repository {
   let state: PersistedState = { ...EMPTY_STATE, ...seed };
   return {
+    isPersistenceFailed() {
+      return false;
+    },
+    subscribeToPersistence() {
+      return () => {};
+    },
     async loadProjects() {
       return state.projects;
     },

@@ -57,6 +57,17 @@ a {
   padding-bottom: 88px;
 }
 
+/* Standing, not dismissible: while it is up nothing is being saved (DATA-1). */
+.persistence-banner {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  border: 1px solid var(--warn-border);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
 /* Bottom nav keeps its shape at desktop widths on purpose (R4). */
 .bottom-nav {
   position: fixed;
