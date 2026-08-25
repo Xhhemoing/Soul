@@ -903,6 +903,18 @@ T4D 端口把 `crates/soul-graph/src/correct.rs` 和 `soulcore::commands::graph:
 
 本机绿：`cargo test -p soulcore`（全部测试二进制无失败，其中新的 `session_graph_correct` 6）、`pnpm --filter @soul/desktop test`（14 个文件 **176** 项，从 172 长上来的四条就是上面那四条）、`cargo fmt --all --check`、`cargo clippy --workspace --all-targets --all-features -- -D warnings`、`xtask schema-freeze --check` / `e0-audit` / `denylist-audit` / `sbom`、`cargo test -p soul-testkit --test fixture_corpus`、`cargo test -p soulcore --test install_smoke_script`。**桌面壳这一侧这一轮真的跑起来了**：上一节记的「本机装不起 GTK/WebView 依赖」在这台机器上已经解决（装了 `libwebkit2gtk-4.1-dev` 与 `libgtk-3-dev`），`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets` 全绿——`ipc_roundtrip` **56**、`command_surface` 6、`no_egress_path` 3、`one_store` 3、`shell_is_local_only` 21。**本机绿不是 hosted 绿**：hosted 仍是账本/额度阻塞，本轮没有产品 run。真机上按一次档位按钮同样没有人做过。
 
+## SOUL-7B：再答几题不再对已锁的轴许「以你最后说的为准」（核于 2026-08-25）
+
+分支 `cursor/intake-ignored-ui-4a8e`，从 `origin/cursor/soul-integration-4a8e`（`269e181`）长出。**只动界面这一侧**：没有加命令（`COMMANDS` 仍是 38）、没有动任何 crate、没有动 schema 与 `soul-store`，`Graph.tsx` 与 `Wizard.tsx` 一个字节都没改。
+
+洞在话上，不在核心里。T4D 端口之后 `soul-profile` 的 intake 已经按 D46 走：答案落在用户纠正过的轴上，照样落证据，但不移动那条轴，收据以 `IntakeReceipt.ignored`（理由 `axis_locked_by_user`）报回来。界面这一侧两件事没跟上——档案页「再答几题」那段说明写的是「答过的也可以改口，以你最后说的为准」，对锁上的轴这句话是假的；而 `ignored` 从核心一路送到 `core.ts` 之后没有人读，用户交上去一份问卷，屏幕上只会说「记下了 N 条」，那几条没生效的答案连提都没提。两件事凑起来就是：**页面先许一个它守不住的承诺，再把没守住这件事藏起来**——用户唯一的线索是那条轴自己没动。
+
+落地内容：`docs/algorithms/COPY_ZH.md` 加性补第 7 节（第 1–6 节一个字不动），三个键 `profile.intake.ignored_count` / `profile.intake.axis_locked_by_user` / `profile.intake.ignored_other`，并写死「机器词不上屏」——`axis_locked_by_user` 只作取句的键。`Profile.tsx` 的说明句改成「没锁住的那些答过也可以改口，以你最后说的为准；你在上面纠正过的轴已经锁住了，再答一次不会把它改回去——那一条照样记进证据里，只是不动那条轴的方向」；收据下面在 `ignored` 非空时多一行条数加话术，空的时候整段不渲染（没发生的事不写在屏幕上）。理由是按键查表，认不出来的理由走兜底句而不是把键印出来——这就是它不走 `words()` 那条 `?? key` 回退的原因。
+
+补的门禁：`Profile.test.tsx` 从 18 长到 **23**（vitest 全库 177 → **182**）——说明句里每一处「以你最后说的为准」前面都必须带「没锁」的限定；答在锁住的轴上之后收据说得出是哪几条、那条轴仍是用户按的方向、另一条没锁的照常生效；`ignored` 为空时这一段一个字不出现；同一个理由只说一次、认不出的理由走兜底句、两个机器词都不在渲染出来的文字里；最后一条照 `projection_sentences.rs` 的办法把三句话逐字钉回 `COPY_ZH.md`。`test/fakeCore.ts` 的 double 跟着变诚实：答案落在锁住的轴上时它自己产出 `ignored` 且不移动那条轴，`recording` 双替身回的收据里点名的那几条也不再被 apply——一个照单全收的 double 会让上面那条「轴没动」的断言变成空话。
+
+**没有动的**：`COMMANDS`、IPC、`soul-store` 的键、schema 与 `schemas.lock.json`、冻结算法 crate、向导那条路、`Graph.tsx`。作者清单第 10 节多了一条真机项（纠正一条轴之后再答同一条轴）。本机绿：`pnpm --filter @soul/desktop lint` 与 `test`（14 文件 182 项）。**本机绿不是 hosted 绿**，真机上这一段仍然没有人走过。
+
 ## 下一步
 
 批 3–5 与 WP13、DPAPI 都已完成。`2e72ddf` 上 CI 五门全绿。HEAD 本机 `just ci-full` 与桌面壳 `--all-targets` 绿于产品 `478f19f` 的树（vitest 161，`ipc_roundtrip` 50，`shell_is_local_only` 21，`cargo deny` 四项 ok）；`6e358b3` 补了档案页轴说明与 Explorer 引号路径；`88cf931` 补了第二次启动不进第二份库；`928ef5a` 补了遗忘 SSD 诚实、文件页引号提示、WebView2 args；`f0a2363` 补了研究空状态；`17b56e9` 补了向导授权说明不暗示能写；`90c2d25` 补了端点说明点名起草生成与人脉图摘要；`0de3e90` 补了人脉图「只留在本机」那行点名摘要按钮会把往来次数发给已填端点；`478f19f` 补了向导欢迎那段点名后来的模型端点是例外、发出去的内容会先占位。hosted 五门没有 runner。原先写在这里的产品缺口已经做完，剩下的是 hosted 与真机：
