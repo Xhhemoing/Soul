@@ -841,3 +841,28 @@ a {
   margin: 0 0 8px;
   font-size: 18px;
 }
+/* ---- import / export panels (WP-B07) -------------------------------- */
+
+.import-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  justify-items: start;
+}
+
+.import-panel__errors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.import-panel__export {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  width: 100%;
+}
