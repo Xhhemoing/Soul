@@ -13,10 +13,10 @@
 | 当前轮次 | ROUND 2 |
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
-| 已检查模块 | 壳 + bead-core + TS 管线 + DATA-1 + AL-1/2/3 |
-| 当前任务 | AL 已合入；下一刀 B04 IA + AL 复审 |
-| PR | #16 专属线；#20–#31。AL 子支已并入专属线（对 #16 底无独立 diff，不另开 #32） |
-| Merge | AL @ `331b513`；不合 unique trunk |
+| 已检查模块 | 壳 + bead-core + TS 管线 + DATA-1 + AL-1/2/3 + AL 复审 |
+| 当前任务 | AL 复审已合（#32，PASS）；B04 IA 仍在途 |
+| PR | #16 专属线；#20–#32（#32 AL 复审） |
+| Merge | AL @ `331b513`；AL 复审 `3fac2fd`；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读（BLOCKED_PR）；云端异步 VM ≈3 |
 
 ## 已检查模块（11.5）
@@ -31,7 +31,7 @@
 | Storage | DATA-1 已合：写失败后读写同切内存并提示 | B04 只存游标（mode/stepIndex/elapsedMs） |
 | Cache | 无 | 后置 |
 | 第三方 | 无品牌色板授权 | fixture `generic-5mm` |
-| 核心业务 | 色号 + BOM + 四模式 steps 已对 rust fixture | 判定器/框定/检测退化按 align-review 不动 |
+| 核心业务 | 色号 + BOM + 四模式 steps 已对 rust fixture；AL 复审 PASS | AL-4（MED）rust 边界 fixture 后置；B04 |
 | 测试 | `@bead/app` 22 文件 **258** 绿；bead-core 153 | B10 独立 workflow 仍缺 |
 | 构建 | Soul just/pnpm | 隔离，勿改根脚本 |
 | CI/CD | Soul ci.yml | B10 独立 job |
@@ -90,7 +90,9 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] AT-2 + rust parity 对齐合入（#28）
 - [x] TS / core / align Review 合入（#26 #27 #30）
 - [x] AL-1/2/3 合入专属线 `331b513`（抖动取整 + steps slug/断言 + 分叉表）
+- [x] AL 复审合入 `3fac2fd`（#32，三项 PASS，无新增 HIGH）
 - [ ] B04 沉浸拼装 IA + 实现
+- [ ] AL-4（MED）rust 侧补跨取整边界的 oracle fixture（不改 TS 语义）
 - [ ] B05 库存/BOM UI
 - [ ] `/create` 上传接线（独立变更；若持久化 Grid 必须同时上 IDB，BD19）
 - [ ] B10 独立 bead workflow
@@ -118,7 +120,8 @@ Commit        331b513 merge AL；本提交记进度
 PR            #16 更新；AL 子支对专属线已无独立 diff（先合后开 PR 被拒）
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B04 IA → B04 实现（只存游标）；B05；B10
-在途          [R2 Fable review AL](https://cursor.com/agents/bc-7b365534-e6fd-5e45-bc50-769cc93d4454) · [R2 Fable B04 IA](https://cursor.com/agents/bc-d265c746-7f1f-5358-9493-9e49856a4b82)
+在途          [R2 Fable B04 IA](https://cursor.com/agents/bc-d265c746-7f1f-5358-9493-9e49856a4b82)
+已收          [R2 Fable review AL](https://cursor.com/agents/bc-7b365534-e6fd-5e45-bc50-769cc93d4454) → #32 `3fac2fd` PASS；AL-4 MED 后置
 ```
 
 ### ROUND 2 · AL-1/2/3 吸收
