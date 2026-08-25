@@ -863,7 +863,8 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 1. **文件页空态（`1f52ca5`）。** `/files` 的 `no-roots` 不再写「授权之前，Soul 读不到你机器上的任何文件。」目录扫描才要授权；导入页用户自选文件与 Soul 自己的配置/库本来就在读。只动 `Files.tsx` / `Files.test.tsx`。`COMMANDS` 仍 36。
 2. **起草 E1 确认文案（`24ea578`）。** `E1_PLAN_NOTICE` 改为点名真正进请求体的四样（模型名、固定系统指令、档案 brief、占位或单次豁免后的粘贴），并写明屏幕上的计数/哈希/准备 id **不**进 payload。TypeScript 双胞胎在 `fakeCore.ts`。本机：`soulcore` `draft_commands` / `session_e1` / `policy_commands` 绿；桌面 vitest 14 文件 162；`ipc_roundtrip` 51。本机绿不是 hosted 绿。
 3. **E1 计划绑定 origin（`d1b6457`，fmt `9daacc8`）。** `e1_plan` 把目标 origin 打进哈希；换端点后再用旧批准 → `PLAN_HASH_MISMATCH`，A/B 请求数均为 0。哈希以外的地址仍不上屏、不进审计。对 `SECURITY.md`「配置变更会使计划哈希失效」。
-4. fable-b 独立审计完成（`3550bcb`）。dpapi/collect FFI 干净。余下代码 P1：无标签联系人遗忘空转、snapshot 无视 `max_entries`、e0-audit 前缀、若干文案过宽。重复导入幂等按 D55 不重写索引。R2 综合见 `.agent_workspace/orchestrator-c441/R2-SYNTHESIS.md`。
+4. fable-b 独立审计完成（`3550bcb`）。dpapi/collect FFI 干净。R2 综合见 `.agent_workspace/orchestrator-c441/R2-SYNTHESIS.md`。
+5. **余下 P1 落笔（核于 2026-08-25，尖端 `71eaaac`）。** 无标签联系人遗忘销毁正文密钥（`e2f7368`）；snapshot/`max_entries`（`8c635b2`）；e0-audit 按 host 锚定（`1a4cc22`）；换端点丢掉 pending E1（`b2d2915`）；遗忘确认先匹配再 take（`7a29ca7`）；向导/导入预览/重复导入警告/遗忘「不写文件」/图摘要 payload 文案（`d32a786`…`71eaaac`）。重复导入仍无去重索引（D55）。 vitest 166。本机绿不是 hosted 绿。向导里「发出去的内容会先占位」「生成必须填端点」两条 gpt-sol-a 余项本批未改。
 
 ## 下一步
 
