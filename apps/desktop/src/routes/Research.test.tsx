@@ -59,10 +59,41 @@ describe("研究预览页", () => {
     expect(table).toHaveTextContent("2026-08-20T09:00:00Z");
   });
 
-  it("没有可聚合的事件时说清楚为什么是空的", async () => {
-    await open({ research: () => aResearchPreview({ rows: [], candidate_rows_total: 0 }) });
+  /**
+   * The page only calls `research_preview`, so the empty state may not say
+   * anything about collection or about imports: 采集 can be running and
+   * granted while this query still has nothing to aggregate, and `/collect`
+   * would be saying 正在采集 on the next screen over.
+   */
+  it("一行候选都没有的时候，只说查询是空的，不替采集和导入下结论", async () => {
+    await open({
+      research: () =>
+        aResearchPreview({ rows: [], candidate_rows_total: 0, third_party_rows_excluded: 0 }),
+    });
 
-    expect(screen.getByTestId("no-research-rows")).toHaveTextContent("采集没有打开");
+    const empty = screen.getByTestId("no-research-rows");
+    expect(empty).toHaveTextContent("查询没有找到可以聚合的事件。");
+    expect(empty).not.toHaveTextContent("采集没有打开");
+    expect(empty).not.toHaveTextContent("没有导入");
+    expect(screen.queryByTestId("research-table")).toBeNull();
+  });
+
+  /**
+   * Candidates that are all somebody else's rows: the exclusion is the reason
+   * the table is empty, and the same screen already prints 排除掉了 N 行 two
+   * lines above. Claiming nothing was imported here would contradict it.
+   */
+  it("候选全被排除掉的时候，说的是排除，不是没有导入过", async () => {
+    await open({
+      research: () =>
+        aResearchPreview({ rows: [], candidate_rows_total: 3, third_party_rows_excluded: 3 }),
+    });
+
+    const empty = screen.getByTestId("no-research-rows");
+    expect(empty).toHaveTextContent("查询找到了 3 行");
+    expect(empty).toHaveTextContent("排除掉了 3 行");
+    expect(empty).not.toHaveTextContent("采集没有打开");
+    expect(empty).not.toHaveTextContent("没有导入");
     expect(screen.queryByTestId("research-table")).toBeNull();
   });
 

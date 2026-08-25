@@ -116,9 +116,19 @@ export function Research(): React.JSX.Element {
 
       <section className="panel" aria-labelledby="research-table-heading">
         <h2 id="research-table-heading">行</h2>
+        {/*
+          An empty table says why the query came back empty and nothing more.
+          This page only calls `research_preview`, so it cannot know whether
+          collection is running or whether anything was ever imported;
+          `candidate_rows_total` is the one number that separates "there was
+          nothing to aggregate" from "everything found belonged to somebody
+          else".
+        */}
         {preview.rows.length === 0 ? (
           <p className="muted" data-testid="no-research-rows">
-            现在没有可以聚合的事件。采集没有打开，也没有导入过什么，所以查询的结果是空的。
+            {preview.candidate_rows_total === 0
+              ? "查询没有找到可以聚合的事件。"
+              : `查询找到了 ${preview.candidate_rows_total} 行，全部是别人的数据，已经排除掉了 ${preview.third_party_rows_excluded} 行。这一页因此没有可显示的行。`}
           </p>
         ) : (
           <table className="defaults" data-testid="research-table">
