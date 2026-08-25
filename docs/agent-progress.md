@@ -17,7 +17,7 @@
 | 当前任务 | SH-1..4 已合入；TS 管线与 core 的 Fable Review 在跑 |
 | PR | #16 专属线；#20–#25（#25 SH 跟进） |
 | Merge | 壳、core、壳 Review 文档已合进专属线；不合 unique trunk |
-| Blocked | F4/S1/S2 与 core Review 等 VM |
+| Blocked | F4/S1/S2 等 VM |
 
 ## 已检查模块（11.5）
 
