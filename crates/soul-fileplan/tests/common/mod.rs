@@ -103,14 +103,22 @@ impl Tree {
         write(&base.join("Bravo/nested"), "deep.txt", "更深的私事");
 
         // Whether two differently cased names are separate is a property of
-        // the filesystem, not the operating system. Create the variant first
-        // so both paths can be canonicalized, then compare the places they
-        // actually name.
+        // the filesystem, not the operating system. Ask by writing a marker
+        // through one spelling and reading it through the other: canonicalize
+        // is allowed to echo the caller's case on a folding volume, which
+        // would plant decoy.txt inside the authorized root (M3).
         let lower_alpha = base.join("alpha");
         std::fs::create_dir_all(&lower_alpha).expect("create the case-variant directory");
-        let case_variant_is_separate = std::fs::canonicalize(&lower_alpha)
-            .expect("canonical case variant")
-            != std::fs::canonicalize(base.join("Alpha")).expect("canonical Alpha");
+        let marker_name = "soul-case-probe.marker";
+        let marker_body = b"case-probe";
+        std::fs::write(lower_alpha.join(marker_name), marker_body).expect("write case probe");
+        let via_authorized = base.join("Alpha").join(marker_name);
+        let case_variant_is_separate = match std::fs::read(&via_authorized) {
+            Ok(found) if found.as_slice() == marker_body => false,
+            _ => true,
+        };
+        let _ = std::fs::remove_file(lower_alpha.join(marker_name));
+        let _ = std::fs::remove_file(&via_authorized);
         if case_variant_is_separate {
             write(&lower_alpha, "decoy.txt", "同名不同大小写的第三个目录");
         }

@@ -17,7 +17,7 @@ Do not start Goal 2. Do not silent-patch F04c. Do not pull SQLCipher into algo c
 | ID | Work | Owner round |
 |---|---|---|
 | M2 | Absorb main — **done** (merge commit) | parent |
-| M3 | Exact fileplan corpus guard + runtime case probe; reject `>= 25` / `cfg(unix)` decoy | R1 gpt-sol-a |
+| M3 | Exact fileplan corpus guard + runtime case probe; reject `>= 25` / `cfg(unix)` decoy | **done** (marker-file probe) |
 | G2 | `intake` skips locked axes (`apply_intake` semantics) | R1 opus-a |
 | G1+ | Owner group messages must not fan Outgoing to historical speakers | R1 opus-b |
 | G1 | `Tally::band` → `soul_algo_tie::score`; one store-wide `as_of` | R2 opus |
@@ -32,6 +32,8 @@ Do not start Goal 2. Do not silent-patch F04c. Do not pull SQLCipher into algo c
 - Round 2: done — `.agent_workspace/unblock/R2-SYNTHESIS.md`
 - Round 3: done — `.agent_workspace/unblock/R3-SYNTHESIS.md`（A2 接线、IntakeReceipt.ignored、导入时钟、store 近阈值、G2 对拍）
 - 不再开 Round 4–6：原 P0 已关；剩余项见 R3 简报「仍开放」表（D34/D35/D36、作者手动、空 runner）
+- 壳层缺口 `3161e02` 已 cherry-pick：profile/memory/research/crash/redirect 走产品 Session；Linux CI 另跑 ipc_roundtrip（本机无 webkit 编不了 tauri 壳）
+- M3 探针改为「一种拼写写入标记、另一种拼写读回」，不再依赖 canonicalize 的大小写
 
 ## Round 1 fable-a — G1 T4D wiring spec delivered (spec only, no code)
 

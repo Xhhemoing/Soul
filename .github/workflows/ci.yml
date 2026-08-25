@@ -146,6 +146,7 @@ jobs:
       - name: cargo test (desktop shell, mock runtime)
         run: >
           cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+          --no-fail-fast
           --test ipc_roundtrip
           --test command_surface
           --test no_egress_path
