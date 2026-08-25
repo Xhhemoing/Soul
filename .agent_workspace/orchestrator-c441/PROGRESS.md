@@ -1,26 +1,19 @@
 # PROGRESS — orchestrator-c441
 
-父代理：cursor-grok-4.6-high。分支 `cursor/goal1-build-audit-c441`。PR #13。
+父代理：cursor-grok-4.6-high。分支 `cursor/goal1-build-audit-c441` 尖端 `c0a6295`。相对 origin **ahead 10**。PR #13 远端仍 `7be8279`。
 
 ## 当次 Goal
 
-深度优化并确定架构与计划 → **AUTO：BUILD 续跑 + 架构确认**。LOOP20 QUEUED。
+深度优化并确定架构与计划 → BUILD 续跑 + 架构确认。LOOP20 QUEUED。
 
-## Round 3 探针（done）
+## Round 3
+
+探针 done。opus-a/b/c 本机落地。GitHub 推送被跳过，不再请求同一凭证。
 
 | 代理 | 状态 |
 |---|---|
-| fable-a | done：架构冻结、零 DAG 漂移 |
-| fable-b | done：存量代码 P0/P1=0；N4/N5/N6；声明模型 `claude-fable-5-thinking` |
-| gpt-sol-a | done：新 P0 姓名豁免泄漏；P1 摘要出处；P2 IPv6（停车） |
-| gpt-sol-b | done：P1 IPC 假绿 / 遗忘合同 / 研究预览哈希 |
-
-综合：`R3-SYNTHESIS.md`
-
-## Round 3 落笔（in flight）
-
-| 代理 | 范围 |
-|---|---|
-| opus-a | P0 姓名占位（redactor / session_e1 / draft notice / Wizard） |
-| opus-b | P1 摘要出处（e1.rs / soul-draft / Graph） |
-| opus-c | P1 IPC+遗忘 UI+研究快照（ipc_roundtrip / Memory / session_screens） |
+| fable-a/b、gpt-sol-a/b | done |
+| opus-a P0 姓名 | 本机 `8cded4c`…`339a5f2` |
+| opus-b P1 摘要 | 本机 `7c921be`…`c0a6295` |
+| opus-c P1 IPC/遗忘 | 本机 `10766af`…`11b48c8` |
+| fable R3 review | in flight |

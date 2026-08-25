@@ -41,3 +41,7 @@ LOOP20 仍 QUEUED。N4/N5/N6 仍 blocked-on-user。
 ## 下一轮
 
 opus 三路返回后：fable 只读复核；残留 P0 不得称收口。N4/N5/N6 仍要用户侧。
+
+## 落笔结果（本机，核于 2026-08-25）
+
+三路 opus 已提交在 `cursor/goal1-build-audit-c441` 尖端 `c0a6295`。`soul-policy` redactor_exemption 9 / redactor_leakage 9 本机绿。远端 PR #13 未更新：GitHub 令牌无效，用户跳过刷新，**不重要同一项凭证**。fable R3 复核进行中。
