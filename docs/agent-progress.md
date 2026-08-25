@@ -14,8 +14,8 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core 已合入；CI/IA/算法/地图审查齐 |
-| 当前任务 | O3 已合入；SH-1..4 仍在修；TS 管线 Fable Review 在跑 |
-| PR | #16 专属线；#20–#24（#24 转图管线） |
+| 当前任务 | SH-1..4 已合入；TS 管线与 core 的 Fable Review 在跑 |
+| PR | #16 专属线；#20–#25（#25 SH 跟进） |
 | Merge | 壳、core、壳 Review 文档已合进专属线；不合 unique trunk |
 | Blocked | F4/S1/S2 与 core Review 等 VM |
 
@@ -23,7 +23,7 @@
 
 | 面 | 现状 | 下一动作 |
 |---|---|---|
-| 前端 | 壳已合入；Review 指出 SH-1..4 | Opus 跟进中 |
+| 前端 | 壳 + SH-1..4 已合入 | B04 沉浸拼装 |
 | 后端 | 无 bead 服务 | v0 本机，不造第二灵魂核 |
 | API | 无 bead API | 本地 store 契约 |
 | 数据库 | Soul 加密 SQLite，与 bead 无关 | WP-B09 IndexedDB |
@@ -68,7 +68,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 | S1 | gpt-5.6-sol-xhigh-fast | 覆盖缺口探针 | **BLOCKED** 等 VM |
 | S2 | gpt-5.6-sol-xhigh-fast | 构建/CI/性能探针 | **BLOCKED** 等 VM |
 
-壳 Review：**完成** `4e7b990` #22。SH 修复：[bc-4bea8264](https://cursor.com/agents/bc-4bea8264-3f2b-546b-a858-2d7bd0e9ac13)。core Review 因 VM 上限排队。
+壳 Review：**完成**。SH-1..4 **完成并合入** `35e1047` #25。本机 `@bead/app` 220 绿。core Review：[bc-40caa864](https://cursor.com/agents/bc-40caa864-ee53-5058-a593-b3c27fbe396a)。TS Review 仍在跑。
 
 实现互不覆盖：O1 只碰 `crates/bead-core`；O2 已完成勿再改壳骨架；O3 只碰 `apps/bead/src/algo/`。
 
@@ -85,7 +85,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] F1 地图收进专属线；BD14–BD16 已拍
 - [x] F5 CI 清单合入（#20）
 - [ ] F4/S1/S2
-- [x] 壳 Fable Review 合入（#22）；SH-1..4 已派 Opus
+- [x] 壳 Fable Review 合入（#22）；SH-1..4 合入（#25），220 绿
 - [x] O3 转图管线合入（#24），本机 217 绿
 - [ ] TS 管线 Fable Review 在跑；core Review 仍等 VM
 - [ ] `/create` 上传接线（独立变更，勿打坏 B02 文案测试）
