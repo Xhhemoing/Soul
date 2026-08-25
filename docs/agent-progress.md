@@ -7,29 +7,44 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 ## Current round
 
-**ROUND 6** — scan the queued crossings from R5 #10. Do not re-open closed R4/R5 items (D55, P2 E1 mutex, owner-fold, import-tx wrap, forget×summary).
+**ROUND 7** — review the R6 landings and scan remaining honesty gaps. Do not re-open closed R4–R6 items (D55, D61, D62, D63, P2 E1 mutex, owner-fold, import-tx wrap, forget×summary, events_by_source, closed-store E1).
 
 | Field | Value |
 |---|---|
-| Current task | Round 6 Fable complete. Dispatching Opus: closed-store E1 gate, events_by_source index, Telegram `@` alias, E1 netwatch instrument. D63 session-only collect consent. D55 parked. P2 E1 mutex parked. Hosted CI billing-blocked. |
+| Current task | Round 6 closed. Round 7 Fable: landings review; remaining store_opened; remaining collect queries; Import/PRODUCT_LOCK three-way pin; smoke vs e1-watch vs Graph UI; research preview remainder; COMMANDS=38 pin; STATUS vs Windows BLOCKED; `@` alias leakage; author-four synthesis. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
-| Exclusive tip | R5 landings merged; PR #15 |
+| Exclusive tip | `e093da1`; PR #15 |
 
-### Round 6 Fable dispatch
+### Round 7 Fable dispatch
 
 | # | Direction |
 |---|---|
-| 1 | Schema-version / upgrade-path honesty: opening a db with a different `meta.schema_version` (no migrator) |
-| 2 | Degraded-mode coherence: `store_opened=false` across all routes + wizard + tray |
-| 3 | AC-21 headless main-flow lag vs COMMANDS=38 (tie-correct, summary+projection, E1 branch) |
-| 4 | 38-command argument sweep: wrong types / nulls / oversized payloads → refusal not panic, no echoed user content |
-| 5 | Long-horizon aging: unpaginated `/audit`, remaining O(n) reads, db growth after collection |
-| 6 | Backup / machine-migration / key-loss surfaces after `store_notice` (uninstall, settings, wizard) |
-| 7 | Telegram Desktop 2026 export-shape vs frozen 4.x assumption |
-| 8 | Gate coverage post-port: e0/denylist on `soul-algo-*`; `.test.tsx` URL exemption; leakage-checker blind spot |
-| 9 | AD-12 consent board draft + `duration_bucket` research path vs constraint 7 |
-| 10 | Session lock-order / reentrancy inventory, excluding parked P2 E1 mutex unless P0/P1 evidence |
+| 1 | Review the four R6 code landings plus the Telegram menu-copy commit for regressions |
+| 2 | Remaining `store_opened=false` surfaces after the E1 closed-store gate (wizard, tray, collect, import, graph) |
+| 3 | Remaining collect / audit O(n) after `events_by_source` (other unindexed columns, `/audit` pagination) |
+| 4 | Import UI + refusal + PRODUCT_LOCK three-way pin of the full-export menu |
+| 5 | Headless smoke sentence vs `e1-watch` vs Graph UI: does the demotion-clock sentence actually reach the screen |
+| 6 | Research preview remainder after `research_export` became load-bearing |
+| 7 | COMMANDS.md / IPC / desktop invoke still 38; no silent command growth |
+| 8 | STATUS / checklist honesty vs Windows NSIS/DPAPI/tray still BLOCKED on this Linux host |
+| 9 | Telegram `@` alias landing: fixture usernames, partner names, and refusals still do not leak |
+| 10 | Author four-requirement synthesis vs remaining BLOCKED items (hosted CI, author checklist, file write v0.1.1) |
+
+## ROUND 6 record
+
+| Field | Value |
+|---|---|
+| ROUND | 6 |
+| 子代理任务 | 10× Fable + Opus: closed-store E1, `events_by_source` index, Telegram `@` alias, e1-watch instrument; parent: D62, D63, Telegram full-export menu copy |
+| 发现问题 | Opening a newer-stamped db wrote stamp 2 then used the old schema; E1 still reached a configured endpoint with the store closed; collect 1s poll full-scanned `events.source`; Telegram 2026 `@@username` folded twice; AC-21 headless never woke reqwest so lag was unmeasured; importer copy still named the per-chat export this adapter refuses |
+| 修复问题 | Refuse newer `schema_version` without touching the file (D62); `prepare_draft`/`generate_draft` call `opened_store()?` first (paste stays store-free); additive `events_by_source` index, version stays 2; `username_handle` strips one leading `@` then prefixes once; `soul-headless e1-watch` watches the one path that opens a socket; D63 session-only collect consent; importer copy names Settings → Advanced → Export Telegram data |
+| 测试结果 | schema_version 5; store_commands 2; events_by_source_index 2; telegram 12; e1_watch 5; session_e1 33; session_import 13; vitest Import 13. rustfmt --check clean on the copy commit |
+| Commit | merges of e1-closed-store, events-source-index, telegram-username-alias, e1-netwatch-instrument; D62/D63 docs; `e093da1` Telegram menu copy |
+| PR | #15 |
+| Merge状态 | Exclusive has the merges. → `main` still `BLOCKED`. PR #7 still not merged |
+| 下一轮重点 | Review the four landings; remaining store_opened; remaining O(n); Import three-way pin; smoke vs Graph UI; research remainder; COMMANDS=38; STATUS vs Windows BLOCKED; `@` leakage; author-four synthesis |
+| NO_HIGH_VALUE | IPC argument sweep (38-command serde boundary refuses, no panic, no third-party echo); key-loss UI after `store_notice`; gate coverage (algo crates in e0; denylist exempt + runtime clinical screen); Session lock-order (P2 E1 mutex not upgraded) |
 
 ## ROUND 5 record
 
