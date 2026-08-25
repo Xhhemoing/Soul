@@ -147,6 +147,6 @@ v0.1 明确不做：自动发消息、常驻截屏、键鼠接管、任意 shell
 - `ASSUMPTION:` 作者可接受 Rust。
 - `ASSUMPTION:` 不承诺抵抗本机管理员或物理取证。
 - `ASSUMPTION:` 加密库首选 SQLCipher；若打包成本过高则 SQLite + 字段级 AEAD，并在 SECURITY.md 如实说明。
-- `ASSUMPTION:` Telegram 适配器以 Desktop 4.x machine-readable JSON 为准；CI 用合成 fixture。
+- `ASSUMPTION:` Telegram 适配器以官方导出 schema（core.telegram.org/import-export）与 Desktop ≥4.1 实际输出为准（`date_unixtime` 自 4.1 必写；形状经 7.1.x/2026-08 源码核验未变；入口是 Settings → Advanced → Export Telegram data 的全量导出，单聊 Export chat history 是另一形状，拒收）；`contacts.list` 现可带已解析的 `user_id`，不导入是 v0.1 范围决定；CI 用合成 fixture。
 - `ASSUMPTION:` 无 E1 时确定性语气模板足以通过起草验收。
 - `ASSUMPTION:` GitHub Actions `windows-latest` 跑 headless 核心；真实托盘/采集由作者手动 checklist。

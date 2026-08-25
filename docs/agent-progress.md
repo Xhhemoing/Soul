@@ -11,7 +11,7 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 | Field | Value |
 |---|---|
-| Current task | Round 6: schema-version refuse-newer merged (D62). Remaining Fable scanners still running. D55 parked. P2 E1 mutex parked. Hosted CI billing-blocked. |
+| Current task | Round 6 Fable complete. Dispatching Opus: closed-store E1 gate, events_by_source index, Telegram `@` alias, E1 netwatch instrument. D63 session-only collect consent. D55 parked. P2 E1 mutex parked. Hosted CI billing-blocked. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
 | Exclusive tip | R5 landings merged; PR #15 |
