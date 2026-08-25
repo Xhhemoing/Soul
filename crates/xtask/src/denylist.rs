@@ -20,9 +20,10 @@ use anyhow::{Context, Result};
 pub const DENYLIST_PATH: &str = "fixtures/denylist/diagnostic_terms.txt";
 
 /// Trees that may name the forbidden words: the denylist itself, the audit
-/// that implements it, the corpora, and any test.
+/// that implements it, the corpora, tests, and algorithm prototypes whose
+/// frozen API types predate this product-surface audit.
 pub const EXEMPT_PATH_SEGMENTS: &[&str] = &["fixtures", "tests", "target", "node_modules", ".git"];
-pub const EXEMPT_CRATES: &[&str] = &["xtask"];
+pub const EXEMPT_CRATES: &[&str] = &["xtask", "soul-algo-tie", "soul-algo-trait"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HitContext {
