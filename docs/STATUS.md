@@ -867,6 +867,10 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 5. **余下 P1 落笔（核于 2026-08-25，尖端 `71eaaac`）。** 无标签联系人遗忘销毁正文密钥（`e2f7368`）；snapshot/`max_entries`（`8c635b2`）；e0-audit 按 host 锚定（`1a4cc22`）；换端点丢掉 pending E1（`b2d2915`）；遗忘确认先匹配再 take（`7a29ca7`）；向导/导入预览/重复导入警告/遗忘「不写文件」/图摘要 payload 文案（`d32a786`…`71eaaac`）。重复导入仍无去重索引（D55）。 vitest 166。本机绿不是 hosted 绿。
 6. **fable 收口复核（`1e20445`）。** 声称已闭合的代码 P0/P1 共 11 项全部 `闭合`，0 残留、0 误报。代码侧无残留 P0。跟进：向导欢迎不再声称出网内容全是占位符（`882b814`）；FakeStore `keys_of` 与真库无名联系人遗忘对齐（`99bdd30`）。已停车的 P2 组未动。过程稿 `.agent_workspace/orchestrator-c441/round2/fable-closeout.md`。尖端 `99bdd30`。本机绿不是 hosted 绿。
 
+## BUILD R3（架构确认 + 探针，核于 2026-08-25）
+
+对照图 `.agent_workspace/orchestrator-c441/ARCHITECTURE_LOCK.md`（过程稿）。16 个 crate 对照 `GOAL1_PLAN` 钉死核过，**无 DAG 漂移**。存量代码 P0/P1 仍闭合。R3 gpt-sol 带 repro 的新缺口已派 opus：未导入姓名在原文豁免下仍出网（P0，对 PRODUCT_LOCK）；人事摘要把任意端点文本标成「根据本机统计改写」（P1）；IPC 成功路径可被拒绝短路假绿、遗忘预览合同未过 IPC/UI、研究预览产品层只比路径名（P1）。IPv6 origin 括号与 R2 停车 P2 维持停车。LOOP20 仍排队。综合 `.agent_workspace/orchestrator-c441/R3-SYNTHESIS.md`。
+
 ## 下一步
 
 批 3–5 与 WP13、DPAPI 都已完成。`2e72ddf` 上 CI 五门全绿。HEAD 本机 `just ci-full` 与桌面壳 `--all-targets` 绿于产品 `478f19f` 的树（vitest 161，`ipc_roundtrip` 50，`shell_is_local_only` 21，`cargo deny` 四项 ok）；`6e358b3` 补了档案页轴说明与 Explorer 引号路径；`88cf931` 补了第二次启动不进第二份库；`928ef5a` 补了遗忘 SSD 诚实、文件页引号提示、WebView2 args；`f0a2363` 补了研究空状态；`17b56e9` 补了向导授权说明不暗示能写；`90c2d25` 补了端点说明点名起草生成与人脉图摘要；`0de3e90` 补了人脉图「只留在本机」那行点名摘要按钮会把往来次数发给已填端点；`478f19f` 补了向导欢迎那段点名后来的模型端点是例外、发出去的内容会先占位。hosted 五门没有 runner。原先写在这里的产品缺口已经做完，剩下的是 hosted 与真机：
