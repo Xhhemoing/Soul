@@ -27,6 +27,14 @@ const OTHER_ORIGINAL: &str = "另外那份合同我周三才能签完，先别�
 const NAME: &str = "李雷";
 const PHONE: &str = "13800138000";
 
+/// The same person, spelled the way an export spells a display name.
+///
+/// `fixtures/import/telegram/result_basic.json` writes the space, and so does
+/// every screen that shows a contact. It is the spelling the identifier set
+/// would hold if anything had been imported — and the one that has to be
+/// placeheld when nothing has.
+const SPACED_LABEL: &str = "李 雷";
+
 fn checker() -> LeakageChecker {
     let mut checker = LeakageChecker::new();
     checker.add_third_party_body("original", ORIGINAL);
@@ -140,6 +148,134 @@ fn identifiers_stay_placeheld_inside_an_exempted_turn() {
     assert!(!redacted.as_str().contains(PHONE), "{}", redacted.as_str());
     assert!(redacted.as_str().contains(NAME_PLACEHOLDER));
     assert!(redacted.as_str().contains(ACCOUNT_PLACEHOLDER));
+}
+
+/// The same promise for a name nobody registered, which is every name on a
+/// Soul that has imported nothing.
+///
+/// [`identifiers_stay_placeheld_inside_an_exempted_turn`] hands the redactor
+/// the name first, so it proves the set is consulted rather than that the
+/// promise holds. PRODUCT_LOCK does not make the promise conditional on an
+/// import having happened, and the two confirmation screens do not either —
+/// 「姓名与账号两种情况下都占位」 is what `E1_PLAN_NOTICE` says to a user who
+/// has never opened 导入. So the redactor here knows nobody at all, and the
+/// exempted turn still may not carry the label out.
+///
+/// 正文 exemption is not 姓名 exemption. The confirmation buys the message.
+#[test]
+fn an_exempted_turn_placeholds_a_display_label_nobody_registered() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+    assert!(
+        redactor.identifiers().is_empty(),
+        "the point of this test is a redactor that knows nobody",
+    );
+
+    let turn_id = Uuid::now_v7();
+    let turns = vec![Turn::new(
+        turn_id,
+        SealedSubject::ThirdParty,
+        format!("{SPACED_LABEL} 说：{ORIGINAL}"),
+    )];
+    let exemption = ExemptionRequest::for_turn(turn_id)
+        .confirm(true)
+        .expect("the user confirmed twice");
+    let redacted = redactor.redact_for_e1_with_exemption(&turns, exemption);
+
+    assert!(
+        !redacted.as_str().contains(SPACED_LABEL),
+        "a name the graph never learned reached the body the user confirmed: {}",
+        redacted.as_str(),
+    );
+    assert!(
+        redacted.as_str().contains(NAME_PLACEHOLDER),
+        "the name was dropped rather than placeheld: {}",
+        redacted.as_str(),
+    );
+    // And the confirmation still bought what it was for.
+    assert!(
+        redacted.as_str().contains(ORIGINAL),
+        "the message the user confirmed did not travel: {}",
+        redacted.as_str(),
+    );
+    assert!(redacted.carries_exempted_original());
+}
+
+/// The placeholder is one name, not a licence to redact the sentence.
+///
+/// The rule is a shape, and a shape that fired on ordinary prose would take
+/// the exemption back by another route: the user confirmed twice to send this
+/// message, and a body full of placeholders is not the message. Each string
+/// below is something a paste plausibly contains and nothing below is a
+/// spaced display label.
+#[test]
+fn the_label_shape_leaves_the_prose_the_exemption_was_for_alone() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+
+    for intact in [
+        ORIGINAL,
+        "周五的场地我已经订好了，你直接过来就行",
+        // The account owner's own name. PRODUCT_LOCK's placeholder is for
+        // 第三人姓名, and a rule that ate a capitalized word would redact the
+        // user out of their own draft.
+        "Roy 说这周先把方案定下来",
+        // Digits and punctuation break a run rather than joining one.
+        "下午 3 点，第 2 会议室，预算 45000",
+        // A single group is a word, not a label.
+        "他在 café 里等了很久",
+    ] {
+        let turn_id = Uuid::now_v7();
+        let turns = vec![Turn::new(turn_id, SealedSubject::ThirdParty, intact)];
+        let exemption = ExemptionRequest::for_turn(turn_id)
+            .confirm(true)
+            .expect("confirmed");
+        let redacted = redactor.redact_for_e1_with_exemption(&turns, exemption);
+
+        assert_eq!(
+            redacted.as_str(),
+            intact,
+            "the exempted turn came back changed, so the confirmation bought less \
+             than the user was told it would",
+        );
+    }
+}
+
+/// The stricter rule belongs to the exempted turn and changes nothing else.
+///
+/// `a_confirmed_exemption_carries_exactly_one_original_and_the_next_draft_does_not`
+/// asserts the draft after an exemption is byte-identical to the one before
+/// it; this is the same statement made about a conversation whose turns carry
+/// a display label, so a build that started placeholding labels on the default
+/// path — where every third-party turn is already a whole placeholder — would
+/// be visible rather than silent.
+#[test]
+fn the_default_path_is_unchanged_by_the_label_rule() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+    let turn_id = Uuid::now_v7();
+    let turns = vec![
+        Turn::new(
+            turn_id,
+            SealedSubject::ThirdParty,
+            format!("{SPACED_LABEL} 说：{ORIGINAL}"),
+        ),
+        Turn::new(Uuid::now_v7(), SealedSubject::Owner, "我看看时间再回复。"),
+    ];
+
+    let before = redactor.redact_for_e1(&turns);
+    assert_eq!(
+        before.as_str(),
+        format!("{THIRD_PARTY_PLACEHOLDER}\n我看看时间再回复。"),
+    );
+
+    let exemption = ExemptionRequest::for_turn(turn_id)
+        .confirm(true)
+        .expect("confirmed");
+    let _ = redactor.redact_for_e1_with_exemption(&turns, exemption);
+
+    assert_eq!(
+        redactor.redact_for_e1(&turns).as_str(),
+        before.as_str(),
+        "the draft after an exemption must be identical to the one before it",
+    );
 }
 
 /// An exemption names one turn. Presenting it against a conversation that does

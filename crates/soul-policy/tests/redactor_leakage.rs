@@ -15,8 +15,8 @@
 use uuid::Uuid;
 
 use soul_policy::redactor::{
-    KnownIdentifiers, RedactedBody, Redactor, Turn, ACCOUNT_PLACEHOLDER, NAME_PLACEHOLDER,
-    THIRD_PARTY_PLACEHOLDER,
+    ExemptionRequest, KnownIdentifiers, RedactedBody, Redactor, Turn, ACCOUNT_PLACEHOLDER,
+    NAME_PLACEHOLDER, THIRD_PARTY_PLACEHOLDER,
 };
 use soul_schema::common::SealedSubject;
 use soul_testkit::leakage::{LeakageChecker, LeakageFixture};
@@ -148,6 +148,48 @@ fn unregistered_identifier_shapes_are_placeheld_too() {
     assert!(!text.contains("@never_seen_handle"), "{text}");
     assert!(!text.contains("15912345678"), "{text}");
     assert_eq!(text.matches(ACCOUNT_PLACEHOLDER).count(), 3, "{text}");
+}
+
+/// The corpus's name, written the way an export writes a display label, with
+/// nothing registered and the turn exempted.
+///
+/// The one hole the shape scrub above cannot cover on its own. `13800138000`
+/// and `@wang_xiao2` have shapes; `李 雷` is two ordinary characters and a
+/// space, and until the contact rows fill [`KnownIdentifiers`] there is
+/// nothing to match it against — which is the state of every Soul that has
+/// imported nothing. Everywhere but the exempted turn that costs nothing,
+/// because a third-party turn is a placeholder whole; the turn the user
+/// confirmed twice for is the one place the label would travel.
+///
+/// The identifier set is deliberately empty, so a placeholder in the body
+/// below can only have come from the shape.
+#[test]
+fn a_display_label_nobody_registered_is_placeheld_inside_an_exempted_turn() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+    let mut checker = LeakageChecker::new();
+    checker.add_known_identifier("name_li_lei_spaced", "李 雷");
+
+    let turn = third_party("李 雷 说周五的场地他已经订好了，你直接过来就行");
+    let exemption = ExemptionRequest::for_turn(turn.turn_id)
+        .confirm(true)
+        .expect("the user confirmed twice");
+    let redacted = redactor.redact_for_e1_with_exemption(&[turn], exemption);
+
+    checker.assert_clean(
+        "an exempted body on a Soul that imported nobody",
+        redacted.as_str(),
+    );
+    assert!(
+        redacted.as_str().contains(NAME_PLACEHOLDER),
+        "{}",
+        redacted.as_str()
+    );
+    assert!(
+        redacted.as_str().contains("场地"),
+        "the message the user confirmed did not travel: {}",
+        redacted.as_str(),
+    );
+    assert!(redacted.carries_exempted_original());
 }
 
 /// A short number is not an account. Placeholders that fire on everything are

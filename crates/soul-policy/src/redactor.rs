@@ -240,6 +240,12 @@ impl Redactor {
     /// prose. Identifiers are still placeheld, and every other third-party
     /// turn is still a placeholder — the exemption is for one turn, not for
     /// the request.
+    ///
+    /// 正文 exemption is not 姓名 exemption, and the exempted turn is held to a
+    /// stricter identifier rule than the rest of the body for that reason: it
+    /// is the only prose that leaves verbatim, so it is the only place a
+    /// display label nobody registered could travel. See
+    /// [`scrub_spaced_label_shapes`].
     pub fn redact_for_e1_with_exemption(
         &self,
         turns: &[Turn],
@@ -285,6 +291,20 @@ impl Redactor {
         scrub_identifier_shapes(&out)
     }
 
+    /// What an exempted turn goes through: everything
+    /// [`Redactor::scrub_identifiers`] does, and then the display-label shape
+    /// that only bites when prose travels verbatim.
+    ///
+    /// 正文 exemption is not 姓名 exemption. Everywhere else a third-party turn
+    /// is a placeholder, so the only unregistered name that can reach an
+    /// endpoint is one inside the single turn the user confirmed twice for —
+    /// and on a Soul that has imported nothing, *every* name is unregistered.
+    /// See [`scrub_spaced_label_shapes`] for what the shape is and what it
+    /// deliberately does not guess at.
+    fn scrub_exempted_original(&self, text: &str) -> String {
+        scrub_spaced_label_shapes(&self.scrub_identifiers(text))
+    }
+
     fn build(&self, turns: &[Turn], exempted: Option<Uuid>) -> RedactedBody {
         let mut lines = Vec::with_capacity(turns.len());
         let mut third_party_turns = 0usize;
@@ -300,8 +320,9 @@ impl Redactor {
             if exempted == Some(turn.turn_id) {
                 honoured = Some(turn.turn_id);
                 // Identifiers stay placeheld even here: the user confirmed to
-                // send one message, not to publish a phone number.
-                lines.push(self.scrub_identifiers(turn.body.as_str()));
+                // send one message, not to publish a phone number or somebody's
+                // name.
+                lines.push(self.scrub_exempted_original(turn.body.as_str()));
                 continue;
             }
             placeheld_turns += 1;
@@ -368,6 +389,115 @@ fn scrub_identifier_shapes(text: &str) -> String {
     }
 
     out
+}
+
+/// The identifier shape the scrub above cannot see: a display label written
+/// with spaces between its characters.
+///
+/// `李 雷` is how a Telegram export spells a person, and it is two ordinary
+/// characters and a space — no digits, no `@`, no address, nothing
+/// [`scrub_identifier_shapes`] can recognize. Registered labels are replaced
+/// by name before this runs, so what is left for this to catch is the person
+/// the contact graph never learned about; on a Soul that has imported nothing
+/// that is every person there is, and the exempted turn is the one place their
+/// name would travel verbatim.
+///
+/// The rule is the shape and nothing cleverer. Two to four groups of one or
+/// two Han characters, separated by single spaces, six characters at most:
+/// Chinese prose does not space its characters, so the spacing is the signal.
+/// A name written without it — `李雷` inside a sentence — is not
+/// distinguishable from ordinary words by any rule this file could hold, and
+/// this does not guess at one. That is what [`KnownIdentifiers`] is for, and
+/// why `soulcore` fills it from the contact rows.
+fn scrub_spaced_label_shapes(text: &str) -> String {
+    /// A given name is one or two characters; a surname likewise.
+    const MAX_GROUP: usize = 2;
+    /// `欧阳 娜娜` is four, and three groups of two is the generous end.
+    const MAX_CHARS: usize = 6;
+    const MAX_GROUPS: usize = 4;
+
+    let scalars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut index = 0usize;
+
+    while index < scalars.len() {
+        // Only the head of a run of Han characters can begin a label. Anywhere
+        // else and the "group" would be the tail of an ordinary word.
+        let at_head =
+            is_han(scalars[index]) && !index.checked_sub(1).is_some_and(|i| is_han(scalars[i]));
+        let label_end = match at_head {
+            true => spaced_label_end(&scalars, index, MAX_GROUP, MAX_GROUPS, MAX_CHARS),
+            false => None,
+        };
+        match label_end {
+            Some(end) => {
+                out.push_str(NAME_PLACEHOLDER);
+                index = end;
+            }
+            None => {
+                out.push(scalars[index]);
+                index += 1;
+            }
+        }
+    }
+
+    out
+}
+
+/// Where the spaced label starting at `start` ends, if there is one.
+///
+/// The whole run has to qualify. A spaced run that is longer than a name could
+/// be is left alone rather than truncated to the first few characters: half a
+/// placeholder in the middle of a sentence would be a worse answer than the
+/// sentence, and a run that long is not the shape being described.
+fn spaced_label_end(
+    scalars: &[char],
+    start: usize,
+    max_group: usize,
+    max_groups: usize,
+    max_chars: usize,
+) -> Option<usize> {
+    let mut index = start;
+    let mut groups = 0usize;
+    let mut characters = 0usize;
+    let mut end = start;
+
+    loop {
+        let group_end = run_end(scalars, index, is_han);
+        let length = group_end - index;
+        if length == 0 || length > max_group {
+            break;
+        }
+        groups += 1;
+        characters += length;
+        end = group_end;
+        if groups > max_groups || characters > max_chars {
+            return None;
+        }
+        let separated = scalars.get(group_end).is_some_and(|c| is_label_space(*c))
+            && scalars.get(group_end + 1).is_some_and(|c| is_han(*c));
+        if !separated {
+            break;
+        }
+        index = group_end + 1;
+    }
+
+    (groups >= 2).then_some(end)
+}
+
+/// Han, which is the script the spaced-label shape is about. A label in a
+/// script that spaces its words anyway — `Wang Xiao` — has no shape to tell it
+/// apart from a sentence, and is [`KnownIdentifiers`]'s job.
+fn is_han(c: char) -> bool {
+    matches!(c,
+        '\u{3400}'..='\u{4DBF}'
+        | '\u{4E00}'..='\u{9FFF}'
+        | '\u{F900}'..='\u{FAFF}'
+        | '\u{20000}'..='\u{2A6DF}')
+}
+
+fn is_label_space(c: char) -> bool {
+    c == ' ' || c == '\u{3000}'
 }
 
 fn run_end(scalars: &[char], from: usize, mut accept: impl FnMut(char) -> bool) -> usize {
