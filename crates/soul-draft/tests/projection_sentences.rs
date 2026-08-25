@@ -633,3 +633,72 @@ fn the_rendered_summary_with_a_forecast_in_it_still_says_nothing_forbidden() {
     assert!(rendered.contains(WORKING_HYPOTHESIS_CLOSER), "{rendered}");
     assert!(!rendered.contains("今天"), "COPY_ZH §0.5: {rendered}");
 }
+
+/// AD-13's listed silence: an instant that cannot be read is not a date to
+/// forecast from.
+///
+/// The clock counts forwards from the day the edge was scored, so an edge
+/// written before that day was recorded has no origin — and a forecast from a
+/// guessed origin is a date the user would check against a calendar and find
+/// wrong. Falling back to the last exchange, the way the recency figures do,
+/// would answer with the same shape of sentence and none of the support, so
+/// what the summary owes here is silence rather than a substitute.
+///
+/// Silence about the forecast only, though: the same edge still supports every
+/// count it was built on, so the suppression is checked against a summary that
+/// is still saying things.
+#[test]
+fn an_edge_with_no_as_of_projects_nothing() {
+    let store = store_with_a_quiet_partner(30, None);
+
+    // The control: as rebuilt, this tie is Strong, quiet, and forecast.
+    let (live, _) = summarize(&store);
+    assert!(
+        live.iter()
+            .any(|line| line.ends_with(WORKING_HYPOTHESIS_CLOSER)),
+        "no forecast to suppress on a live Strong tie: {live:?}",
+    );
+
+    let mut graph = soul_graph::load(&store).expect("the graph loads");
+    let edge = graph
+        .edges
+        .iter_mut()
+        .filter(|edge| edge.touches(peer()))
+        .max_by_key(|edge| edge.tie_strength.interaction_count)
+        .expect("one edge");
+    let resolved = soul_graph::resolve_evidence(&store, edge).expect("the evidence resolves");
+
+    // What a pre-rebuild row looks like: counts and instants, no `as_of` and
+    // no venue tallies to go with it.
+    edge.tie_strength.as_of_utc = None;
+    edge.tie_strength.algorithm_id = String::new();
+    edge.tie_strength.direct_out_count = 0;
+    edge.tie_strength.direct_in_count = 0;
+    edge.tie_strength.group_out_count = 0;
+    edge.tie_strength.group_in_count = 0;
+
+    let summary = analysis::summarize_person(&graph, peer(), &resolved).expect("a summary");
+    let statements: Vec<String> = summary
+        .points
+        .iter()
+        .map(|point| point.statement().to_owned())
+        .collect();
+    let rendered = analysis::render(&summary).expect("the summary renders");
+
+    assert!(
+        !statements
+            .iter()
+            .any(|line| line.ends_with(WORKING_HYPOTHESIS_CLOSER)),
+        "an unreadable instant was forecast from anyway: {statements:?}",
+    );
+    // The closer also signs the notice every rendering carries, so the whole
+    // text is screened on the clause only a projected sentence has.
+    assert!(
+        !rendered.contains("从那天起"),
+        "COPY_ZH §6 gives this clause to the forecast alone: {rendered}",
+    );
+    assert!(
+        statements.iter().any(|line| line.contains("有记录的往来")),
+        "the counts the edge does support are gone too: {statements:?}",
+    );
+}
