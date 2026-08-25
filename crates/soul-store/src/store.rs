@@ -134,7 +134,7 @@ enum StampedVersion {
 /// then believed the label.
 ///
 /// So this runs before the pragmas, before the DDL and before the upsert, and
-/// an [`StampedVersion::Unreadable`] answer must leave the file exactly as it
+/// a [`StampedVersion::Unreadable`] answer has to leave the file exactly as it
 /// was found. Recreating it is not on the table either: the forget ledger and
 /// the hash-chained audit are not things that can be built again.
 fn stamped_version(conn: &Connection, path: &Path) -> StoreResult<StampedVersion> {
@@ -244,7 +244,7 @@ impl SqlCipherStore {
                  understands {}: it was written by a newer Soul, or by something that is not \
                  this one. Nothing has been written to it — not a pragma, not a table, and not \
                  the stamp — because an older build cannot know what a newer schema promises, \
-                 and stamping the file down to {} would hide where it came from from every \
+                 and stamping the file down to {} would hide where it came from, from every \
                  launch after this one. Install the newer Soul, or move this database aside.",
                 path.display(),
                 sql::STORE_SCHEMA_VERSION,
