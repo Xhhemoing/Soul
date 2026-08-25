@@ -13,11 +13,14 @@
 | 代理 | 状态 |
 |---|---|
 | fable-a | done `9dd578f` |
-| fable-b | in flight |
+| fable-b | done `3550bcb` |
 | opus-a 文件页 | done `1f52ca5` |
 | gpt-sol-a / gpt-sol-b | done `9ec20a8` / `82af9c0` |
 | opus-b 确认文案 + origin 绑定 | done `24ea578` + `d1b6457` + `9daacc8` |
+| opus-c 无标签联系人遗忘 | dispatched |
+| opus-d snapshot max_entries | dispatched |
+| opus-e 余下文案 | dispatched |
+| opus-f e0-audit 前缀 | dispatched |
+| opus-g session pending/forget take | dispatched |
 
-## 仍开放（代码，本轮未派）
-
-gpt-sol 余下 P1：导入预览 `injection.blocked` vs「没写库」、向导「不看任何目录/不会写任何文件」过宽、遗忘「不写任何文件」、图摘要「往来次数」过窄、e0-audit `starts_with`、AC-21 观察 headless。等 fable-b 交叉后再决定是否再派 opus。
+综合：`.agent_workspace/orchestrator-c441/R2-SYNTHESIS.md`
