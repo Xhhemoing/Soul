@@ -15,7 +15,7 @@
 | 线 | 尖端（核于 2026-08-25） | 有什么 | 状态 |
 |---|---|---|---|
 | `main` | `7b35bde` | 两个算法 crate 与 `docs/algorithms/` | **`main` 上还没有应用代码** |
-| 本分支（计划面） | 本 PR（#8） | 产品锁 / 拍板（D1–D60）/ FORMAL / `PLAN_INDEX.md` / 已类型化的 `tie_strength` / SECURITY / 本文件 | **`PLAN_DOCS_FROZEN_FOR_MAIN`** |
+| 本分支（计划面） | 已合 `main` @ `095c1f8`（PR #8） | 产品锁 / 拍板（D1–D60）/ FORMAL / `PLAN_INDEX.md` / 已类型化的 `tie_strength` / SECURITY / 本文件 | **`PLAN_DOCS_FROZEN_FOR_MAIN`（已合入）** |
 | `cursor/soul-goal1-7b1c`（PR #2） | `df5d2dd` | Goal 1 实现主干；WP01–WP11、WP13 与 DPAPI 均已落地（以该分支自己的 STATUS 为准） | **未合入 `main`，也未关闭** |
 | `cursor/blockers-analysis-a073`（PR #6） | 远程 | `docs/BLOCKERS.md`（`BLOCKERS_FROZEN`） | 待合进 `main` |
 | `cursor/goal1-unblock-a073`（PR #7） | 远程进行中 | Goal 1 吸收 T4D | 本分支不碰那条线的代码 |
@@ -32,7 +32,7 @@
 | R3 复核冻结 | 完成，结论 `PLAN_FROZEN`。仲裁见 `docs/scan-rounds/R3-SYNTHESIS.md` |
 | 算法三轮 + Round X | 完成，结论 `ALGO_FROZEN`：人脉 T4D、特质轴 A0。裁决见 `docs/algorithms/DECISION.md` |
 | 阻碍项分析 | 完成，`BLOCKERS_FROZEN`（PR #6），尚未在本树 |
-| 计划面打磨（本分支） | Round 3 完成：`PLAN_DOCS_FROZEN_FOR_MAIN`。可以合 `main`。不是 Goal 1 关闭 |
+| 计划面打磨（本分支） | Round 3 完成并已合 `main`：`PLAN_DOCS_FROZEN_FOR_MAIN`。不是 Goal 1 关闭 |
 | Goal 1 实现 | **进行中，在 `cursor/soul-goal1-7b1c`。未合入 `main`，未关闭** |
 | Goal 1 关闭门 | 未过。关闭需矩阵与十三片切片同时过（D54） |
 | Goal 2 | 未启动，且 Goal 1 关闭前不得启动 |
@@ -53,10 +53,9 @@
 
 ## 下一步
 
-1. 本 PR 合进 `main`（计划权威面）。
-2. PR #6（BLOCKERS）再合（合入时处理 BLOCKERS 文中的 D32 撞号，见 DECISIONS 脚注）。
-3. 之后按 `BLOCKERS.md` 第 5 节在 Goal 1 线上走剩余项。**那些不在本分支做。**
-4. Goal 2 在 Goal 1 关闭前不要启动。
+1. PR #6（BLOCKERS）合进 `main`（合入时处理 BLOCKERS 文中的 D32 撞号，见 DECISIONS 脚注）。
+2. 之后按 `BLOCKERS.md` 第 5 节在 Goal 1 线上走剩余项。Goal 1 merge 本 `main` 后跑 `xtask schema-freeze`（D59）。
+3. Goal 2 在 Goal 1 关闭前不要启动。
 
 ## 本文件的写法纪律（D57）
 
