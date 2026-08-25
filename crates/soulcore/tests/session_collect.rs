@@ -186,7 +186,10 @@ fn the_hours_the_collector_wrote_are_the_rows_the_research_preview_shows() {
         index += 1;
         collected(&session) > 0
     });
-    assert!(recorded, "nothing was collected, so there is nothing to see");
+    assert!(
+        recorded,
+        "nothing was collected, so there is nothing to see"
+    );
     session.revoke_collect_consent().expect("revoking works");
 
     let research = session.research().expect("a preview");

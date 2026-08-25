@@ -49,6 +49,51 @@ describe("研究预览页", () => {
     expect(screen.getByTestId("research-third-party")).toHaveTextContent("excluded");
   });
 
+  /**
+   * Being the owner's is not what gets a row published: the row also has to
+   * say research may count it by the hour, and imported messages and
+   * questionnaire answers say the opposite. Without this number on screen the
+   * page would show two counts that do not add up to the候选 above it.
+   */
+  it("自己的数据里被口径挡下的那些也报出来，不算进别人那一行", async () => {
+    await open({
+      research: () =>
+        aResearchPreview({
+          candidate_rows_total: 9,
+          third_party_rows_excluded: 2,
+          deny_rows_excluded: 6,
+        }),
+    });
+
+    expect(screen.getByTestId("research-own-withheld")).toHaveTextContent("排除掉了 6 行");
+    expect(screen.getByTestId("research-third-party")).toHaveTextContent("排除掉了 2 行");
+    expect(screen.getByTestId("research-third-party")).not.toHaveTextContent("6 行");
+  });
+
+  /**
+   * The other empty state. Everything found was the owner's own and none of it
+   * was stored countable, so saying 全部是别人的数据 would be the same lie the
+   * empty state above was written to avoid, pointed the other way.
+   */
+  it("候选全是自己的、但口径不让计数的时候，不说成是别人的数据", async () => {
+    await open({
+      research: () =>
+        aResearchPreview({
+          rows: [],
+          candidate_rows_total: 4,
+          third_party_rows_excluded: 0,
+          deny_rows_excluded: 4,
+        }),
+    });
+
+    const empty = screen.getByTestId("no-research-rows");
+    expect(empty).toHaveTextContent("查询找到了 4 行");
+    expect(empty).toHaveTextContent("你自己的数据里有 4 行");
+    expect(empty).not.toHaveTextContent("别人的数据");
+    expect(empty).not.toHaveTextContent("没有导入");
+    expect(screen.queryByTestId("research-table")).toBeNull();
+  });
+
   it("行是计数和桶，没有一列能放正文或姓名", async () => {
     await open();
 
