@@ -441,6 +441,20 @@ fn the_default_path_is_unchanged_by_the_label_rule() {
         before.as_str(),
         "the draft after an exemption must be identical to the one before it",
     );
+
+    // Both extra rules belong to the exempted turn and nowhere else. The
+    // user's own words are not placeheld as a body, so a rule that had started
+    // reading them would show up here as prose the writer never sent.
+    let mine = vec![Turn::new(
+        Uuid::now_v7(),
+        SealedSubject::Owner,
+        "李雷说周五的场地他已经订好了，Wang Xiao said the same thing",
+    )];
+    assert_eq!(
+        redactor.redact_for_e1(&mine).as_str(),
+        "李雷说周五的场地他已经订好了，Wang Xiao said the same thing",
+        "the name shapes reached a turn that is not the exempted one",
+    );
 }
 
 /// An exemption names one turn. Presenting it against a conversation that does
