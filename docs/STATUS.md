@@ -869,7 +869,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 ## BUILD R3（架构确认 + 探针，核于 2026-08-25）
 
-对照图 `.agent_workspace/orchestrator-c441/ARCHITECTURE_LOCK.md`（过程稿）。16 个 crate 对照 `GOAL1_PLAN` 钉死核过，**无 DAG 漂移**。R3 opus 已在本树落地（尖端 `c0a6295`）：豁免路径对未登记显示名占位（`8cded4c`/`9b4bcd4`）；摘要按用途发指令且不再把端点散文标成「根据本机统计改写」（`7c921be`/`2312dec`）；IPC 成功路径不再被拒绝短路、遗忘预览拒绝后仍保留、研究预览比目录字节指纹（`10766af`/`3a41cdc`/`3f417de`）。IPv6 origin 括号维持停车。LOOP20 仍排队。**本机超前 origin 10 个提交；GitHub 推送令牌被拒，用户已跳过刷新，PR #13 远端仍停在 `7be8279`。** 综合 `.agent_workspace/orchestrator-c441/R3-SYNTHESIS.md`。
+对照图 `.agent_workspace/orchestrator-c441/ARCHITECTURE_LOCK.md`（过程稿）。16 个 crate 对照 `GOAL1_PLAN` 钉死核过，**无 DAG 漂移**。R3 opus 已在本树落地（尖端 `c0a6295`；fable 复核 `63c9da6`）：四条 P1 **闭合**；P0 姓名占位 **残留**（`李 雷` 已钉死，无空格 `李雷` 与拉丁 `Wang Xiao` 在空图豁免条仍可出网，与无条件承诺同类）。IPv6 origin 括号维持停车。LOOP20 仍排队。**本机超前 origin；GitHub 推送令牌仍拒。** 复核 `.agent_workspace/orchestrator-c441/round3/fable-r3-review.md`。
 
 ## 下一步
 
