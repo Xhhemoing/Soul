@@ -1,0 +1,436 @@
+Round X · opus-b · soul-algo-trait verification
+model slug: claude-opus-5-thinking-high-fast
+
+$ rustc --version
+rustc 1.83.0 (90b35a623 2024-11-26)
+$ cargo --version
+cargo 1.83.0 (5ffbef321 2024-10-29)
+$ git rev-parse HEAD
+752cdecb72df2e742508808ab0e6ea3da6775f55
+$ git rev-parse --abbrev-ref HEAD
+cursor/algo-verify-opt-a073
+
+NOTE: another Round X agent is writing untracked files into
+crates/soul-algo-tie/tests/ in this same checkout while this run happened.
+Nothing in that package was touched, read or run by anything below:
+'cargo test -p soul-algo-trait' does not build soul-algo-tie's test
+targets. The tracked files this run modified at any point were all
+restored, which is what RUN 5 checks.
+
+This run added two files and edited no source:
+  crates/soul-algo-trait/tests/roundx_a1_empty_on_v01.rs
+  crates/soul-algo-trait/tests/roundx_a2_no_threshold.rs
+
+===================================================================
+RUN 1 - the tree as found, before either Round X file was added
+$ cargo test -p soul-algo-trait --offline
+===================================================================
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/soul_algo_trait-0780884c35d3adbb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/a0_lock.rs (target/debug/deps/a0_lock-60280547c5670c0a)
+
+running 19 tests
+test a_later_correction_still_moves_a_locked_axis ... ok
+test a_lock_on_one_axis_does_not_freeze_the_others ... ok
+test a0_ignores_the_timestamp_entirely ... ok
+test a_skipped_answer_is_reported_rather_than_dropped ... ok
+test a_fully_forgotten_axis_returns_to_unknown ... ok
+test a_user_may_correct_an_axis_to_unknown ... ok
+test an_empty_log_leaves_every_axis_unknown ... ok
+test an_inference_never_moves_a_locked_axis_but_is_still_returned ... ok
+test evidence_for_another_axis_is_ignored ... ok
+test forgotten_rows_are_dropped_before_anything_is_aggregated ... ok
+test intake_does_not_move_an_axis_the_user_corrected ... ok
+test intake_on_a_clean_profile_still_works ... ok
+test last_write_wins_is_the_a0_contract ... ok
+test no_downgrade_keeps_the_better_supported_position ... ok
+test no_downgrade_lets_an_agreeing_row_join_the_citation_list ... ok
+test no_downgrade_never_overrides_the_lock ... ok
+test no_downgrade_still_lets_an_equally_supported_disagreement_through ... ok
+test the_answer_row_is_still_written_even_when_the_axis_will_not_move ... ok
+test intake_matches_replay_on_every_fixture_and_mode ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/a0_vs_a1.rs (target/debug/deps/a0_vs_a1-31547e26173d012f)
+
+running 8 tests
+test neither_algorithm_ever_claims_without_citing ... ok
+test a1_is_indistinguishable_from_a0_on_v01_data ... ok
+test a1_and_a0_agree_when_there_is_only_one_thing_to_say ... ok
+test a1_is_the_path_that_does_not_clobber ... ok
+test neither_algorithm_ever_moves_a_locked_axis ... ok
+test on_the_retained_path_only_a_correction_reaches_strong ... ok
+test the_default_columns_are_the_shipped_defaults ... ok
+test the_ablation_table_is_what_the_report_says_it_is ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/a1_independence.rs (target/debug/deps/a1_independence-b26c23c9e31b033c)
+
+running 27 tests
+test a_correction_settles_the_axis_before_any_counting_happens ... ok
+test a_day_boundary_is_a_utc_day_boundary ... ok
+test a_forgotten_row_takes_its_group_with_it ... ok
+test a_majority_never_settles_a_disagreement ... ok
+test a_source_that_contradicts_itself_in_a_day_supports_neither_side ... ok
+test empty_on_v01_is_true_under_the_default_and_false_under_the_alternative ... ok
+test an_explicit_mixed_answer_is_a_statement_not_a_tie ... ok
+test a_correction_to_unknown_locks_the_axis_at_unknown ... ok
+test exactly_three_groups_is_the_upgrade_boundary ... ok
+test f16_five_refills_in_one_afternoon_do_not_upgrade ... ok
+test f16_holds_however_many_times_the_questionnaire_is_refilled_in_a_day ... ok
+test f16b_three_independent_agreeing_groups_reach_strong ... ok
+test nothing_at_all_is_unknown ... ok
+test one_group_each_way_is_already_mixed ... ok
+test no_v01_reachable_log_reaches_strong_without_a_correction ... ok
+test only_two_evidence_kinds_can_reach_an_axis_in_v01 ... ok
+test one_row_cited_three_times_is_one_row ... ok
+test the_day_key_works_either_side_of_the_epoch ... ok
+test the_default_does_not_upgrade_three_same_kind_days ... ok
+test the_default_does_not_upgrade_three_same_kind_days_of_behaviour_either ... ok
+test the_default_is_two_kinds_across_days ... ok
+test the_default_still_passes_f16b ... ok
+test the_named_alternative_still_upgrades_three_same_kind_days ... ok
+test the_upgrade_explanation_names_the_groups_days_and_sources ... ok
+test three_different_sources_on_one_day_are_three_groups ... ok
+test the_refusal_explanation_does_not_ask_for_more_of_the_same ... ok
+test every_explanation_is_countable_and_publishable ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/a2_render.rs (target/debug/deps/a2_render-e1417a32654b9278)
+
+running 22 tests
+test a_one_way_edge_says_so_in_both_directions ... ok
+test a_weak_band_never_reads_as_a_strong_relationship ... ok
+test an_edge_with_no_last_contact_says_nothing_about_recency ... ok
+test a_group_only_edge_is_flagged_and_a_direct_one_is_not ... ok
+test counts_with_no_band_yet_still_render ... ok
+test dormancy_is_a_sentence_not_a_demotion ... ok
+test a_last_contact_ahead_of_as_of_reads_as_today ... ok
+test empty_evidence_means_no_bullets_at_all ... ok
+test every_bullet_cites_something ... ok
+test no_split_no_sentence ... ok
+test every_statement_key_is_reachable_and_listed ... ok
+test shifting_as_of_and_last_contact_together_changes_nothing ... ok
+test the_counts_alone_never_change_the_band ... ok
+test the_band_on_every_bullet_is_the_band_it_was_handed ... ok
+test the_dormancy_threshold_is_strictly_more_than_the_constant ... ok
+test the_recency_line_cites_the_one_row_it_rests_on ... ok
+test the_split_and_the_group_only_flag_are_separate_sentences ... ok
+test the_same_score_always_renders_the_same_summary ... ok
+test the_split_never_touches_the_band ... ok
+test the_venue_split_is_rendered_when_the_scorer_supplies_it ... ok
+test a2_defines_no_band_thresholds ... ok
+test no_band_ever_claims_a_relationship ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/a3_refusal.rs (target/debug/deps/a3_refusal-df7458c47dc3f68a)
+
+running 6 tests
+test the_a3_identifier_is_registered_as_rejected ... ok
+test text_inference_always_refuses ... ok
+test plenty_of_evidence_does_not_buy_a_text_inference ... ok
+test no_live_algorithm_stamps_the_rejected_identifier ... ok
+test the_batch_form_refuses_too ... ok
+test the_refusal_reason_is_stable_and_holds_no_text ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/denylist_scan.rs (target/debug/deps/denylist_scan-3d68031533cc81e6)
+
+running 14 tests
+test ascii_denylist_words_are_case_folded ... ok
+test a_plain_count_is_not_a_rating ... ok
+test algorithm_ids_carry_no_forbidden_word ... ok
+test a_rating_is_caught_even_when_it_is_dressed_as_a_count ... ok
+test every_band_and_position_word_is_publishable ... ok
+test every_chinese_template_this_crate_ships_is_screened ... ok
+test the_brief_s_denylist_is_the_denylist ... ok
+test every_axis_string_is_publishable ... ok
+test every_a1_explanation_is_publishable ... ok
+test the_peer_screen_only_applies_to_peer_copy ... ok
+test the_venue_split_sentence_is_publishable_about_a_third_party ... ok
+test the_chinese_denylist_catches_a_diagnostic_word_inside_a_real_template ... ok
+test the_diagnostic_screen_catches_what_it_is_for ... ok
+test every_a2_sentence_is_publishable_about_a_third_party ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/frozen_defaults.rs (target/debug/deps/frozen_defaults-bf5d3a9d6ddc1610)
+
+running 12 tests
+test a0_trusts_the_band_on_a_row_it_is_handed ... ok
+test the_a0_identifier_did_not_move ... ok
+test a2_is_a_function_of_the_band_it_is_handed ... ok
+test the_a1_identifier_moved_because_its_default_did ... ok
+test the_four_algorithm_identifiers_are_distinct_and_self_describing ... ok
+test a1_is_not_on_the_retained_path ... ok
+test the_frozen_write_mode_decides_nothing_a_v01_user_is_told ... ok
+test strong_on_the_retained_path_means_the_user_said_so ... ok
+test the_intake_patch_is_part_of_the_freeze ... ok
+test the_frozen_write_mode_is_last_write_wins ... ok
+test the_two_write_modes_do_differ_in_what_they_cite ... ok
+test the_a2_source_still_holds_no_threshold ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests soul_algo_trait
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+===================================================================
+RUN 2 - final state, both Round X pin files in place
+$ cargo test -p soul-algo-trait --offline
+===================================================================
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/soul_algo_trait-0780884c35d3adbb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/a0_lock.rs (target/debug/deps/a0_lock-60280547c5670c0a)
+
+running 19 tests
+test a_later_correction_still_moves_a_locked_axis ... ok
+test a0_ignores_the_timestamp_entirely ... ok
+test a_fully_forgotten_axis_returns_to_unknown ... ok
+test a_lock_on_one_axis_does_not_freeze_the_others ... ok
+test a_skipped_answer_is_reported_rather_than_dropped ... ok
+test a_user_may_correct_an_axis_to_unknown ... ok
+test an_empty_log_leaves_every_axis_unknown ... ok
+test an_inference_never_moves_a_locked_axis_but_is_still_returned ... ok
+test evidence_for_another_axis_is_ignored ... ok
+test forgotten_rows_are_dropped_before_anything_is_aggregated ... ok
+test intake_does_not_move_an_axis_the_user_corrected ... ok
+test intake_on_a_clean_profile_still_works ... ok
+test last_write_wins_is_the_a0_contract ... ok
+test no_downgrade_keeps_the_better_supported_position ... ok
+test no_downgrade_lets_an_agreeing_row_join_the_citation_list ... ok
+test no_downgrade_never_overrides_the_lock ... ok
+test no_downgrade_still_lets_an_equally_supported_disagreement_through ... ok
+test the_answer_row_is_still_written_even_when_the_axis_will_not_move ... ok
+test intake_matches_replay_on_every_fixture_and_mode ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/a0_vs_a1.rs (target/debug/deps/a0_vs_a1-31547e26173d012f)
+
+running 8 tests
+test a1_and_a0_agree_when_there_is_only_one_thing_to_say ... ok
+test a1_is_the_path_that_does_not_clobber ... ok
+test neither_algorithm_ever_claims_without_citing ... ok
+test a1_is_indistinguishable_from_a0_on_v01_data ... ok
+test neither_algorithm_ever_moves_a_locked_axis ... ok
+test on_the_retained_path_only_a_correction_reaches_strong ... ok
+test the_default_columns_are_the_shipped_defaults ... ok
+test the_ablation_table_is_what_the_report_says_it_is ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/a1_independence.rs (target/debug/deps/a1_independence-b26c23c9e31b033c)
+
+running 27 tests
+test a_correction_settles_the_axis_before_any_counting_happens ... ok
+test a_day_boundary_is_a_utc_day_boundary ... ok
+test a_correction_to_unknown_locks_the_axis_at_unknown ... ok
+test a_majority_never_settles_a_disagreement ... ok
+test a_forgotten_row_takes_its_group_with_it ... ok
+test a_source_that_contradicts_itself_in_a_day_supports_neither_side ... ok
+test an_explicit_mixed_answer_is_a_statement_not_a_tie ... ok
+test empty_on_v01_is_true_under_the_default_and_false_under_the_alternative ... ok
+test f16_five_refills_in_one_afternoon_do_not_upgrade ... ok
+test exactly_three_groups_is_the_upgrade_boundary ... ok
+test f16b_three_independent_agreeing_groups_reach_strong ... ok
+test f16_holds_however_many_times_the_questionnaire_is_refilled_in_a_day ... ok
+test no_v01_reachable_log_reaches_strong_without_a_correction ... ok
+test nothing_at_all_is_unknown ... ok
+test one_group_each_way_is_already_mixed ... ok
+test only_two_evidence_kinds_can_reach_an_axis_in_v01 ... ok
+test one_row_cited_three_times_is_one_row ... ok
+test the_default_does_not_upgrade_three_same_kind_days ... ok
+test the_day_key_works_either_side_of_the_epoch ... ok
+test the_default_does_not_upgrade_three_same_kind_days_of_behaviour_either ... ok
+test the_default_is_two_kinds_across_days ... ok
+test the_default_still_passes_f16b ... ok
+test the_named_alternative_still_upgrades_three_same_kind_days ... ok
+test the_refusal_explanation_does_not_ask_for_more_of_the_same ... ok
+test three_different_sources_on_one_day_are_three_groups ... ok
+test the_upgrade_explanation_names_the_groups_days_and_sources ... ok
+test every_explanation_is_countable_and_publishable ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/a2_render.rs (target/debug/deps/a2_render-e1417a32654b9278)
+
+running 22 tests
+test a_last_contact_ahead_of_as_of_reads_as_today ... ok
+test a_one_way_edge_says_so_in_both_directions ... ok
+test a_weak_band_never_reads_as_a_strong_relationship ... ok
+test a_group_only_edge_is_flagged_and_a_direct_one_is_not ... ok
+test an_edge_with_no_last_contact_says_nothing_about_recency ... ok
+test counts_with_no_band_yet_still_render ... ok
+test dormancy_is_a_sentence_not_a_demotion ... ok
+test empty_evidence_means_no_bullets_at_all ... ok
+test every_bullet_cites_something ... ok
+test every_statement_key_is_reachable_and_listed ... ok
+test no_split_no_sentence ... ok
+test shifting_as_of_and_last_contact_together_changes_nothing ... ok
+test the_counts_alone_never_change_the_band ... ok
+test the_dormancy_threshold_is_strictly_more_than_the_constant ... ok
+test the_band_on_every_bullet_is_the_band_it_was_handed ... ok
+test the_recency_line_cites_the_one_row_it_rests_on ... ok
+test the_split_and_the_group_only_flag_are_separate_sentences ... ok
+test the_same_score_always_renders_the_same_summary ... ok
+test the_split_never_touches_the_band ... ok
+test the_venue_split_is_rendered_when_the_scorer_supplies_it ... ok
+test a2_defines_no_band_thresholds ... ok
+test no_band_ever_claims_a_relationship ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/a3_refusal.rs (target/debug/deps/a3_refusal-df7458c47dc3f68a)
+
+running 6 tests
+test the_a3_identifier_is_registered_as_rejected ... ok
+test text_inference_always_refuses ... ok
+test the_batch_form_refuses_too ... ok
+test the_refusal_reason_is_stable_and_holds_no_text ... ok
+test plenty_of_evidence_does_not_buy_a_text_inference ... ok
+test no_live_algorithm_stamps_the_rejected_identifier ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/denylist_scan.rs (target/debug/deps/denylist_scan-3d68031533cc81e6)
+
+running 14 tests
+test a_rating_is_caught_even_when_it_is_dressed_as_a_count ... ok
+test algorithm_ids_carry_no_forbidden_word ... ok
+test ascii_denylist_words_are_case_folded ... ok
+test a_plain_count_is_not_a_rating ... ok
+test every_band_and_position_word_is_publishable ... ok
+test every_chinese_template_this_crate_ships_is_screened ... ok
+test the_brief_s_denylist_is_the_denylist ... ok
+test the_chinese_denylist_catches_a_diagnostic_word_inside_a_real_template ... ok
+test every_axis_string_is_publishable ... ok
+test the_diagnostic_screen_catches_what_it_is_for ... ok
+test the_peer_screen_only_applies_to_peer_copy ... ok
+test the_venue_split_sentence_is_publishable_about_a_third_party ... ok
+test every_a1_explanation_is_publishable ... ok
+test every_a2_sentence_is_publishable_about_a_third_party ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/frozen_defaults.rs (target/debug/deps/frozen_defaults-bf5d3a9d6ddc1610)
+
+running 12 tests
+test strong_on_the_retained_path_means_the_user_said_so ... ok
+test the_a0_identifier_did_not_move ... ok
+test a0_trusts_the_band_on_a_row_it_is_handed ... ok
+test the_a1_identifier_moved_because_its_default_did ... ok
+test the_four_algorithm_identifiers_are_distinct_and_self_describing ... ok
+test a2_is_a_function_of_the_band_it_is_handed ... ok
+test the_frozen_write_mode_decides_nothing_a_v01_user_is_told ... ok
+test a1_is_not_on_the_retained_path ... ok
+test the_a2_source_still_holds_no_threshold ... ok
+test the_intake_patch_is_part_of_the_freeze ... ok
+test the_frozen_write_mode_is_last_write_wins ... ok
+test the_two_write_modes_do_differ_in_what_they_cite ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/roundx_a1_empty_on_v01.rs (target/debug/deps/roundx_a1_empty_on_v01-278d4fd961d5d5fd)
+
+running 3 tests
+test the_constant_the_derivation_and_the_run_are_all_the_same_claim ... ok
+test more_questionnaire_days_never_help_however_many_there_are ... ok
+test the_upgrade_branch_is_unreachable_on_every_v01_log_up_to_four_rows ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+
+     Running tests/roundx_a2_no_threshold.rs (target/debug/deps/roundx_a2_no_threshold-56e2ad7b89e68459)
+
+running 3 tests
+test the_band_changes_exactly_one_sentence_and_it_is_the_filing_line ... ok
+test the_band_never_decides_which_sentences_appear ... ok
+test no_count_on_either_side_of_a_gate_moves_the_band ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests soul_algo_trait
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+===================================================================
+RUN 3 - lints
+$ cargo fmt -p soul-algo-trait -- --check   (no output = clean)
+$ cargo clippy -p soul-algo-trait --offline --all-targets
+===================================================================
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.02s
+
+===================================================================
+RUN 4 - mutation checks: does each claim's pin actually bite?
+
+Each mutation is applied to the source, the package is re-run with
+--no-fail-fast (without it cargo stops at the first failing target and
+the attribution is wrong), the failing test names are listed, and the
+source is restored. A claim with no failing test under its own
+mutation is a claim nothing is holding.
+===================================================================
+---------------- MUTATION: A0 lock check removed from place() (src/a0.rs) ----------------
+  failing: a1_and_a0_agree_when_there_is_only_one_thing_to_say
+  failing: a1_is_indistinguishable_from_a0_on_v01_data
+  failing: a_lock_on_one_axis_does_not_freeze_the_others
+  failing: an_inference_never_moves_a_locked_axis_but_is_still_returned
+  failing: a_skipped_answer_is_reported_rather_than_dropped
+  failing: intake_does_not_move_an_axis_the_user_corrected
+  failing: neither_algorithm_ever_moves_a_locked_axis
+  failing: no_downgrade_never_overrides_the_lock
+  failing: the_ablation_table_is_what_the_report_says_it_is
+  failing: the_frozen_write_mode_decides_nothing_a_v01_user_is_told
+  failing: the_intake_patch_is_part_of_the_freeze
+---------------- MUTATION: A3 stops refusing and returns an AxisState (src/a3.rs) ----------------
+  failing: plenty_of_evidence_does_not_buy_a_text_inference
+  failing: text_inference_always_refuses
+---------------- MUTATION: A1 default flipped to KindAndDay (src/a1.rs) ----------------
+  failing: a1_is_indistinguishable_from_a0_on_v01_data
+  failing: empty_on_v01_is_true_under_the_default_and_false_under_the_alternative
+  failing: more_questionnaire_days_never_help_however_many_there_are
+  failing: no_v01_reachable_log_reaches_strong_without_a_correction
+  failing: the_a1_identifier_moved_because_its_default_did
+  failing: the_constant_the_derivation_and_the_run_are_all_the_same_claim
+  failing: the_default_columns_are_the_shipped_defaults
+  failing: the_default_does_not_upgrade_three_same_kind_days
+  failing: the_default_does_not_upgrade_three_same_kind_days_of_behaviour_either
+  failing: the_default_is_two_kinds_across_days
+  failing: the_refusal_explanation_does_not_ask_for_more_of_the_same
+  failing: the_upgrade_branch_is_unreachable_on_every_v01_log_up_to_four_rows
+---------------- MUTATION: A2 withholds the group-only sentence when the band is Strong (src/a2.rs) ----------------
+  failing: the_band_changes_exactly_one_sentence_and_it_is_the_filing_line
+  failing: the_band_never_decides_which_sentences_appear
+---------------- MUTATION: A2 re-grows a direct-count gate under a new name, THIN_DIRECT_RECORD = 10 (src/a2.rs) ----------------
+  failing: no_count_on_either_side_of_a_gate_moves_the_band
+
+===================================================================
+RUN 5 - no source file was left edited
+$ git diff --stat -- crates/
+===================================================================
+(no output above: every mutation was reverted)
+
+$ git status --porcelain -- crates/soul-algo-trait
+?? crates/soul-algo-trait/tests/roundx_a1_empty_on_v01.rs
+?? crates/soul-algo-trait/tests/roundx_a2_no_threshold.rs

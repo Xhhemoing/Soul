@@ -1,0 +1,77 @@
+MODEL_SLUG: gpt-5.6-sol-xhigh-fast
+
+Environment setup status: 0
+
+Pre-test implementation commit:
+  9f7da46 Implement independent T4 and T4D ablation
+  pushed to origin/cursor/algo-verify-opt-a073
+
+First gate:
+  rustup run 1.83.0 cargo fmt --check
+  FAILED: rustfmt reported style-only diffs; no unit tests ran.
+
+Correction commit:
+  0f2a46 Format T4D ablation sources
+  pushed to origin/cursor/algo-verify-opt-a073
+
+Final command:
+  rustup run 1.83.0 rustc --version &&
+  rustup run 1.83.0 cargo --version &&
+  rustup run 1.83.0 cargo fmt --check &&
+  rustup run 1.83.0 cargo test --locked &&
+  rustup run 1.83.0 cargo clippy --all-targets --locked -- -D warnings &&
+  rustup run 1.83.0 cargo run --release --locked
+
+Final exit code: 0
+
+rustc 1.83.0 (90b35a623 2024-11-26)
+cargo 1.83.0 (5ffbef321 2024-10-29)
+   Compiling ablate v0.1.0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.46s
+     Running unittests src/lib.rs
+
+running 11 tests
+test tests::group_only_is_never_t4_strong_and_has_no_t4d_gate_credit ... ok
+test tests::heavy_group_fixture_exposes_t4_any_direct_latch ... ok
+test tests::computes_fixture_as_of_and_euclidean_utc_days ... ok
+test tests::as_of_is_one_caller_supplied_value ... ok
+test tests::one_sided_direct_volume_remains_weak ... ok
+test tests::required_fixture_matrix_matches_spec ... ok
+test tests::t4_dormancy_boundaries_are_closed ... ok
+test tests::t4d_demotion_uses_latest_event_from_any_venue ... ok
+test tests::t4d_reciprocity_is_direct_not_all_venue ... ok
+test tests::t4d_thresholds_use_direct_count_and_direct_days ... ok
+test tests::scale_has_exactly_ten_thousand_inputs_and_is_peer_isolated ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+     Running unittests src/main.rs
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+   Doc-tests ablate
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+    Checking ablate v0.1.0
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.16s
+   Compiling ablate v0.1.0
+    Finished `release` profile [optimized] target(s) in 2.50s
+     Running `target/release/ablate`
+MODEL_SLUG: gpt-5.6-sol-xhigh-fast
+AS_OF: 2026-08-24T14:00:00Z (1787580000)
+MATRIX
+| Fixture | Events | All days | Direct events | Direct days | Last age | T4 | T4D |
+|---|---:|---:|---:|---:|---:|---|---|
+| F_LILEI | 12 | 6 | 12 | 6 | 0 | Strong | Strong |
+| F_BURST | 20 | 1 | 20 | 1 | 0 | Moderate | Moderate |
+| F_GROUP | 50 | 10 | 0 | 0 | 0 | Moderate | Weak |
+| F_OLD | 12 | 6 | 12 | 6 | 2800 | Weak | Weak |
+| F_ONESIDE | 100 | 20 | 100 | 20 | 0 | Weak | Weak |
+| F_DORMANT_200d | 12 | 6 | 12 | 6 | 200 | Moderate | Moderate |
+| F_HEAVY_GROUP_PLUS_TWO_DIRECTS | 38 | 3 | 2 | 2 | 0 | Strong | Weak |
+BENCH F_SCALE interactions=10000 peers=200 passes=500 T0_total_ns=345721348 T0_ns_per_pass=691442 T0_ns_per_interaction=69 T4D_total_ns=345932975 T4D_ns_per_pass=691865 T4D_ns_per_interaction=69 T4D_over_T0=1.001x

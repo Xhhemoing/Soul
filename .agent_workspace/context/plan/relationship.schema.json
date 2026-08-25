@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soul.local/schemas/relationship.schema.json",
+  "title": "SoulRelationship",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "relationship_id", "from_contact_id", "to_contact_id", "evidence_ids"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "relationship_id": { "type": "string" },
+    "from_contact_id": { "type": "string" },
+    "to_contact_id": { "type": "string" },
+    "types": { "type": "array" },
+    "tie_strength": { "type": "object" },
+    "evidence_ids": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "egress_scope": { "const": "local_only" }
+  }
+}
