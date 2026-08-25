@@ -85,13 +85,13 @@ export const PATTERNS: Pattern[] = [
     creatorId: asCreatorId("cr-mira"),
     tags: ["节日限定"],
     difficulty: 2,
-    beadCount: 760,
+    beadCount: 340,
     estimatedMinutes: 70,
     board: "square-28",
     palette: [
-      { code: "R04", name: "朱红", hex: "#d8412f", beads: 320 },
-      { code: "Y01", name: "明黄", hex: "#f5d13b", beads: 250 },
-      { code: "B05", name: "墨黑", hex: "#1b1b1f", beads: 190 },
+      { code: "R04", name: "朱红", hex: "#d8412f", beads: 112 },
+      { code: "Y01", name: "明黄", hex: "#f5d13b", beads: 76 },
+      { code: "B05", name: "墨黑", hex: "#1b1b1f", beads: 152 },
     ],
   },
   {

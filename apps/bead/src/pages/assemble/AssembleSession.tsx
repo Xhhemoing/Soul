@@ -72,13 +72,12 @@ export function AssembleSession({ project, fixture, cursor, outlineColor }: Asse
 
   // Recomputed only when the cursor actually moves: a once-a-second tick must
   // leave this identity alone so the memoised canvas skips its 3136 nodes.
-  const { mode: activeMode, stepIndex: activeStep, rowLock, rowSlice } = state;
+  const { mode, stepIndex, rowLock, rowSlice } = state;
   const cellStates = useMemo(() => {
-    const modeSteps = stepsOf(grid, activeMode);
-    const window = { mode: activeMode, rowLock, rowSlice };
-    const row = currentRowOf(window, modeSteps[activeStep]);
-    return computeCellStates(grid, modeSteps, activeStep, row);
-  }, [grid, activeMode, activeStep, rowLock, rowSlice]);
+    const modeSteps = stepsOf(grid, mode);
+    const row = currentRowOf({ mode, rowLock, rowSlice }, modeSteps[stepIndex]);
+    return computeCellStates(grid, modeSteps, stepIndex, row);
+  }, [grid, mode, stepIndex, rowLock, rowSlice]);
 
   // The cursor that reaches storage is assembled from state only at the write
   // moments below — never on a tick (D-ASM-8).
@@ -87,7 +86,6 @@ export function AssembleSession({ project, fixture, cursor, outlineColor }: Asse
     latest.current = state;
   }, [state]);
 
-  const { mode, stepIndex } = state;
   const milestoneCount = state.announcedMilestones.length;
   useEffect(() => {
     upsertProgress({ projectId, mode, stepIndex, elapsedMs: latest.current.elapsedMs });

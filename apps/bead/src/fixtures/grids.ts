@@ -111,6 +111,36 @@ function slimeRows(): string[] {
   return canvas.map((row) => row.join(""));
 }
 
+/* ---- gal-lantern-04 · 28×28 ------------------------------------------ */
+
+// 0 朱红灯身 / 1 明黄透光与流苏 / 2 墨黑骨架。
+function inEllipse(x: number, y: number, cx: number, cy: number, rx: number, ry: number): boolean {
+  const dx = (x - cx) / rx;
+  const dy = (y - cy) / ry;
+  return dx * dx + dy * dy <= 1;
+}
+
+function lanternChar(x: number, y: number): string {
+  // 提绳、上下灯盖与流苏：先画，它们压在灯身之外。
+  if (inRect(x, y, 13, 0, 14, 2)) return "2";
+  if (inRect(x, y, 10, 3, 17, 5)) return "2";
+  if (inRect(x, y, 10, 23, 17, 25)) return "2";
+  if (inRect(x, y, 13, 26, 14, 27)) return "1";
+
+  if (!inEllipse(x, y, 13.5, 14.5, 10, 9)) return EMPTY;
+  if (!inEllipse(x, y, 13.5, 14.5, 8.6, 7.7)) return "2";
+  // 竖骨：把灯身分成几瓣，颜色之外再给一层形状线索。
+  if (x === 9 || x === 18) return "2";
+  if (inEllipse(x, y, 13.5, 14.5, 4, 5.6)) return "1";
+  return "0";
+}
+
+function lanternRows(): string[] {
+  return Array.from({ length: BOARD_28 }, (_unusedRow, y) =>
+    Array.from({ length: BOARD_28 }, (_unusedCell, x) => lanternChar(x, y)).join(""),
+  );
+}
+
 /* ---- gal-arcade-05 · 56×56 ------------------------------------------ */
 
 // 3136 characters is not something to hand-type, so the handheld is described
@@ -200,6 +230,7 @@ interface FixtureSpec {
 // in-catalog case for the「暂无网格」state (D-ASM-12).
 const SPECS: ReadonlyMap<string, FixtureSpec> = new Map([
   ["gal-slime-01", { size: BOARD_28, rows: slimeRows }],
+  ["gal-lantern-04", { size: BOARD_28, rows: lanternRows }],
   ["gal-arcade-05", { size: BOARD_56, rows: arcadeRows }],
 ]);
 

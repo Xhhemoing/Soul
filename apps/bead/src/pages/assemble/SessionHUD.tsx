@@ -11,9 +11,17 @@ export const PHYSICAL_DISCLAIMER =
 
 export const MODE_SWITCH_HINT = "切换模式将从第 1 步开始（用时不清零）";
 
-/** Isolated so the once-a-second tick has the smallest possible blast radius. */
+/**
+ * Isolated so the once-a-second tick has the smallest possible blast radius.
+ * A plain span on purpose: `<output>` is a live region, and a clock that
+ * announces itself every second would bury the milestone announcements.
+ */
 export function SessionClock({ elapsedMs }: { readonly elapsedMs: number }) {
-  return <output className="assemble__clock">{formatDuration(elapsedMs)}</output>;
+  return (
+    <span className="assemble__clock" data-testid="assemble-clock">
+      {formatDuration(elapsedMs)}
+    </span>
+  );
 }
 
 export interface SessionHUDProps {
