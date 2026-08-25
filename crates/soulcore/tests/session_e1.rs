@@ -85,6 +85,17 @@ fn a_fresh_session_has_no_endpoint_and_an_approval_reaches_nothing() {
         snapshot.llm_endpoint_notice,
         LLM_ENDPOINT_SESSION_ONLY_NOTICE,
     );
+    // E1 is 仅用户触发的生成, and there are two of those: the approval on the
+    // drafting screen, and 看这个人的摘要 on the graph — which is a single click
+    // straight into `person_summary`. A notice that names only the first one
+    // tells a user with a metered address that the graph is free.
+    assert!(
+        LLM_ENDPOINT_SESSION_ONLY_NOTICE.contains("起草")
+            && (LLM_ENDPOINT_SESSION_ONLY_NOTICE.contains("摘要")
+                || LLM_ENDPOINT_SESSION_ONLY_NOTICE.contains("人脉图")),
+        "the endpoint notice names only one of E1's two user-triggered paths: \
+         {LLM_ENDPOINT_SESSION_ONLY_NOTICE}",
+    );
 
     let refusal = draft_through_the_endpoint(&mut session)
         .expect_err("there is nowhere to send an approved request");

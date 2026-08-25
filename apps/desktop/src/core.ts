@@ -34,7 +34,8 @@ export interface ConfigSnapshot {
   /** Whether the user has entered their own endpoint. Never the URL itself. */
   readonly llm_endpoint_configured: boolean;
   /** What the core says about that address: this run only, contacted by
-   *  nothing until a generation is approved. */
+   *  nothing until the user asks for a generation — an approved draft, or a
+   *  person's summary on the graph. */
   readonly llm_endpoint_notice: string;
   readonly authorized_root_count: number;
   readonly fully_closed: boolean;
@@ -725,8 +726,8 @@ export function discardDraft(): Promise<boolean> {
  * whether there is an endpoint and never what it is — so this shell cannot
  * redisplay it later, and neither can the next launch: the core writes it to
  * no file. Nothing is contacted here; the core parses the address and points
- * its egress guard at it, and the first request waits for an approval on the
- * drafting page.
+ * its egress guard at it, and the first request waits for the user to ask for
+ * one — the approval on the drafting page, or 看这个人的摘要 on the graph.
  */
 export function setUserEndpoint(url: string): Promise<ConfigSnapshot> {
   return invoke<ConfigSnapshot>(COMMANDS.setUserEndpoint, { url });

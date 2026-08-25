@@ -130,8 +130,8 @@ export function Settings({ snapshot, onSnapshot }: SettingsProps): React.JSX.Ele
           <li>不自动更新：这一版没有打包更新器，也没有检查更新的入口。</li>
           <li>界面全部来自安装目录里的文件，不加载任何远程页面。</li>
           <li>以普通用户身份运行，日常使用不要求管理员权限。</li>
-          <li>
-            只有你自己填写的语言模型地址会被访问，而且只在你按下生成的时候。现在
+          <li data-testid="egress-endpoint-when">
+            只有你自己填写的语言模型地址会被访问，而且只在你确认生成草稿、或在人脉图上看某个人的摘要时。现在
             <strong>{snapshot.llm_endpoint_configured ? "已填写" : "未填写"}</strong>。
           </li>
         </ul>

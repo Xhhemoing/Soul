@@ -176,6 +176,22 @@ describe("设置页的其它部分", () => {
     expect(text).toContain("不要求管理员权限");
   });
 
+  /**
+   * 出网 has to name both of the paths that reach the endpoint. Saying 只在你按下
+   * 生成的时候 reads as "the drafting page and nowhere else", and 人脉图 上
+   * 「看这个人的摘要」 is one click and one request with no confirmation screen
+   * in between — the surprise lands on whoever pointed Soul at a metered
+   * address.
+   */
+  it("出网那一条把摘要那条路也说出来了", () => {
+    open();
+
+    const when = screen.getByTestId("egress-endpoint-when").textContent ?? "";
+    expect(when).toContain("生成");
+    expect(when).toMatch(/摘要|人脉图/);
+    expect(when).not.toContain("只在你按下生成的时候");
+  });
+
   /** 采集 lives on its own page, and this one must not grow a second switch. */
   it("这一页上没有采集开关", () => {
     open();

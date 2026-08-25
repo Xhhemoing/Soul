@@ -730,7 +730,7 @@ export const CLOSED_CLOUD: CloudNotice = {
 
 /** `soulcore::commands::shell::LLM_ENDPOINT_SESSION_ONLY_NOTICE`. */
 export const LLM_ENDPOINT_SESSION_ONLY_NOTICE =
-  "地址只在这次运行里有效，退出 Soul 再打开需要重新填写。填写的时候不会访问这个地址，只有你在起草页按下生成时才会。";
+  "地址只在这次运行里有效，退出 Soul 再打开需要重新填写。填写的时候不会访问这个地址，只有你在起草页确认生成、或在人脉图上看某个人的摘要时才会。";
 
 /** `soulcore::commands::session::ENDPOINT_UNPARSABLE_NOTICE`. */
 export const ENDPOINT_UNPARSABLE_NOTICE =

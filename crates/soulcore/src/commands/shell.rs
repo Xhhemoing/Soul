@@ -39,22 +39,31 @@ pub const CLOUD_NOT_YET_AVAILABLE_EXPLANATION: &str =
 
 /// What the endpoint form says about the address typed into it.
 ///
-/// Two claims, and both are about the core rather than about the page.
+/// Three claims, and all three are about the core rather than about the page.
 /// "只在这次运行里有效" is [`StoredConfig`](crate::commands::session::StoredConfig)
 /// having no field an endpoint could be written to, so the next launch starts
 /// from a closed guard without anything having to remember to clear one.
 /// "填写的时候不会访问这个地址" is
 /// [`Session::set_user_endpoint`](crate::commands::session::Session::set_user_endpoint)
 /// parsing a string and handing the origin to a `NetGuard`: naming a host is
-/// not asking it anything, and the first packet waits for the approval on the
-/// drafting screen.
+/// not asking it anything.
+///
+/// The third claim is *when* the first packet goes out, and it has to name
+/// both of the paths a user can trigger, because E1 in PRODUCT_LOCK is
+/// 仅用户触发的生成 rather than 起草页.
+/// [`Session::generate_draft`](crate::commands::session::Session::generate_draft)
+/// is one of them — the approval on the drafting screen after a preparation —
+/// and [`Session::person_summary`](crate::commands::session::Session::person_summary)
+/// is the other: 人脉图 上「看这个人的摘要」 is one click and one POST, with no
+/// second screen in front of it. Naming only the drafting page would leave a
+/// user who pointed Soul at a metered address surprised by the graph.
 ///
 /// It travels in [`ConfigSnapshot`] beside the cloud switch's explanation, for
 /// the reason that one is there: a promise kept in TypeScript is a promise no
 /// Rust test reads.
 pub const LLM_ENDPOINT_SESSION_ONLY_NOTICE: &str = "地址只在这次运行里有效，\
     退出 Soul 再打开需要重新填写。填写的时候不会访问这个地址，\
-    只有你在起草页按下生成时才会。";
+    只有你在起草页确认生成、或在人脉图上看某个人的摘要时才会。";
 
 /// What the shell may display about the current configuration.
 ///
