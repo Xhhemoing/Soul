@@ -15,7 +15,8 @@
 | Review | fable SOTA 两页 | 完成（ship，无 must-fix） |
 | Merge | 合入 `main` 的算法冻结 #5；denylist 豁免 algo crate | 完成（`08c9efa`） |
 | Docs | ST-V4 写回 STATUS / GOAL1_PLAN | 完成 |
-| PR | 更新 #4；CI 绿后合并 `main` | 进行中 |
+| T4D | `soul-graph` rebuild 走 `assess_tie`，替换 T0 | 完成 |
+| PR | 更新 #4；hosted CI 因 Actions 分钟用尽秒失败，未合并 | 进行中 |
 
 ## 作者约束（2026-08-24）
 

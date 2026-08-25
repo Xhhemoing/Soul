@@ -91,8 +91,9 @@ WP02 已完成，取舍与遗留见 `docs/STATUS.md`。
 1. [x] 桌面 `setup` 调 `open_store_for_session` 一次，填进 `configure` 托管的 `StoreSlot`（mock 运行时空槽可读拒绝）。密钥选择在 soulcore：先问 `DpapiKeyProvider`，仅 `Unsupported` 回退 `TestKeyProvider::in_dir`。
 2. [x] 设置页逐字渲染 `KEY_FILE_NOT_PROTECTED_EXPLANATION`。全仓不宣称 KEK 已受 DPAPI 保护。
 3. [x] `authorize_root` / `authorized_roots` IPC：会话有效、不持久化、不进向导。AC-02 向导后置条件保持。
-4. [ ] `DpapiKeyProvider` Win32 实现（P1）。配置持久化（WP13）。档案/记忆/人脉/导入接到 UI（WP09 功能视图）。用 T4D 替换 `soul-graph` 的 T0 判档（`docs/algorithms/DECISION.md` 合并义务）。
+4. [ ] `DpapiKeyProvider` Win32 实现（P1）。配置持久化（WP13）。档案/记忆/人脉/导入接到 UI（WP09 功能视图）。
 5. [x] **D32：** QQ/微信客户端读取不在 Goal 1。后续用进程外开源读取 / wechat-rpa 的导出适配 `soul-import-v1`，本仓库不嵌抓取。
+6. [x] **T4D：** `soul-graph` rebuild 走 `soul-algo-tie::assess_tie`（默认 T4D）。`as_of` 是全库 `max(occurred_at)`，不是墙钟。阈值只从 `soul-algo-tie::constants` 再导出。
 
 ## WP01 允许 / 禁止（历史，WP01 关门后不再扩张）
 

@@ -13,6 +13,7 @@ soul-store-api = { workspace = true }
 # For the audit content a graph rebuild owes the chain. No HTTP client sits
 # under `soul-policy`, so this does not widen soulcore's egress surface.
 soul-policy = { workspace = true }
+soul-algo-tie = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

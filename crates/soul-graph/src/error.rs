@@ -39,4 +39,11 @@ pub enum GraphError {
     /// otherwise silently pick one.
     #[error("the store holds {count} contacts of class `self`; there must be exactly one")]
     AmbiguousOwner { count: usize },
+
+    /// An interaction's `occurred_at` is not a UTC instant this build can
+    /// turn into seconds. The frozen writers always emit `Z`; anything else
+    /// is a hand-edited or older row, and inventing a clock would move the
+    /// recency step.
+    #[error("interaction evidence {evidence_id} has an occurred_at this version cannot read as UTC seconds")]
+    UnreadableInstant { evidence_id: Uuid },
 }

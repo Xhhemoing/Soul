@@ -225,6 +225,135 @@ fn an_edge_carries_strength_type_last_contact_and_evidence() {
     assert_eq!(distant.tie_strength.band, SupportedBand::Weak);
 }
 
+/// T4D counts only one-to-one rows. Twenty group messages plus one private
+/// hello each way would have been Strong under T0 (any_direct plus all-venue
+/// counts). The frozen rule keeps that tie Weak.
+#[test]
+fn a_group_fan_out_plus_one_direct_each_way_is_not_a_close_tie() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = open(dir.path());
+    let colleague = id("010");
+    store
+        .put_contact(contact(owner(), ContactClass::Owner))
+        .expect("owner");
+    store
+        .put_contact(contact(colleague, ContactClass::ThirdParty))
+        .expect("peer");
+
+    let mut next = 200u32;
+    let mut evidence_id = || {
+        next += 1;
+        id(&next.to_string())
+    };
+
+    for day in 10..20 {
+        observe(
+            &mut store,
+            evidence_id(),
+            colleague,
+            "project-room",
+            Direction::Outgoing,
+            &format!("2026-08-{day}T09:00:00Z"),
+            Venue::Group,
+        );
+        observe(
+            &mut store,
+            evidence_id(),
+            colleague,
+            "project-room",
+            Direction::Incoming,
+            &format!("2026-08-{day}T09:01:00Z"),
+            Venue::Group,
+        );
+    }
+    observe(
+        &mut store,
+        evidence_id(),
+        colleague,
+        "private",
+        Direction::Outgoing,
+        "2026-08-20T10:00:00Z",
+        Venue::Direct,
+    );
+    observe(
+        &mut store,
+        evidence_id(),
+        colleague,
+        "private",
+        Direction::Incoming,
+        "2026-08-20T10:01:00Z",
+        Venue::Direct,
+    );
+
+    soul_graph::rebuild(&mut store).expect("rebuild");
+    let graph = soul_graph::load(&store).expect("load");
+    let edge = graph.edges_for(colleague)[0];
+    assert_eq!(edge.tie_strength.interaction_count, 22);
+    assert_eq!(edge.tie_strength.band, SupportedBand::Weak);
+    assert!(edge.types.contains(&soul_graph::TieType::Direct));
+    assert!(edge.types.contains(&soul_graph::TieType::Reciprocal));
+}
+
+/// Recency is a store-level clock. Twelve one-to-one exchanges last year are
+/// Strong on counts, then silence against a later observation in the same
+/// store pulls the band down. T0 had no such step.
+#[test]
+fn a_year_of_silence_against_a_later_store_clock_is_not_a_close_tie() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = open(dir.path());
+    let (old_friend, recent) = (id("011"), id("012"));
+    store
+        .put_contact(contact(owner(), ContactClass::Owner))
+        .expect("owner");
+    for peer in [old_friend, recent] {
+        store
+            .put_contact(contact(peer, ContactClass::ThirdParty))
+            .expect("peer");
+    }
+
+    let mut next = 300u32;
+    let mut evidence_id = || {
+        next += 1;
+        id(&next.to_string())
+    };
+
+    for day in 10..16 {
+        observe(
+            &mut store,
+            evidence_id(),
+            old_friend,
+            "then",
+            Direction::Outgoing,
+            &format!("2025-01-{day}T09:00:00Z"),
+            Venue::Direct,
+        );
+        observe(
+            &mut store,
+            evidence_id(),
+            old_friend,
+            "then",
+            Direction::Incoming,
+            &format!("2025-01-{day}T09:05:00Z"),
+            Venue::Direct,
+        );
+    }
+    observe(
+        &mut store,
+        evidence_id(),
+        recent,
+        "now",
+        Direction::Outgoing,
+        "2026-08-23T12:00:00Z",
+        Venue::Direct,
+    );
+
+    soul_graph::rebuild(&mut store).expect("rebuild");
+    let graph = soul_graph::load(&store).expect("load");
+    let old = graph.edges_for(old_friend)[0];
+    assert_eq!(old.tie_strength.interaction_count, 12);
+    assert_eq!(old.tie_strength.band, SupportedBand::Weak);
+}
+
 /// AC-06 on the graph side: the inference behind an edge names evidence, and
 /// every id it names resolves to a row.
 #[test]

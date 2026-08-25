@@ -14,6 +14,10 @@
 //! observes conversations the user took part in, so an edge between two other
 //! people would be a guess, and PRODUCT_LOCK is explicit that inferences carry
 //! evidence.
+//!
+//! Bands come from `soul-algo-tie` T4D (direct-count gates plus 180/360-day
+//! demotion). `as_of` is the newest `occurred_at` in the store, never a wall
+//! clock. Counts shown on the edge remain all-venue tallies a user can recount.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -36,12 +40,11 @@ use crate::model::{TieStrength, TieType};
 /// inferences it wrote last time without matching on the band.
 pub const TIE_STATEMENT_PREFIX: &str = "graph.tie.";
 
-/// Reciprocal contact from here on is more than an exchanged greeting.
-pub const MODERATE_MIN_INTERACTIONS: u64 = 3;
-/// A strong tie has to be both frequent and spread over several days: twenty
-/// messages in one afternoon is one conversation, not a habit.
-pub const STRONG_MIN_INTERACTIONS: u64 = 10;
-pub const STRONG_MIN_ACTIVE_DAYS: u64 = 3;
+/// Thresholds live in `soul-algo-tie`. Re-exported so a reader of this module
+/// still finds the numbers next to the rebuild, without a second copy.
+pub use soul_algo_tie::constants::{
+    MODERATE_MIN_INTERACTIONS, STRONG_MIN_ACTIVE_DAYS, STRONG_MIN_INTERACTIONS,
+};
 
 /// What one rebuild did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -115,21 +118,6 @@ impl Tally {
         self.outgoing > 0 && self.incoming > 0
     }
 
-    fn band(&self) -> SupportedBand {
-        let count = self.interaction_count();
-        let days = self.active_days.len() as u64;
-        if self.is_reciprocal()
-            && count >= STRONG_MIN_INTERACTIONS
-            && days >= STRONG_MIN_ACTIVE_DAYS
-        {
-            SupportedBand::Strong
-        } else if self.is_reciprocal() && count >= MODERATE_MIN_INTERACTIONS {
-            SupportedBand::Moderate
-        } else {
-            SupportedBand::Weak
-        }
-    }
-
     fn types(&self) -> Vec<TieType> {
         let mut types = vec![match self.any_direct {
             true => TieType::Direct,
@@ -142,9 +130,9 @@ impl Tally {
         types
     }
 
-    fn strength(&self) -> TieStrength {
+    fn strength(&self, band: SupportedBand) -> TieStrength {
         TieStrength {
-            band: self.band(),
+            band,
             interaction_count: self.interaction_count(),
             outgoing_count: self.outgoing,
             incoming_count: self.incoming,
@@ -185,6 +173,8 @@ where
     let known: BTreeSet<Uuid> = contacts.iter().map(|contact| contact.contact_id).collect();
 
     let mut tallies: BTreeMap<Uuid, Tally> = BTreeMap::new();
+    let mut algo_log: Vec<soul_algo_tie::Interaction> = Vec::new();
+    let mut ids = AlgoIds::default();
     let mut interactions_read = 0u64;
     let mut peers_unresolved = 0u64;
 
@@ -206,12 +196,26 @@ where
                 peers_unresolved += 1;
                 continue;
             }
+            let occurred_at_unix = unix_seconds(observation.occurred_at.as_str()).ok_or(
+                GraphError::UnreadableInstant {
+                    evidence_id: evidence.evidence_id,
+                },
+            )?;
+            algo_log.push(soul_algo_tie::Interaction {
+                peer_id: ids.peer(observation.peer_contact_id),
+                outgoing: observation.direction == Direction::Outgoing,
+                occurred_at_unix,
+                venue_direct: observation.venue == Venue::Direct,
+                conversation_id: ids.convo(observation.conversation_ref.as_str()),
+            });
             tallies
                 .entry(observation.peer_contact_id)
                 .or_insert_with(|| Tally::new(observation.occurred_at.as_str()))
                 .absorb(evidence.evidence_id, &observation);
         }
     }
+
+    let as_of_unix = soul_algo_tie::as_of_max(&algo_log).unwrap_or(0);
 
     let existing_edges = store.list_relationships()?;
     let existing_inferences = store.list_inferences()?;
@@ -229,7 +233,14 @@ where
             .map(|edge| edge.relationship_id)
             .unwrap_or_else(Uuid::now_v7);
 
-        let strength = tally.strength();
+        let peer_key = ids.peer(*peer_id);
+        let peer_log: Vec<soul_algo_tie::Interaction> = algo_log
+            .iter()
+            .filter(|row| row.peer_id == peer_key)
+            .cloned()
+            .collect();
+        let assessed = soul_algo_tie::assess_tie(peer_key, &peer_log, as_of_unix);
+        let strength = tally.strength(supported_band(assessed.band));
         let evidence_ids: Vec<Uuid> = tally.evidence_ids.iter().copied().collect();
         let edge = SoulRelationship {
             schema_version: SchemaVersion,
@@ -324,5 +335,116 @@ fn tie_inference(
         falsifier: Some(
             "双方在更长的时间窗口内都没有新的往来，或用户直接改写这条关系，即推翻本判断".into(),
         ),
+    }
+}
+
+fn supported_band(band: soul_algo_tie::Band) -> SupportedBand {
+    match band {
+        soul_algo_tie::Band::Weak => SupportedBand::Weak,
+        soul_algo_tie::Band::Moderate => SupportedBand::Moderate,
+        soul_algo_tie::Band::Strong => SupportedBand::Strong,
+    }
+}
+
+#[derive(Default)]
+struct AlgoIds {
+    peers: BTreeMap<Uuid, u64>,
+    convos: BTreeMap<String, u64>,
+}
+
+impl AlgoIds {
+    fn peer(&mut self, id: Uuid) -> u64 {
+        let next = self.peers.len() as u64 + 1;
+        *self.peers.entry(id).or_insert(next)
+    }
+
+    fn convo(&mut self, key: &str) -> u64 {
+        let next = self.convos.len() as u64 + 1;
+        *self.convos.entry(key.to_owned()).or_insert(next)
+    }
+}
+
+/// Seconds since the Unix epoch for a UTC RFC 3339 instant.
+///
+/// Frozen writers emit `Z`. Fractional seconds are dropped so the recency
+/// step stays on whole seconds, matching `soul-algo-tie`.
+fn unix_seconds(timestamp: &str) -> Option<i64> {
+    let rest = timestamp
+        .strip_suffix('Z')
+        .or_else(|| timestamp.strip_suffix('z'))?;
+    let civil = match rest.split_once('.') {
+        Some((head, frac)) if !frac.is_empty() && frac.bytes().all(|b| b.is_ascii_digit()) => head,
+        None => rest,
+        _ => return None,
+    };
+    if civil.as_bytes().len() != 19 {
+        return None;
+    }
+    let bytes = civil.as_bytes();
+    if bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || bytes[10] != b'T'
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+    {
+        return None;
+    }
+    let number = |from: usize, to: usize| civil.get(from..to)?.parse::<i64>().ok();
+    let year = number(0, 4)?;
+    let month = number(5, 7)?;
+    let day = number(8, 10)?;
+    let hour = number(11, 13)?;
+    let minute = number(14, 16)?;
+    let second = number(17, 19)?;
+    if !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 59
+    {
+        return None;
+    }
+    let days = days_from_civil(year as i32, month as u32, day as u32);
+    Some(days * soul_algo_tie::SECONDS_PER_DAY + hour * 3600 + minute * 60 + second)
+}
+
+/// Days since 1970-01-01 in the proleptic Gregorian calendar.
+fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
+    let mut year = year;
+    if month <= 2 {
+        year -= 1;
+    }
+    let era = year.div_euclid(400);
+    let yoe = (year - era * 400) as u32;
+    let shifted = month as i64 + if month > 2 { -3 } else { 9 };
+    let doy = (153 * shifted + 2) / 5 + i64::from(day) - 1;
+    let doe = i64::from(yoe) * 365 + i64::from(yoe / 4) - i64::from(yoe / 100) + doy;
+    i64::from(era) * 146097 + doe - 719468
+}
+
+#[cfg(test)]
+mod unix_seconds_tests {
+    use super::*;
+
+    #[test]
+    fn the_epoch_is_zero() {
+        assert_eq!(unix_seconds("1970-01-01T00:00:00Z"), Some(0));
+    }
+
+    #[test]
+    fn a_later_instant_is_after_the_epoch() {
+        let later = unix_seconds("2026-08-23T09:05:00Z").expect("the fixture shape");
+        assert!(later > 0);
+        assert_eq!(
+            unix_seconds("2026-08-23T09:05:00.500Z"),
+            Some(later),
+            "fractional seconds are dropped, not rounded",
+        );
+    }
+
+    #[test]
+    fn a_non_utc_instant_is_unreadable() {
+        assert_eq!(unix_seconds("2026-08-23T09:05:00+08:00"), None);
+        assert_eq!(unix_seconds("not a timestamp"), None);
     }
 }

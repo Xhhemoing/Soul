@@ -75,6 +75,7 @@ soul-memory = { path = "crates/soul-memory", version = "0.1.0" }
 soul-collect = { path = "crates/soul-collect", version = "0.1.0" }
 soul-draft = { path = "crates/soul-draft", version = "0.1.0" }
 soul-fileplan = { path = "crates/soul-fileplan", version = "0.1.0" }
+soul-algo-tie = { path = "crates/soul-algo-tie", version = "0.3.0" }
 
 [profile.test]
 opt-level = 1

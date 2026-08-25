@@ -27,7 +27,7 @@
 | WP11 只读文件计划 | 核心完成。文件计划页已接上（见下「WP09 功能视图」） |
 | 壳接真库 + 授权目录 | 完成。见下节 |
 | WP09 功能视图（起草页 / 文件计划页） | 完成。见下节。其余功能视图与 WP13 仍排队 |
-| 灵魂层算法冻结（PR #5） | 已合入本分支。`soul-algo-tie`（T4D）/ `soul-algo-trait`（A0）为参考 crate；xtask denylist 豁免其内部 `score` 标识。Goal 1 图构建仍走 T0，接线排队 |
+| 灵魂层算法冻结（PR #5） | 已合入。`soul-graph` rebuild 走 T4D（`assess_tie`）；`as_of` 为全库 max(occurred_at) |
 
 ## WP01 完成情况
 
@@ -172,7 +172,7 @@
 ### WP05 的取舍与遗留
 
 1. **v0.1 是自我中心网络，每条边都有用户在一端。** Soul 只看见用户参与过的对话，两个第三人之间的边只能靠猜，而 PRODUCT_LOCK 要求推断带证据。真要做人与人之间的边，得先有一个说得出证据的来源。
-2. **强度是计数不是评分。** D22 禁掉了心理模型的数字刻度；同一直觉用在这里，所以对外的概括值是 `SupportedBand`，底下是用户自己数消息就能核对的计数。阈值（`MODERATE_MIN_INTERACTIONS = 3`、`STRONG_MIN_INTERACTIONS = 10` 且活跃天数 ≥3）写成常量摆在 `build.rs` 顶部，不藏在表达式里。
+2. **强度是计数不是评分。** D22 禁掉了心理模型的数字刻度；同一直觉用在这里，所以对外的概括值是 `SupportedBand`，底下是用户自己数消息就能核对的计数。判档是 T4D（一对一门闩 + 180/360 近因），阈值只存在 `soul-algo-tie::constants`，`build.rs` 再导出。图侧入口叫 `assess_tie`，源码不出现 denylist 禁的 `score`。
 3. **`relationship.types` 与 `tie_strength` 在契约里是自由 JSON。** 图这边定了自己的读法，读不出来就报 `UnreadableEdge` 而不是编造一个强度。手改过的行或旧版本写的行会走这条路。
 4. **群聊里只给「说过话的人」建边。** 一个五百人的群里潜水的人不该因为用户发了一条消息就长出一条边。代价是真的只潜水的熟人不会出现在图里。
 5. **`GraphBuild.audit` 由调用方落链。** 与 WP08 的做法一致：`soul-graph` 构造内容，握着打开的库的人写进去。`soulcore/src/commands/graph.rs` 就是这么做的。
@@ -369,10 +369,10 @@ Linux 上能证明的到此为止。下面每一条都要在 Windows 11 x64 真�
 
 ## 灵魂层算法（PR #5 合入）
 
-`crates/soul-algo-tie`（默认 T4D）与 `crates/soul-algo-trait`（A0）已在工作区。它们是纯函数参考实现，零运行时依赖，不进 WebView。产品 denylist 仍禁 `score`；这两个 crate 因冻结标识 `TieScore`/`score()` 而列入 `EXEMPT_CRATES`（与 `xtask` 同类：必须写出禁词才能实现规则）。`docs/algorithms/DECISION.md` 的合并义务——用 T4D 替换 Goal 1 `graph_build.rs` 的 T0 `Tally::band()`——尚未做。
+`crates/soul-algo-tie`（默认 T4D）与 `crates/soul-algo-trait`（A0）已在工作区。它们是纯函数参考实现，零运行时依赖，不进 WebView。产品 denylist 仍禁 `score`；这两个 crate 因冻结标识 `TieScore`/`score()` 而列入 `EXEMPT_CRATES`。Goal 1 `soul-graph::rebuild` 通过 `assess_tie` 调用 T4D：一对一门闩、群扇出不得抬档、近因读任一场地、`as_of` 为全库最新 `occurred_at`。边上看见的次数仍是全场地计数。证据：`tests/ego_graph.rs` 的群扇出夹具（22 次往来、Weak）与隔年沉默夹具（12 次一对一、Weak）。
 
 ## 下一步
 
-把 T4D 接到 `soul-graph`（替换 T0 判档）。档案 / 记忆 / 人脉 / 导入 / 研究 / 审计视图、DPAPI Win32、WP13 `tauri build` 与配置持久化仍排队。起草页与文件计划页已接上。
+档案 / 记忆 / 人脉 / 导入 / 研究 / 审计视图、DPAPI Win32、WP13 `tauri build` 与配置持久化仍排队。起草页与文件计划页已接上。T4D 已接到 `soul-graph`。
 
 **不做：** Goal 2；文件写执行（v0.1.1）；E0/云；OAuth；**QQ/微信客户端读取（D32：进程外开源读取 / wechat-rpa，本仓库不嵌）**；双问卷合并仍按契约重做。
