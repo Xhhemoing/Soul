@@ -885,7 +885,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 补的门禁：`crates/soul-graph/tests/t4d_fixture_parity.rs` 把冻结 crate 自己的 21 个夹具写进真库，逐条比对 `soul_algo_tie::score` 与 rebuild 读回的档位与分列计数，并断言全库只有一个 `as_of`；AC-29 的 `lilei_12` 仍 strong、自愈路径 `group_heavy_plus_three_directs` 回 moderate 在同一条测试里。`crates/soul-import/tests/import_to_graph.rs` 补 AC-34 的 `last_contact` 那一半：owner 的群消息晚于两位历史发言人，两条边的 `last_contact` 不被它刷新。`crates/soul-draft/tests/day_constants_agree.rs` 钉 `DEMOTE_ONE_BAND_DAYS == DORMANT_AFTER_DAYS`，并扫产品 crate 与壳的源码，确认 180 / 360 没有第三处（D52）。
 
-本机在 `aac2b39` 这棵树上 `just ci` 全绿（lint / schema-freeze / e0-audit / denylist-audit / fixtures-verify / `cargo test --workspace --all-targets` / smoke-lint / sbom / ui-lint / ui-test 14 文件 172 项）。**本机绿不是 hosted 绿**：hosted 仍是账本/额度阻塞，本轮没有产品 run。`apps/desktop/src-tauri` 这个独立工作区在本机装不起 GTK/WebView 依赖，因此桌面壳的 `cargo` 测试本轮没跑过，只更新了它的 `Cargo.lock`。
+本机在 `aac2b39`（本轮最后一个动代码的提交，之后两个只动 `docs/`）这棵树上 `just ci` 全绿（lint / schema-freeze / e0-audit / denylist-audit / fixtures-verify / `cargo test --workspace --all-targets` / smoke-lint / sbom / ui-lint / ui-test 14 文件 172 项）。**本机绿不是 hosted 绿**：hosted 仍是账本/额度阻塞，本轮没有产品 run。`apps/desktop/src-tauri` 这个独立工作区在本机装不起 GTK/WebView 依赖，因此桌面壳的 `cargo` 测试本轮没跑过，只更新了它的 `Cargo.lock`。
 
 ## 下一步
 
