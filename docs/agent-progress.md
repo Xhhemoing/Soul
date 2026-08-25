@@ -11,7 +11,7 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 | Field | Value |
 |---|---|
-| Current task | Landed: as_of=None pin; Session §6 pin (`1e3a881`, 4/4). Opus still out: Graph same-band; name-harvest; forget-impact; collect count; keys.dpapi lock reclaim. E1 mutex stall parked P2. E1 body-size cap queued. |
+| Current task | Landed: as_of=None pin; Session §6 pin; Graph+Profile same-band pin. Opus still out: name-harvest; forget-impact; collect count; keys.dpapi lock reclaim. E1 mutex stall parked P2. E1 body-size cap queued. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
 | Exclusive tip | `37c1fa0` / PR #15 |
