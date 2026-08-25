@@ -84,10 +84,32 @@ describe("导入页", () => {
 
     expect(await screen.findByTestId("preview-counts")).toHaveTextContent("4 个人，2 个会话，16 条消息");
     expect(screen.getByTestId("preview-source")).toHaveTextContent("soul-import-v1");
-    expect(screen.getByTestId("preview-writes")).toHaveTextContent("还什么都没有写进库里");
+    expect(screen.getByTestId("preview-writes")).toHaveTextContent(
+      "人、会话、消息一条都没有写进库里",
+    );
     expect(screen.getByTestId("preview-notice")).toHaveTextContent(IMPORT_LOCAL_ONLY_NOTICE);
     expect(renderedText()).not.toContain(A_SENTENCE);
     expect(renderedText()).not.toContain("u-lilei");
+  });
+
+  /**
+   * 「到这一步还什么都没有写进库里」 was false for exactly the user who most
+   * needed it to be true. Both preview commands call `Session::note_injection`
+   * before returning, so a file carrying injection markers has already
+   * appended an `injection.blocked` row to the audit chain by the time this
+   * panel renders, and 换一个文件 leaves that row standing. What the preview
+   * can promise is that none of the file's people, conversations or messages
+   * were sealed; the audit row is said out loud instead of covered over.
+   */
+  it("预览只保证这个文件的内容没入库，注入标记留下的审计行照直说", async () => {
+    await pick(JSONL, "valid_basic.jsonl", {
+      readingImport: (source) => anImportPreview({ source, messages_with_injection_markers: 2 }),
+    });
+
+    const writes = await screen.findByTestId("preview-writes");
+    expect(writes).toHaveTextContent("人、会话、消息一条都没有写进库里");
+    expect(writes).toHaveTextContent("审计链上留下了一行");
+    expect(writes.textContent).not.toContain("还什么都没有写进库里");
   });
 
   /** The whole file went to the core, and none of it came back onto the page. */

@@ -195,12 +195,19 @@ interface PreviewProps {
 }
 
 /**
- * What the file turned out to contain, before anything is written.
+ * What the file turned out to contain, before it is imported.
  *
  * `writes_anything` is the literal `false` in both the Rust type and the
  * TypeScript one, so this panel cannot be reached by a path that already
  * imported: reading a file and importing it are two commands, and this is the
  * screen between them.
+ *
+ * That literal is about the *file's* contents and nothing wider. A preview
+ * whose export carried injection markers has already appended one
+ * `injection.blocked` row to the audit chain by the time this renders, and
+ * abandoning the preview leaves it there — so the line below says which rows
+ * are not written rather than claiming the database was not touched, and says
+ * the audit row out loud on the previews that produced one.
  */
 function Preview({ preview, busy, onCommit, onAbandon }: PreviewProps): React.JSX.Element {
   return (
@@ -224,7 +231,11 @@ function Preview({ preview, busy, onCommit, onAbandon }: PreviewProps): React.JS
             : `有 ${preview.messages_with_injection_markers} 条消息写成了命令的样子。它们会被数出来、照原样入库，Soul 不会照着做。`}
         </li>
         <li data-testid="preview-writes">
-          {preview.writes_anything ? "" : "到这一步还什么都没有写进库里。"}
+          {preview.writes_anything
+            ? ""
+            : preview.messages_with_injection_markers === 0
+              ? "到这一步，这个文件里的人、会话、消息一条都没有写进库里。"
+              : "到这一步，这个文件里的人、会话、消息一条都没有写进库里；但上面数出来的那几条已经在审计链上留下了一行「挡下了注入」，你现在换一个文件，那一行也还在。"}
         </li>
       </ul>
       <div className="switch-row">
