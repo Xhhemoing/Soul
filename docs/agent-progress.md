@@ -7,29 +7,44 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 ## Current round
 
-**ROUND 9** — remaining surface honesty that R8 did not cover. Do not re-open closed R4–R8 items (D55, D61–D63, P2 E1 mutex, fileplan write-absence, config.json two-field pin, COMMANDS=38, research_export, projection-on-Graph, closed-store E1, events_by_source, HITL/redirect/cap landings).
+**ROUND 10** — remaining shell/reliability surfaces. Do not re-open closed R4–R9 items (D55, D61–D63, P2 E1 mutex, fileplan write-absence, config.json pin, COMMANDS=38, research_export, projection-on-Graph, closed-store E1, events_by_source, HITL/redirect/cap, Tauri core:default, as_of clock, A2-only render, collect Bucket).
 
 | Field | Value |
 |---|---|
-| Current task | Round 8 closed. Docs-only HIGH_VALUE: STATUS local-gate counts now record exclusive tip vitest 190 / ipc_roundtrip 56. Round 9 Fable: Tauri capabilities; COPY_ZH twins; collect Bucket/duration; audit forbidden-fields; wizard persist; Graph as_of clock; A2 vs COPY_ZH; headless-vs-ci honesty; cfg(windows) skipped vs STATUS; remaining landable vs author-machine-only. |
+| Current task | Round 9 closed, all ten NO_HIGH_VALUE. Round 10 Fable: tray/single-instance; NSIS hooks; keys.dpapi create_new; redactor exemption; Settings cloud toggle; denylist/clinical; fixture corpus; fakeCore vs core notices; crash/WAL; IPC roundtrip coverage vs 38. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
-| Exclusive tip | Round 8 close; PR #15 |
+| Exclusive tip | Round 9 close; PR #15 |
 
-### Round 9 Fable dispatch
+### Round 10 Fable dispatch
 
 | # | Direction |
 |---|---|
-| 1 | Tauri capabilities / plugins / wry args: still `core:default` only, no http/fs/shell plugin |
-| 2 | COPY_ZH / `contract.test.ts` twins vs live UI notices |
-| 3 | Collect remaining: `Bucket` declaration, sealed `duration_ms`, D23 foreground-only |
-| 4 | Audit forbidden-fields remaining after R6/R7 landings |
-| 5 | Wizard `complete_wizard` vs two-field persist remaining |
-| 6 | Graph rebuild `as_of` single-clock remaining (D45) |
-| 7 | A2 renderer vs COPY_ZH remaining (D40) |
-| 8 | Headless / `e1-watch` vs `just ci` honesty: instruments not claimed as CI gates |
-| 9 | `cfg(windows)` tests skipped on this Linux host vs STATUS claims |
-| 10 | Synthesis: remaining landable v0.1 slices vs author-machine-only / parked items |
+| 1 | Tray + single-instance mutex remaining (`Local\local.soul.desktop` before store open) |
+| 2 | NSIS installer-hooks vs data-dir collision remaining; install-smoke honesty |
+| 3 | `keys.dpapi` `create_new` + in-place fs4 lock remaining (do not re-open parked empty-file TOCTOU unless P0) |
+| 4 | Redactor exemption one-shot + KnownIdentifiers remaining (not D61 NER) |
+| 5 | Settings cloud toggle remaining: still inert, still no E0 |
+| 6 | Runtime denylist / clinical screen remaining vs algo-crate exemption |
+| 7 | Fixture corpus vs live importers remaining |
+| 8 | `fakeCore.ts` vs core notice remaining (R9 leftover: forget-mismatch mock truncation) |
+| 9 | Crash / WAL remaining after import-tx wrap |
+| 10 | IPC roundtrip coverage vs the 38 commands: which lack a product-path roundtrip |
+
+## ROUND 9 record
+
+| Field | Value |
+|---|---|
+| ROUND | 9 |
+| 子代理任务 | 10× Fable: Tauri capabilities; COPY_ZH twins; collect Bucket; audit forbidden-fields; wizard persist; Graph as_of; A2 vs COPY_ZH; headless-vs-ci; cfg(windows) vs STATUS; landable vs blocked |
+| 发现问题 | None at HIGH_VALUE. Below-bar: `fakeCore.ts` forget-mismatch explanation is a truncated core notice (not user-visible) |
+| 修复问题 | None. No product-code landing |
+| 测试结果 | Reviewers re-ran pinned gates on `72d32a2`: session_e1 33; session_import 13; session_collect 11; session_projection 4; session_graph_correct 7; session_screens 11; vitest 190; contract.test 14 |
+| Commit | this closeout (docs) |
+| PR | #15 |
+| Merge状态 | Exclusive → `main` still `BLOCKED`. PR #7 still not merged |
+| 下一轮重点 | Tray/single-instance; NSIS hooks; keys.dpapi; redactor exemption; cloud toggle; denylist; fixture corpus; fakeCore notices; crash/WAL; IPC roundtrip coverage |
+| NO_HIGH_VALUE | All ten. Four author requirements remain wired. Remainder is hosted CI, Win11 checklist, NSIS/DPAPI manual, file write v0.1.1, D55, D61, D63, P2 E1 mutex |
 
 ## ROUND 8 record
 
