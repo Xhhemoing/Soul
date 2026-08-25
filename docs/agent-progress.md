@@ -14,8 +14,8 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core 已合入；CI/IA/算法/地图审查齐 |
-| 当前任务 | AT-2 + oracle 对齐已合入；Fable 在复查对齐；ROUND 2 数据审查已派 |
-| PR | #16 专属线；#20–#28（#28 对齐） |
+| 当前任务 | ROUND 2 数据审查已合入；Opus 修 DATA-1；IndexedDB 等第一次 Grid 落盘 |
+| PR | #16 专属线；#20–#29（#29 数据审查） |
 | Merge | 壳、core、壳 Review 文档已合进专属线；不合 unique trunk |
 | Blocked | F4/S1/S2 等 VM |
 
@@ -28,7 +28,7 @@
 | API | 无 bead API | 本地 store 契约 |
 | 数据库 | Soul 加密 SQLite，与 bead 无关 | WP-B09 IndexedDB |
 | 登录与权限 | Soul HITL/E1；bead 无账号 | 单机；图纸默认不出网 |
-| Storage | 无 bead | WP-B09 |
+| Storage | localStorage 够用到方板步进；Grid 落盘才上 IDB（BD19） | DATA-1；B04 只存游标 |
 | Cache | 无 | 后置 |
 | 第三方 | 无品牌色板授权 | fixture `generic-5mm` |
 | 核心业务 | 四份 rust parity 色号已对照；步骤/检测仍分叉 | ROUND 2 按价值再动 |
@@ -37,7 +37,7 @@
 | CI/CD | Soul ci.yml | B10 独立 job |
 | 性能 | 无转图基准 | 后置大图 |
 | 安全 | Soul 锁不适用于 bead UI | 本地 XSS/文件导入审查 |
-| 可靠性 | 无项目持久化 | B09 |
+| 可靠性 | 项目在 localStorage；写失败会被吞（DATA-1） | Opus 跟进 |
 
 ## ROUND 0（本父代理，文档 only）
 
