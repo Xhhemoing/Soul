@@ -10,12 +10,12 @@
 
 | 项 | 值 |
 |---|---|
-| 当前轮次 | ROUND 1（启动中） |
+| 当前轮次 | ROUND 1 收尾 / ROUND 2 启动 |
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core 已合入；CI/IA/算法/地图审查齐 |
-| 当前任务 | 两份算法 Review 已收；Opus 按 BD18 对齐 TS；不另派改 rust |
-| PR | #16 专属线；#20–#27（#27 core Review） |
+| 当前任务 | AT-2 + oracle 对齐已合入；Fable 在复查对齐；ROUND 2 数据审查已派 |
+| PR | #16 专属线；#20–#28（#28 对齐） |
 | Merge | 壳、core、壳 Review 文档已合进专属线；不合 unique trunk |
 | Blocked | F4/S1/S2 等 VM |
 
@@ -31,7 +31,7 @@
 | Storage | 无 bead | WP-B09 |
 | Cache | 无 | 后置 |
 | 第三方 | 无品牌色板授权 | fixture `generic-5mm` |
-| 核心业务 | rust 合同后为 oracle；TS 尚未对齐（AT-1） | Opus 对齐 parity + 修 AT-2 |
+| 核心业务 | 四份 rust parity 色号已对照；步骤/检测仍分叉 | ROUND 2 按价值再动 |
 | 测试 | 壳 43 + bead-core 全绿 | B10 独立 workflow 仍缺 |
 | 构建 | Soul just/pnpm | 隔离，勿改根脚本 |
 | CI/CD | Soul ci.yml | B10 独立 job |
