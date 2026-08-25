@@ -1,6 +1,6 @@
 # Agent decisions (this parent run)
 
-Additive log for `cursor/soul-integration-4a8e`. Does **not** replace `docs/DECISIONS.md` (D1–D61). New product-direction boards still go there.
+Additive log for `cursor/soul-integration-4a8e`. Does **not** replace `docs/DECISIONS.md` (D1–D62). New product-direction boards still go there.
 
 | ID | Decision | Why |
 |---|---|---|

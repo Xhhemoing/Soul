@@ -11,7 +11,7 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 | Field | Value |
 |---|---|
-| Current task | 10× Fable Round 6 in flight. D55 hashed-dedup parked. P2 E1 mutex parked. Hosted CI billing-blocked. Author Win11 checklist unticked. |
+| Current task | Round 6: schema-version refuse-newer (D62) Opus in flight; remaining Fable scanners still running. D55 parked. P2 E1 mutex parked. Hosted CI billing-blocked. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
 | Exclusive tip | R5 landings merged; PR #15 |
