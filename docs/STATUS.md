@@ -873,7 +873,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 ## 第一次正式测试准备（核于 2026-08-25）
 
-方案：`docs/FIRST_FORMAL_TEST.md`。分支图：`docs/BRANCH_MAP.md`。本机已把唯一主干快进到 `cursor/first-test-candidate-c441` @ `3ca1605`（与 `cursor/goal1-build-audit-c441` 同尖端）。`scripts/branch-disposition.sh` 拒绝合 `#4` / `#7` / `main` / closeout。本机 Linux 段 A：fmt / clippy / schema / e0 / denylist / workspace test / fixtures / smoke-lint / sbom / ui-lint / ui-test 172 / 桌面壳 87 / cargo-deny 四项。这不是 hosted 绿，也不是 Win11 AC-01。未推送的 tip 不能当作者正式对象。
+方案：`docs/FIRST_FORMAL_TEST.md`。分支图：`docs/BRANCH_MAP.md`。本机已把唯一主干快进到 `cursor/first-test-candidate-c441`（与 audit 同尖端）。origin 推送仍 401；离线包 `/opt/cursor/artifacts/first-test-candidate.bundle`（基于 `5309656`，已 `bundle verify`）。`scripts/branch-disposition.sh` 拒绝合 `#4` / `#7` / `main` / closeout。本机 Linux 段 A 已绿。这不是 hosted 绿，也不是 Win11 AC-01。未进 origin 的 tip 不能当作者正式对象。
 
 ## 下一步
 
