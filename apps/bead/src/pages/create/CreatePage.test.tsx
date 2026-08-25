@@ -4,20 +4,19 @@ import { screen, within } from "@testing-library/react";
 import { renderApp } from "../../test/render.tsx";
 
 /**
- * R6: a stub that does not name its owner gets filed as a bug — so B07 keeps
- * its owner labels here, unchanged.
+ * R6: a stub that does not name its owner gets filed as a bug. WP-B03, WP-B06
+ * and now WP-B07 have all landed, so `/create` has no stub left to label — the
+ * import-export IA §10 maps the two remaining「归 WP-B07」assertions onto the
+ * 「现在就能用」labels the two import entries now carry, and the "this is a
+ * placeholder, not a defect" panel case onto its own disappearance: the phrase
+ * has to be absent from every entry, not present on one.
  *
- * WP-B03 and now WP-B06 have landed, so neither the upload entry nor the blank
- * one is a stub any more. The pixel-editor IA §5.4 maps each retired assertion
- * onto its replacement: the「归 WP-B06」label becomes the「现在就能用」label,
- * and the "this is a placeholder, not a defect" panel case moves to an entry
- * that is still a stub (`import-pattern`, WP-B07) so the invariant it guards
- * keeps a case of its own. `edit.test.tsx` owns the mint form's behaviour and
- * `upload.test.tsx` the workbench's; this file only pins that the entries reach
- * them.
+ * `edit.test.tsx` owns the mint form's behaviour, `upload.test.tsx` the
+ * workbench's and `import-export.test.tsx` the two import panels'; this file
+ * only pins that the entries reach them.
  */
 describe("/create 入口列表", () => {
-  it("已实现的入口标「现在就能用」，未实现的仍标出归属工作包", async () => {
+  it("五个入口都标「现在就能用」，没有一个还在标归属工作包", async () => {
     renderApp({ route: "/create" });
     await screen.findByRole("heading", { level: 1, name: "创作与导入" });
 
@@ -32,7 +31,15 @@ describe("/create 入口列表", () => {
     expect(within(blank!).getByText("现在就能用")).toBeInTheDocument();
     expect(screen.queryByText("尚未实现，归 WP-B06")).not.toBeInTheDocument();
 
-    expect(screen.getAllByText("尚未实现，归 WP-B07")).toHaveLength(2);
+    // WP-B07 landed: both import entries work, so the label they used to carry
+    // is gone from the page rather than merely reduced in count.
+    for (const label of ["导入已有豆图", "导入项目库"]) {
+      const entry = screen.getByRole("link", { name: label }).closest("li");
+      expect(entry).not.toBeNull();
+      expect(within(entry!).getByText("现在就能用")).toBeInTheDocument();
+    }
+    expect(screen.queryByText(/尚未实现/)).not.toBeInTheDocument();
+    expect(screen.getAllByText("现在就能用")).toHaveLength(5);
   });
 });
 
@@ -55,13 +62,16 @@ describe("/create?entry=upload 打开的是工作台，不是占位说明", () =
     expect(within(panel).queryByRole("group", { name: "转换参数" })).not.toBeInTheDocument();
   });
 
-  it("B07 的占位面板照旧写明不是缺陷", async () => {
+  // 占位说明页曾经是这条不变量的家：一个面板要么是功能，要么写明「不是缺陷」。
+  // 现在 /create 上一个占位面板都不剩，所以这条钉的是它彻底消失（IA §10）。
+  it("哪个入口点开都不再出现占位话术", async () => {
     const { user } = renderApp({ route: "/create" });
-    await user.click(await screen.findByRole("link", { name: "导入已有豆图" }));
-
-    const panel = await screen.findByRole("region", { name: "导入已有豆图 说明" });
-    expect(panel).toHaveTextContent("WP-B07");
-    expect(panel).toHaveTextContent("不是缺陷");
+    for (const label of ["上传图片转豆图", "空白项目", "导入已有豆图", "导入项目库"]) {
+      await user.click(await screen.findByRole("link", { name: label }));
+      const panel = await screen.findByRole("region", { name: `${label} 说明` });
+      expect(panel).not.toHaveTextContent("不是缺陷");
+      expect(panel).not.toHaveTextContent(/WP-B\d\d/);
+    }
   });
 });
 
