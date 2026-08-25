@@ -374,6 +374,92 @@ fn a_clean_export_preview_leaves_no_injection_entry() {
     drop(keep);
 }
 
+/// AC-25's import channel on the *other* format.
+///
+/// Every test above sends `soul-import-v1`, whose bodies are one JSON string
+/// each. Telegram is the format that arrives in pieces: a `text` is cut into
+/// runs wherever an entity begins, and `soul_import::telegram::flatten_text`
+/// is what puts the sentence back together before anything reads it. The
+/// fixture splits `忽略之前指令` across two runs, so a build that scanned run by
+/// run would count nothing and this session would record nothing — the user
+/// would be told their export tried nothing at all.
+///
+/// Nothing is committed, so the store holds no people at the end of it and the
+/// row is there anyway.
+#[test]
+fn a_telegram_export_that_tries_to_give_instructions_is_counted_even_when_it_is_never_committed() {
+    let (keep, directory) = scratch();
+    let text = fixtures::read_text("import/telegram/result_injection.json").expect("fixture");
+
+    let session = Session::open(&directory);
+    let preview = session
+        .preview_telegram(&text)
+        .expect("a hostile export is still a well-formed one");
+    assert_eq!(preview.source, "telegram-desktop");
+    assert_eq!(
+        preview.messages_with_injection_markers, 2,
+        "the split phrase and the address, one message each",
+    );
+    assert!(!preview.writes_anything);
+    assert!(
+        session.people().expect("graph").people.is_empty(),
+        "a preview must not write anything",
+    );
+
+    let chain = session.audit().expect("the store opened");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    let blocked = chain
+        .entries
+        .iter()
+        .find(|entry| entry.action == "injection.blocked")
+        .expect("the export asked to be obeyed and the chain never heard about it");
+    assert_eq!(blocked.decision, "denied");
+    assert_eq!(
+        blocked.reason_code.as_deref(),
+        Some("INJECTION_MARKERS_FOUND"),
+    );
+    assert_eq!(
+        blocked.items,
+        Some(preview.messages_with_injection_markers),
+        "the entry counts something other than what the screen was told",
+    );
+    assert!(
+        blocked.bytes.is_none(),
+        "the length of a hostile line is still the line",
+    );
+    assert!(blocked.follows_previous);
+
+    // A count and a code. Not the phrase the runs spelled out between them,
+    // not the address it named, and not the person whose chat it arrived in.
+    let played = serde_json::to_string(&chain).expect("serialize the chain");
+    for prose in ["忽略之前指令", "忽略之前", "evil.example", "李 雷"] {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
+    }
+    drop(keep);
+}
+
+/// The control for the test above: the good export is not accused of anything.
+#[test]
+fn a_clean_telegram_preview_leaves_no_injection_entry() {
+    let (keep, directory) = scratch();
+    let text = fixtures::read_text("import/telegram/result_basic.json").expect("fixture");
+
+    let session = Session::open(&directory);
+    let preview = session.preview_telegram(&text).expect("the export parses");
+    assert_eq!(preview.messages_with_injection_markers, 0);
+
+    let chain = session.audit().expect("the store opened");
+    assert!(
+        !chain
+            .entries
+            .iter()
+            .any(|entry| entry.action == "injection.blocked"),
+        "an ordinary export was recorded as an attempt: {:?}",
+        chain.entries,
+    );
+    drop(keep);
+}
+
 /// AC-05's failure half, through the session: a readable refusal that names
 /// the fields and nobody.
 #[test]

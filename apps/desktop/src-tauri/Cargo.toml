@@ -40,8 +40,15 @@ soulcore = { path = "../../../crates/soulcore" }
 # `tauri/test` brings the mock runtime, which has no window and no WebView.
 # It is how `tests/ipc_roundtrip.rs` calls the commands the way the WebView
 # calls them, on a CI host with no display.
+#
+# `soul-testkit` holds the loopback endpoint AC-11/AC-12 need on the wire. It
+# is a development edge and nothing else: `tests/no_egress_path.rs` walks the
+# normal and build edges only, which is the same exemption `xtask e0-audit`
+# grants it upstream, so the HTTP stack inside it is not reachable from the
+# shipped `soul.exe`.
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
+soul-testkit = { path = "../../../crates/soul-testkit" }
 
 [features]
 # Embeds `../dist` into the executable. `tauri build` turns it on; a plain

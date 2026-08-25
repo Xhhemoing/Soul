@@ -170,6 +170,52 @@ fn the_telegram_fixtures_keep_the_desktop_export_shape() {
         "service messages exist in real exports and the adapter must survive them",
     );
 
+    // The hostile export is the same shape, or it proves nothing about the
+    // adapter: it has to reach `telegram::parse` before it can be counted.
+    let hostile: Value =
+        fixtures::read_json("import/telegram/result_injection.json").expect("load");
+    assert!(
+        hostile["personal_information"]["user_id"].is_number(),
+        "a Telegram export names its owner by user id",
+    );
+    let hostile_messages = hostile["chats"]["list"][0]["messages"]
+        .as_array()
+        .expect("chats.list[].messages");
+    for field in ["id", "type", "date", "date_unixtime", "from_id"] {
+        assert!(
+            !hostile_messages[0][field].is_null(),
+            "a Telegram message carries `{field}`",
+        );
+    }
+
+    // Telegram cuts `text` into runs wherever an entity begins, and the whole
+    // point of this fixture is that the override phrase is only there once the
+    // runs are joined. A fixture edited into a single run would leave
+    // `soul-import`'s flattening untested while its tests stayed green.
+    let split = hostile_messages
+        .iter()
+        .filter_map(|message| message["text"].as_array())
+        .find(|runs| {
+            runs.iter()
+                .filter_map(|run| run.as_str().or_else(|| run["text"].as_str()))
+                .collect::<String>()
+                .contains("忽略之前指令")
+        })
+        .expect("one message spells the override phrase out across its runs");
+    assert!(
+        split
+            .iter()
+            .filter_map(|run| run.as_str().or_else(|| run["text"].as_str()))
+            .all(|run| !run.contains("忽略之前指令")),
+        "no single run may carry the whole phrase: {split:?}",
+    );
+    assert!(
+        serde_json::to_string(&hostile)
+            .expect("re-encode")
+            .contains("evil.example"),
+        "the export must carry a URL no code path is allowed to contact",
+    );
+
     let broken: Value =
         fixtures::read_json("import/telegram/result_missing_fields.json").expect("load");
     let broken_chats = broken["chats"]["list"].as_array().expect("list");

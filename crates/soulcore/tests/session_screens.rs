@@ -141,6 +141,41 @@ fn answering_the_questionnaire_leaves_a_profile_the_user_stated() {
         "the screen carries the user's own words",
     );
 
+    // AC-23 for the no-file branch of intake. The questionnaire is the other
+    // way a profile gets made, so it records under the same action a file
+    // import does — `soul-import`'s recorder builds the entry and
+    // `soul-profile`'s intake appends it, and neither of those is the layer
+    // the 审计 page reads. Only the session is, and an intake the chain never
+    // heard about would leave three sealed answers and no record that anybody
+    // was ever asked.
+    let chain = session.audit().expect("the store opened");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    let recorded = chain
+        .entries
+        .iter()
+        .find(|entry| entry.action == "import.commit")
+        .unwrap_or_else(|| {
+            panic!(
+                "the questionnaire was answered and the chain never heard about it: {:?}",
+                chain.entries,
+            )
+        });
+    assert_eq!(recorded.decision, "allowed");
+    assert_eq!(
+        recorded.items,
+        Some(receipt.answered as u64),
+        "the entry counts something other than what the screen was told",
+    );
+    assert!(recorded.follows_previous);
+
+    // A count and an identifier. Not the sentence the user typed into the
+    // boundary question, which is the one answer here that is prose.
+    let played = serde_json::to_string(&chain).expect("serialize the chain");
+    assert!(
+        !played.contains("工作以外的事"),
+        "the chain carries what the user typed: {played}",
+    );
+
     // And it survives a restart, because the profile id is fixed rather than
     // generated per session.
     drop(session);
