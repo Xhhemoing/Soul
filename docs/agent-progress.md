@@ -13,10 +13,10 @@
 | 当前轮次 | ROUND 2 |
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
-| 已检查模块 | 壳 + bead-core + TS + DATA-1 + AL + B04 + B05 实现 + S1/S2 |
-| 当前任务 | B04/B05 均 ACCEPT 并已浏览器核对；下一刀 B10 workflow |
-| PR | #16 专属线；#20–#40（#40 B05 复审） |
-| Merge | B04 `15ad3b3`；B05 `8526c5c`；不合 unique trunk |
+| 已检查模块 | 壳 + bead-core + TS + DATA-1 + AL + B04 + B05 + B10 workflow |
+| 当前任务 | B10 `bead.yml` 已合（#41）；复审在途 |
+| PR | #16 专属线；#20–#41（#41 B10） |
+| Merge | B04 `15ad3b3`；B05 `8526c5c`；B10 本提交；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读（BLOCKED_PR）；云端异步 VM ≈3 |
 
 ## 已检查模块（11.5）
@@ -34,7 +34,7 @@
 | 核心业务 | 色号 + BOM + 四模式 steps 已对 rust fixture；AL 复审 PASS | AL-4（MED）rust 边界 fixture 后置；B04 |
 | 测试 | `@bead/app` 258 + bead-core 153；覆盖探针已盘点 | T-ASM/T-INV 等 B04/B05 实现锁 |
 | 构建 | Soul just/pnpm | 隔离，勿改根脚本 |
-| CI/CD | Soul ci.yml 不动；B10 简报已锁 `bead.yml` 形状 | Opus 落地独立 workflow |
+| CI/CD | Soul ci.yml 不动；独立 `bead.yml` 已合 | B10 复审；hosted 跑分待订 |
 | 性能 | 无转图基准 | 后置大图 |
 | 安全 | Soul 锁不适用于 bead UI | 本地 XSS/文件导入审查 |
 | 可靠性 | DATA-1 已合 | AL 复审 |
@@ -101,7 +101,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] B04 复审合入 `76ae0ef`（#38，ACCEPT；MED-1 行窗口写盘后置）
 - [ ] `/create` 上传接线（独立变更；若持久化 Grid 必须同时上 IDB，BD19）
 - [x] B05 复审合入（#40，ACCEPT；MED-1 blob URL 后置）
-- [ ] B10 独立 bead workflow（简报已合，实现在途）
+- [x] B10 独立 `bead.yml` 合入（#41）；Soul `ci.yml` 零 diff
 - [x] 本机复核：`@bead/app` 22 文件 258 绿（2026-08-25，AL 吸收后）
 
 ## 已知问题 / 禁令
@@ -125,7 +125,8 @@ Commit        15ad3b3 absorb B04；本提交记进度
 PR            #16 #32–#37
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B05 实现；B10 workflow；MED-1 后置
-在途          [R2 Opus B10 workflow](https://cursor.com/agents/bc-pending-b10)
+在途          B10 复审待派
+已收          [R2 Opus B10 workflow](https://cursor.com/agents/bc-08c28463-3949-5d72-b729-c048eaf21aa2) → #41
 已收          [R2 Fable review B05](https://cursor.com/agents/bc-f8cb512c-e819-5100-8d2c-7fc3d03bb1b0) → #40
 已收          [R2 Opus B05 implement](https://cursor.com/agents/bc-07588339-9d46-582e-9230-b027218aa67b) → #39 `8526c5c`
 已核          B04 拼装流通过；B05 资产：空库存全量缺口、加 C01 后缺口下降、采购文本无 URL
