@@ -23,4 +23,4 @@
 
 ## Round 4（分支盘点 + 第一次正式测试方案）
 
-3 轮 × 6 云端已开 Round 1。路由 `.agent_workspace/orchestrator-c441/ROUND4-ROUTING.md`。LOOP20 仍 QUEUED。不盲合 `#4` / `#7` / `main`→主干。
+3 轮 × 6 云端 Round 1 全部 `[unauthenticated]` 失败。分支图与方案已落盘。本机将主干快进到 `cursor/first-test-candidate-c441`；`scripts/branch-disposition.sh` 拒绝 #4 / #7 / `main` / closeout。LOOP20 仍 QUEUED。

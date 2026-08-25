@@ -6,10 +6,10 @@
 
 ## 打哪一棵
 
-- 分支：`cursor/soul-goal1-7b1c`
-- SHA：**`478f19f` 或之后**（origin 尖端曾是 `5309656`）。
+- **作者 Win11 / hosted 正式对象：** `cursor/soul-goal1-7b1c` 的 **`478f19f` 或之后**（origin 尖端曾是 `5309656`）。未推送到 origin 的 tip 不算正式对象。
+- **本机已准备的候选栈：** `cursor/first-test-candidate-c441` = 主干快进 + BUILD audit（含 R3 占位与本方案）。要测诚实文案就打**已推送**的这一枝，并在 `STATUS` 写 SHA。
 - **不要**用 `2e72ddf` 的 `windows-binaries`：那次 NSIS 把程序装进数据目录，卸载会碰到 `keys.dpapi`。
-- 若作者明确要测 BUILD audit 的诚实文案 / R3 占位：改打 `cursor/goal1-build-audit-c441` 的**已推送** tip，并在 `STATUS` 写明 SHA。本机未推送的 tip 不能当正式测试对象。
+- 合并是否安全：`bash scripts/branch-disposition.sh`（`--merge` 默认拒绝 #4 / #7 / `main` / 有冲突的 closeout）。自检：`bash scripts/branch-disposition.selftest.sh`。
 
 打包只在作者 Win11 上做（`tauri build` 会取 NSIS，CI 不允许）。步骤与勾选见 `scripts/author-manual-checklist.md`。
 

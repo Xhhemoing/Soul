@@ -1,0 +1,10 @@
+Live `scripts/branch-disposition.sh` on this clone, 2026-08-25.
+
+origin/HEAD	FORBIDDEN
+origin/agent/dev-sota	FORBIDDEN
+origin/cursor/goal1-build-audit-c441	FF-SAFE +41/-0
+origin/cursor/goal1-closeout-c441-2d70	UNSAFE +4/-1 conflicts=1
+origin/cursor/goal1-unblock-a073	FORBIDDEN
+origin/main	FORBIDDEN
+remaining cursor/* process branches	NO-MERGE-BASE
+selftest	ok
