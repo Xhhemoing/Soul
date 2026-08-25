@@ -14,7 +14,7 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core + TS + DATA-1 + AL + B04 + B05 + B10 workflow |
-| 当前任务 | ROUND 3：B06 复审 REJECT 的 HIGH-1 已修（#50）；浏览器核拖拽在途 |
+| 当前任务 | ROUND 3：B06 HIGH-1 已修并浏览器核通过（一笔画 14 颗）；B07 实现下一刀 |
 | PR | #16 专属线；#20–#46（#45 B03 实现；#46 B07 IA） |
 | Merge | B04 `15ad3b3`；B05 `8526c5c`；B10 本提交；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读；hosted Bead CI 空 runner（非产品失败） |
@@ -32,7 +32,7 @@
 | Cache | 无 | 后置 |
 | 第三方 | 无品牌色板授权 | fixture `generic-5mm` |
 | 核心业务 | 色号 + BOM + 四模式 steps 已对 rust fixture；AL 复审 PASS | AL-4（MED）rust 边界 fixture 后置；B04 |
-| 测试 | `@bead/app` **29 文件 / 426**；bead-core 153 | B06/B07 实现锁后置 |
+| 测试 | `@bead/app` **32 文件 / 490**；bead-core 153 | B07 实现锁后置 |
 | 构建 | Soul just/pnpm | 隔离，勿改根脚本 |
 | CI/CD | 独立 `bead.yml` 已合；hosted 两作业 3s 空 runner（无 step） | 本机命令为门；勿 empty-commit |
 | 性能 | 无转图基准 | 后置大图 |
@@ -121,7 +121,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 
 ## 下一轮重点（ROUND 3）
 
-B06 HIGH-1 已修（#50）。下一刀：本机 490 测试 + 浏览器核拖拽笔画 + 复审收口。B07 实现、AL-4、MED-1 后置。
+B06 HIGH-1 已修并浏览器核通过（单次拖拽 14 颗，刷新后仍在）。下一刀：**B07 导入导出实现**。AL-4、B04/B05 MED-1 后置。
 
 ```text
 ROUND 2（进行中）
@@ -133,6 +133,7 @@ Commit        15ad3b3 absorb B04；本提交记进度
 PR            #16 #32–#37
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B05 实现；B10 workflow；MED-1 后置
+已核          B06：blank mint → /edit/proj-* → 单次拖拽 14 颗 → 刷新仍在 → 去拼装同图
 已收          [R3 Opus B06 drag fix](https://cursor.com/agents/bc-44e29081-a035-5f8d-adeb-b9f2cc10e5ba) → #50
 已收          [R3 Fable review B06](https://cursor.com/agents/bc-fba90d95-70d3-509f-b0cf-ed9d5c19f18f) → #49 REJECT HIGH-1
 已收          [R3 Opus B06 implement](https://cursor.com/agents/bc-192bf45d-a57f-5d88-ad19-97fbe830e072) → #48
