@@ -9,7 +9,7 @@
 1. `git fetch origin cursor/soul-goal1-7b1c && git switch --detach origin/cursor/soul-goal1-7b1c`（须 ≥ `478f19f`；origin 尖端曾是 `5309656`）。
 2. Linux：`bash scripts/first-formal-test-linux.sh`（或 `just ci-full`）。本机绿不是 hosted 绿。
 3. Billing 恢复后：对该 SHA `workflow_dispatch`（不要 empty-commit）。
-4. Win11 x64 非管理员：按 `scripts/author-manual-checklist.md` 从这一 SHA 打 NSIS。不要用 `2e72ddf` 包。
+4. Win11 x64 非管理员：先 `pwsh -File scripts/first-formal-test-win11.ps1`（拒管理员、拒 `2e72ddf`），再按 `scripts/author-manual-checklist.md` 打 NSIS。不要用 `2e72ddf` 包。
 
 要测 BUILD audit 的诚实文案，才换成 `cursor/first-test-candidate-c441`（须已进 origin，或按下节 bundle 取枝）。
 
