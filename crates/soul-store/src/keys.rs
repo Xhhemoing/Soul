@@ -195,10 +195,9 @@ fn read_or_create_key_file(path: &Path) -> KeyResult<Vec<u8>> {
     const SEED_LEN: usize = 64;
 
     let settled = match std::fs::read(path) {
-        // An empty file is not a seed, it is a first run that another process
-        // is in the middle of. It joins the minting path below, which waits
-        // for that process rather than reporting the file as malformed.
         Ok(bytes) if !bytes.is_empty() => bytes,
+        // An empty file is not a malformed seed, it is a first run another
+        // process is in the middle of. `mint_key_file` waits for it.
         Ok(_) => mint_key_file(path, SEED_LEN)?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             mint_key_file(path, SEED_LEN)?
