@@ -15,6 +15,11 @@
 //!   its redactor can produce. There is no other public entry point, no
 //!   exposed client, and no URL-taking overload.
 //!
+//! What comes back is bounded too. The endpoint is an address the user typed
+//! in, so the reply is untrusted in size as well as in content: the read stops
+//! at [`MAX_RESPONSE_BYTES`] and refuses, rather than letting a body that
+//! keeps arriving decide how much memory this process takes.
+//!
 //! The redirect policy is the part worth reading twice. `docs/SECURITY.md`
 //! says a cross-origin redirect is refused, and a client that follows
 //! redirects by default would turn a `302` from the user's endpoint into an
@@ -25,6 +30,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]
 
+use std::io::Read;
 use std::time::Duration;
 
 use soul_policy::e1::E1RequestPlan;
@@ -41,6 +47,18 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 /// How long the connection itself may take to establish.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// The most of a response body that will be brought into memory.
+///
+/// [`REQUEST_TIMEOUT`] bounds how long the endpoint may take; this bounds how
+/// much it may say, which is the other half of the same question. The endpoint
+/// is whatever address the user typed into the settings page — a machine on
+/// the same LAN, not a service with a contract — so a misconfigured or hostile
+/// one answering with a body that keeps arriving is a shape the client has to
+/// survive, and [`send`] runs with Soul's own state locked. A chat completion
+/// is kilobytes; four mebibytes is generous for one and small enough to be an
+/// allocation rather than an outage.
+pub const MAX_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
+
 #[derive(Debug, thiserror::Error)]
 pub enum EgressError {
     #[error("the request was redirected off {permitted}, which is not allowed")]
@@ -48,6 +66,9 @@ pub enum EgressError {
 
     #[error("the endpoint answered {status}")]
     HttpStatus { status: u16, body_len: usize },
+
+    #[error("the endpoint's answer was longer than the {limit} bytes this client will read")]
+    ResponseTooLarge { limit: u64 },
 
     #[error("the HTTP client could not be built: {0}")]
     ClientSetup(String),
@@ -61,6 +82,7 @@ impl EgressError {
     pub fn reason_code(&self) -> Option<ReasonCode> {
         match self {
             EgressError::CrossOriginRedirect { .. } => Some(ReasonCode::E1CrossOriginRedirect),
+            EgressError::ResponseTooLarge { .. } => Some(ReasonCode::E1ResponseTooLarge),
             _ => None,
         }
     }
@@ -92,11 +114,39 @@ pub fn send(plan: &E1RequestPlan) -> Result<E1Response, EgressError> {
         .map_err(|error| classify(error, &permitted))?;
 
     let status = response.status().as_u16();
-    let body = response
-        .text()
-        .map_err(|error| EgressError::Transport(redact_error(&error.to_string(), &permitted)))?;
+    let body = read_capped(response, &permitted)?;
 
     Ok(E1Response { status, body })
+}
+
+/// Read a response body, refusing at [`MAX_RESPONSE_BYTES`] instead of reading
+/// whatever arrives.
+///
+/// Refusing rather than truncating, because a truncated body is a half answer
+/// that still looks like one, and every caller of [`send`] would then have to
+/// notice. A refusal is a thing the audit chain can name.
+fn read_capped(
+    response: reqwest::blocking::Response,
+    permitted: &Origin,
+) -> Result<String, EgressError> {
+    // One byte past the cap, which is the difference between a body that is
+    // exactly at the limit and one that is over it. The cap is applied to the
+    // bytes as they arrive rather than to `content-length`, because a header
+    // is what the endpoint says it will send, not what it sends.
+    let mut body = Vec::new();
+    let read = response
+        .take(MAX_RESPONSE_BYTES + 1)
+        .read_to_end(&mut body)
+        .map_err(|error| EgressError::Transport(redact_error(&error.to_string(), permitted)))?;
+    if read as u64 > MAX_RESPONSE_BYTES {
+        return Err(EgressError::ResponseTooLarge {
+            limit: MAX_RESPONSE_BYTES,
+        });
+    }
+
+    // The same lossy UTF-8 decode `text()` does: the `charset` feature is off,
+    // so no endpoint gets to pick the encoding this process decodes with.
+    Ok(String::from_utf8_lossy(&body).into_owned())
 }
 
 /// Which egress class the request will be recorded under.
