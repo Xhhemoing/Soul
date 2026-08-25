@@ -28,7 +28,7 @@ Round 3 冻结条件（R2-SYNTHESIS 边界风险 2）：**T4D 采纳，当且仅
 | 决胜夹具 | 构造 | T4 | T4D | 判 |
 |---|---|---|---|---|
 | `lilei_12` | 一对一互惠 12 次 / 6 天 / 3 天前收尾 | Strong | **Strong** | 锚测试保全 ✓ |
-| `group_heavy_plus_one_direct_each_way` | 群聊扇出 100 条 / 50 天 + 每方向各 1 条一对一 | **Strong ✗**（漏洞实证） | **Weak** | 非 Strong ✓ |
+| `group_heavy_plus_one_direct_each_way` | 代码夹具：群聊互惠 30 次 / 10 天 + 每方向各 1 条一对一（叙述曾写 100/50，以测试源为准） | **Strong ✗**（漏洞实证） | **Weak** | 非 Strong ✓ |
 
 两个条件同时满足。**采纳 T4D，作为 T4 的最终形态发布。**
 
@@ -75,7 +75,7 @@ Weak      otherwise
 
 ### 4.1 仅群聊者从 Moderate 变 Weak
 
-`group_only_50`（群聊互惠 50 次 / 50 天 / 从未一对一）：T4 判 Moderate，T4D 判 **Weak**。这是把门槛改在一对一计数上的直接后果，不是意外：Round 1「项目群同事不是陌生人」的论证让位于「群扇出不得制造档位」——同一机制也顺带消解了导入扇出债的放大面（200 人群刷全员 Moderate 不再可能）与「一句私聊解锁 Strong」漏洞。群聊往来的事实由 A2 场合句如实展示（「你们在群里同场往来 {群聊次数} 次」），只是不再决定档位。钉死期望「group-only ≤ Moderate」仍满足（Weak ⊂ ≤ Moderate）。自愈路径便宜：每方向各 3 条一对一即回 Moderate（实测 `group_heavy_plus_three_direct_each_way` → Moderate）。
+`group_only_50`（群聊互惠 50 次 / 50 天 / 从未一对一）：T4 判 Moderate，T4D 判 **Weak**。这是把门槛改在一对一计数上的直接后果，不是意外：Round 1「项目群同事不是陌生人」的论证让位于「群扇出不得制造档位」——同一机制也顺带消解了导入扇出债的放大面（200 人群刷全员 Moderate 不再可能）与「一句私聊解锁 Strong」漏洞。群聊往来的事实由 A2 场合句如实展示（「你们在群里同场往来 {群聊次数} 次」），只是不再决定档位。钉死期望「group-only ≤ Moderate」仍满足（Weak ⊂ ≤ Moderate）。自愈路径便宜：补够常量表规定的一对一次数即回 Moderate（实测夹具名 `group_heavy_plus_three_directs` → Moderate）。
 
 ### 4.2 F04c 复燃一响（继承自 T4，回退触发器）
 

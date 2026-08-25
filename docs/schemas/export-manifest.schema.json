@@ -15,7 +15,7 @@
   ],
   "properties": {
     "schema_version": { "const": "1.0.0" },
-    "manifest_id": { "type": "string" },
+    "manifest_id": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" },
     "export_kind": { "enum": ["research_preview", "self_full_export"] },
     "fields": {
       "type": "array",
@@ -30,14 +30,26 @@
         ]
       }
     },
-    "rows": { "type": "array", "items": { "type": "object", "additionalProperties": false, "properties": {
-      "event_kind": { "type": "string" },
-      "time_bucket_utc": { "type": "string" },
-      "duration_bucket": { "type": "string" },
-      "self_trait_axis": { "type": "string" },
-      "self_trait_band": { "enum": ["weak", "moderate", "strong"] },
-      "aggregate_count": { "type": "integer", "minimum": 0 }
-    } } },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "event_kind": { "type": "string" },
+          "time_bucket_utc": { "type": "string" },
+          "duration_bucket": { "type": "string" },
+          "self_trait_axis": { "type": "string" },
+          "self_trait_band": {
+            "allOf": [
+              { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/evidenceBand" },
+              { "enum": ["weak", "moderate", "strong"] }
+            ]
+          },
+          "aggregate_count": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
     "third_party_rows": { "type": "integer", "const": 0 },
     "written_to_disk": { "type": "boolean" },
     "redaction_profile": {
@@ -52,7 +64,10 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "export_kind": { "const": "research_preview" } }, "required": ["export_kind"] },
+      "if": {
+        "properties": { "export_kind": { "const": "research_preview" } },
+        "required": ["export_kind"]
+      },
       "then": { "properties": { "written_to_disk": { "const": false } } }
     }
   ]

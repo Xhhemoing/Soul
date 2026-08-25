@@ -4,14 +4,23 @@
   "title": "SoulAuditEntry",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "seq", "entry_id", "ts", "prev_hash", "entry_hash", "action", "decision"],
+  "required": [
+    "schema_version",
+    "seq",
+    "entry_id",
+    "ts",
+    "prev_hash",
+    "entry_hash",
+    "action",
+    "decision"
+  ],
   "properties": {
     "schema_version": { "const": "1.0.0" },
     "seq": { "type": "integer", "minimum": 0 },
-    "entry_id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
-    "ts": { "type": "string", "format": "date-time" },
-    "prev_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "entry_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "entry_id": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" },
+    "ts": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/timestamp" },
+    "prev_hash": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/sha256" },
+    "entry_hash": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/sha256" },
     "action": {
       "enum": [
         "consent.grant",
@@ -31,10 +40,12 @@
       ]
     },
     "decision": { "enum": ["allowed", "denied", "deferred", "n/a"] },
-    "reason_code": { "type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_]{2,63}$" },
+    "reason_code": {
+      "oneOf": [{ "type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,63}$" }, { "type": "null" }]
+    },
     "subject_refs": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
+      "items": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" }
     },
     "counts": {
       "type": "object",
@@ -44,8 +55,18 @@
         "bytes": { "type": "integer", "minimum": 0 }
       }
     },
-    "plan_hash": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
-    "capability_token_id": { "type": ["string", "null"] },
+    "plan_hash": {
+      "oneOf": [
+        { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/sha256" },
+        { "type": "null" }
+      ]
+    },
+    "capability_token_id": {
+      "oneOf": [
+        { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" },
+        { "type": "null" }
+      ]
+    },
     "egress_class": { "enum": ["none", "E0", "E1", "L"] }
   }
 }
