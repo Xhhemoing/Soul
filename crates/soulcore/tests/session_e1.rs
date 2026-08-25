@@ -904,10 +904,21 @@ const IMPORTED_NAME: &str = "李 雷";
 
 /// A paste that names the person it came from, the way one does.
 ///
-/// Nothing in it has an identifier's *shape*: no digits, no `@`, no address.
-/// Two Chinese characters and a space are what the shape scrub cannot see and
-/// the contact graph can.
+/// Nothing in it has an identifier's *shape* in the sense the digit, `@` and
+/// address rules mean: it is Chinese characters and a space. That spacing is
+/// the one thing about a display label a redactor can recognize without a
+/// contact graph, and since it is what an export writes, the exempted turn is
+/// held to it — see
+/// [`with_nothing_imported_the_same_name_is_placeheld_by_its_shape`].
 const PASTE_NAMING_A_CONTACT: &str = "李 雷 说周五的场地他已经订好了，你直接过来就行";
+
+/// The other display label `result_basic.json` seals, in the script that has
+/// no shape to recognize.
+const LATIN_LABEL: &str = "Wang Xiao";
+
+/// A paste naming that person. Two capitalized words are how English writes
+/// most of a sentence, so nothing but the contact graph can placehold this.
+const PASTE_NAMING_THE_LATIN_LABEL: &str = "Wang Xiao 说这周先把方案定下来，别拖到下周";
 
 fn telegram_export() -> String {
     fixtures::read_text("import/telegram/result_basic.json").expect("fixture")
@@ -1041,27 +1052,46 @@ fn a_name_this_soul_imported_is_placeheld_even_in_a_body_the_user_confirmed() {
     drop(keep);
 }
 
-/// The control: with nothing imported, that name is just a word.
+/// The same promise on a Soul that has imported nobody.
 ///
-/// Without this the test above would pass on a build whose identifier set is
-/// still empty — `NAME_PLACEHOLDER` would only have to appear once for any
-/// reason. Here the same paste and the same confirmation are sent by a session
-/// that has imported nothing, and the name arrives at the endpoint intact.
-/// That is not a bug being pinned; it is the shape scrub's limit, and it is
-/// exactly what the contact rows are for.
+/// This used to be the control for the test above, and it asserted the
+/// opposite: the same paste, the same second confirmation, and `李 雷` in the
+/// bytes the endpoint received, on the reasoning that two Chinese characters
+/// and a space have no shape and the contact rows are what covers them. The
+/// reasoning about the shape scrub was right and the conclusion was still
+/// wrong, because PRODUCT_LOCK does not make 姓名占位 conditional on an import
+/// having happened and neither does anything the user reads: the wizard's
+/// welcome page and [`E1_PLAN_NOTICE`] both say 「姓名与账号两种情况下都占位」
+/// to somebody who has never opened 导入. A first-run Soul with an empty
+/// contact graph is the *common* case, and that build sent a name to the
+/// endpoint out of the one body the user was told carried 正文 and nothing
+/// else.
+///
+/// What closed it is `soul_policy::redactor`'s label shape, which the exempted
+/// turn — the only prose that leaves verbatim — is held to on top of the
+/// identifier set: a display label written the way an export writes one, two
+/// to four Han characters spaced apart, is placeheld whether or not anybody
+/// registered it. 正文 exemption is not 姓名 exemption.
+///
+/// [`E1_PLAN_NOTICE`]: soulcore::commands::draft::E1_PLAN_NOTICE
 #[test]
-fn with_nothing_imported_the_same_name_is_a_word_like_any_other() {
+fn with_nothing_imported_the_same_name_is_placeheld_by_its_shape() {
     let (keep, directory) = scratch();
     let endpoint = MockLlm::start().expect("the endpoint the user configured");
     let mut session = Session::open(&directory);
     session
         .set_user_endpoint(&endpoint.base_url())
         .expect("a loopback address is an address");
+    assert!(
+        stored_third_party_labels(&session).is_empty(),
+        "this session is supposed to have learned nobody's name",
+    );
 
     let exempted = session
         .prepare_draft(PASTE_NAMING_A_CONTACT, Some(true))
         .expect("a plan");
     assert!(exempted.carries_exempted_original);
+    assert_eq!(exempted.placeheld_turns, 0);
     session
         .generate_draft(&exempted.approval())
         .expect("the endpoint answers");
@@ -1069,9 +1099,81 @@ fn with_nothing_imported_the_same_name_is_a_word_like_any_other() {
     let sent = endpoint.requests();
     assert_eq!(sent.len(), 1);
     assert!(
-        sent[0].body.contains(IMPORTED_NAME),
-        "a session that imported nothing has no name to placehold, so the assertion \
-         above is about the contact graph rather than about the shape scrub: {}",
+        !sent[0].body.contains(IMPORTED_NAME),
+        "a name reached the endpoint out of a body the user confirmed for its 正文: {}",
+        sent[0].body,
+    );
+    assert!(
+        sent[0].body.contains(NAME_PLACEHOLDER),
+        "the name was dropped rather than placeheld: {}",
+        sent[0].body,
+    );
+    // And the confirmation still bought what it was for: one name is placeheld,
+    // not the turn.
+    assert!(
+        sent[0].body.contains("场地"),
+        "the confirmed message did not travel, so the confirmation bought nothing: {}",
+        sent[0].body,
+    );
+    assert!(!sent[0].body.contains(THIRD_PARTY_PLACEHOLDER));
+    drop(keep);
+}
+
+/// The name with no shape at all, which is what the contact rows are for.
+///
+/// `李 雷` is now covered twice over — the identifier set holds it after an
+/// import, and the label shape catches it on a Soul that has imported nothing
+/// — so [`a_name_this_soul_imported_is_placeheld_even_in_a_body_the_user_confirmed`]
+/// no longer discriminates on its own: `NAME_PLACEHOLDER` would appear in
+/// those bytes for either reason. `Wang Xiao` is the case only one of the two
+/// rules can do anything about. It is the second display label this export
+/// seals, and a name in a script that spaces its words anyway is not
+/// distinguishable from an ordinary sentence by any shape — `soul-policy` says
+/// so where the shape is defined, and declines to guess. So a placeholder in
+/// the bytes below can only have come from the contact graph, which is what
+/// the test above needs somebody to still be proving.
+#[test]
+fn a_display_name_with_no_shape_is_placeheld_because_the_graph_learned_it() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut session = Session::open(&directory);
+
+    session
+        .commit_telegram(&telegram_export())
+        .expect("the export commits");
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let labels = stored_third_party_labels(&session);
+    assert!(
+        labels.iter().any(|label| label == LATIN_LABEL),
+        "the stored labels are {labels:?}, and the paste below names nobody in them",
+    );
+
+    let exempted = session
+        .prepare_draft(PASTE_NAMING_THE_LATIN_LABEL, Some(true))
+        .expect("a plan");
+    assert!(exempted.carries_exempted_original);
+    session
+        .generate_draft(&exempted.approval())
+        .expect("the endpoint answers");
+
+    let sent = endpoint.requests();
+    assert_eq!(sent.len(), 1, "one approval, one request");
+    assert!(
+        !sent[0].body.contains(LATIN_LABEL),
+        "the contact's name reached the endpoint: {}",
+        sent[0].body,
+    );
+    assert!(
+        sent[0].body.contains(NAME_PLACEHOLDER),
+        "the name was dropped rather than placeheld: {}",
+        sent[0].body,
+    );
+    assert!(
+        sent[0].body.contains("方案"),
+        "the confirmed message did not travel: {}",
         sent[0].body,
     );
     drop(keep);
