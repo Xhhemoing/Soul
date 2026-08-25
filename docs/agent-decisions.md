@@ -21,3 +21,4 @@
 | BD15 | bead 树与 Soul 审计 | bead 源码/清单**禁止**外网 URL 字面量（含 `$schema`、`repository`/`homepage`）；`crates/**/*.rs` 禁用 denylist 词 `score`/`得分`/`分数`/`评分`，置信度字段叫 `confidence` | `xtask e0-audit` 与 `denylist-audit` 跨界全树扫 |
 | BD16 | `apps/bead` 落地提交 | 同一提交更新根 `pnpm-lock.yaml`，`.gitignore` 加 `apps/bead/dist/` | `just ci` 用 `--frozen-lockfile` |
 | BD17 | e0 URL 与 Soul CI 触发 | 注释里的 URL 也算字面量（e0 不跳注释）；出处只进 `.md` 或 `fixtures/`/`tests/`。禁止从 bead ref 对 Soul `CI` 做 `workflow_dispatch` | F5 `round1-cicd.md` I-4 / CI-6 |
+| BD18 | TS 与 rust 谁听谁 | **rust `bead-core` 仍是 oracle**（BD8）。`round1-algo-ts-review` 的 AT-1 不得改写成「以 TS/contract.md 重写 bead-core」。TS 对齐 `crates/bead-core/fixtures/parity` 与合同后的 rust 语义。AT-2（末格采样）在 TS 修 | 审查时 rust 尚未收合同补丁 `1880487` |
