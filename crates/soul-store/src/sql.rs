@@ -42,6 +42,10 @@ CREATE TABLE IF NOT EXISTS sealed_blobs (
     ciphertext     BLOB NOT NULL
 );
 CREATE INDEX IF NOT EXISTS sealed_blobs_by_key ON sealed_blobs (content_key_id);
+-- Which keys a row owns. A contact whose display name the export never gave
+-- has no label blob to name their content key, so this is the index a forget
+-- of that contact joins against.
+CREATE INDEX IF NOT EXISTS sealed_blobs_by_row ON sealed_blobs (row_id);
 
 CREATE TABLE IF NOT EXISTS events (
     event_id        TEXT PRIMARY KEY,

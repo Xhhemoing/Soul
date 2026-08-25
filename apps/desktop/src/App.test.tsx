@@ -134,7 +134,7 @@ describe("桌面壳", () => {
 
     expect(screen.queryByTestId("pending-owner")).toBeNull();
     expect(await screen.findByTestId("no-memories")).toBeVisible();
-    expect(screen.getByTestId("forget-notice")).toHaveTextContent("不写任何文件");
+    expect(screen.getByTestId("forget-notice")).toHaveTextContent("不可撤销");
   });
 
   it("研究预览页有内容了，不再是空路由", async () => {

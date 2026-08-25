@@ -269,6 +269,11 @@ export interface ImportPreview {
   /** Lines that tried to give instructions. Counted, stored, obeyed by none. */
   readonly messages_with_injection_markers: number;
   readonly owner_identified: boolean;
+  /**
+   * The literal `false`: no contact, event or evidence from this file was
+   * sealed. Not "the database is untouched" — a preview of a file with
+   * injection markers has already left an `injection.blocked` audit row.
+   */
   readonly writes_anything: false;
   readonly notice: string;
 }

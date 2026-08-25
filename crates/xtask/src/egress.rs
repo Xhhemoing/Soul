@@ -64,6 +64,10 @@ pub const EGRESS_GATEWAY: &str = "soul-egress";
 /// `soul.local` is a naming authority for JSON Schema `$id`s and is never
 /// resolved over the network. The loopback entries exist for the UI-to-core
 /// channel and for local model endpoints.
+///
+/// These are matched by [`is_allowed_url`], which anchors them at the host
+/// rather than at the leading characters. `http://localhost` is an entry
+/// here; `http://localhost.attacker.invalid` is not covered by it.
 pub const ALLOWED_URL_PREFIXES: &[&str] = &[
     "https://soul.local/schemas/",
     "http://127.0.0.1",
@@ -477,10 +481,7 @@ pub fn find_url_literals(file: &Path, text: &str) -> Vec<UrlHit> {
     let mut hits = Vec::new();
     for (index, line) in text.lines().enumerate() {
         for url in extract_urls(line) {
-            if ALLOWED_URL_PREFIXES
-                .iter()
-                .any(|prefix| url.starts_with(prefix))
-            {
+            if is_allowed_url(&url) {
                 continue;
             }
             hits.push(UrlHit {
@@ -491,6 +492,71 @@ pub fn find_url_literals(file: &Path, text: &str) -> Vec<UrlHit> {
         }
     }
     hits
+}
+
+/// Whether a URL literal is covered by [`ALLOWED_URL_PREFIXES`].
+///
+/// The entry has to match the URL's *host*, not merely its first characters.
+/// A leading-substring test reads `http://localhost.attacker.invalid` as
+/// loopback, because a host is allowed to carry the allowlisted one as a
+/// label: the real authority is `attacker.invalid` and it resolves wherever
+/// its DNS says. `soul-policy`'s `Origin::is_loopback` already draws the line
+/// at the whole name, and an audit that drew it somewhere looser would clear
+/// source that the runtime guard refuses — the opposite of what a structural
+/// check is for.
+///
+/// An entry that reaches past the authority (`https://soul.local/schemas/`)
+/// additionally has to be a prefix of the path, so it names one subtree of
+/// that host rather than the host.
+pub fn is_allowed_url(url: &str) -> bool {
+    ALLOWED_URL_PREFIXES
+        .iter()
+        .any(|allowed| allows(allowed, url))
+}
+
+fn allows(allowed: &str, url: &str) -> bool {
+    let (Some((allowed_scheme, allowed_rest)), Some((scheme, rest))) =
+        (allowed.split_once("://"), url.split_once("://"))
+    else {
+        return false;
+    };
+    if !scheme.eq_ignore_ascii_case(allowed_scheme) {
+        return false;
+    }
+
+    let (authority, _) = split_authority(rest);
+    let (allowed_authority, allowed_path) = split_authority(allowed_rest);
+
+    // Credentials hide the real host behind an `@`, so `localhost@evil.invalid`
+    // would otherwise pass as the allowlisted name. `Origin::parse` rejects
+    // them outright; here they are simply never covered.
+    if authority.contains('@') {
+        return false;
+    }
+    if !host_of(authority).eq_ignore_ascii_case(host_of(allowed_authority)) {
+        return false;
+    }
+
+    // Any port is fine for a host-only entry: the allowlist is about which
+    // machine is addressed, and a local endpoint's port is the user's choice.
+    allowed_path.is_empty() || url.starts_with(allowed)
+}
+
+/// Split `host[:port][/path…]` into the authority and what follows it.
+fn split_authority(after_scheme: &str) -> (&str, &str) {
+    match after_scheme.find(['/', '?', '#']) {
+        Some(end) => (&after_scheme[..end], &after_scheme[end..]),
+        None => (after_scheme, ""),
+    }
+}
+
+/// The host inside an authority, without its port and without the brackets an
+/// IPv6 literal is written in.
+fn host_of(authority: &str) -> &str {
+    match authority.strip_prefix('[') {
+        Some(inside) => inside.split(']').next().unwrap_or(inside),
+        None => authority.split(':').next().unwrap_or(authority),
+    }
 }
 
 /// Pull `http://…` and `https://…` runs out of a line.

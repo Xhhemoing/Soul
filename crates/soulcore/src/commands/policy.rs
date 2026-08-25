@@ -12,12 +12,12 @@
 //! be written twice by a caller that also audits.
 
 use soul_policy::audit::AuditContent;
-use soul_policy::e1::E1RequestPlan;
+use soul_policy::e1::{E1Purpose, E1RequestPlan};
 use soul_policy::hitl::{
     check_action, ActionKind, ActionRequest, ApprovedAction, CapabilityScope, CapabilityToken,
     HitlDenial, PlanHash, RequestOrigin, TokenIssuer,
 };
-use soul_policy::net_guard::{EgressConfig, EgressDenied, NetGuard, OriginError};
+use soul_policy::net_guard::{EgressConfig, EgressDenied, NetGuard, Origin, OriginError};
 use soul_policy::redactor::{KnownIdentifiers, OneShotExemption, RedactedBody, Redactor, Turn};
 use soul_policy::ReasonCode;
 use soul_schema::audit::{AuditAction, AuditDecision};
@@ -194,7 +194,28 @@ impl PolicySession {
         token_id: Uuid,
         now_ms: u64,
     ) -> Result<E1Outcome, E1Refusal> {
-        let plan = e1_plan(model, &body);
+        self.e1_generate_for(E1Purpose::Draft, model, body, token_id, now_ms)
+    }
+
+    /// The same, for a request that is asking for something other than a
+    /// draft.
+    ///
+    /// The purpose decides which of `soul-policy`'s instruction constants goes
+    /// in the system position and nothing else: the guard, the token and the
+    /// redacted body are the same on every purpose, so a new one cannot buy a
+    /// caller a socket it did not already have. It is a separate entry point
+    /// rather than a field on the session because the purpose belongs to one
+    /// request — a session that remembered it would send the summary
+    /// instruction on the next draft.
+    pub fn e1_generate_for(
+        &mut self,
+        purpose: E1Purpose,
+        model: &str,
+        body: RedactedBody,
+        token_id: Uuid,
+        now_ms: u64,
+    ) -> Result<E1Outcome, E1Refusal> {
+        let plan = e1_plan(model, self.guard.config().e1_endpoint(), &body);
         let request = ActionRequest::new(
             ActionKind::GenerateWithUserEndpoint.as_str(),
             RequestOrigin::User,
@@ -214,7 +235,9 @@ impl PolicySession {
         let class = permit.class();
 
         let carries_original = body.carries_exempted_original();
-        let response = soul_egress::send(&E1RequestPlan::chat_completions(permit, model, body))?;
+        let response = soul_egress::send(&E1RequestPlan::chat_completions_for(
+            purpose, permit, model, body,
+        ))?;
 
         Ok(E1Outcome {
             status: response.status,
@@ -229,14 +252,24 @@ impl PolicySession {
 
 /// What the user is approving when they approve a generation request.
 ///
-/// Counts and a model name, never the text. This is the value the plan hash is
-/// taken over, so an edit between approval and execution changes the hash and
-/// [`check_action`] refuses — which is only meaningful if the plan describes
-/// the request faithfully, hence the redaction counts being in it.
-pub fn e1_plan(model: &str, body: &RedactedBody) -> serde_json::Value {
+/// Counts, a model name and a destination, never the text. This is the value
+/// the plan hash is taken over, so an edit between approval and execution
+/// changes the hash and [`check_action`] refuses — which is only meaningful if
+/// the plan describes the request faithfully, hence the redaction counts being
+/// in it.
+///
+/// `target` is the origin the request would reach, and it is in here because
+/// `docs/SECURITY.md` says an E1 configuration change invalidates the plan
+/// hash. Without it a plan prepared against one address stays approvable after
+/// the 设置 page has been pointed at another, and the body the user read a
+/// description of goes somewhere they never approved. The hash is what leaves
+/// this function, so naming an origin here puts no address in a plan, an audit
+/// entry or a screen.
+pub fn e1_plan(model: &str, target: Option<&Origin>, body: &RedactedBody) -> serde_json::Value {
     serde_json::json!({
         "action": ActionKind::GenerateWithUserEndpoint.as_str(),
         "model": model,
+        "target": target.map(ToString::to_string),
         "third_party_turns": body.third_party_turns(),
         "placeheld_turns": body.placeheld_turns(),
         "carries_exempted_original": body.carries_exempted_original(),

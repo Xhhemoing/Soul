@@ -35,6 +35,7 @@ pub fn run_conformance<S: SoulStore>(mk: impl Fn() -> S) {
     the_graph_listings_see_everything_that_was_written(&mk);
     forget_preview_is_read_only_and_matches_execution(&mk);
     forget_destroys_the_key_and_orphans_derived_inference(&mk);
+    forgetting_a_nameless_contact_destroys_the_bodies_under_their_key(&mk);
     audit_survives_a_forget(&mk);
 }
 
@@ -321,6 +322,108 @@ fn forget_destroys_the_key_and_orphans_derived_inference<S: SoulStore>(mk: &impl
     );
 }
 
+/// A contact the file never named still owns the key their message bodies were
+/// sealed under.
+///
+/// Nothing on the contact row can hold that key: the reference there is the
+/// display label's, and there is no label — `soul-import-v1` has no field for
+/// one. The only record is the blob the importer seals against the contact's
+/// own row, so a forget has to reach the key through that. A backend that reads
+/// the label alone previews zeros, writes a receipt that reads as completed,
+/// and leaves every body that person wrote decryptable.
+fn forgetting_a_nameless_contact_destroys_the_bodies_under_their_key<S: SoulStore>(
+    mk: &impl Fn() -> S,
+) {
+    let mut store = mk();
+    let nameless = uuid7("60");
+    let their_key = uuid7("62");
+    let somebody_else = uuid7("61");
+    let somebody_elses_key = uuid7("63");
+
+    // What an import of a file with no display names writes: a contact row
+    // carrying no label, a blob anchoring the key to that row, and the bodies
+    // under the same key, addressed to the rows that carry them.
+    store.put_contact(contact(nameless)).expect("their row");
+    store
+        .seal(anchor(their_key, nameless))
+        .expect("anchor their key to their row");
+    let theirs = store
+        .seal(SealRequest::new(
+            their_key,
+            uuid7("64"),
+            "body_ref",
+            SealedSubject::ThirdParty,
+            THEIR_MESSAGE.as_bytes().to_vec(),
+        ))
+        .expect("seal what they wrote");
+
+    // A second nameless contact, so a forget that over-collects is visible.
+    store
+        .put_contact(contact(somebody_else))
+        .expect("another row");
+    store
+        .seal(anchor(somebody_elses_key, somebody_else))
+        .expect("anchor the other key");
+    let somebody_elses = store
+        .seal(SealRequest::new(
+            somebody_elses_key,
+            uuid7("65"),
+            "body_ref",
+            SealedSubject::ThirdParty,
+            SOMEBODY_ELSES_MESSAGE.as_bytes().to_vec(),
+        ))
+        .expect("seal what somebody else wrote");
+
+    let impact = store
+        .preview_impact(ForgetUnit::Contact(nameless))
+        .expect("preview");
+    assert_eq!(
+        impact.content_key_ids,
+        vec![their_key],
+        "the key their bodies are under is theirs, label or no label",
+    );
+    assert_eq!(impact.contacts_affected, 1, "one person, not both");
+    assert_eq!(
+        impact.sealed_blobs_destroyed, 2,
+        "the anchor and the one body sealed under the same key",
+    );
+
+    let receipt = store
+        .execute_forget(ForgetUnit::Contact(nameless))
+        .expect("forget them");
+    assert_eq!(receipt.impact, impact, "the receipt charges what it quoted");
+
+    assert!(
+        !store.has_content_key(their_key),
+        "the key the forget named must be gone",
+    );
+    assert!(
+        matches!(store.open(&theirs), Err(StoreError::ContentKeyDestroyed(_))),
+        "a body sealed under a forgotten contact's key must not open again",
+    );
+    assert_eq!(
+        store
+            .get_contact(nameless)
+            .expect("row remains")
+            .forget_state,
+        ForgetState::Forgotten,
+        "the row stays as a tombstone, and it has to say it was forgotten",
+    );
+
+    assert_eq!(
+        String::from_utf8(store.open(&somebody_elses).expect("still readable")).expect("utf-8"),
+        SOMEBODY_ELSES_MESSAGE,
+        "forgetting one person must not touch what another wrote",
+    );
+    assert_eq!(
+        store
+            .get_contact(somebody_else)
+            .expect("the other row")
+            .forget_state,
+        ForgetState::Active,
+    );
+}
+
 fn audit_survives_a_forget<S: SoulStore>(mk: &impl Fn() -> S) {
     let mut store = mk();
     let memory_id = seed_memory_with_inference(&mut store);
@@ -353,6 +456,21 @@ fn audit_survives_a_forget<S: SoulStore>(mk: &impl Fn() -> S) {
 // ---------------------------------------------------------------- setup ---
 
 const SUMMARY_TEXT: &str = "第一次去北京，站台上风很大";
+const THEIR_MESSAGE: &str = "明天上午十点在公司门口见";
+const SOMEBODY_ELSES_MESSAGE: &str = "这周先把方案定下来";
+
+/// The blob an import writes when the file gives a contact no display name: it
+/// exists to be found by `row_id`, not to be read, so the plaintext is the
+/// contact id the row already carries in the clear.
+fn anchor(content_key_id: Uuid, contact_id: Uuid) -> SealRequest {
+    SealRequest::new(
+        content_key_id,
+        contact_id,
+        "content_key_anchor",
+        SealedSubject::ThirdParty,
+        contact_id.as_bytes().to_vec(),
+    )
+}
 
 /// One memory with sealed prose, one piece of evidence it cites, and one
 /// inference resting on that evidence.

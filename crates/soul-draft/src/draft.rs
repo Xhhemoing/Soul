@@ -119,6 +119,12 @@ impl Degradation {
             ReplyDefect::NotJson | ReplyDefect::NoMessage => Degradation::ReplyUnreadable,
             ReplyDefect::Empty => Degradation::ReplyEmpty,
             ReplyDefect::Clinical(_) => Degradation::ReplyClinical,
+            // Drafting asks for prose rather than for something made out of
+            // material Soul supplied, so it never calls
+            // `reply::read_grounded_in` and this cannot arrive here. It is
+            // mapped rather than left unreachable: a panic in a degradation
+            // label would be a crash an endpoint could ask for.
+            ReplyDefect::Ungrounded => Degradation::ReplyUnreadable,
         }
     }
 }

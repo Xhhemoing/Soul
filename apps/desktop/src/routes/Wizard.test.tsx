@@ -79,9 +79,9 @@ describe("首次向导", () => {
 
   /**
    * The 已授权目录 note must not read as "点头之后 Soul 就能写文件了". Both halves
-   * have to hold on their own: nothing is read without authorization, and this
-   * version writes nothing even after it — the same read-only promise
-   * `READ_ONLY_NOTICE` makes on 文件整理.
+   * have to hold on their own: the scanner reads nothing without authorization,
+   * and this version writes nothing into a scanned directory even after it —
+   * the same read-only promise `READ_ONLY_NOTICE` makes on 文件整理.
    */
   it("授权目录那一行不会暗示点头之后就能写文件", () => {
     renderWizard();
@@ -89,8 +89,27 @@ describe("首次向导", () => {
     const note = screen.getByTestId("wizard-note-已授权目录");
     expect(note).toHaveTextContent("不看任何目录");
     expect(note).toHaveTextContent("只做只读扫描与计划预览");
-    expect(note).toHaveTextContent("不会写任何文件");
+    expect(note).toHaveTextContent("不会写、移动、重命名或删除被扫的任何文件");
     expect(note.textContent).not.toContain("没有你点头，Soul 不看任何目录，也不会写任何文件。");
+  });
+
+  /**
+   * Neither half may be said of Soul as a whole. Without a root on this list
+   * this build still reads the file the user picks on /import and still reads
+   * and writes its own config, keys and database — so an unqualified
+   * 「Soul 不看任何目录」/「不会写任何文件」 is false on the screen whose whole
+   * job is telling a first-run user what is off. The scanner is what the row
+   * counts and the scanner is what the sentence may promise about.
+   */
+  it("授权目录那一行把读与写都限定在目录扫描器上，并点名两个例外", () => {
+    renderWizard();
+
+    const note = screen.getByTestId("wizard-note-已授权目录");
+    expect(note).toHaveTextContent("Soul 的目录扫描不看任何目录");
+    expect(note).toHaveTextContent("导入页");
+    expect(note).toHaveTextContent("自己的配置与数据库");
+    expect(note.textContent).not.toContain("没有你点头，Soul 不看任何目录。");
+    expect(note.textContent).not.toContain("不会写任何文件");
   });
 
   /**
@@ -108,6 +127,51 @@ describe("首次向导", () => {
     expect(pitch).toHaveTextContent("模型端点");
     expect(pitch).toHaveTextContent("占位");
     expect(pitch.textContent).not.toContain("它只处理你交给它的东西，处理过程留在本机。");
+  });
+
+  /**
+   * The other direction of the same sentence, and the one a hostile reader
+   * would hold us to. 「发出去的内容会先占位」 was the third-party default
+   * stated of all E1 content, which this build does not do: the owner's
+   * profile brief goes in the draft request as written (`E1_PLAN_NOTICE`),
+   * the aggregate statistics behind 看这个人的摘要 go as written (the
+   * 只留在本机 line on 人脉图), and a turn the user confirms twice goes as
+   * written for that one turn. Placeheld is the default for other people's
+   * prose, and unconditional only for names and accounts. This screen is the
+   * last place a first-run user reads about locality, so it is the wording
+   * most worth pinning against quietly widening back into a promise.
+   */
+  it("欢迎那段不会把发到端点的东西全说成占位", () => {
+    renderWizard();
+
+    const pitch = screen.getByTestId("wizard-locality");
+    expect(pitch).toHaveTextContent("并不全是占位符");
+    expect(pitch).toHaveTextContent("你自己的档案摘要、本机从人脉图上算出的那组统计，都是按原样发出去的。");
+    expect(pitch).toHaveTextContent("默认占位的是别人说过的话");
+    expect(pitch).toHaveTextContent("那一条就按原文发，而且只这一次");
+    expect(pitch).toHaveTextContent("姓名与账号两种情况下都占位");
+    expect(pitch).toHaveTextContent("Soul 不会替你发出去");
+    expect(pitch.textContent).not.toContain(
+      "只有你以后自己填写的模型端点例外，发出去的内容会先占位。",
+    );
+  });
+
+  /**
+   * 「要用生成能力，得你自己填一个兼容 OpenAI 的地址」 is false about this
+   * build: 起草 produces a draft with no endpoint at all, off a local
+   * deterministic template, and 设置 says as much next to the same field. The
+   * row may say what the endpoint buys — the model-written version — and must
+   * not say that generating needs one.
+   */
+  it("端点那一行不会把本机模板起草说成也要先填地址", () => {
+    renderWizard();
+
+    const note = screen.getByTestId("wizard-note-语言模型端点");
+    expect(note).toHaveTextContent("不填也能起草");
+    expect(note).toHaveTextContent("本机的确定性语气模板");
+    expect(note).toHaveTextContent("才有模型写的那一版");
+    expect(note).toHaveTextContent("看这个人的摘要");
+    expect(note.textContent).not.toContain("要用生成能力，得你自己填一个兼容 OpenAI 的地址");
   });
 
   /**

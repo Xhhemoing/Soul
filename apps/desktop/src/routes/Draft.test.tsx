@@ -184,6 +184,16 @@ describe("起草页", () => {
     expect(core.callsTo("generate_draft")).toHaveLength(0);
 
     expect(screen.getByTestId("e1-notice")).toHaveTextContent(E1_PLAN_NOTICE);
+    // The notice describes the request body, and the list under it is not the
+    // request body: the counts, the plan hash and the preparation id stay on
+    // this machine, while the profile brief and the system instruction travel.
+    // A notice that calls the list below it the whole payload is false in both
+    // directions, so both halves are asserted on the rendered text.
+    const notice = screen.getByTestId("e1-notice");
+    expect(notice).not.toHaveTextContent("只有下面这些内容");
+    for (const named of ["模型", "系统指令", "档案摘要", "不在发出去的内容里"]) {
+      expect(notice).toHaveTextContent(named);
+    }
     expect(screen.getByTestId("e1-counts")).toHaveTextContent("别人的话 1 段");
     expect(screen.getByTestId("e1-counts")).toHaveTextContent("已占位 1 段");
     expect(screen.getByTestId("e1-exempted")).toHaveTextContent("没有任何一段按原文带上");

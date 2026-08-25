@@ -84,16 +84,30 @@ pub const MEMORY_TYPES: [MemoryType; 5] = [
 /// What forgetting means here, in the core's own words.
 ///
 /// It says destruction rather than deletion because that is what happens: the
-/// content key goes, the row stays as a tombstone, and nothing on disk is
-/// rewritten. Held on this side so the screen cannot soften it.
+/// content key goes and the row stays as a tombstone. Held on this side so the
+/// screen cannot soften it.
+///
+/// The middle sentence used to read 也不写任何文件, which was false of the one
+/// storage a forget cannot avoid: [`ForgetOps::execute_forget`] opens a
+/// transaction, deletes the content-key and sealed-blob rows, marks tombstones
+/// and orphans the inferences that cited them, and commits — and the service
+/// appends an audit record after it. Soul's own database and its journal are
+/// written every time. What the sentence can honestly promise is the scope:
+/// nothing outside Soul's data directory is touched.
 ///
 /// The last sentence is the second half of D15. PRODUCT_LOCK refuses to
 /// promise an SSD physical erase *and* requires the UI to write that honestly,
 /// so the limit travels with the notice instead of waiting for a screen to
-/// remember it: without it, "forgotten" reads as "the bits are gone".
+/// remember it: without it, "forgotten" reads as "the bits are gone". The two
+/// limits are different and both stay — one is which files change, the other
+/// is what stays behind in the blocks that already held the ciphertext.
+///
+/// [`ForgetOps::execute_forget`]: soul_store_api::forget::ForgetOps::execute_forget
 pub const FORGET_NOTICE: &str =
     "遗忘销毁的是这条记忆的内容密钥：正文从此打不开，行会留成一块墓碑，\
-    引用过它的推断会被标成失去依据。这一步不可撤销，也不写任何文件。\
+    引用过它的推断会被标成失去依据。这一步不可撤销。它不动 Soul 数据目录以外的\
+    任何文件，但 Soul 自己的加密库要写：密钥行和密文行被删掉，墓碑、失据标记和\
+    一条审计记录被写进去，数据库文件和它的日志都会跟着变。\
     这不是把磁盘块擦干净：SSD 上可能还留着旧密文，只是没有密钥再也打不开。";
 
 /// One memory in a list, with the prose left sealed.
