@@ -860,8 +860,10 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 工作分支 `cursor/goal1-build-audit-c441`（基线主干 `5309656`）。LOOP20 仍排队。不合 PR #7 / #10。
 
-1. **文件页空态（`1f52ca5`）。** `/files` 的 `no-roots` 不再写「授权之前，Soul 读不到你机器上的任何文件。」目录扫描才要授权；导入页用户自选文件与 Soul 自己的配置/库本来就在读。只动 `Files.tsx` / `Files.test.tsx`。`pnpm --filter @soul/desktop test` 14 文件 **162** 项（本机，核于 2026-08-25）。本机绿不是 hosted 绿。
-2. 两路 fable 与两路 gpt-sol 只读审计/探针仍在跑；结论进 `.agent_workspace/orchestrator-c441/round2/`，权威只落本节已闭合项。
+1. **文件页空态（`1f52ca5`）。** `/files` 的 `no-roots` 不再写「授权之前，Soul 读不到你机器上的任何文件。」目录扫描才要授权；导入页用户自选文件与 Soul 自己的配置/库本来就在读。只动 `Files.tsx` / `Files.test.tsx`。`COMMANDS` 仍 36。
+2. **起草 E1 确认文案（`24ea578`）。** `E1_PLAN_NOTICE` 改为点名真正进请求体的四样（模型名、固定系统指令、档案 brief、占位或单次豁免后的粘贴），并写明屏幕上的计数/哈希/准备 id **不**进 payload。TypeScript 双胞胎在 `fakeCore.ts`。本机：`soulcore` `draft_commands` / `session_e1` / `policy_commands` 绿；桌面 vitest 14 文件 162；`ipc_roundtrip` 51。本机绿不是 hosted 绿。
+3. **E1 计划绑定 origin（`d1b6457`，fmt `9daacc8`）。** `e1_plan` 把目标 origin 打进哈希；换端点后再用旧批准 → `PLAN_HASH_MISMATCH`，A/B 请求数均为 0。哈希以外的地址仍不上屏、不进审计。对 `SECURITY.md`「配置变更会使计划哈希失效」。
+4. fable-b 独立审计仍在跑。gpt-sol 其余 P1/P2（导入预览写审计、向导「任何文件」、遗忘「不写任何文件」、图摘要 payload 过窄、e0-audit 前缀、AC-21 观察 headless 而非 `soul.exe`）未在本轮闭合。
 
 ## 下一步
 
