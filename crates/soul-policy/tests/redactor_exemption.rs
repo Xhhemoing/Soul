@@ -200,6 +200,163 @@ fn an_exempted_turn_placeholds_a_display_label_nobody_registered() {
     assert!(redacted.carries_exempted_original());
 }
 
+/// The same name written the way a person writes it, with no space to see.
+///
+/// [`an_exempted_turn_placeholds_a_display_label_nobody_registered`] covers the
+/// spelling an export uses. This is the spelling everybody else uses: `李雷说…`
+/// is four Han characters in a row and the shape scrub above cannot see a
+/// boundary in it. What it can see is the position — a name stands in front of
+/// a verb of saying — and on a Soul that has imported nobody that is the only
+/// thing between the contact's name and the endpoint.
+///
+/// The placeholder has to be the name and not the clause: 场地 is what the
+/// user confirmed twice to send.
+#[test]
+fn an_exempted_turn_placeholds_a_name_written_in_front_of_a_verb_of_saying() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+    assert!(redactor.identifiers().is_empty());
+
+    let turn_id = Uuid::now_v7();
+    let turns = vec![Turn::new(
+        turn_id,
+        SealedSubject::ThirdParty,
+        "李雷说周五的场地他已经订好了，你直接过来就行",
+    )];
+    let exemption = ExemptionRequest::for_turn(turn_id)
+        .confirm(true)
+        .expect("the user confirmed twice");
+    let redacted = redactor.redact_for_e1_with_exemption(&turns, exemption);
+
+    assert!(
+        !redacted.as_str().contains(NAME),
+        "a name the graph never learned reached the body the user confirmed: {}",
+        redacted.as_str(),
+    );
+    assert_eq!(
+        redacted.as_str(),
+        format!("{NAME_PLACEHOLDER}说周五的场地他已经订好了，你直接过来就行"),
+        "the placeholder is supposed to be the name and nothing either side of it",
+    );
+    assert!(redacted.carries_exempted_original());
+}
+
+/// The label in the script that spaces every word, in the same position.
+///
+/// `Wang Xiao` has no spelling to recognize — two capitalized words are how
+/// English writes a good deal of a sentence — so the shape here is entirely
+/// the position, and it is the same position in both scripts: a verb of saying
+/// follows, whichever language the verb is in.
+#[test]
+fn an_exempted_turn_placeholds_a_latin_display_label_in_front_of_a_verb_of_saying() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+
+    for (paste, kept) in [
+        (
+            "Wang Xiao said Friday's venue is booked, just come straight over",
+            "venue is booked",
+        ),
+        ("Wang Xiao 说这周先把方案定下来，别拖到下周", "方案"),
+        ("Wang Xiao texted about the deposit this morning", "deposit"),
+    ] {
+        let turn_id = Uuid::now_v7();
+        let turns = vec![Turn::new(turn_id, SealedSubject::ThirdParty, paste)];
+        let exemption = ExemptionRequest::for_turn(turn_id)
+            .confirm(true)
+            .expect("the user confirmed twice");
+        let redacted = redactor.redact_for_e1_with_exemption(&turns, exemption);
+
+        assert!(
+            !redacted.as_str().contains("Wang Xiao"),
+            "a display label nobody registered travelled verbatim: {}",
+            redacted.as_str(),
+        );
+        assert!(
+            redacted.as_str().contains(NAME_PLACEHOLDER),
+            "the name was dropped rather than placeheld: {}",
+            redacted.as_str(),
+        );
+        assert!(
+            redacted.as_str().contains(kept),
+            "the message the user confirmed did not travel: {}",
+            redacted.as_str(),
+        );
+    }
+}
+
+/// What the two shapes together still cannot see, written down.
+///
+/// The screens promise 「姓名与账号两种情况下都占位」 without a condition, and
+/// on a Soul that has imported nobody these strings are the distance between
+/// that sentence and this file. Each one is a name that keeps its bytes: not
+/// because doing so is right, but because no rule here can tell it from prose,
+/// and a rule that tried would take away the message the user confirmed twice
+/// to send.
+///
+/// The test asserts the current answer so that the hole is a fact somebody has
+/// to change a test to move, rather than something to rediscover. What closes
+/// it is the contact graph — [`KnownIdentifiers`], which `soulcore` fills from
+/// the contact rows and which covers every line below the moment anything is
+/// imported — or a step the user sees before the request leaves.
+#[test]
+fn the_names_the_shapes_still_cannot_see_are_written_down_here() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+
+    for (paste, still_there) in [
+        // Not in front of a verb of saying: nothing marks it as a name.
+        ("周五的方案我下周交给李雷，你不用管", "李雷"),
+        // Not a surname on the list, which is how friends write a name.
+        ("小王说周五的场地他已经订好了", "小王"),
+        // A second name inside the same run of Han characters.
+        ("李雷说张伟明天也过来", "张伟"),
+        // A Latin label anywhere but in front of the verb.
+        ("The deposit is with Wang Xiao until Friday", "Wang Xiao"),
+    ] {
+        let turn_id = Uuid::now_v7();
+        let turns = vec![Turn::new(turn_id, SealedSubject::ThirdParty, paste)];
+        let exemption = ExemptionRequest::for_turn(turn_id)
+            .confirm(true)
+            .expect("confirmed");
+        let redacted = redactor.redact_for_e1_with_exemption(&turns, exemption);
+
+        assert!(
+            redacted.as_str().contains(still_there),
+            "`{still_there}` is now placeheld, which is better than this test \
+             describes — move the case up into the tests above: {}",
+            redacted.as_str(),
+        );
+    }
+
+    // And the same names, once anything at all has been imported.
+    let knowing = Redactor::new(
+        KnownIdentifiers::new()
+            .with_name("李雷")
+            .with_name("小王")
+            .with_name("张伟")
+            .with_name("Wang Xiao"),
+    );
+    for paste in [
+        "周五的方案我下周交给李雷，你不用管",
+        "小王说周五的场地他已经订好了",
+        "李雷说张伟明天也过来",
+        "The deposit is with Wang Xiao until Friday",
+    ] {
+        let turn_id = Uuid::now_v7();
+        let turns = vec![Turn::new(turn_id, SealedSubject::ThirdParty, paste)];
+        let exemption = ExemptionRequest::for_turn(turn_id)
+            .confirm(true)
+            .expect("confirmed");
+        let redacted = knowing.redact_for_e1_with_exemption(&turns, exemption);
+
+        for name in ["李雷", "小王", "张伟", "Wang Xiao"] {
+            assert!(
+                !redacted.as_str().contains(name),
+                "the contact graph is what covers these, and it did not: {}",
+                redacted.as_str(),
+            );
+        }
+    }
+}
+
 /// The placeholder is one name, not a licence to redact the sentence.
 ///
 /// The rule is a shape, and a shape that fired on ordinary prose would take
@@ -222,6 +379,14 @@ fn the_label_shape_leaves_the_prose_the_exemption_was_for_alone() {
         "下午 3 点，第 2 会议室，预算 45000",
         // A single group is a word, not a label.
         "他在 café 里等了很久",
+        // An adverb standing where a name stands. 于 and 马 are surnames and
+        // 说 is a verb of saying, so both signals the attribution shape reads
+        // are present and the answer is still no.
+        "于是说好了周五在会议室碰头",
+        "马上说定，我这边没问题",
+        // The user's own name in front of the same verb: one capitalized word
+        // is not a display label, and the owner is not the third party.
+        "Roy said the venue is booked already",
     ] {
         let turn_id = Uuid::now_v7();
         let turns = vec![Turn::new(turn_id, SealedSubject::ThirdParty, intact)];
