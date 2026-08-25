@@ -7,13 +7,29 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 ## Current round
 
-**ROUND 2** — land the T4D port and non-overlapping product-path fixes. Round 1 scan is closed.
+**ROUND 3** — Fable-review the T4D port, then land graph-correction UI, prediction thin slice, wizard refusal shape, first-run key-blob race.
 
 | Field | Value |
 |---|---|
-| Current task | One Opus owner ports T4D/G1+/G2/G3/A2 from PR #7 onto this FF'd line; parallel Opus owners fix forget page-level CK destruction, wizard error shape, E1 plan-hash vs endpoint |
+| Current task | Fable review of merged T4D; Opus owners for SOUL-7A (graph UI), AD-9 prediction copy+renderer, wizard `SessionRefusal` shape, `keys.dpapi` create_new race |
 | Parent model | product/account setting (not a Task slug) |
-| Hosted CI | `BLOCKED` — billing/spending; workflow auto-push still only `main` + `cursor/soul-goal1-7b1c` (not widened: would waste minutes on docs). Local `just ci` is the gate. |
+| Hosted CI | `BLOCKED` — billing/spending |
+
+## ROUND 2 record
+
+| Field | Value |
+|---|---|
+| ROUND | 2 |
+| 子代理任务 | 10× Fable (c441 delta, redactor, fileplan revoke, COPY_ZH draft, graph UX spec, intake receipt spec, research isolation, independent overlap check; G4/collect/policy-ipc Fable+Opus hit async cap) + 2× Opus (T4D port, store-forget) |
+| 发现问题 | c441 already closed E1 origin-in-hash; remaining: wizard error shape, key-blob race, consent lock vs egress, name spelling variants, graph UI for correction, prediction sentences |
+| 修复问题 | T4D/G1+/G2/G3/A2 ported from PR #7 (not merged); forget `secure_delete`+checkpoint+destroyed-id ledger |
+| 测试结果 | Opus T4D: `just ci` green (vitest 14/172). Parent post-merge: `cargo test -p soul-graph -p soul-store -p soul-profile` all green (T4D product/parity/correction + forget ledger) |
+| Commit | merge `cursor/port-t4d-4a8e`, merge `cursor/store-forget-4a8e` |
+| PR | #15 updated; sub-branches pushed |
+| Merge状态 | Sub-branches merged into exclusive line. Exclusive → `main` still `BLOCKED`. PR #7 still must not be merged |
+| 下一轮重点 | Review T4D; graph correction IPC/UI; prediction projection; wizard refusal; key-blob race |
+
+Fileplan revoke: defer v0.1.1 (Fable #4). Collect consent persistence: product board, not a silent code change. E1 plan-hash: already on c441 — do not re-do.
 
 ## ROUND 1 record
 
