@@ -1007,7 +1007,7 @@ impl Session {
     /// The same for a Telegram Desktop `result.json`. AC-05.
     ///
     /// v0.1 does not open archives: the user points at the `result.json` that
-    /// Telegram's own *Export chat history → Machine-readable JSON* produced,
+    /// Telegram's own *Settings → Advanced → Export Telegram data* produced,
     /// and this reads the text of that one file.
     pub fn preview_telegram(&self, text: &str) -> Result<ImportPreview, SessionRefusal> {
         self.opened_store()?;
@@ -1652,8 +1652,9 @@ fn telegram_document(text: &str) -> Result<serde_json::Value, SessionRefusal> {
         reason_code: ReasonCode::Routine.as_str().to_owned(),
         explanation: format!(
             "{IMPORT_REFUSED_NOTICE}\n第 {} 行第 {} 列起，这个文件不是一段读得下去的 JSON。\
-             Telegram 的「导出聊天记录」要选 Machine-readable JSON，导出目录里的 result.json \
-             才是这一版认得的形状；压缩包和 HTML 导出都读不了。",
+             Telegram Desktop 要从 Settings → Advanced → Export Telegram data 导出，\
+             选 Machine-readable JSON；导出目录里的 result.json 才是这一版认得的形状。\
+             单聊的 Export chat history、压缩包和 HTML 导出都读不了。",
             error.line(),
             error.column(),
         ),

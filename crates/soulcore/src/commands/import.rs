@@ -51,7 +51,7 @@ pub fn read_soul_import_v1(text: &str) -> Result<StagedImport, ImportFailure> {
 ///
 /// The caller supplies the parsed JSON. This crate does not open files, and
 /// v0.1 does not sniff archives: the user points at the `result.json` that
-/// Telegram's own *Export chat history* produced.
+/// Telegram's own *Settings → Advanced → Export Telegram data* produced.
 pub fn read_telegram(document: &Value) -> Result<StagedImport, ImportFailure> {
     soul_import::telegram::parse(document)
 }

@@ -60,6 +60,7 @@ describe("导入页", () => {
 
     expect(screen.getByText(/soul-import-v1 JSONL/)).toBeVisible();
     expect(screen.getByText(/Telegram Desktop 的 result.json/)).toBeVisible();
+    expect(screen.getByText(/Export Telegram data/)).toBeVisible();
     expect(screen.getByText(/Machine-readable JSON/)).toBeVisible();
     expect(screen.getByLabelText("选择文件")).toHaveAttribute("type", "file");
   });
