@@ -4,27 +4,19 @@
 
 合同：本树 `docs/FORMAL_WORK_PROMPT.md` 的 AC-01..AC-26。`main` 上的 AC-28+ / 算法 crate **不在**这次测试里。
 
-## 今天就能开测（不依赖未推送的枝）
+## 今天就能开测
 
-1. `git fetch origin cursor/soul-goal1-7b1c && git switch --detach origin/cursor/soul-goal1-7b1c`（须 ≥ `478f19f`；origin 尖端曾是 `5309656`）。
-2. Linux：`bash scripts/first-formal-test-linux.sh`（或 `just ci-full`）。本机绿不是 hosted 绿。
-3. Billing 恢复后：对该 SHA `workflow_dispatch`（不要 empty-commit）。
-4. Win11 x64 非管理员：先 `pwsh -File scripts/first-formal-test-win11.ps1`（拒管理员、拒 `2e72ddf`），再按 `scripts/author-manual-checklist.md` 打 NSIS。不要用 `2e72ddf` 包。
-
-要测 BUILD audit 的诚实文案，才换成 `cursor/first-test-candidate-c441`（须已进 origin，或按下节 bundle 取枝）。
+1. 默认正式对象：`git fetch origin cursor/soul-goal1-7b1c && git switch --detach origin/cursor/soul-goal1-7b1c`（须 ≥ `478f19f`）。
+2. 要测 BUILD audit 诚实文案：`git fetch origin cursor/first-test-candidate-c441 && git switch --detach origin/cursor/first-test-candidate-c441`（与 `cursor/goal1-build-audit-c441` 同尖端，已在 origin）。
+3. Linux：`bash scripts/first-formal-test-linux.sh`（或 `just ci-full`）。本机绿不是 hosted 绿。
+4. Billing 恢复后：对该 SHA `workflow_dispatch`（不要 empty-commit）。
+5. Win11 x64 非管理员：先 `pwsh -File scripts/first-formal-test-win11.ps1`（拒管理员、拒 `2e72ddf`），再按 `scripts/author-manual-checklist.md` 打 NSIS。不要用 `2e72ddf` 包。
 
 ## 打哪一棵
 
-- **作者 Win11 / hosted 正式对象：** `cursor/soul-goal1-7b1c` 的 **`478f19f` 或之后**（origin 尖端曾是 `5309656`）。未推送到 origin 的 tip 不算正式对象。
-- **本机已准备的候选栈：** `cursor/first-test-candidate-c441` = 主干快进 + BUILD audit。本机段 A 已绿（`.agent_workspace/orchestrator-c441/round4/segment-a-linux.txt`）。origin 推送仍 401 时，用同目录的 git bundle 取枝（见下）。
-- **离线取枝（本机令牌失效时）：** 仓库里已有 `origin/cursor/soul-goal1-7b1c`（`5309656`）的前提下：
-
-```bash
-git fetch /opt/cursor/artifacts/first-test-candidate.bundle HEAD:cursor/first-test-candidate-c441
-git switch cursor/first-test-candidate-c441
-```
-
-`git bundle verify` 必须先通过。凭据恢复后仍应 `git push -u origin cursor/first-test-candidate-c441`，未进 origin 的 tip 不能当作者 Win11 正式对象。
+- **默认正式对象：** `cursor/soul-goal1-7b1c` 的 **`478f19f` 或之后**。
+- **已推送的候选栈：** `origin/cursor/first-test-candidate-c441` = 主干快进 + BUILD audit。本机段 A 已绿（`.agent_workspace/orchestrator-c441/round4/segment-a-linux.txt`）。
+- **离线备份：** `/opt/cursor/artifacts/first-test-candidate.bundle`（基于 `5309656`）。有 origin 时不必用。
 - **不要**用 `2e72ddf` 的 `windows-binaries`：那次 NSIS 把程序装进数据目录，卸载会碰到 `keys.dpapi`。
 - 合并是否安全：`bash scripts/branch-disposition.sh`（`--merge` 默认拒绝 #4 / #7 / `main` / 有冲突的 closeout）。自检：`bash scripts/branch-disposition.selftest.sh`。
 
