@@ -237,6 +237,9 @@ function Preview({ preview, busy, onCommit, onAbandon }: PreviewProps): React.JS
               ? "到这一步，这个文件里的人、会话、消息一条都没有写进库里。"
               : "到这一步，这个文件里的人、会话、消息一条都没有写进库里；但上面数出来的那几条已经在审计链上留下了一行「挡下了注入」，你现在换一个文件，那一行也还在。"}
         </li>
+        <li data-testid="preview-reimport">
+          这一版不记得「这个文件我导过了」：同一份文件再导一次，人不会重复，但里面的往来记录会再写一遍，人脉图上的往来次数和关系强度也会跟着涨。
+        </li>
       </ul>
       <div className="switch-row">
         <button
@@ -262,7 +265,16 @@ interface ReceiptProps {
   readonly receipt: ImportReceipt;
 }
 
-/** What the import wrote, in the same currency the preview quoted: counts. */
+/**
+ * What the import wrote, in the same currency the preview quoted: counts.
+ *
+ * The re-import line is here as well as on the preview because this is the
+ * screen a user is on when they wonder whether the last attempt went through.
+ * v0.1 keeps no external-id index, so committing the same export twice writes
+ * its events twice and the graph counts every duplicate as a real interaction:
+ * contacts match by identifier digest and do not clone, tie strength does.
+ * Saying so is the whole of it — nothing here deduplicates.
+ */
 function Receipt({ receipt }: ReceiptProps): React.JSX.Element {
   return (
     <section className="panel" aria-labelledby="import-receipt-heading">
@@ -284,6 +296,9 @@ function Receipt({ receipt }: ReceiptProps): React.JSX.Element {
           {receipt.messages_with_injection_markers === 0
             ? "没有哪一条消息写成了命令的样子。"
             : `有 ${receipt.messages_with_injection_markers} 条写成了命令的样子，已经当材料存下来，没有被执行。`}
+        </li>
+        <li data-testid="receipt-reimport">
+          这一版不记得哪份文件导过：把同一份文件再导一遍，人会对上不会重复，但上面这些往来记录和证据会再写一遍，人脉图的往来次数和关系强度也会跟着涨。
         </li>
       </ul>
       <p className="badge" data-testid="receipt-notice">

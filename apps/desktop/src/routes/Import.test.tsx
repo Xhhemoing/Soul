@@ -156,6 +156,28 @@ describe("导入页", () => {
     expect(await screen.findByTestId("receipt-injection")).toHaveTextContent("没有被执行");
   });
 
+  /**
+   * v0.1 keeps no external-id index, so the same export committed twice writes
+   * its events twice and the graph counts every duplicate as a real
+   * interaction — a tie can cross a band on duplicate evidence alone. The
+   * scoping decision stands; what may not stand is a screen that never says
+   * so. Both the screen before the decision and the screen after it warn.
+   */
+  it("预览和回执都写明同一份文件再导一次会把往来记录再写一遍", async () => {
+    const { user } = await pick(JSONL, "valid_basic.jsonl");
+
+    const before = await screen.findByTestId("preview-reimport");
+    expect(before).toHaveTextContent("同一份文件再导一次");
+    expect(before).toHaveTextContent("往来次数和关系强度");
+
+    await user.click(screen.getByRole("button", { name: "确认导入" }));
+
+    const after = await screen.findByTestId("receipt-reimport");
+    expect(after).toHaveTextContent("再导一遍");
+    expect(after).toHaveTextContent("人会对上不会重复");
+    expect(after).toHaveTextContent("往来次数和关系强度");
+  });
+
   it("挑 Telegram 的时候走的是 Telegram 那条命令", async () => {
     const core = installFakeCore();
     const user = userEvent.setup();
