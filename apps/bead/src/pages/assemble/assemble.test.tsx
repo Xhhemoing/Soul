@@ -237,6 +237,38 @@ describe("计时（T-ASM-13 / D-ASM-8）", () => {
   });
 });
 
+describe("写盘时刻（§3.2 / D-ASM-8）", () => {
+  it("秒针不落盘，卸载与 pagehide 才把用时刷进游标", async () => {
+    vi.useFakeTimers();
+    const seeded = project();
+    const { repository, router } = renderApp({
+      route: `/assemble/${seeded.id}`,
+      seed: { projects: [seeded] },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(screen.getByTestId("assemble-clock")).toHaveTextContent("00:03");
+    // 每秒重写整包 localStorage 是无谓的：节拍不是写盘时刻。
+    expect((await repository.loadProgress())[0]).toMatchObject({ elapsedMs: 0, stepIndex: 0 });
+
+    await act(async () => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    expect((await repository.loadProgress())[0]).toMatchObject({ elapsedMs: 3000 });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+      await router.navigate("/workspace");
+    });
+    expect((await repository.loadProgress())[0]).toMatchObject({ elapsedMs: 5000 });
+  });
+});
+
 describe("播报（T-ASM-14 / D-ASM-9）", () => {
   it("单色模式完成一个色号会播报，其余模式不播报", async () => {
     const seeded = project();
