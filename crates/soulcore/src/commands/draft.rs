@@ -88,6 +88,15 @@ pub use soul_policy::redactor::KnownIdentifiers as DraftIdentifiers;
 /// and `soul_draft::draft` are the two places to check this against: a model
 /// name, one fixed system instruction, and one user-material message holding
 /// the rendered [`ProfileBrief`] and the pasted turn.
+///
+/// 「姓名与账号两种情况下都占位」 is unconditional, and `soul_policy::redactor`
+/// is what makes it so rather than this sentence: a registered identifier is
+/// placeheld anywhere in the body, and the one turn a second confirmation
+/// exempts is held to the display-label shape on top of that, so the promise
+/// survives a Soul whose contact graph is empty. It did not always — a build
+/// where it quietly depended on having imported somebody is what
+/// `session_e1.rs::with_nothing_imported_the_same_name_is_placeheld_by_its_shape`
+/// pins shut.
 pub const E1_PLAN_NOTICE: &str = "确认之后，会发到你自己配置的模型端点的是这些：模型名、\
      一段固定的系统指令，以及一段引用材料——里面是你自己的档案摘要（口吻、口吻来源、\
      有证据支持的要点，和「工作假设，非临床结论」那句），加上你粘贴的这一段。\
@@ -508,6 +517,12 @@ pub fn draft_pasted(
 /// argument rather than state for the reason [`OneShotExemption`] is consumed
 /// by value — a later call that does not pass `true` is placeheld again,
 /// because there is nowhere for the permission to have been kept.
+///
+/// What it buys is the 正文 of one turn and nothing else. Names and accounts
+/// inside that turn are placeheld whether or not this is `true`, and whether
+/// or not the contact graph has ever heard of them: the redactor holds an
+/// exempted turn to the display-label shape as well as to the identifier set,
+/// so nothing on this path has to remember to ask for it.
 ///
 /// A paste is one third-party turn by construction, so there is exactly one
 /// id an exemption could name.
