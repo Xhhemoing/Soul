@@ -1463,6 +1463,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "soul-algo-tie"
+version = "0.3.0"
+
+[[package]]
+name = "soul-algo-trait"
+version = "0.3.0"
+
+[[package]]
 name = "soul-collect"
 version = "0.1.0"
 dependencies = [
