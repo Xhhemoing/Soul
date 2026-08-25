@@ -119,9 +119,24 @@ pub fn parse_with(schemas: &SchemaSet, text: &str) -> Result<StagedImport, Impor
                     ));
                     continue;
                 }
-                exported_at = Some(header.exported_at);
+                // The contract's `date-time` permits an offset, and everything
+                // downstream orders instants by comparing their stored
+                // strings. So the offset is applied here, once, rather than
+                // left for each reader to get right. See `instant::to_utc`.
+                match instant::to_utc(header.exported_at.as_str()) {
+                    Some(utc) => exported_at = Some(utc),
+                    None => defects.push(unreadable_instant(&locator, "exported_at")),
+                }
             }
-            Ok(ImportLine::Message(message)) => raw_messages.push((number, message)),
+            Ok(ImportLine::Message(mut message)) => {
+                match instant::to_utc(message.occurred_at.as_str()) {
+                    Some(utc) => {
+                        message.occurred_at = Timestamp::new(utc);
+                        raw_messages.push((number, message));
+                    }
+                    None => defects.push(unreadable_instant(&locator, "occurred_at")),
+                }
+            }
             Err(_) => {
                 // The schema accepted the line and the model did not, which
                 // means the two have drifted apart. The deserializer's own
@@ -148,8 +163,14 @@ pub fn parse_with(schemas: &SchemaSet, text: &str) -> Result<StagedImport, Impor
     }
 
     // Every sender that ever wrote with `sender_scope: self` is the user. A
-    // file may use more than one identifier for them, and all of them belong
-    // to the same contact.
+    // file may use more than one identifier for them — an old account, a
+    // second device — and all of them belong to the same contact. Which is
+    // why the fold has to survive having already seen the second identifier:
+    // the file does not say the two are one person until the later line
+    // arrives, so by then both have been observed. `ParticipantIndex::alias`
+    // merges rather than skipping for exactly this reason. Two participants
+    // marked as the user means two contacts of class `self` in the store, and
+    // that makes every graph rebuild after this import fail, permanently.
     let mut owner_handle: Option<ParticipantHandle> = None;
     for (_, message) in &raw_messages {
         let handle = ParticipantHandle::platform_uid(message.sender_id.clone());
@@ -182,10 +203,26 @@ pub fn parse_with(schemas: &SchemaSet, text: &str) -> Result<StagedImport, Impor
 
     Ok(StagedImport {
         source: SOURCE,
-        exported_at: exported_at.map(|value| Timestamp::new(value.as_str().to_owned())),
+        exported_at: exported_at.map(Timestamp::new),
         participants: participants.into_participants(),
         messages,
     })
+}
+
+/// A timestamp the contract allows and Soul cannot store.
+///
+/// Only reachable for an instant within a day of either end of the calendar,
+/// where applying the offset leaves a year of five digits or one before year
+/// zero. Refusing the file is the alternative to writing a row that would make
+/// every later graph rebuild fail on something nobody can edit.
+fn unreadable_instant(locator: &Locator, field: &'static str) -> Defect {
+    Defect::field(
+        locator.clone(),
+        field,
+        "names an instant that cannot be written in UTC: applying its offset leaves a year \
+         that does not fit in four digits"
+            .to_owned(),
+    )
 }
 
 /// What the contract asks of one line, said in the contract's own words.

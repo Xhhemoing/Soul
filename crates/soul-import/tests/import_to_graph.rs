@@ -317,6 +317,168 @@ fn an_owner_group_message_does_not_refresh_when_the_peers_were_last_heard_from()
     );
 }
 
+/// A file may write the user's own messages under more than one `sender_id`,
+/// and both are still one person.
+///
+/// The parser used to observe each of them first and only then try to fold the
+/// second into the first, which folded nothing: two participants marked as the
+/// user, two contacts of class `self`, and a store where `soul_graph::rebuild`
+/// fails on `AmbiguousOwner` from then on — permanently, because the rows are
+/// written and the user has no way to edit them. One contract-legal file was
+/// enough to do it.
+#[test]
+fn a_file_that_names_the_user_twice_still_leaves_one_owner() {
+    let lines = [
+        r#"{"type":"header","format":"soul-import-v1","version":1,"exported_at":"2026-08-24T08:00:00Z"}"#,
+        r#"{"type":"message","id":"s-0001","occurred_at":"2026-08-01T09:00:00Z","sender_scope":"self","conversation_id":"c-01","sender_id":"u-self","text":"房子的事我来办"}"#,
+        r#"{"type":"message","id":"s-0002","occurred_at":"2026-08-01T09:05:00Z","sender_scope":"third_party","conversation_id":"c-01","sender_id":"u-a","text":"辛苦了"}"#,
+        r#"{"type":"message","id":"s-0003","occurred_at":"2026-08-02T09:00:00Z","sender_scope":"self","conversation_id":"c-01","sender_id":"u-self-old","text":"我换了个号，还是我"}"#,
+        r#"{"type":"message","id":"s-0004","occurred_at":"2026-08-02T09:30:00Z","sender_scope":"third_party","conversation_id":"c-01","sender_id":"u-a","text":"记下了"}"#,
+    ];
+
+    let staged = soul_import::soul_import_v1::parse(&lines.join("\n")).expect("valid");
+    assert_eq!(
+        staged
+            .participants
+            .iter()
+            .filter(|participant| participant.is_owner)
+            .count(),
+        1,
+        "two identifiers for the user are one participant",
+    );
+    let owner_participant = staged.owner().expect("the file names the user");
+    assert_eq!(
+        owner_participant.handles.len(),
+        2,
+        "and that participant keeps both identifiers, so a re-import matches on either",
+    );
+    assert_eq!(staged.peers().count(), 1);
+
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = SqlCipherStore::open(
+        dir.path().join("soul.db"),
+        &TestKeyProvider::from_seed(SEED),
+    )
+    .expect("open");
+    let receipt = soul_import::commit::commit(&mut store, &staged).expect("commit");
+    let owner = receipt.self_contact_id.expect("the file names the user");
+
+    let contacts = store.list_contacts().expect("contacts");
+    assert_eq!(
+        contacts.len(),
+        2,
+        "the user and the one person they wrote to"
+    );
+    let selves: Vec<_> = contacts
+        .iter()
+        .filter(|contact| contact.contact_class == ContactClass::Owner)
+        .collect();
+    assert_eq!(selves.len(), 1, "one row of class `self`, not two");
+    assert_eq!(selves[0].contact_id, owner);
+    assert_eq!(
+        selves[0].identifiers.iter().flatten().count(),
+        2,
+        "both identifiers are digested onto the one row",
+    );
+
+    // The point of all of it: the graph still builds, and keeps building.
+    soul_graph::rebuild(&mut store).expect("rebuild");
+    soul_graph::rebuild(&mut store).expect("a second rebuild is not poisoned either");
+    let graph = soul_graph::load(&store).expect("load");
+    assert_eq!(graph.self_contact_id, Some(owner));
+    assert_eq!(graph.edges.len(), 1, "one peer, one edge");
+
+    let peer = contact_for(&store, "u-a");
+    let edges = graph.edges_for(peer);
+    assert_eq!(edges.len(), 1);
+    assert_eq!(
+        edges[0].tie_strength.outgoing_count, 2,
+        "both of the user's identifiers wrote to this person, and both count as the user",
+    );
+    assert_eq!(edges[0].tie_strength.incoming_count, 2);
+}
+
+/// `date-time` lets a file carry an offset, and the graph orders instants by
+/// comparing the strings it stored. An offset that survives into the store
+/// makes that comparison lie.
+///
+/// The pinned case: `2026-08-20T23:00:00+08:00` is 15:00Z and therefore
+/// *earlier* than `2026-08-20T16:00:00Z`, while as strings it sorts later,
+/// because `'2' > '1'`. Unnormalized, the peer's last contact reads as an
+/// evening that had not happened yet and their first contact reads as the
+/// wrong message.
+#[test]
+fn an_offset_timestamp_is_stored_as_the_instant_it_means() {
+    let lines = [
+        r#"{"type":"header","format":"soul-import-v1","version":1,"exported_at":"2026-08-24T08:00:00+08:00"}"#,
+        r#"{"type":"message","id":"z-0001","occurred_at":"2026-08-20T23:00:00+08:00","sender_scope":"third_party","conversation_id":"c-01","sender_id":"u-a","text":"晚上到家再说"}"#,
+        r#"{"type":"message","id":"z-0002","occurred_at":"2026-08-20T16:00:00Z","sender_scope":"self","conversation_id":"c-01","sender_id":"u-self","text":"好，我等你消息"}"#,
+        r#"{"type":"message","id":"z-0003","occurred_at":"2026-08-20T09:30:00-05:00","sender_scope":"third_party","conversation_id":"c-01","sender_id":"u-a","text":"我先出门"}"#,
+    ];
+
+    let staged = soul_import::soul_import_v1::parse(&lines.join("\n")).expect("valid");
+    let instants: Vec<&str> = staged
+        .messages
+        .iter()
+        .map(|message| message.occurred_at.as_str())
+        .collect();
+    assert_eq!(
+        instants,
+        vec![
+            "2026-08-20T15:00:00Z",
+            "2026-08-20T16:00:00Z",
+            "2026-08-20T14:30:00Z",
+        ],
+        "an offset is applied at parse, not carried into the store",
+    );
+    assert_eq!(
+        staged.exported_at.as_ref().map(|at| at.as_str()),
+        Some("2026-08-24T00:00:00Z"),
+        "the header's instant is normalized on the same terms",
+    );
+
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = SqlCipherStore::open(
+        dir.path().join("soul.db"),
+        &TestKeyProvider::from_seed(SEED),
+    )
+    .expect("open");
+    soul_import::commit::commit(&mut store, &staged).expect("commit");
+    soul_graph::rebuild(&mut store).expect("rebuild");
+    let graph = soul_graph::load(&store).expect("load");
+
+    let peer = contact_for(&store, "u-a");
+    let edges = graph.edges_for(peer);
+    assert_eq!(edges.len(), 1);
+    let strength = &edges[0].tie_strength;
+    assert_eq!(
+        strength.last_contact_utc.as_str(),
+        "2026-08-20T16:00:00Z",
+        "the latest instant is 16:00Z; `23:00+08:00` only looks later as a string",
+    );
+    assert_eq!(
+        strength.first_contact_utc.as_str(),
+        "2026-08-20T14:30:00Z",
+        "and the earliest is the one that was written five and a half hours behind UTC",
+    );
+    assert_eq!(
+        strength
+            .last_direct_contact_utc
+            .as_ref()
+            .map(|at| at.as_str()),
+        Some("2026-08-20T16:00:00Z"),
+    );
+    assert!(
+        [
+            strength.first_contact_utc.as_str(),
+            strength.last_contact_utc.as_str(),
+        ]
+        .iter()
+        .all(|instant| instant.ends_with('Z')),
+        "what the edge displays is UTC, which is what makes comparing the strings sound",
+    );
+}
+
 /// The contact the file called `handle`, by the digest the importer stored.
 fn contact_for(store: &SqlCipherStore, handle: &str) -> Uuid {
     let wanted = soul_import::ParticipantHandle::platform_uid(handle)

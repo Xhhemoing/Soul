@@ -10,7 +10,7 @@ use soul_import::model::ImportSource;
 use soul_import::redact::MIN_QUOTED_RUN;
 use soul_policy::injection::UntrustedText;
 use soul_store::{SqlCipherStore, TestKeyProvider};
-use soul_store_api::{AuditLog, EventStore, GraphStore, SoulStore};
+use soul_store_api::{AuditLog, EventStore, GraphStore, ProfileStore, SoulStore};
 use soul_testkit::fixtures;
 
 const SEED: &str = "wp06 import";
@@ -318,6 +318,99 @@ fn a_day_the_month_does_not_have_is_not_an_instant() {
     let staged = soul_import::soul_import_v1::parse(&line("2024-02-29T00:00:00Z"))
         .expect("2024 is a leap year");
     assert_eq!(staged.messages.len(), 1);
+}
+
+/// The last stop before the store: a staged import with two owners in it is
+/// refused, and refused before a row is written.
+///
+/// The parser folds the user's identifiers, so nothing it produces reaches
+/// this. The check is here anyway because the cost of getting it wrong is not
+/// a failed import — a commit is not a transaction, and two contacts of class
+/// `self` make every later `soul_graph::rebuild` fail on rows the user cannot
+/// reach. A refusal leaves the file intact and re-importable.
+#[test]
+fn two_owners_are_refused_before_anything_is_written() {
+    use soul_import::model::{ParticipantHandle, StagedImport, StagedMessage, StagedParticipant};
+
+    let owner = |value: &str| StagedParticipant {
+        handles: vec![ParticipantHandle::platform_uid(value)],
+        display_label: None,
+        is_owner: true,
+    };
+    let staged = StagedImport {
+        source: ImportSource::SoulImportV1,
+        exported_at: Some(soul_schema::common::Timestamp::new("2026-08-24T08:00:00Z")),
+        participants: vec![owner("u-self"), owner("u-self-old")],
+        messages: vec![StagedMessage {
+            external_id: "m-01".to_owned(),
+            occurred_at: soul_schema::common::Timestamp::new("2026-08-20T09:12:00Z"),
+            sender: ParticipantHandle::platform_uid("u-self"),
+            conversation_id: "c-01".to_owned(),
+            group: false,
+            scope: soul_schema::soul_import_v1::SenderScope::Owner,
+            body: UntrustedText::new("钥匙我下午三点交给房东"),
+        }],
+    };
+
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = open(dir.path());
+    let error = soul_import::commit::commit(&mut store, &staged).expect_err("two selves");
+    assert!(
+        matches!(
+            error,
+            soul_import::commit::ImportError::AmbiguousOwner { count: 2 },
+        ),
+        "{error}",
+    );
+
+    assert!(
+        store.list_contacts().expect("contacts").is_empty(),
+        "a refusal that had already written the first owner would be the bug it is guarding",
+    );
+    assert!(store
+        .list_events(&soul_store_api::EventFilter::default())
+        .expect("events")
+        .is_empty());
+    assert!(store.list_evidence().expect("evidence").is_empty());
+}
+
+/// An instant the contract allows and Soul cannot write down.
+///
+/// Normalizing to UTC moves an instant by up to a day, which at the ends of
+/// the calendar leaves a year of five digits or a negative one — a row every
+/// later reader would choke on. The file is refused, naming the field, rather
+/// than stored.
+#[test]
+fn an_offset_that_walks_off_the_calendar_is_refused_by_field() {
+    let line = |occurred_at: &str| {
+        format!(
+            concat!(
+                r#"{{"type":"header","format":"soul-import-v1","version":1,"#,
+                r#""exported_at":"2026-08-24T08:00:00Z"}}"#,
+                "\n",
+                r#"{{"type":"message","id":"m-1","occurred_at":"{}","sender_scope":"self","#,
+                r#""conversation_id":"c-1","sender_id":"u-self","text":"hi"}}"#,
+                "\n",
+            ),
+            occurred_at,
+        )
+    };
+
+    let failure = soul_import::soul_import_v1::parse(&line("9999-12-31T23:00:00-05:00"))
+        .expect_err("year 10000");
+    assert!(
+        failure.mentions_field("occurred_at"),
+        "the field that cannot be stored has to be named:\n{failure}",
+    );
+    assert_eq!(failure.locators(), vec![&Locator::Line(2)]);
+
+    // A day earlier is an ordinary instant and converts.
+    let staged = soul_import::soul_import_v1::parse(&line("9999-12-30T23:00:00-05:00"))
+        .expect("still on the calendar");
+    assert_eq!(
+        staged.messages[0].occurred_at.as_str(),
+        "9999-12-31T04:00:00Z",
+    );
 }
 
 /// A file with no header is refused rather than half-read.

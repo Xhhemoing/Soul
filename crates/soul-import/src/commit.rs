@@ -64,6 +64,15 @@ pub enum ImportError {
     #[error("the file names nobody as the account owner, so nothing can be attributed")]
     NoOwner,
 
+    /// More than one participant is the user. A parser is supposed to have
+    /// folded them into one; writing them would put two contacts of class
+    /// `self` in the store, which every later graph rebuild refuses.
+    #[error(
+        "the file resolves to {count} people who are all the account owner; \
+         the graph is an ego network and cannot be built around more than one"
+    )]
+    AmbiguousOwner { count: usize },
+
     /// A message names a sender the participant pass did not see. The parsers
     /// register every sender they read, so this means they disagree.
     #[error("message {index} names a sender that is not among the file's participants")]
@@ -129,6 +138,20 @@ where
 {
     if staged.owner().is_none() {
         return Err(ImportError::NoOwner);
+    }
+    // Before anything is written, because there is no way back afterwards: a
+    // commit is not a transaction, and two contacts of class `self` in the
+    // store make `soul_graph::rebuild` and `soul_graph::load` fail from then
+    // on, on rows the user has no way to edit. A parser that has folded its
+    // owner identifiers never reaches this; one that has not is refused with
+    // the file intact.
+    let owners = staged
+        .participants
+        .iter()
+        .filter(|participant| participant.is_owner)
+        .count();
+    if owners > 1 {
+        return Err(ImportError::AmbiguousOwner { count: owners });
     }
 
     let mut receipt = ImportReceipt {
