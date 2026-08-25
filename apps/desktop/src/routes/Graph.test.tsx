@@ -50,7 +50,18 @@ describe("人脉图页", () => {
     expect(ties).toHaveTextContent("发出 3");
     expect(ties).toHaveTextContent("一对一说过话");
     expect(screen.getByTestId("tie-evidence")).toHaveTextContent("依据 2 条证据");
-    expect(screen.getByTestId("local-only")).toHaveTextContent("只留在本机");
+
+    // 这一行既要说清节点和边留在本机，也要说清同一页上的「看这个人的摘要」是一条出网路径：
+    // 填了端点之后那一按就把这些计数 POST 出去，中间没有确认屏。
+    const localOnly = screen.getByTestId("local-only");
+    expect(localOnly).toHaveTextContent("只留在本机");
+    expect(localOnly).toHaveTextContent("研究预览");
+    expect(localOnly).toHaveTextContent("摘要");
+    expect(localOnly).toHaveTextContent(/往来次数|发给/);
+    expect(localOnly).not.toHaveTextContent("都不进任何出网请求");
+    expect(localOnly).not.toHaveTextContent(
+      "别人的数据只留在本机：这些节点和边都不进任何出网请求，也不进研究预览。",
+    );
   });
 
   /**

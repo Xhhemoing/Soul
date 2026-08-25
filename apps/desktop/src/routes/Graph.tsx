@@ -129,7 +129,7 @@ export function Graph(): React.JSX.Element {
           </ul>
           <p className="muted" data-testid="local-only">
             {graph.third_party_data_is_local_only
-              ? "别人的数据只留在本机：这些节点和边都不进任何出网请求，也不进研究预览。"
+              ? "别人的密封姓名和节点、边本身只留在本机，也不进研究预览。若你填了语言模型地址，按「看这个人的摘要」会把这一页上的往来次数发给那个地址（不带姓名，也不会再问你一次）。"
               : "有节点或边没有标成只留本机，请把这件事报告出来。"}
           </p>
         </section>
