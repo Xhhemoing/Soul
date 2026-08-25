@@ -25,7 +25,7 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 | 3 | Import idempotency: same `result.json` twice must not inflate bands |
 | 4 | Independent review of R4 landings (no mechanical re-scan of closed defects) |
 | 5 | Audit-chain crash consistency at `Session::append_audit` |
-| 6 | Hostile E1 remainder (control chars / diagnosis) after the 4 MiB cap |
+| 6 | Hostile E1 remainder (control chars / diagnosis) after the 4 MiB cap — **BLOCKED** by usage-policy filter; replaced by E1 reply screening #6b |
 | 7 | G1+ post-port: multi-venue same-pair, owner in two groups |
 | 8 | Bounded performance probe (synthetic import→rebuild→summary) or evidenced NO_HIGH_VALUE |
 | 9 | Windows-only / author-checklist desk-check (record BLOCKED if unrunnable) |
