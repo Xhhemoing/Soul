@@ -105,20 +105,28 @@ fn read_edge(stored: &SoulRelationship) -> GraphResult<TieEdge> {
         types.push(serde_json::from_value::<TieType>(value).map_err(|_| unreadable("types"))?);
     }
 
-    let raw_strength = stored
-        .tie_strength
-        .clone()
-        .ok_or_else(|| unreadable("tie_strength"))?;
-    let tie_strength: TieStrength =
-        serde_json::from_value(raw_strength).map_err(|_| unreadable("tie_strength"))?;
-
     Ok(TieEdge {
         relationship_id: stored.relationship_id,
         from_contact_id: stored.from_contact_id,
         to_contact_id: stored.to_contact_id,
         types,
-        tie_strength,
+        tie_strength: read_strength(stored)?,
         evidence_ids: stored.evidence_ids.clone(),
         egress_scope: stored.egress_scope.unwrap_or(EgressScope::LocalOnly),
     })
+}
+
+/// The strength object on a stored edge, in typed form.
+///
+/// Shared with [`crate::correct`], which has to read the band the user is
+/// overruling before it writes a new one. One reader, so a row this version
+/// cannot make sense of is refused in one place rather than in two that could
+/// drift apart.
+pub(crate) fn read_strength(stored: &SoulRelationship) -> GraphResult<TieStrength> {
+    let unreadable = || GraphError::UnreadableEdge {
+        relationship_id: stored.relationship_id,
+        field: "tie_strength",
+    };
+    let raw = stored.tie_strength.clone().ok_or_else(unreadable)?;
+    serde_json::from_value(raw).map_err(|_| unreadable())
 }
