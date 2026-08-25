@@ -1,0 +1,11 @@
+2026-08-25 UTC
+
+PASS (exit 0)
+Command: cargo test -p soul-graph -p soul-profile -p soul-draft -p soul-schema --offline
+Result: 139 passed; 0 failed; all doc-tests passed (0 tests).
+
+PASS (exit 0)
+Command: cargo run -p xtask -- schema-freeze --check
+Result: schema-freeze: docs/schemas matches the lock
+
+Scope note: the requested package list does not execute the soul-import or soulcore tests referenced in AC_MAP.md for AC-32 and AC-34.
