@@ -283,6 +283,11 @@ fn refs_within(subschema: &Value) -> Vec<String> {
     found
 }
 
+/// Closed vocabularies that happen to end in `_id` but are not row identifiers.
+/// `algorithm_id` is the T4D/T4 enum on `tie_strength` (D59); a uuid7 ref would
+/// let a third scoring rule sneak in as a new string.
+const NOT_ENTITY_IDS: &[&str] = &["algorithm_id"];
+
 /// No entity identifier may stay a bare `{"type": "string"}`.
 #[test]
 fn identifier_properties_reference_uuid7() {
@@ -292,6 +297,9 @@ fn identifier_properties_reference_uuid7() {
         walk(&document, "", &mut |path, key, child| {
             // Only look at `properties/<name>` positions.
             if !path.contains("/properties/") {
+                return;
+            }
+            if NOT_ENTITY_IDS.contains(&key) {
                 return;
             }
             let is_singular = key.ends_with("_id") && key != "schema_version";
