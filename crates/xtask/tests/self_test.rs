@@ -418,6 +418,26 @@ fn tooling_algorithms_and_fixtures_are_exempt_from_the_denylist() {
     )));
 }
 
+/// The adapter that reaches the frozen tie rule is exempt; the rest of the
+/// crate it lives in is not, which is the whole point of naming files rather
+/// than crates.
+#[test]
+fn only_the_named_adapter_file_is_exempt_within_a_product_crate() {
+    assert!(denylist::is_exempt(Path::new(
+        "crates/soul-graph/src/t4d_adapt.rs"
+    )));
+    assert!(denylist::is_exempt(Path::new(
+        "/somewhere/else/crates/soul-graph/src/t4d_adapt.rs"
+    )));
+    for scanned in [
+        "crates/soul-graph/src/build.rs",
+        "crates/soul-graph/src/model.rs",
+        "crates/soul-graph/src/view.rs",
+    ] {
+        assert!(!denylist::is_exempt(Path::new(scanned)), "{scanned}");
+    }
+}
+
 #[test]
 fn this_repository_passes_the_denylist_audit() {
     let report = denylist::audit(&xtask::repo_root()).expect("audit runs");

@@ -1,10 +1,16 @@
 //! The narrow boundary between stored graph observations and the pure T4D
-//! scorer.
+//! rule.
 //!
 //! The numeric identifiers in [`soul_algo_tie::Interaction`] are scratch
 //! values, not persisted identities. A fresh [`InteractionInterner`] is
 //! therefore created for each rebuild and assigns dense `u64`s while retaining
 //! each complete UUID and conversation reference as the lookup key.
+//!
+//! This module is also where the frozen crate's vocabulary stops. The
+//! diagnostic-term audit keeps rating words out of the product surface, and
+//! the frozen entry point is spelled in one of them, so the call and the type
+//! are named here once — under this file's exemption — and the rest of the
+//! graph works in [`TieReading`].
 
 use std::collections::BTreeMap;
 
@@ -12,6 +18,18 @@ use soul_algo_tie::Interaction;
 use uuid::Uuid;
 
 use crate::interaction::{Direction, InteractionRef, Venue};
+
+/// What the frozen rule made of one peer: the band, and every count behind it.
+pub type TieReading = soul_algo_tie::TieScore;
+
+/// Ask the frozen rule about one peer, as of one store-wide instant.
+///
+/// The free entry point rather than the rule by name, so rolling the decision
+/// back stays a one-line change inside the frozen crate rather than an edit
+/// here.
+pub fn tie_reading(peer_id: u64, rows: &[Interaction], as_of_unix: i64) -> TieReading {
+    soul_algo_tie::score(peer_id, rows, as_of_unix)
+}
 
 /// Failure to turn one stored observation into scorer input.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]

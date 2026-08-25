@@ -20,7 +20,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::Value;
 use uuid::Uuid;
 
-use soul_algo_tie::TieScore;
 use soul_policy::audit::{AuditContent, ReasonCode};
 use soul_schema::audit::{AuditAction, AuditCounts};
 use soul_schema::common::{NotAClinicalClaim, SchemaVersion, SupportedBand, Timestamp};
@@ -31,7 +30,7 @@ use soul_store_api::{GraphStore, ProfileStore};
 
 use crate::error::{GraphError, GraphResult};
 use crate::model::{TieStrength, TieType};
-use crate::t4d_adapt::InteractionInterner;
+use crate::t4d_adapt::{tie_reading, InteractionInterner, TieReading};
 use crate::{interaction, interaction::Venue};
 
 /// Prefix every statement this module writes shares, so a rebuild can find the
@@ -52,16 +51,16 @@ pub struct GraphBuild {
     pub audit: Vec<AuditContent>,
 }
 
-/// One peer's observations, gathered for the scorer.
+/// One peer's observations, gathered for the frozen rule.
 ///
-/// The scorer works in whole Unix seconds, but what an edge displays is the
+/// The rule works in whole Unix seconds, but what an edge displays is the
 /// instant as it was stored. Both are kept: the adapted rows go to
 /// `soul_algo_tie`, the original RFC 3339 strings go on the edge.
 #[derive(Debug, Clone)]
 struct PeerEvidence {
     /// The interned id every row of this peer carries. Scratch, never stored.
     interned_peer_id: u64,
-    /// This peer's adapted rows, in evidence order. Input to the scorer.
+    /// This peer's adapted rows, in evidence order. Input to the rule.
     rows: Vec<soul_algo_tie::Interaction>,
     evidence_ids: BTreeSet<Uuid>,
     /// RFC 3339 in UTC sorts lexicographically, which is why every writer in
@@ -122,41 +121,41 @@ fn supported_band(band: soul_algo_tie::Band) -> SupportedBand {
     }
 }
 
-/// The score, plus the display instants the scorer never saw, as one stored
+/// The rule's reading, plus the display instants it never saw, as one stored
 /// object.
 ///
-/// The counts all come from the score: they are the numbers the band was
+/// Every count comes from the reading: they are the numbers the band was
 /// decided on, and re-deriving any of them here would be a second opinion.
 fn tie_strength_of(
-    score: &TieScore,
+    reading: &TieReading,
     acc: &PeerEvidence,
     locked: Option<&TieStrength>,
 ) -> TieStrength {
-    let machine_band = supported_band(score.band);
+    let machine_band = supported_band(reading.band);
     let locked = locked.filter(|held| held.is_locked_by_user());
     TieStrength {
         band: match locked.and_then(|held| held.user_band) {
             Some(chosen) => chosen,
             None => machine_band,
         },
-        interaction_count: score.interaction_count,
-        outgoing_count: score.outgoing_count,
-        incoming_count: score.incoming_count,
-        conversation_count: score.conversation_count,
-        active_day_count: score.active_day_count,
+        interaction_count: reading.interaction_count,
+        outgoing_count: reading.outgoing_count,
+        incoming_count: reading.incoming_count,
+        conversation_count: reading.conversation_count,
+        active_day_count: reading.active_day_count,
         first_contact_utc: Timestamp::new(acc.first_contact.clone()),
         last_contact_utc: Timestamp::new(acc.last_contact.clone()),
-        direct_out_count: score.direct_out_count,
-        direct_in_count: score.direct_in_count,
-        group_out_count: score.group_out_count,
-        group_in_count: score.group_in_count,
-        direct_active_day_count: score.direct_active_day_count,
+        direct_out_count: reading.direct_out_count,
+        direct_in_count: reading.direct_in_count,
+        group_out_count: reading.group_out_count,
+        group_in_count: reading.group_in_count,
+        direct_active_day_count: reading.direct_active_day_count,
         last_direct_contact_utc: acc.last_direct_contact.clone().map(Timestamp::new),
-        silent_days: score.silent_days,
+        silent_days: reading.silent_days,
         as_of_utc: Some(Timestamp::new(soul_policy::clock::rfc3339_utc(
-            score.as_of_unix,
+            reading.as_of_unix,
         ))),
-        algorithm_id: score.algorithm_id.to_owned(),
+        algorithm_id: reading.algorithm_id.to_owned(),
         locked_by_user: locked.and_then(|held| held.locked_by_user),
         user_band: locked.and_then(|held| held.user_band),
         machine_band: Some(machine_band),
@@ -168,13 +167,13 @@ fn tie_strength_of(
 /// `Reciprocal` here means both sides wrote something, anywhere. The band is
 /// where the counting unit narrowed to one-to-one traffic; these two say what
 /// was seen, not how much it is worth.
-fn types_of(score: &TieScore) -> Vec<TieType> {
+fn types_of(reading: &TieReading) -> Vec<TieType> {
     vec![
-        match score.any_direct() {
+        match reading.any_direct() {
             true => TieType::Direct,
             false => TieType::GroupOnly,
         },
-        match score.is_reciprocal() {
+        match reading.is_reciprocal() {
             true => TieType::Reciprocal,
             false => TieType::OneSided,
         },
@@ -279,8 +278,8 @@ where
             .unwrap_or_else(Uuid::now_v7);
         let held = existing_edge.map(read_strength).transpose()?.flatten();
 
-        let score = soul_algo_tie::score(acc.interned_peer_id, &acc.rows, as_of_unix);
-        let strength = tie_strength_of(&score, acc, held.as_ref());
+        let reading = tie_reading(acc.interned_peer_id, &acc.rows, as_of_unix);
+        let strength = tie_strength_of(&reading, acc, held.as_ref());
         let evidence_ids: Vec<Uuid> = acc.evidence_ids.iter().copied().collect();
         let edge = SoulRelationship {
             schema_version: SchemaVersion,
@@ -288,7 +287,7 @@ where
             from_contact_id: owner_id,
             to_contact_id: *peer_id,
             types: Some(
-                types_of(&score)
+                types_of(&reading)
                     .into_iter()
                     .map(|kind| Value::String(kind.as_str().to_owned()))
                     .collect(),

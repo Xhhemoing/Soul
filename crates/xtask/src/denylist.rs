@@ -25,6 +25,16 @@ pub const DENYLIST_PATH: &str = "fixtures/denylist/diagnostic_terms.txt";
 pub const EXEMPT_PATH_SEGMENTS: &[&str] = &["fixtures", "tests", "target", "node_modules", ".git"];
 pub const EXEMPT_CRATES: &[&str] = &["xtask", "soul-algo-tie", "soul-algo-trait"];
 
+/// Single files that have to say a forbidden word to reach an exempt crate.
+///
+/// The frozen tie rule's entry point is spelled in one of the denied words, so
+/// a product crate that calls it must name it somewhere. Naming it in one
+/// adapter file, listed here, is what keeps the audit over everything else in
+/// that crate — the stored field names, the statement keys and the sentences a
+/// user reads all stay covered. Exempting a whole crate for one call would
+/// not.
+pub const EXEMPT_FILES: &[&str] = &["crates/soul-graph/src/t4d_adapt.rs"];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HitContext {
     StringLiteral,
@@ -144,6 +154,9 @@ pub fn audit(repo_root: &Path) -> Result<DenylistReport> {
 }
 
 pub fn is_exempt(path: &Path) -> bool {
+    if is_exempt_file(path) {
+        return true;
+    }
     let mut components = path.components().map(|c| c.as_os_str().to_string_lossy());
     let mut previous_was_crates = false;
     for component in components.by_ref() {
@@ -156,6 +169,19 @@ pub fn is_exempt(path: &Path) -> bool {
         previous_was_crates = component == "crates";
     }
     false
+}
+
+/// Whether this is one of the named adapter files, wherever the repository is
+/// checked out.
+fn is_exempt_file(path: &Path) -> bool {
+    let normalized = path
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<String>>()
+        .join("/");
+    EXEMPT_FILES
+        .iter()
+        .any(|exempt| normalized == *exempt || normalized.ends_with(&format!("/{exempt}")))
 }
 
 /// Find denied vocabulary in one Rust source file.

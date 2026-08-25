@@ -323,11 +323,15 @@ fn the_correction_row_is_evidence_the_edge_cites_and_resolves() {
     let correction =
         correct_tie(&mut store, relationship_id, SupportedBand::Moderate, NOW).expect("correct");
 
+    // Twice: a rebuild rewrites the edge whole, and the row explaining its band
+    // has to come back with it. An edge that kept the user's band and dropped
+    // the reason for it would be the black box constraint 10 rules out.
+    soul_graph::rebuild(&mut store).expect("rebuild");
     let graph = soul_graph::load(&store).expect("load");
     let edge = graph.edge(relationship_id).expect("edge");
     assert!(
         edge.evidence_ids.contains(&correction.evidence_id),
-        "the edge cites the row that changed its band",
+        "the edge cites the row that changed its band, rebuild or no rebuild",
     );
 
     let resolved = soul_graph::resolve_evidence(&store, edge).expect("resolve");
@@ -364,6 +368,101 @@ fn the_correction_row_is_evidence_the_edge_cites_and_resolves() {
         corrected_relationship(&released),
         Some(relationship_id),
         "a release is a correction too, and belongs to the same edge",
+    );
+}
+
+/// The machine's own reading is support for the machine's own statement, and a
+/// verdict overruling it is not.
+///
+/// The two lists come apart the moment a correction exists, and each one has to
+/// hold what actually backs the claim it is attached to. An inference citing the
+/// row that rejected it would be circular.
+#[test]
+fn the_inference_cites_the_observations_and_the_edge_cites_the_correction_too() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = open(dir.path());
+    let relationship_id = seeded(&mut store);
+    let correction =
+        correct_tie(&mut store, relationship_id, SupportedBand::Weak, NOW).expect("correct");
+    soul_graph::rebuild(&mut store).expect("rebuild");
+
+    let edge = store.get_relationship(relationship_id).expect("edge");
+    let inference = store
+        .list_inferences()
+        .expect("inferences")
+        .into_iter()
+        .find(|inference| {
+            inference.target["relationship_id"].as_str() == Some(&relationship_id.to_string())
+        })
+        .expect("tie inference");
+
+    assert!(edge.evidence_ids.contains(&correction.evidence_id));
+    assert!(
+        !inference.evidence_ids.contains(&correction.evidence_id),
+        "the machine's statement does not rest on the user rejecting it",
+    );
+    assert_eq!(
+        edge.evidence_ids.len(),
+        inference.evidence_ids.len() + 1,
+        "one correction, and otherwise the same rows",
+    );
+}
+
+/// A rebuilt edge always says what the counts made of it, corrected or not.
+///
+/// The spec drafted this as "all three lock fields absent while unlocked", and
+/// the implementation went the other way: `machine_band` is written on every
+/// rebuilt edge, so an interface never has to ask whether the absence of the
+/// field means "unlocked" or "written before this existed". The lock is
+/// `user_band`, and that one really is absent while unlocked. Pinned here
+/// because it is a decision, not an accident.
+#[test]
+fn an_unlocked_edge_still_records_what_the_counts_say() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = open(dir.path());
+    let relationship_id = seeded(&mut store);
+
+    let held = strength(&store, relationship_id);
+    assert!(!held.is_locked_by_user());
+    assert_eq!(held.locked_by_user, None);
+    assert_eq!(held.user_band, None);
+    assert_eq!(
+        held.machine_band,
+        Some(held.band),
+        "on an unlocked edge the effective band is the machine's, and it says so",
+    );
+}
+
+/// Two corner calls, decided rather than left to whoever reads the code next.
+///
+/// Correcting to the band the machine already chose still locks: the user said
+/// this band is theirs, and a later import that would have moved it must not.
+/// Releasing an edge nobody locked leaves the band alone and is still recorded,
+/// because the postcondition the user asked for — the counts decide this edge —
+/// is true afterwards either way.
+#[test]
+fn agreeing_with_the_machine_still_locks_and_releasing_twice_is_harmless() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = open(dir.path());
+    let relationship_id = seeded(&mut store);
+    let machine_band = strength(&store, relationship_id).band;
+
+    let agreement = correct_tie(&mut store, relationship_id, machine_band, NOW).expect("correct");
+    assert!(!agreement.overrides_machine());
+    assert!(
+        strength(&store, relationship_id).is_locked_by_user(),
+        "choosing the same word is still choosing it",
+    );
+
+    release_tie(&mut store, relationship_id, NOW).expect("first release");
+    let second = release_tie(&mut store, relationship_id, NOW).expect("second release");
+    let held = strength(&store, relationship_id);
+    assert!(!held.is_locked_by_user());
+    assert_eq!(held.band, machine_band);
+    assert_eq!(second.band, machine_band);
+    assert_eq!(
+        verdict(&store, relationship_id),
+        Some(UserVerdict::Unreviewed),
     );
 }
 
