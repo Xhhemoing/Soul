@@ -17,7 +17,7 @@ use soul_policy::hitl::{
     check_action, ActionKind, ActionRequest, ApprovedAction, CapabilityScope, CapabilityToken,
     HitlDenial, PlanHash, RequestOrigin, TokenIssuer,
 };
-use soul_policy::net_guard::{EgressConfig, EgressDenied, NetGuard, OriginError};
+use soul_policy::net_guard::{EgressConfig, EgressDenied, NetGuard, Origin, OriginError};
 use soul_policy::redactor::{KnownIdentifiers, OneShotExemption, RedactedBody, Redactor, Turn};
 use soul_policy::ReasonCode;
 use soul_schema::audit::{AuditAction, AuditDecision};
@@ -194,7 +194,7 @@ impl PolicySession {
         token_id: Uuid,
         now_ms: u64,
     ) -> Result<E1Outcome, E1Refusal> {
-        let plan = e1_plan(model, &body);
+        let plan = e1_plan(model, self.guard.config().e1_endpoint(), &body);
         let request = ActionRequest::new(
             ActionKind::GenerateWithUserEndpoint.as_str(),
             RequestOrigin::User,
@@ -229,14 +229,24 @@ impl PolicySession {
 
 /// What the user is approving when they approve a generation request.
 ///
-/// Counts and a model name, never the text. This is the value the plan hash is
-/// taken over, so an edit between approval and execution changes the hash and
-/// [`check_action`] refuses — which is only meaningful if the plan describes
-/// the request faithfully, hence the redaction counts being in it.
-pub fn e1_plan(model: &str, body: &RedactedBody) -> serde_json::Value {
+/// Counts, a model name and a destination, never the text. This is the value
+/// the plan hash is taken over, so an edit between approval and execution
+/// changes the hash and [`check_action`] refuses — which is only meaningful if
+/// the plan describes the request faithfully, hence the redaction counts being
+/// in it.
+///
+/// `target` is the origin the request would reach, and it is in here because
+/// `docs/SECURITY.md` says an E1 configuration change invalidates the plan
+/// hash. Without it a plan prepared against one address stays approvable after
+/// the 设置 page has been pointed at another, and the body the user read a
+/// description of goes somewhere they never approved. The hash is what leaves
+/// this function, so naming an origin here puts no address in a plan, an audit
+/// entry or a screen.
+pub fn e1_plan(model: &str, target: Option<&Origin>, body: &RedactedBody) -> serde_json::Value {
     serde_json::json!({
         "action": ActionKind::GenerateWithUserEndpoint.as_str(),
         "model": model,
+        "target": target.map(ToString::to_string),
         "third_party_turns": body.third_party_turns(),
         "placeheld_turns": body.placeheld_turns(),
         "carries_exempted_original": body.carries_exempted_original(),

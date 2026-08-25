@@ -872,6 +872,123 @@ fn the_same_approval_replayed_over_the_ipc_opens_one_socket_and_is_refused() {
     let _ = std::fs::remove_dir_all(&shell.directory);
 }
 
+/// `SECURITY.md`'s 配置变更会使计划哈希失效, over the real handler.
+///
+/// `soulcore`'s
+/// `session_e1.rs::an_endpoint_saved_after_the_plan_voids_the_approval_and_neither_address_hears_it`
+/// proves the refusal against a `Session` it holds. What only this side can
+/// show is the sequence a user can actually perform: 起草 prepares, 设置 saves
+/// another address, and the drafting panel — which is still holding the
+/// approval record the core handed it — presses 生成 again. Three commands, one
+/// session, Tauri's argument conversion in between; a shell that bound
+/// `set_user_endpoint` and `generate_draft` to different sessions would let the
+/// stale approval succeed here while every `soulcore` test stayed green.
+///
+/// Both addresses are real loopback servers, so the two zeroes are statements
+/// about sockets rather than about intent.
+#[test]
+fn an_endpoint_saved_after_the_plan_refuses_the_stale_approval_over_the_ipc() {
+    let described_against = MockLlm::start().expect("the endpoint the plan was described against");
+    let saved_afterwards = MockLlm::start().expect("the endpoint the user saved next");
+    saved_afterwards.set_reply(ENDPOINT_REPLY);
+    let shell = Shell::on(scratch());
+    let pasted = "周五的场地我已经订好了，你直接过来就行";
+
+    shell
+        .invoke(
+            "set_user_endpoint",
+            json!({ "url": described_against.base_url() }),
+        )
+        .expect("a loopback address is an address");
+    let plan = shell
+        .invoke("prepare_draft", json!({ "pasted": pasted }))
+        .expect("a paste can always be described");
+
+    // The record the confirmation panel is holding while the user walks over
+    // to 设置 and types a different address.
+    let stale = json!({
+        "approval": {
+            "preparation_id": plan["preparation_id"],
+            "plan_hash": plan["plan_hash"],
+        }
+    });
+    let configured = shell
+        .invoke(
+            "set_user_endpoint",
+            json!({ "url": saved_afterwards.base_url() }),
+        )
+        .expect("a loopback address is an address");
+    assert_eq!(configured["llm_endpoint_configured"], json!(true));
+
+    let refusal = shell
+        .invoke("generate_draft", stale)
+        .expect_err("the approval describes a request to the other address");
+    assert_eq!(
+        refusal["reason_code"],
+        json!("PLAN_HASH_MISMATCH"),
+        "unexpected: {refusal}",
+    );
+    assert!(
+        refusal["explanation"]
+            .as_str()
+            .is_some_and(|explanation| !explanation.is_empty()),
+        "the drafting panel is shown a blank refusal: {refusal}",
+    );
+    assert_eq!(
+        described_against.request_count(),
+        0,
+        "the address the plan named was contacted after it stopped being current",
+    );
+    assert_eq!(
+        saved_afterwards.request_count(),
+        0,
+        "a plan approved for another address was sent to this one",
+    );
+
+    // Invalidation, not breakage: preparing again against the address that is
+    // now current still generates, and goes there exactly once.
+    let fresh = shell
+        .invoke("prepare_draft", json!({ "pasted": pasted }))
+        .expect("a paste can always be described");
+    shell
+        .invoke(
+            "generate_draft",
+            json!({
+                "approval": {
+                    "preparation_id": fresh["preparation_id"],
+                    "plan_hash": fresh["plan_hash"],
+                }
+            }),
+        )
+        .expect("the endpoint the user configured answers");
+    assert_eq!(described_against.request_count(), 0);
+    assert_eq!(saved_afterwards.request_count(), 1);
+    assert_eq!(
+        saved_afterwards.requests()[0].path,
+        "/v1/chat/completions",
+    );
+
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the chain reads back");
+    assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
+    let played = format!("{refusal}{chain}");
+    for prose in [
+        pasted,
+        "场地",
+        "订好了",
+        &described_against.port().to_string(),
+        &saved_afterwards.port().to_string(),
+    ] {
+        assert!(
+            !played.contains(prose),
+            "the IPC answered with `{prose}`: {played}",
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
 /// The paste the exemption test sends.
 ///
 /// Somebody else's message, with a number and a handle in it that nobody

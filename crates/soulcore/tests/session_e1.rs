@@ -314,6 +314,115 @@ fn an_endpoint_that_redirects_elsewhere_is_refused_and_the_target_is_never_conta
     drop(keep);
 }
 
+/// `SECURITY.md`: an E1 configuration change invalidates the plan hash.
+///
+/// The reachable shape is mundane. A user prepares a generation, leaves the
+/// drafting page to fix the address in 设置, comes back and presses 生成 — and
+/// before the origin was part of what `e1_plan` hashes, the approval they were
+/// still holding described a request to the first address and sent it to the
+/// second. `NetGuard` is no defence here: it authorizes whatever is configured
+/// *now*, so the request is a well-formed E1 request to an origin the user
+/// never saw a plan for.
+///
+/// Both addresses are real loopback servers. The two zeroes are the test: the
+/// refusal has to happen before a token is minted and before a socket is
+/// opened, not after the body has already been offered to somebody.
+#[test]
+fn an_endpoint_saved_after_the_plan_voids_the_approval_and_neither_address_hears_it() {
+    let (keep, directory) = scratch();
+    let described_against = MockLlm::start().expect("the endpoint the plan was described against");
+    let saved_afterwards = MockLlm::start().expect("the endpoint the user saved next");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&described_against.base_url())
+        .expect("a loopback address is an address");
+
+    let plan = session
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
+        .expect("a paste can always be described");
+    let stale = plan.approval();
+
+    // 设置, mid-flight. Nothing is contacted by typing an address.
+    session
+        .set_user_endpoint(&saved_afterwards.base_url())
+        .expect("a loopback address is an address");
+
+    let refusal = session
+        .generate_draft(&stale)
+        .expect_err("the approval describes a request to somewhere else");
+    assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+    assert!(
+        !refusal.explanation.is_empty(),
+        "the drafting panel is shown a blank refusal",
+    );
+    assert_eq!(
+        described_against.request_count(),
+        0,
+        "the address the plan named was contacted after it stopped being current",
+    );
+    assert_eq!(
+        saved_afterwards.request_count(),
+        0,
+        "a plan approved for another address was sent to this one",
+    );
+
+    // AC-23: being refused is a thing that happened, and the chain says so
+    // without writing down the paste or either port number.
+    let chain = session.audit().expect("the store opened");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    let denied = chain.entries.last().expect("the refusal was recorded");
+    assert_eq!(denied.decision, "denied");
+    assert_eq!(denied.reason_code.as_deref(), Some("PLAN_HASH_MISMATCH"));
+    assert!(denied.follows_previous);
+    let played = serde_json::to_string(&chain).expect("serialize the chain");
+    for prose in [
+        "周五的场地",
+        "直接过来",
+        &described_against.port().to_string(),
+        &saved_afterwards.port().to_string(),
+    ] {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
+    }
+
+    // And this is invalidation, not breakage: preparing again against the
+    // address that is now current works, and goes there exactly once.
+    draft_through_the_endpoint(&mut session).expect("the current endpoint answers");
+    assert_eq!(described_against.request_count(), 0);
+    assert_eq!(saved_afterwards.request_count(), 1);
+    assert_eq!(saved_afterwards.requests()[0].path, "/v1/chat/completions");
+    drop(keep);
+}
+
+/// Taking the address away voids a plan described against it, too.
+///
+/// The sibling of the test above, and the one a user reaches by pressing 清除
+/// rather than by typing a second address. `E1_NOT_CONFIGURED` would also stop
+/// this, but it stops it one layer later — after a token has been minted
+/// against a plan that no longer describes anything — so the refusal asserted
+/// here is the earlier one.
+#[test]
+fn clearing_the_endpoint_after_the_plan_voids_the_approval_too() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the plan was described against");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let stale = session
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
+        .expect("a paste can always be described")
+        .approval();
+    session.clear_user_endpoint();
+
+    let refusal = session
+        .generate_draft(&stale)
+        .expect_err("the approval named an address this session no longer has");
+    assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+    assert_eq!(endpoint.request_count(), 0);
+    drop(keep);
+}
+
 /// AC-02 for the endpoint: the next launch is back to reaching nothing.
 ///
 /// Free, and that is the point of not persisting: `Session::open` builds its

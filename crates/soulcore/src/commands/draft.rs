@@ -209,7 +209,11 @@ impl DraftSession {
 
         let body = self.drafter.redact(&request, exemption)?;
         let facts = BodyFacts::of(&body);
-        let plan_hash = PlanHash::of(&e1_plan(self.drafter.model(), &body));
+        let plan_hash = PlanHash::of(&e1_plan(
+            self.drafter.model(),
+            policy.guard().config().e1_endpoint(),
+            &body,
+        ));
         let id = Uuid::now_v7();
 
         // A second prepare replaces the first, so an unapproved body cannot
@@ -246,7 +250,11 @@ impl DraftSession {
     /// * the preparation id catches a body that is a different body of the
     ///   same shape. The plan carries counts and no prose, on purpose, so two
     ///   pastes with one third-party turn each hash identically. Without the
-    ///   id, an approval the user gave for one message would send another.
+    ///   id, an approval the user gave for one message would send another;
+    /// * re-deriving the hash from the session as it is *now* catches a
+    ///   destination that changed while the plan was on screen. The origin is
+    ///   part of what was hashed, which is `SECURITY.md`'s 配置变更会使计划哈希
+    ///   失效 rather than a second rule beside it.
     ///
     /// The token is minted here because this call *is* the approval: the
     /// ledger's job is to make sure one click buys one request.
@@ -266,6 +274,26 @@ impl DraftSession {
             return Err(HitlDenial::PlanHashMismatch {
                 approved: approval.plan_hash.clone(),
                 current: pending.plan_hash.as_str().to_owned(),
+            }
+            .into());
+        }
+
+        // The plan names the origin it would reach, so a 设置 page pointed
+        // somewhere else between the two steps makes the hash the user
+        // approved stop describing this session. `SECURITY.md` asks for
+        // exactly that, and it is checked here rather than only inside
+        // `e1_generate` so that no token is minted and no address is opened:
+        // neither the endpoint the plan was described against nor the one that
+        // replaced it hears anything.
+        let current = PlanHash::of(&e1_plan(
+            self.drafter.model(),
+            policy.guard().config().e1_endpoint(),
+            &pending.body,
+        ));
+        if current != pending.plan_hash {
+            return Err(HitlDenial::PlanHashMismatch {
+                approved: pending.plan_hash.as_str().to_owned(),
+                current: current.as_str().to_owned(),
             }
             .into());
         }
@@ -642,7 +670,11 @@ impl Rephraser<'_> {
 
 impl ReplyGenerator for Rephraser<'_> {
     fn generate(&mut self, body: RedactedBody) -> Result<String, GenerationRefused> {
-        let plan = PlanHash::of(&e1_plan(&self.model, &body));
+        let plan = PlanHash::of(&e1_plan(
+            &self.model,
+            self.policy.guard().config().e1_endpoint(),
+            &body,
+        ));
         let scope = CapabilityScope::E1Generate;
         let token_id = match self.policy.issue_token(scope, plan, self.now_ms) {
             Ok(token) => token.token_id(),

@@ -9,6 +9,7 @@
 use soul_policy::hitl::{
     ActionKind, ActionRequest, CapabilityScope, HitlDenial, PlanHash, RequestOrigin, TokenError,
 };
+use soul_policy::net_guard::Origin;
 use soul_policy::redactor::{KnownIdentifiers, Turn, THIRD_PARTY_PLACEHOLDER};
 use soul_policy::{EgressClass, ReasonCode};
 use soul_schema::common::SealedSubject;
@@ -33,6 +34,13 @@ fn turns() -> Vec<Turn> {
     ]
 }
 
+/// The origin the plan is described against. It is part of the hash since
+/// `SECURITY.md`'s 配置变更会使计划哈希失效, so a plan built beside a session has
+/// to be built against the destination that session would actually reach.
+fn target(session: &PolicySession) -> Option<&Origin> {
+    session.guard().config().e1_endpoint()
+}
+
 fn session(endpoint: &MockLlm) -> PolicySession {
     PolicySession::with_user_endpoint(
         &endpoint.base_url(),
@@ -50,7 +58,7 @@ fn a_generation_needs_a_redaction_a_plan_and_a_token() {
     let body = session.redact(&turns());
     assert!(body.as_str().contains(THIRD_PARTY_PLACEHOLDER));
 
-    let plan_hash = PlanHash::of(&e1_plan(MODEL, &body));
+    let plan_hash = PlanHash::of(&e1_plan(MODEL, target(&session), &body));
     let token = session
         .issue_token(CapabilityScope::E1Generate, plan_hash.clone(), NOW_MS)
         .expect("a generation token");
@@ -93,7 +101,7 @@ fn the_same_token_cannot_drive_two_requests() {
     let token = session
         .issue_token(
             CapabilityScope::E1Generate,
-            PlanHash::of(&e1_plan(MODEL, &body)),
+            PlanHash::of(&e1_plan(MODEL, target(&session), &body)),
             NOW_MS,
         )
         .expect("a generation token");
@@ -126,7 +134,7 @@ fn a_plan_edited_after_approval_is_refused() {
     let token = session
         .issue_token(
             CapabilityScope::E1Generate,
-            PlanHash::of(&e1_plan(MODEL, &body)),
+            PlanHash::of(&e1_plan(MODEL, target(&session), &body)),
             NOW_MS,
         )
         .expect("a generation token");
@@ -138,6 +146,41 @@ fn a_plan_edited_after_approval_is_refused() {
 
     assert_eq!(refusal.reason_code(), ReasonCode::PlanHashMismatch);
     assert_eq!(endpoint.request_count(), 0);
+}
+
+/// The destination is part of the plan, so re-pointing the guard voids it.
+///
+/// `SECURITY.md` says an E1 configuration change invalidates the plan hash.
+/// Before the origin was hashed it did not: a token minted against one address
+/// stayed spendable after the 设置 page had been pointed at another, and the
+/// body the user approved a description of went to a server they never
+/// approved. Both mocks are real loopback servers, so the two counts are
+/// statements about sockets.
+#[test]
+fn re_pointing_the_endpoint_voids_a_token_minted_against_the_old_one() {
+    let first = MockLlm::start().expect("the endpoint the plan was described against");
+    let second = MockLlm::start().expect("the endpoint saved afterwards");
+    let mut session = session(&first);
+
+    let body = session.redact(&turns());
+    let token = session
+        .issue_token(
+            CapabilityScope::E1Generate,
+            PlanHash::of(&e1_plan(MODEL, target(&session), &body)),
+            NOW_MS,
+        )
+        .expect("a generation token");
+
+    session
+        .set_user_endpoint(&second.base_url())
+        .expect("a loopback address is an address");
+
+    let refusal = session
+        .e1_generate(MODEL, body, token.token_id(), NOW_MS)
+        .expect_err("the approved plan named the other address");
+    assert_eq!(refusal.reason_code(), ReasonCode::PlanHashMismatch);
+    assert_eq!(first.request_count(), 0, "the old address was contacted");
+    assert_eq!(second.request_count(), 0, "the new address was contacted");
 }
 
 /// v0.1 will not even mint a file-write token.
@@ -165,7 +208,7 @@ fn a_closed_session_contacts_nothing() {
     let token = session
         .issue_token(
             CapabilityScope::E1Generate,
-            PlanHash::of(&e1_plan(MODEL, &body)),
+            PlanHash::of(&e1_plan(MODEL, target(&session), &body)),
             NOW_MS,
         )
         .expect("a token can be issued; it just has nowhere to be spent");

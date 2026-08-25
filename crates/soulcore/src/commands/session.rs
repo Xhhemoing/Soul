@@ -835,10 +835,13 @@ impl Session {
     /// Nothing is contacted. `Origin::parse` reads a string and `NetGuard`
     /// holds the answer; the first packet still waits for the plan on the
     /// drafting screen and the approval in front of it. A preparation made
-    /// before the address changed would be approved against the address that
-    /// is here when the user presses 生成 — the plan is counts and a model
-    /// name, and never named a host — which is reachable only by leaving the
-    /// drafting page mid-flight and coming back to it.
+    /// before the address changed is *not* approvable afterwards: the origin
+    /// is one of the things `e1_plan` hashes, so the approval the user is
+    /// holding stops matching and `DraftSession::generate` answers
+    /// `PLAN_HASH_MISMATCH` without opening either address. That is
+    /// `SECURITY.md`'s 配置变更会使计划哈希失效, and the case it covers —
+    /// leaving the drafting page mid-flight, saving another endpoint, and
+    /// coming back to press 生成 — is reachable from the interface.
     ///
     /// What is stored in the configuration is the origin the guard ended up
     /// with rather than the string that was typed: a path, a query and a
