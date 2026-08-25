@@ -27,7 +27,7 @@
 | WP11 文件计划 | 完成。见下节。`/files` 已接 `PlanPreview`，仍然没有执行按钮（遗留 8 消除）。预览写 `file.plan` 审计是 WP09 第八段；拒绝与 `injection.blocked` 落链是第十段 |
 | WP13 安装 smoke / CI / SBOM / 壳接库 | 两段都完成。见下节。剩下的是 Windows 真机手动那七条 |
 | DPAPI（WP13 遗留） | 完成。见「DPAPI 完成情况」。`unsafe` 隔离在 `crates/soul-win-dpapi`。windows-latest 已跑过 `cfg(windows)` 往返、`dpapi_key_chain`、桌面 `one_store`（`one_session_hands_out_one_store` 过） |
-| v0.1 其余 WP | 无。Goal 1 代码门禁在 `2e72ddf` 上绿；HEAD 另有 NSIS Programs 目录、托盘文案钉死、导入/采集/E1/AC-13/语气与审计/第三人姓名占位/档案页再答/人事摘要走端点/拒绝落链/遗忘拒绝落链/摘要来源上屏，以及补证第二轮与第三轮（Telegram 拆段注入、批准过的生成过 IPC、AC-05 过 IPC、AC-13 过 IPC 的线）。hosted 五门尚未真正开跑。剩下的是 HEAD hosted 绿，以及作者 Win11 手动清单 |
+| v0.1 其余 WP | 无。Goal 1 代码门禁在 `2e72ddf` 上绿；HEAD 另有 NSIS Programs 目录、托盘文案钉死、导入/采集/E1/AC-13/语气与审计/第三人姓名占位/档案页再答/人事摘要走端点/拒绝落链/遗忘拒绝落链/摘要来源上屏，以及补证第二至第四轮（Telegram 拆段注入、批准过的生成过 IPC、AC-05 过 IPC、AC-13 过 IPC 的线、AC-11 的重定向过 IPC、问卷散文答案过 IPC）。hosted 五门尚未真正开跑。剩下的是 HEAD hosted 绿，以及作者 Win11 手动清单 |
 
 ## WP01 完成情况
 
@@ -788,6 +788,15 @@ PRODUCT_LOCK 对 E1 正文的说法有两半：默认占位是一半，**「二�
 
 落地内容：`apps/desktop/src-tauri/tests/ipc_roundtrip.rs`（两条测试加一个拼出来的 `[账号已占位]` 常量）。
 
+## 补证第四轮（本次：AC-11 的重定向与问卷散文答案过 IPC）
+
+两条都是测试，产品源码、schema、`COMMANDS`（仍 36）、`config.json` 与界面一个字节都没有动，也没有新 fixture。本机绿：`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --test ipc_roundtrip --test command_surface --test no_egress_path`（**45** / 6 / 3）。**hosted 没有跑过（已知最新一次产品空 run [32802641110](https://github.com/Xhhemoing/Soul/actions/runs/32802641110) 仍是 `85d1b1a` 上的空 runner），作者 Win11 手动那一半也没有；Goal 1 仍然不能关。**
+
+1. **AC-11 的重定向此前没有过过 `invoke_handler`。** 补证这一轮在 `session_e1.rs` 上加的那条直接持有 `Session`；用户手上的不是 `Session` 而是一块把回包渲染出来的起草面板，中间还隔着两条命令、Tauri 的批准记录转换，以及处理器把 `Result` 序列化成 JSON 的那一步——把 302 吞成一份空草稿、或者把理由码丢在路上，这三层里任何一层都做得到，而 `soulcore` 一条都不会红。新增 `an_endpoint_that_redirects_elsewhere_is_refused_over_the_ipc_and_the_target_is_never_contacted`：同一个 `Shell` 上 `set_user_endpoint` 指向第一台 `MockLlm`（填写不访问，两台 `request_count` 都是 0），`prepare_draft` 拿到占位 1 段的计划，回显批准之后 `generate_draft` **失败**，面板收到的 JSON 是 `reason_code: "E1_CROSS_ORIGIN_REDIRECT"` 加一句非空的 `explanation`。第一台收到恰好 1 次 `/v1/chat/completions`，**第二台 `request_count()` 是 0**；`config_snapshot` 过 IPC 读回来仍然是 `llm_endpoint_configured: true`（没有重试成一份草稿，会话也还指在原处）；`audit_chain` 过 IPC 仍然 verified，`denied` 那条（`egress.request` / `E1_CROSS_ORIGIN_REDIRECT`）`follows_previous` 为真，链与拒绝这两份回包里都搜不到「周五的场地」「直接过来」与重定向目标的端口号。
+2. **问卷过 IPC 时此前只答选择题。** `the_questionnaire_answers_and_leaves_a_profile_the_screen_can_correct` 送的两条都是从列表里挑的取值，所以「用户自己敲进去的那句话不会跑到屏幕上、也不会跑到链上」这件事在 IPC 这一侧一次都没有证过——而 `q.boundary.topics` 正是问卷上唯一会变成散文的那一种答案，也是唯一能被一个计数悄悄换回正文的那一种。现在这条测试多送一条 `{ "question_id": "q.boundary.topics", "given": "工作以外的事" }`（`answered` 从 2 变 3，`axes_known` 1 / `axes_unknown` 4 / `profile_is_empty` 假都不动），并且在收据之后接上 `audit_chain`：链 verified，`import.commit` 那条 `allowed`、`items` 等于收据上的 `answered`、`follows_previous` 为真，序列化后的整串里搜不到那句话；`profile_screen` 的回包里同样搜不到。既有的轴与语气断言一条没减。
+
+落地内容：`apps/desktop/src-tauri/tests/ipc_roundtrip.rs`（一条新测试，一条既有测试补一条散文答案与链断言）。
+
 ## Goal 1 门禁对照（`2e72ddf` / run 32754617268；HEAD hosted 未开跑）
 
 CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS Programs 目录、托盘文案钉死、导入 / 采集 / E1 产品面、AC-13 的二次确认、语气与审计落链、第三人显示名进脱敏器、档案页再答、人事摘要走端点、拒绝与文件名注入落链、遗忘拒绝落链、摘要来源上屏、Telegram 拆段注入与批准过的生成过 IPC，都还没有 hosted package/test 跑过（已知最新一次产品空 run [32802641110](https://github.com/Xhhemoing/Soul/actions/runs/32802641110) on `85d1b1a`）。作者手动那一半没有，所以 Goal 1 **还不能关**。
@@ -801,7 +810,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 | AC-06 / AC-08 | 图谱边与推断解引用；≥3 节点 | — |
 | AC-07 | 纠正锁 + 起草 prompt 用用户值。**产品这一侧也接上了**（WP09 第八段）：在这之前 `draft_pasted` / `prepare_pasted` 硬写 `ProfileBrief::neutral()`，档案页设的语气到不了任何写字的地方，AC-07 只有 crate 级证据。现在 `session_screens.rs` 断言 `Session::draft_pasted` 写出来的字随 `set_voice` 变（`热络` → `先谢谢你专门说一声。`，`克制` → `直接说重点。`），`session_e1.rs` 断言那台回环 mock 收到的字节里有 `【本机档案，供起草参考】` 与 `热络` | 真机上设一次语气再起草——作者清单第 10 节（可选，不是门禁项） |
 | AC-09 / AC-10 | `soul-collect` 假源：关=0；开≥1；撤销后 1s 无新事件。**壳这一侧也接上了**：`session_collect.rs` 过 `Session`、过真库（关=0 且采样次数也是 0；开≥1；撤销后 1s 不变；重开目录同意回到关；`config.json` 字节里搜不到 `collect` / `consent`）、`ipc_roundtrip.rs` 走真的 `invoke_handler`、`Collect.test.tsx` 断言屏幕上只有条数没有应用名 | 真机前台切换——作者清单 6。现在有两条路可走：`/collect` 页上的两个按钮，或者 `collect-probe` |
-| AC-11–AC-13 | mock LLM 精确 origin、占位、单次豁免。**壳这一侧也接上了**：`session_e1.rs`（过 `Session`——填写不访问、批准之后确实到那台 mock、重开目录回到 `E1_NOT_CONFIGURED`、`config.json` 字节里搜不到地址）、`ipc_roundtrip.rs` 走真的 `invoke_handler`（批准过的生成与人事摘要改写现在也过 IPC：同一会话上 `set_user_endpoint` → `generate_draft` / `person_summary`，回环 `MockLlm` 恰好一次 POST、体里是占位、没有 `Authorization`）。**AC-13 的二次确认现在有产品路径，并且过了 IPC 的线**：确认屏上的「这一条按原文带上」→ `prepare_draft` 带 `includeOriginal: true` → 那台 mock 第一次请求体里是「场地」、没有占位，第二次回到占位，号码与 `@handle` 两次都占位，计划 / 草稿 / 链过 IPC 回来都搜不到「场地」 | 真机上填一个本机端点再按生成、并按一次「这一条按原文带上」——作者清单 9（可选，不是门禁项） |
+| AC-11–AC-13 | mock LLM 精确 origin、占位、单次豁免。**壳这一侧也接上了**：`session_e1.rs`（过 `Session`——填写不访问、批准之后确实到那台 mock、重开目录回到 `E1_NOT_CONFIGURED`、`config.json` 字节里搜不到地址）、`ipc_roundtrip.rs` 走真的 `invoke_handler`（批准过的生成与人事摘要改写现在也过 IPC：同一会话上 `set_user_endpoint` → `generate_draft` / `person_summary`，回环 `MockLlm` 恰好一次 POST、体里是占位、没有 `Authorization`）。**AC-13 的二次确认现在有产品路径，并且过了 IPC 的线**：确认屏上的「这一条按原文带上」→ `prepare_draft` 带 `includeOriginal: true` → 那台 mock 第一次请求体里是「场地」、没有占位，第二次回到占位，号码与 `@handle` 两次都占位，计划 / 草稿 / 链过 IPC 回来都搜不到「场地」。**AC-11 的跨 origin 重定向现在也过 `invoke_handler`**：配置的那台 `MockLlm` 回 302 指向第二台，`generate_draft` 过 IPC 拿回的是 `E1_CROSS_ORIGIN_REDIRECT` 加一句非空说明而不是一份草稿，第一台 1 次请求、第二台 0 次，`config_snapshot` 仍是 `llm_endpoint_configured: true`，链上那条 `denied` 接得上前一条且回放里没有粘贴也没有目标端口号 | 真机上填一个本机端点再按生成、并按一次「这一条按原文带上」——作者清单 9（可选，不是门禁项） |
 | AC-14 / AC-15 | 记忆 CRUD、CK 销毁、墓碑、审计无正文 | — |
 | AC-16 / AC-17 | 人事摘要有证据、无诊断词；无 key 走模板且无非回环连接。**产品这一侧的改写也接上了**（WP09 第十段）：在这之前 `Session::person_summary` 永远 `counts`，`phrase_with` 只在 crate 测试里跑。现在 `session_e1.rs` 断言配了端点之后 `source == "user_endpoint"`、请求体是本机计数、没有密封名、没有 `Authorization`；没配则零请求；诊断词改写留下计数且仍记 `egress.request`。**来源也上屏了**（`2d2badd`）：`Graph.test.tsx` 断言 counts / `user_endpoint` 各有一句用户读得到的话；`ipc_roundtrip` 在导入之后真调一次 `person_summary`，WebView 收到的 JSON 是 `counts` 且不含导出正文 | — |
 | AC-18 / AC-19 | 授权扫描只读预览、未授权 100% 拒绝、未知动作 / 改 hash / 重放拒绝 | — |
@@ -810,13 +819,13 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 | AC-22 | 云开关 UI + 核心恒「尚未启用」；依赖图无 E0 | 资源监视器那一眼——作者清单 5 |
 | AC-23 / AC-24 | 审计回放无正文；崩溃最多丢 1 条且链可验证。**产品链现在也覆盖 起草 / E1 / 文件计划，以及它们的拒绝**（WP09 第八段与第十段）：在这之前 `Session` 把 `Drafted.audit` 与 `Preview::audit()` 丢掉，拒绝用 `?` 再丢一次。现在 `session_screens.rs` 断言本机起草落一条 `draft.create`，一次对不上的遗忘落 `hitl.deny`；`session_e1.rs` 断言一次批准过的生成落 `egress.request` + `draft.create`（带 `E1` 与凭据 id），`session_commands.rs` 断言一次预览落一条 `file.plan`、一次未授权预览落 `file.plan` denied、一次对不上的生成落 `hitl.deny`，三处都回放整串搜过正文与路径 | — |
 | AC-25 | 导入 / 粘贴 / 文件名三路注入不进工具计划、不外连该 URL。**文件名那一路现在也进产品链**（WP09 第十段）：在这之前 `injection_audit()` 只在 `soul-fileplan` 自己的测试里被调用。现在 `session_commands.rs` 断言计划里看得到敌意名、链上 `injection.blocked` 只有 `items: 1`、序列化后的链里没有那个名字；同一条过 `invoke_handler`：计划 JSON 里看得到那个名字，链上没有。**另外两路也补齐了**（第十段遗留 6）：`prepare_draft` 成功后按 `soul_policy::injection` 扫那段粘贴、导入预览按 `messages_with_injection_markers`，各写一条同形状的 `injection.blocked`；准备完取消、预览完不提交，链上都留得下那个数，而且只有数——`session_e1.rs` 与 `session_import.rs` 各一条测试，另各有一条干净输入的控制测试。Telegram 那一份导出把 `忽略之前指令` 拆在两段里：`soul-import` 钉住 `flatten_text` 是接回来之后才扫描的，`session_import.rs` 钉住只预览不提交也落 `injection.blocked`（`items: 2`），链上搜不到那句话、那个 URL、也搜不到 `李 雷`；同一条现在过 `invoke_handler`（`preview_telegram` 喂 `result_injection.json`）。**粘贴与 soul-import-v1 预览现在过真的 `invoke_handler`**：`ipc_roundtrip.rs` 两条测试经 IPC 调 `audit_chain`，读回的是同一条 `injection.blocked`——`denied` / `INJECTION_MARKERS_FOUND` / 只有 `items` 没有 `bytes`，而计划、预览与整条链的回包里都搜不到那段粘贴或那份语料试图说的话；`Audit.test.tsx` 再断言这样一条记录在页面上是「挡下了注入 / 拒绝 / 2 项」，没有正文也没有地址 | 真机上粘一段敌意文本或预览一份敌意导出，没有人做过（可选，不是门禁项） |
-| AC-26 | `2e72ddf` 同 run：lint、ubuntu `just ci`、windows workspace+壳、sbom、package。HEAD **本机** 补证第三轮：`ipc_roundtrip` 44、`command_surface` 6、`no_egress_path` 3；hosted 已知最新一次产品空 run [32802641110](https://github.com/Xhhemoing/Soul/actions/runs/32802641110) 五门空 runner（`85d1b1a`） | HEAD hosted 真正开跑并绿（恢复 minutes 后 `workflow_dispatch`；不要 empty-commit）；真机 `tauri build` 拉 NSIS 仍是作者机器上的事 |
+| AC-26 | `2e72ddf` 同 run：lint、ubuntu `just ci`、windows workspace+壳、sbom、package。HEAD **本机** 补证第四轮：`ipc_roundtrip` 45、`command_surface` 6、`no_egress_path` 3；hosted 已知最新一次产品空 run [32802641110](https://github.com/Xhhemoing/Soul/actions/runs/32802641110) 五门空 runner（`85d1b1a`） | HEAD hosted 真正开跑并绿（恢复 minutes 后 `workflow_dispatch`；不要 empty-commit）；真机 `tauri build` 拉 NSIS 仍是作者机器上的事 |
 
 十三个产品锁切片与上表同一条缝：灵魂层与只读代理层有测试；托盘外观与真机采集没有。缝的位置和上一版比又挪了一格——E1 此前是「crate 有守卫，产品没有开关」，现在是「产品有开关，真机没人填过」；AC-13 的二次确认此前是「crate 有豁免，产品没有第二次确认的地方」，现在同样落到「有按钮，真机没人按过」。同一句话对第七片（采集）也成立。AC-07 与 AC-23 这一次挪的是另一格：此前是「crate 有证据，产品路径上根本没有那条线」——语气读不到起草、审计条目建了没人写；现在两条线都接上了，落到的仍然是「真机没人看过」。AC-16 的改写与 AC-25 的文件名通道这一次也从 crate 挪到了产品路径上：点人脉图里的一个人、扫一个带敌意名的目录，装出来的 Soul 现在会发出那一次请求、会在链上记下那一次拒绝；真机仍然没人点过。
 
 ## 下一步
 
-批 3–5 与 WP13、DPAPI 都已完成。`2e72ddf` 上 CI 五门全绿。HEAD 本机补证第三轮绿（`ipc_roundtrip` 44、AC-13 过 IPC 的线、Telegram 敌意预览过 IPC），hosted 五门没有 runner。原先写在这里的产品缺口已经做完，剩下的是 hosted 与真机：
+批 3–5 与 WP13、DPAPI 都已完成。`2e72ddf` 上 CI 五门全绿。HEAD 本机补证第四轮绿（`ipc_roundtrip` 45、AC-11 的重定向过 IPC、问卷散文答案过 IPC；第三轮是 AC-13 过 IPC 的线与 Telegram 敌意预览过 IPC），hosted 五门没有 runner。原先写在这里的产品缺口已经做完，剩下的是 hosted 与真机：
 
 1. ~~**向导还没有画那十一道题。**~~ **已完成**，见「WP09 完成情况（第三段）」。
 2. **HEAD hosted CI。** 恢复 Actions minutes 后 `workflow_dispatch` 本分支。空 runner 不是产品回归。workflow 已收窄：只自动 `push` 本分支与 `main`，没有 `pull_request` 触发，纯文档改动不开五门。已知最新一次产品空 run：[32802641110](https://github.com/Xhhemoing/Soul/actions/runs/32802641110)（`85d1b1a`）。本机证据不是 hosted 证据。在 HEAD package 绿之前，不要用 `2e72ddf` 的 `windows-binaries` 做卸载 / `keys.dpapi`——那次构建还把程序装进数据目录。

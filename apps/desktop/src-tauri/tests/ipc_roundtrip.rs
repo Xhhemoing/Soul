@@ -907,6 +907,133 @@ fn a_second_confirmation_crosses_the_ipc_and_this_ones_words_travel_once() {
     let _ = std::fs::remove_dir_all(&shell.directory);
 }
 
+/// AC-11's redirect half, at the boundary the drafting panel reads.
+///
+/// `soulcore`'s `session_e1.rs::an_endpoint_that_redirects_elsewhere_is_refused_and_the_target_is_never_contacted`
+/// proves the session refuses to follow a `302` off the configured origin. What
+/// it holds is a `Session`; what a user holds is a panel that renders whatever
+/// crosses the IPC. Between the two are the two commands, Tauri's conversion of
+/// the approval, and the `Result` the handler serializes — and a shell that
+/// turned the refusal into an empty draft, or retried past it, would be an
+/// installed Soul forwarding a redacted conversation to an address the user
+/// never typed while every `soulcore` test stayed green.
+///
+/// The redirect target is a second real loopback server, so `request_count()`
+/// on it is a statement about sockets.
+#[test]
+fn an_endpoint_that_redirects_elsewhere_is_refused_over_the_ipc_and_the_target_is_never_contacted()
+{
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let elsewhere = MockLlm::start().expect("somewhere the user did not configure");
+    endpoint.set_redirect(elsewhere.chat_completions_url());
+    let shell = Shell::on(scratch());
+    let pasted = "周五的场地我已经订好了，你直接过来就行";
+
+    let configured = shell
+        .invoke("set_user_endpoint", json!({ "url": endpoint.base_url() }))
+        .expect("a loopback address is an address");
+    assert_eq!(configured["llm_endpoint_configured"], json!(true));
+    assert_eq!(
+        endpoint.request_count(),
+        0,
+        "filling in the address contacted it",
+    );
+    assert_eq!(
+        elsewhere.request_count(),
+        0,
+        "filling in one address contacted another",
+    );
+
+    // The exemption is not what this test is about: an ordinary placeheld plan
+    // is what the user would be approving.
+    let plan = shell
+        .invoke("prepare_draft", json!({ "pasted": pasted }))
+        .expect("a paste can always be described");
+    assert_eq!(plan["placeheld_turns"], json!(1));
+
+    let refusal = shell
+        .invoke(
+            "generate_draft",
+            json!({
+                "approval": {
+                    "preparation_id": plan["preparation_id"],
+                    "plan_hash": plan["plan_hash"],
+                }
+            }),
+        )
+        .expect_err("the configured endpoint pointed somewhere else");
+
+    // This is the JSON the drafting panel receives. A shell that swallowed the
+    // `302` into a draft would have answered `Ok` above; one that lost the code
+    // on the way across would leave the screen with nothing to name.
+    assert_eq!(
+        refusal["reason_code"],
+        json!("E1_CROSS_ORIGIN_REDIRECT"),
+        "unexpected: {refusal}",
+    );
+    assert!(
+        refusal["explanation"]
+            .as_str()
+            .is_some_and(|explanation| !explanation.is_empty()),
+        "the drafting panel is shown a blank refusal: {refusal}",
+    );
+
+    assert_eq!(
+        endpoint.request_count(),
+        1,
+        "the first hop is the one the user authorized, and it happens once",
+    );
+    assert_eq!(
+        elsewhere.request_count(),
+        0,
+        "the redirect was followed to an address nobody configured",
+    );
+    assert_eq!(endpoint.requests()[0].path, "/v1/chat/completions");
+
+    // Nothing was retried into a draft the user would have believed, and the
+    // session behind the IPC is still pointed where it was.
+    let snapshot = shell
+        .invoke("config_snapshot", json!({}))
+        .expect("the snapshot reads back");
+    assert_eq!(snapshot["llm_endpoint_configured"], json!(true));
+
+    // AC-23: if the chain heard about this at all it heard counts and a code.
+    // The paste is the third party's words and a refusal is not a licence to
+    // keep them, and neither is it a licence to write down where the endpoint
+    // tried to send them.
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the chain reads back");
+    assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
+    let entries = chain["entries"]
+        .as_array()
+        .expect("a chain is a list of entries");
+    for entry in entries
+        .iter()
+        .filter(|entry| entry["decision"] == json!("denied"))
+    {
+        assert_eq!(
+            entry["follows_previous"],
+            json!(true),
+            "a denial broke the chain: {entry}",
+        );
+    }
+
+    let played = chain.to_string();
+    for prose in ["周五的场地", "直接过来", &elsewhere.port().to_string()] {
+        assert!(
+            !played.contains(prose),
+            "the chain carried `{prose}` across the IPC: {chain}",
+        );
+        assert!(
+            !refusal.to_string().contains(prose),
+            "the refusal carried `{prose}` across the IPC: {refusal}",
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
 /// AC-16 over the same wiring: the 人物 page's summary is rephrased by the
 /// endpoint the user typed in, and the export's own words stay behind.
 ///
@@ -1849,8 +1976,15 @@ fn the_collection_status_carries_no_name_of_anything() {
 /// `axis_id`. If that conversion ever broke, 灵魂档案 would be unable to
 /// correct anything while every `soulcore` and vitest test stayed green,
 /// because neither of them crosses Tauri.
+///
+/// The third answer is the one the user typed rather than chose, which is what
+/// gives the screen and the chain below something specific to be checked for.
 #[test]
 fn the_questionnaire_answers_and_leaves_a_profile_the_screen_can_correct() {
+    // The boundary answer is the prose one. Named here so the leakage checks
+    // below look for exactly the string the answer carried.
+    const WRITTEN_BOUNDARY: &str = "工作以外的事";
+
     let shell = Shell::on(scratch());
 
     let questions = shell
@@ -1868,6 +2002,7 @@ fn the_questionnaire_answers_and_leaves_a_profile_the_screen_can_correct() {
             "answers": [
                 { "question_id": "q.axis.curiosity", "given": "leans_high" },
                 { "question_id": "q.voice.register", "given": "formal" },
+                { "question_id": "q.boundary.topics", "given": WRITTEN_BOUNDARY },
             ]
         }),
     ) {
@@ -1881,7 +2016,7 @@ fn the_questionnaire_answers_and_leaves_a_profile_the_screen_can_correct() {
     };
     // AC-03 over the IPC: a questionnaire and no import file leaves a profile
     // behind, and the axes nobody answered for stay unknown.
-    assert_eq!(receipt["answered"], json!(2));
+    assert_eq!(receipt["answered"], json!(3));
     assert_eq!(receipt["axes_known"], json!(1));
     assert_eq!(receipt["axes_unknown"], json!(4));
     assert_eq!(receipt["profile_is_empty"], json!(false), "AC-03");
@@ -1889,6 +2024,10 @@ fn the_questionnaire_answers_and_leaves_a_profile_the_screen_can_correct() {
     let screen = shell
         .invoke("profile_screen", json!({}))
         .expect("the profile reads back");
+    assert!(
+        !screen.to_string().contains(WRITTEN_BOUNDARY),
+        "the screen carries the user's own words: {screen}",
+    );
     let axis = screen["axes"]
         .as_array()
         .expect("the profile has axes on it")
@@ -1946,6 +2085,34 @@ fn the_questionnaire_answers_and_leaves_a_profile_the_screen_can_correct() {
         .expect("the field that was just set");
     assert_eq!(set["value"], option);
     assert_eq!(set["locked_by_user"], json!(true));
+
+    // AC-23 for the no-file branch of intake, over the IPC. The questionnaire
+    // is the other way a profile gets made, and an intake the 审计 page never
+    // heard about would leave three sealed answers and no record that anybody
+    // was ever asked. What the entry carries is the same count the receipt
+    // gave the screen — not the sentence the user typed into the boundary box.
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the chain reads back");
+    assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
+    let recorded = chain["entries"]
+        .as_array()
+        .expect("a chain is a list of entries")
+        .iter()
+        .find(|entry| entry["action"] == json!("import.commit"))
+        .unwrap_or_else(|| {
+            panic!("the questionnaire was answered and the chain never heard about it: {chain}")
+        });
+    assert_eq!(recorded["decision"], json!("allowed"));
+    assert_eq!(
+        recorded["items"], receipt["answered"],
+        "the entry counts something other than what the screen was told: {recorded}",
+    );
+    assert_eq!(recorded["follows_previous"], json!(true));
+    assert!(
+        !chain.to_string().contains(WRITTEN_BOUNDARY),
+        "the chain carried what the user typed across the IPC: {chain}",
+    );
 
     let _ = std::fs::remove_dir_all(&shell.directory);
 }
