@@ -322,6 +322,28 @@ fn the_leakage_fixture_covers_the_named_edge_cases() {
         "a decomposed café",
     );
 
+    // The registered number, written the ways a keyboard writes it. NFC folds
+    // none of these into the ASCII spelling the corpus registers, so without
+    // them the harness could report clean on the number itself going out.
+    let leaking: Vec<&str> = fixture
+        .cases
+        .iter()
+        .filter(|c| c.leaks)
+        .map(|c| c.text.as_str())
+        .collect();
+    assert!(
+        leaking.iter().any(|t| t.contains('\u{FF10}')),
+        "a number written in fullwidth digits",
+    );
+    assert!(
+        leaking.iter().any(|t| t.contains('\u{2013}')),
+        "a number grouped by an en-dash",
+    );
+    assert!(
+        leaking.iter().any(|t| t.contains('\u{FF0D}')),
+        "a number grouped by a fullwidth hyphen",
+    );
+
     let hits = fixture.cases.iter().filter(|c| c.leaks).count();
     let misses = fixture.cases.len() - hits;
     assert!(hits >= 6 && misses >= 3, "{hits} leaking, {misses} clean");

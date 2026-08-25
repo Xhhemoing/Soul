@@ -44,7 +44,7 @@
     {
       "id": "phone_cn_hyphenated",
       "text": "138-0013-8000",
-      "note": "同一个号码，分隔符换成连字符。分隔符只能是单个空格、U+3000、连字符或点，两个分隔符或标点就断开。"
+      "note": "同一个号码，分隔符换成连字符。分隔符是单个空格、U+3000、点，或 U+002D/U+2010/U+2011/U+2012/U+2013/U+2014/U+2212/U+FF0D 里的任意一种破折号；两个分隔符或标点就断开。"
     },
     { "id": "email_third_party", "text": "lilei@example.invalid" }
   ],
@@ -127,6 +127,27 @@
       "leaks": true,
       "expect_kinds": ["known_identifier"],
       "note": "另一种分隔符，同上。"
+    },
+    {
+      "id": "phone_en_dash_groups_only",
+      "text": "留的号码是 138\u20130013\u20138000。",
+      "leaks": true,
+      "expect_kinds": ["known_identifier"],
+      "note": "分隔符是 U+2013 短破折号，粘贴或自动更正后最常见的一种。与 phone_cn 是同一个号码，语料只登记了 ASCII 连字符那一种写法，靠数字骨架命中。"
+    },
+    {
+      "id": "phone_fullwidth_digits_only",
+      "text": "留的号码是 １３８００１３８０００。",
+      "leaks": true,
+      "expect_kinds": ["known_identifier"],
+      "note": "全角数字 U+FF10–U+FF19，中文输入法全角模式打出来就是这样。与 phone_cn 是同一个号码，NFC 归一不会把两种宽度折到一起，所以检查器必须按数字骨架比对。"
+    },
+    {
+      "id": "phone_fullwidth_grouped_only",
+      "text": "留的号码是 １３８－００１３－８０００。",
+      "leaks": true,
+      "expect_kinds": ["known_identifier"],
+      "note": "全角数字加全角连字符 U+FF0D，两处都不是 ASCII。同上。"
     },
     {
       "id": "separated_short_groups_are_not_a_number",
