@@ -7,7 +7,15 @@
 ## 打哪一棵
 
 - **作者 Win11 / hosted 正式对象：** `cursor/soul-goal1-7b1c` 的 **`478f19f` 或之后**（origin 尖端曾是 `5309656`）。未推送到 origin 的 tip 不算正式对象。
-- **本机已准备的候选栈：** `cursor/first-test-candidate-c441` @ `3ca1605` = 主干快进 + BUILD audit（含 R3 占位与本方案）。本机段 A 的 cargo/pnpm 等价物已绿（见 `.agent_workspace/orchestrator-c441/round4/segment-a-linux.txt`）。要测诚实文案就打**已推送**的这一枝，并在 `STATUS` 写 SHA。
+- **本机已准备的候选栈：** `cursor/first-test-candidate-c441` = 主干快进 + BUILD audit。本机段 A 已绿（`.agent_workspace/orchestrator-c441/round4/segment-a-linux.txt`）。origin 推送仍 401 时，用同目录的 git bundle 取枝（见下）。
+- **离线取枝（本机令牌失效时）：** 仓库里已有 `origin/cursor/soul-goal1-7b1c`（`5309656`）的前提下：
+
+```bash
+git fetch /opt/cursor/artifacts/first-test-candidate.bundle HEAD:cursor/first-test-candidate-c441
+git switch cursor/first-test-candidate-c441
+```
+
+`git bundle verify` 必须先通过。凭据恢复后仍应 `git push -u origin cursor/first-test-candidate-c441`，未进 origin 的 tip 不能当作者 Win11 正式对象。
 - **不要**用 `2e72ddf` 的 `windows-binaries`：那次 NSIS 把程序装进数据目录，卸载会碰到 `keys.dpapi`。
 - 合并是否安全：`bash scripts/branch-disposition.sh`（`--merge` 默认拒绝 #4 / #7 / `main` / 有冲突的 closeout）。自检：`bash scripts/branch-disposition.selftest.sh`。
 
