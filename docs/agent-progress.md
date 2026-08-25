@@ -14,8 +14,8 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core + TS 管线 + DATA-1 + AL + B04/B05 IA + B10 简报 |
-| 当前任务 | B10 简报已合（#35）；B04 实现与覆盖探针仍在途 |
-| PR | #16 专属线；#20–#35（#35 B10 简报） |
+| 当前任务 | S1/S2 探针已合（#35 #36）；B04 实现仍在途 |
+| PR | #16 专属线；#20–#36（#36 覆盖探针） |
 | Merge | AL `331b513`；复审 `3fac2fd`；B04 IA `47b9ac0`；B05 IA `fbe0921`；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读（BLOCKED_PR）；云端异步 VM ≈3 |
 
@@ -32,7 +32,7 @@
 | Cache | 无 | 后置 |
 | 第三方 | 无品牌色板授权 | fixture `generic-5mm` |
 | 核心业务 | 色号 + BOM + 四模式 steps 已对 rust fixture；AL 复审 PASS | AL-4（MED）rust 边界 fixture 后置；B04 |
-| 测试 | `@bead/app` 22 文件 **258** 绿；bead-core 153 | B10 独立 workflow 仍缺 |
+| 测试 | `@bead/app` 258 + bead-core 153；覆盖探针已盘点 | T-ASM/T-INV 等 B04/B05 实现锁 |
 | 构建 | Soul just/pnpm | 隔离，勿改根脚本 |
 | CI/CD | Soul ci.yml 不动；B10 简报已锁 `bead.yml` 形状 | Opus 落地独立 workflow |
 | 性能 | 无转图基准 | 后置大图 |
@@ -95,7 +95,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] B05 IA 合入 `fbe0921`（#34，`docs/bead/reviews/round2-inventory.md`）；BD20 码空间
 - [ ] B04 实现（Opus 本机 worktree 在途；云端 VM 仍满）
 - [x] S2 构建探针合入（#35，`docs/bead/reviews/round2-build.md`）
-- [ ] S1 覆盖探针（本机 worktree 在途）
+- [x] S1 覆盖探针合入（#36，`docs/bead/reviews/round2-coverage.md`）
 - [ ] AL-4（MED）rust 侧补跨取整边界的 oracle fixture（不改 TS 语义）
 - [ ] B05 库存/BOM UI（等 B04 实现席）
 - [ ] `/create` 上传接线（独立变更；若持久化 Grid 必须同时上 IDB，BD19）
@@ -123,9 +123,8 @@ Commit        fbe0921 merge B05 IA；本提交记进度 + BD20
 PR            #16 #32 #33 #34
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    Opus 实现 B04（只存游标）；随后 B05
-在途          [R2 Opus B04 implement](https://cursor.com/agents/bc-6a5bc9c6-7bdc-528b-bb4a-b9611abce044) · [R2 gpt-sol coverage](https://cursor.com/agents/bc-661a636b-0864-57bc-ab00-e375887a24ff)
-已收          … [R2 gpt-sol build CI](https://cursor.com/agents/bc-687124cc-a345-5d96-beff-a9440eaa6755) → #35
-已收          [R2 Fable review AL](https://cursor.com/agents/bc-7b365534-e6fd-5e45-bc50-769cc93d4454) → #32；[R2 Fable B04 IA](https://cursor.com/agents/bc-d265c746-7f1f-5358-9493-9e49856a4b82) → #33；[R2 Fable B05 IA](https://cursor.com/agents/bc-e1451aad-5003-5ffb-9364-0a3bb1f0e619) → #34
+在途          [R2 Opus B04 implement](https://cursor.com/agents/bc-6a5bc9c6-7bdc-528b-bb4a-b9611abce044)
+已收          [R2 Fable review AL](https://cursor.com/agents/bc-7b365534-e6fd-5e45-bc50-769cc93d4454) → #32；[R2 Fable B04 IA](https://cursor.com/agents/bc-d265c746-7f1f-5358-9493-9e49856a4b82) → #33；[R2 Fable B05 IA](https://cursor.com/agents/bc-e1451aad-5003-5ffb-9364-0a3bb1f0e619) → #34；[R2 gpt-sol build CI](https://cursor.com/agents/bc-687124cc-a345-5d96-beff-a9440eaa6755) → #35；[R2 gpt-sol coverage](https://cursor.com/agents/bc-661a636b-0864-57bc-ab00-e375887a24ff) → #36
 Blocked       云端异步 VM 仍满；实现改本机隔离 worktree
 ```
 
