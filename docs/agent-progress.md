@@ -16,8 +16,8 @@
 | 已检查模块 | 仓库地图（Soul 桌面 + 无 bead 代码） |
 | 当前任务 | F2/F3 审查已合入；F1 仍在跑；O1 core + O2 shell 在写 |
 | PR | https://github.com/Xhhemoing/Soul/pull/16 （draft → first-test-candidate） |
-| Merge | IA 审查已合进专属线；不合 unique trunk |
-| Blocked | VM 上限仍在。O2/O3/F4/F5/S1/S2 排队 |
+| Merge | F2/F3 审查已合进专属线；不合 unique trunk |
+| Blocked | VM 上限仍在。O3/F4/F5/S1/S2 排队；O1 的契约 resume 等空闲 |
 
 ## 已检查模块（11.5）
 
