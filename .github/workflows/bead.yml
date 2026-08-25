@@ -1,0 +1,104 @@
+# BeadFlow's own pipeline. It is deliberately not a Soul gate: nothing here is
+# a required check for Soul, and no Soul job depends on it. Soul `ci.yml` keeps
+# its own triggers and jobs (CI-1); this file only ever runs on `cursor/bead*`
+# refs and only ever runs package-scoped commands against `apps/bead` and
+# `crates/bead-core`. Never `workflow_dispatch` Soul `CI` from a bead ref
+# (BD17/CI-6): its job guards let dispatch through and would spend the whole
+# five-job matrix on a bead branch.
+name: Bead
+
+on:
+  # Only `cursor/bead*`, which can never match `main` or the Soul goal branch,
+  # so this pipeline cannot fire on Soul work (CI-2).
+  #
+  # No `pull_request` trigger, for the reason recorded in `ci.yml`: GitHub
+  # evaluates PR paths against the whole PR rather than the latest commit, so a
+  # docs-only follow-up would reopen both jobs. Push events already surface as
+  # checks on the PR (CI-3).
+  #
+  # `docs/bead/**` is intentionally absent from the paths: review documents land
+  # on this line constantly and none of them can change a test result (CI-5).
+  push:
+    branches:
+      - "cursor/bead*"
+    paths:
+      - "apps/bead/**"
+      - "crates/bead-core/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/bead.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# `github.workflow` in the group, plus a workflow name that is not Soul's `CI`,
+# keeps the two pipelines from cancelling each other (CI-4).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Fail fast on a network hiccup instead of hanging a runner.
+  CARGO_NET_RETRY: 3
+
+jobs:
+  # Package-scoped commands only: no root pnpm script (they stay Soul-only,
+  # BD4), no root cargo workspace, no `just ci`.
+  bead-app:
+    name: bead app (lint, test, build)
+    # A manual dispatch from a non-bead ref skips the job rather than testing
+    # bead code against a Soul branch.
+    if: startsWith(github.ref, 'refs/heads/cursor/bead')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: install
+        run: pnpm install --frozen-lockfile
+
+      - name: lint
+        run: pnpm --filter @bead/app lint
+
+      - name: test
+        run: pnpm --filter @bead/app test
+
+      - name: build
+        run: pnpm --filter @bead/app build
+
+  # bead-core carries its own `[workspace]` and stays out of the root members
+  # (BD3), so no Soul gate runs fmt, clippy or its tests. This job is the only
+  # automatic cover it has.
+  bead-core:
+    name: bead-core (fmt, clippy, test)
+    if: startsWith(github.ref, 'refs/heads/cursor/bead')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.83
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: bead-core
+          workspaces: crates/bead-core -> target
+
+      - name: rustfmt
+        run: cargo fmt --manifest-path crates/bead-core/Cargo.toml --check
+
+      - name: clippy
+        run: cargo clippy --manifest-path crates/bead-core/Cargo.toml --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --manifest-path crates/bead-core/Cargo.toml
