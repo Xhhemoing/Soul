@@ -26,6 +26,14 @@
  * and a later rebuild recomputes them without moving the band, which is why
  * there is a way back out to them as well.
  *
+ * Agreeing with the band is a correction too. `soul_graph::correct_tie` locks
+ * whatever band it is handed, including the one already in force, so pressing
+ * the current word on an unlocked tie pins it: the counts go on accumulating
+ * and the next rebuild leaves the word alone. Greying that button would have
+ * left the only route to it 改成别的再改回来, which writes a `UserCorrection`
+ * asserting a band the user never held. It is grey once the tie is locked,
+ * because there the press really would restate a verdict already recorded.
+ *
  * A correction is a write, so the whole graph comes back from the core rather
  * than being patched here — the band, the lock and the evidence rows behind
  * that edge all move, and a screen that updated one of them itself would be
@@ -121,10 +129,20 @@ export function Graph(): React.JSX.Element {
     };
   }, []);
 
-  /** Both writes answer with the whole graph, so both are the same call. */
+  /**
+   * Both writes answer with the whole graph, so both are the same call.
+   *
+   * The person summary on screen goes with them. It was written from the
+   * counts as they stood before this correction and it states the band among
+   * them, so leaving it up would put a sentence from the machine's reading
+   * underneath a lock that just overruled it — and the user has no way to
+   * tell which of the two is current. It comes back by asking for it again.
+   */
   const write = (change: Promise<PeopleGraph>): void => {
     setBusy(true);
     setTieRefusal(null);
+    setSummary(null);
+    setSummaryRefusal(null);
     change.then(
       (value) => {
         setGraph(value);
@@ -188,7 +206,8 @@ export function Graph(): React.JSX.Element {
           <p className="muted" data-testid="ties-explanation">
             档位是核心按下面那些计数算出来的，是工作假设，不是对谁的判断。你觉得哪一条不对，
             就按下面的 弱 / 中等 / 强 改；改过之后这一档就锁住了，以后再导入、再重算也不会覆盖你，
-            计数照旧继续累加。想让计数重新说话，按「按计数重新算」。
+            计数照旧继续累加。觉得现在这一档就对、不想让以后重算动它，就按当前那一档把它锁住。
+            想让计数重新说话，按「按计数重新算」。
           </p>
           {tieRefusal === null ? null : (
             <Refused title="这一档没有改成" refusal={tieRefusal} testId="tie-refusal-code" />
@@ -317,7 +336,7 @@ function Tie({ tie, busy, onCorrect, onRelease }: TieProps): React.JSX.Element {
           <button
             key={band}
             type="button"
-            disabled={busy || band === tie.band}
+            disabled={busy || (tie.locked_by_user && band === tie.band)}
             onClick={() => onCorrect(band)}
           >
             {words(BAND, band)}
