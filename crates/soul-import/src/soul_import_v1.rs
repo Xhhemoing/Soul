@@ -211,16 +211,16 @@ pub fn parse_with(schemas: &SchemaSet, text: &str) -> Result<StagedImport, Impor
 
 /// A timestamp the contract allows and Soul cannot store.
 ///
-/// Only reachable for an instant within a day of the ends of the calendar,
-/// where applying the offset leaves a year of five digits or a negative one.
-/// Refusing the file is the alternative to writing a row that would make every
-/// later graph rebuild fail on something nobody can edit.
+/// Only reachable for an instant within a day of either end of the calendar,
+/// where applying the offset leaves a year of five digits or one before year
+/// zero. Refusing the file is the alternative to writing a row that would make
+/// every later graph rebuild fail on something nobody can edit.
 fn unreadable_instant(locator: &Locator, field: &'static str) -> Defect {
     Defect::field(
         locator.clone(),
         field,
         "names an instant that cannot be written in UTC: applying its offset leaves a year \
-         outside 0001 through 9999"
+         that does not fit in four digits"
             .to_owned(),
     )
 }

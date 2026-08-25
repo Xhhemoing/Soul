@@ -102,11 +102,11 @@ pub fn is_date_time(text: &str) -> bool {
 /// than anywhere downstream.
 ///
 /// `None` for an instant that is not the shape [`is_date_time`] accepts, and
-/// for the two absurd edges — within a day of year 1 or of year 9999 — where
-/// applying the offset leaves a year nothing else in Soul can read back. Those
-/// are refused rather than stored, for the reason `telegram::representable_instant`
-/// gives: one unreadable row makes every later rebuild fail on data nobody can
-/// edit.
+/// for one so close to either end of the calendar that applying its offset
+/// leaves a year that will not fit in four digits — five digits past 9999, a
+/// sign before year zero. Those are refused rather than stored, for the reason
+/// `telegram::representable_instant` gives: one unreadable row makes every
+/// later rebuild fail on data nobody can edit.
 ///
 /// Fractional seconds are dropped. The scorer's clock is whole seconds and the
 /// contract's other writers render whole seconds, so keeping them would make
