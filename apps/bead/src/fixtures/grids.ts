@@ -65,6 +65,48 @@ export function decodeFixtureRows(
   return createGrid(size, size, cells);
 }
 
+/* ---- geometry ---------------------------------------------------------
+ * Hand-typing 3136 characters is not a plan, so the larger motifs are written
+ * as shapes and the row strings fall out of them. Every predicate takes integer
+ * cell coordinates and answers for that one cell.
+ */
+
+function inRect(x: number, y: number, x0: number, y0: number, x1: number, y1: number): boolean {
+  return x >= x0 && x <= x1 && y >= y0 && y <= y1;
+}
+
+function inDisc(x: number, y: number, cx: number, cy: number, radius: number): boolean {
+  const dx = x - cx;
+  const dy = y - cy;
+  return dx * dx + dy * dy <= radius * radius;
+}
+
+function inEllipse(x: number, y: number, cx: number, cy: number, rx: number, ry: number): boolean {
+  const dx = (x - cx) / rx;
+  const dy = (y - cy) / ry;
+  return dx * dx + dy * dy <= 1;
+}
+
+function inRoundedRect(
+  x: number,
+  y: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  radius: number,
+): boolean {
+  const nearestX = Math.min(Math.max(x, x0 + radius), x1 - radius);
+  const nearestY = Math.min(Math.max(y, y0 + radius), y1 - radius);
+  return inDisc(x, y, nearestX, nearestY, radius);
+}
+
+function paint(size: number, charAt: (x: number, y: number) => string): string[] {
+  return Array.from({ length: size }, (_unusedRow, y) =>
+    Array.from({ length: size }, (_unusedCell, x) => charAt(x, y)).join(""),
+  );
+}
+
 /* ---- gal-slime-01 · 28×28 ------------------------------------------- */
 
 // One slime, 12×10. 0 薄荷绿身体 / 1 深松绿底部阴影 / 2 纯白眼白 / 3 墨黑描边。
@@ -114,12 +156,6 @@ function slimeRows(): string[] {
 /* ---- gal-lantern-04 · 28×28 ------------------------------------------ */
 
 // 0 朱红灯身 / 1 明黄透光与流苏 / 2 墨黑骨架。
-function inEllipse(x: number, y: number, cx: number, cy: number, rx: number, ry: number): boolean {
-  const dx = (x - cx) / rx;
-  const dy = (y - cy) / ry;
-  return dx * dx + dy * dy <= 1;
-}
-
 function lanternChar(x: number, y: number): string {
   // 提绳、上下灯盖与流苏：先画，它们压在灯身之外。
   if (inRect(x, y, 13, 0, 14, 2)) return "2";
@@ -136,40 +172,12 @@ function lanternChar(x: number, y: number): string {
 }
 
 function lanternRows(): string[] {
-  return Array.from({ length: BOARD_28 }, (_unusedRow, y) =>
-    Array.from({ length: BOARD_28 }, (_unusedCell, x) => lanternChar(x, y)).join(""),
-  );
+  return paint(BOARD_28, lanternChar);
 }
 
 /* ---- gal-arcade-05 · 56×56 ------------------------------------------ */
 
-// 3136 characters is not something to hand-type, so the handheld is described
-// by its geometry and the row strings fall out of it. 0 浅灰机身 / 1 墨黑外壳
-// 与十字键 / 2 朱红按键。
-
-function inDisc(x: number, y: number, cx: number, cy: number, radius: number): boolean {
-  const dx = x - cx;
-  const dy = y - cy;
-  return dx * dx + dy * dy <= radius * radius;
-}
-
-function inRect(x: number, y: number, x0: number, y0: number, x1: number, y1: number): boolean {
-  return x >= x0 && x <= x1 && y >= y0 && y <= y1;
-}
-
-function inRoundedRect(
-  x: number,
-  y: number,
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-  radius: number,
-): boolean {
-  const nearestX = Math.min(Math.max(x, x0 + radius), x1 - radius);
-  const nearestY = Math.min(Math.max(y, y0 + radius), y1 - radius);
-  return inDisc(x, y, nearestX, nearestY, radius);
-}
+// 0 浅灰机身 / 1 墨黑外壳与十字键 / 2 朱红按键。
 
 /** Body slab plus the two grip lobes, as one silhouette. */
 function inArcadeBody(x: number, y: number): boolean {
@@ -213,9 +221,7 @@ function arcadeChar(x: number, y: number): string {
 }
 
 function arcadeRows(): string[] {
-  return Array.from({ length: BOARD_56 }, (_unusedRow, y) =>
-    Array.from({ length: BOARD_56 }, (_unusedCell, x) => arcadeChar(x, y)).join(""),
-  );
+  return paint(BOARD_56, arcadeChar);
 }
 
 /* ---- registry -------------------------------------------------------- */
