@@ -1,0 +1,26 @@
+# bead-core is deliberately its own workspace root. WP-B01 keeps it out of the
+# repository's `[workspace].members` so that Soul's cargo-deny policy, e0-audit
+# and `just ci` never have to reason about a dependency graph they do not ship.
+# The empty `[workspace]` table below is what makes cargo treat this directory
+# as a root rather than as a stray package inside the parent workspace.
+[workspace]
+
+[package]
+name = "bead-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83"
+license = "LicenseRef-Soul-Proprietary"
+publish = false
+description = "BeadFlow's algorithm oracle: sRGB to Lab D65, CIEDE2000, bead palette mapping, board fitting, assembly step planning and bill of materials."
+
+# No dependencies on purpose. Everything here is arithmetic over std
+# collections, and a zero-dependency package is the cheapest possible answer to
+# "what does this pull in".
+[dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[profile.test]
+opt-level = 1
