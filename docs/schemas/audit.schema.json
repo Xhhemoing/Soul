@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soul.local/schemas/audit.schema.json",
+  "title": "SoulAuditEntry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "seq", "entry_id", "ts", "prev_hash", "entry_hash", "action", "decision"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "seq": { "type": "integer", "minimum": 0 },
+    "entry_id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "ts": { "type": "string", "format": "date-time" },
+    "prev_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "entry_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "action": {
+      "enum": [
+        "consent.grant",
+        "collect.start",
+        "collect.stop",
+        "import.commit",
+        "inference.write",
+        "profile.correct",
+        "memory.write",
+        "forget.execute",
+        "draft.create",
+        "egress.request",
+        "file.plan",
+        "hitl.deny",
+        "capability.reject",
+        "injection.blocked"
+      ]
+    },
+    "decision": { "enum": ["allowed", "denied", "deferred", "n/a"] },
+    "reason_code": { "type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_]{2,63}$" },
+    "subject_refs": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "plan_hash": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "capability_token_id": { "type": ["string", "null"] },
+    "egress_class": { "enum": ["none", "E0", "E1", "L"] }
+  }
+}
