@@ -38,10 +38,21 @@ function buttonWords(): string[] {
 }
 
 describe("文件计划页", () => {
-  it("还没有授权目录的时候，说清楚 Soul 现在读不到任何文件", async () => {
+  /**
+   * The old sentence said Soul "读不到你机器上的任何文件" before a root is
+   * authorized — but the import page hands Soul the contents of a file the
+   * user picks with no directory authorization at all, and Soul reads its own
+   * data. The claim that is actually true, and stays true under a hostile
+   * reading, is about the scanner and directories.
+   */
+  it("还没有授权目录的时候，说的是不看任何目录，而不是读不到任何文件", async () => {
     await open();
 
-    expect(screen.getByTestId("no-roots")).toHaveTextContent("还没有授权任何目录");
+    const empty = screen.getByTestId("no-roots");
+    expect(empty).toHaveTextContent("还没有授权任何目录");
+    expect(empty).toHaveTextContent("不会自己去看你机器上的任何目录");
+    expect(empty).toHaveTextContent("导入页");
+    expect(empty.textContent).not.toContain("读不到你机器上的任何文件");
     expect(screen.getByTestId("read-only-notice")).toHaveTextContent(READ_ONLY_NOTICE);
   });
 
