@@ -64,6 +64,44 @@ describe("审计页", () => {
     expect(entries.textContent ?? "").not.toMatch(/搬家|钥匙|厨房/);
   });
 
+  /**
+   * AC-25 on the page that reads the chain back. A paste or an export that
+   * asked to be obeyed leaves one row behind, and the row is a count: the
+   * reader is told the machine was asked and refused, and never what was
+   * asked. The address the attempt named is the thing that must not be on
+   * screen — it is the one part of a hostile sentence a reader might click.
+   */
+  it("挡下的注入只留下动作、结论和一个计数，不留下正文", async () => {
+    await open({
+      audit: () =>
+        anAuditChain({
+          entries: anAuditChain()
+            .entries.filter((entry) => entry.seq === 1)
+            .map((entry) => ({
+              ...entry,
+              action: "injection.blocked",
+              decision: "denied",
+              reason_code: "INJECTION_MARKERS_FOUND",
+              subject_refs: [],
+              items: 2,
+              bytes: null,
+            })),
+        }),
+    });
+
+    const blocked = screen.getByTestId("audit-entry-1");
+    expect(blocked).toHaveTextContent("挡下了注入");
+    expect(blocked).toHaveTextContent("拒绝");
+    expect(blocked).toHaveTextContent("INJECTION_MARKERS_FOUND");
+    expect(blocked).toHaveTextContent("2 项");
+
+    const rendered = renderedText();
+    expect(rendered).not.toMatch(/https?:\/\//);
+    for (const attempted of ["忽略之前指令", "evil.example", "rm -rf", "developer mode"]) {
+      expect(rendered).not.toContain(attempted);
+    }
+  });
+
   /** A break has to be visible, and visible at the line it happens on. */
   it("链子对不上的时候照实说，并且指出断在哪一条", async () => {
     await open({
