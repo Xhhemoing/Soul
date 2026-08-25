@@ -17,7 +17,7 @@
 | 当前任务 | F1/F2/F3 审查已收；O1/O2 在写；F5 在钉 CI 隔离清单 |
 | PR | https://github.com/Xhhemoing/Soul/pull/16 （draft → first-test-candidate） |
 | Merge | F2/F3 审查已合进专属线；不合 unique trunk |
-| Blocked | VM 上限仍在。O3/F4/F5/S1/S2 排队；O1 的契约 resume 等空闲 |
+| Blocked | O3 等 O2 合入（BD14）。F4/S1/S2 等 VM。O1 契约+BD15 resume 等空闲 |
 
 ## 已检查模块（11.5）
 
@@ -94,4 +94,8 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 
 ## 下一轮重点（ROUND 2 预告）
 
-Review O1–O3；补 B04 沉浸指引或 B05 库存（看哪块先可接）；未覆盖面优先。
+审 O1（CIEDE2000 + 并列规则 + golden）；审 O2（lockfile 同提交、no-egress）；O3 打通 `apps/bead/src/algo/` 与 golden 色号对照；B09 存储契约。
+
+### ROUND 1 · F1 交付
+
+`docs/bead/reviews/round1-map.md` @ `0c59fb9`。后端 / 登录 / 缓存三面 NO_HIGH_VALUE_CHANGE_FOUND。共存三约束已升为 BD15/BD16；O3 落点为 BD14。
