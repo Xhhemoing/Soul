@@ -14,8 +14,8 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core + TS + DATA-1 + AL + B04 + B05 + B10 workflow |
-| 当前任务 | ROUND 3：B03 IA 已合（#43）；实现席在途（同 PR 上 IDB+BD20） |
-| PR | #16 专属线；#20–#43（#43 B03 IA） |
+| 当前任务 | ROUND 3：B03 实现预测试修订在 #45（测试仍在补）；B06 IA 已合（#44） |
+| PR | #16 专属线；#20–#45（#44 B06 IA；#45 B03 实现） |
 | Merge | B04 `15ad3b3`；B05 `8526c5c`；B10 本提交；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读；hosted Bead CI 空 runner（非产品失败） |
 
@@ -23,10 +23,10 @@
 
 | 面 | 现状 | 下一动作 |
 |---|---|---|
-| 前端 | B04 拼装 + B05 库存已合（复审 ACCEPT，浏览器通过） | `/create` 上传（须带 IDB，BD19） |
+| 前端 | B04 拼装 + B05 库存已合；B03 上传预测试修订 #45 | 等 B03 测试绿后吸收；B06 实现后置 |
 | 后端 | 无 bead 服务 | v0 本机，不造第二灵魂核 |
 | API | 无 bead API | 本地 store 契约 |
-| 数据库 | Soul 加密 SQLite，与 bead 无关 | B03 实现须带 `bead-v1` IDB（BD19）；IA 已合 #43 |
+| 数据库 | Soul 加密 SQLite，与 bead 无关 | B03 #45 已带 `bead-v1`；测试未齐，未吸收 |
 | 登录与权限 | Soul HITL/E1；bead 无账号 | 单机；图纸默认不出网 |
 | Storage | DATA-1 已合：写失败后读写同切内存并提示 | B04 只存游标（mode/stepIndex/elapsedMs） |
 | Cache | 无 | 后置 |
@@ -100,7 +100,8 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] B05 实现合入 `8526c5c`（#39）；本机 `@bead/app` **27 文件 / 358** 绿
 - [x] B04 复审合入 `76ae0ef`（#38，ACCEPT；MED-1 行窗口写盘后置）
 - [x] B03 上传 IA 合入（#43，`round3-create-upload.md` D-UP-1..16）
-- [ ] B03 实现（同 PR：bead-v1 IDB + BD20 命名空间；禁止 localStorage Grid）
+- [ ] B03 实现 #45（预测试 `3b572a1`；测试仍在补，未吸收）
+- [x] B06 像素编辑 IA 合入（#44，`round3-pixel-editor.md` D-ED-1..21）
 - [x] B05 复审合入（#40，ACCEPT；MED-1 blob URL 后置）
 - [x] B10 独立 `bead.yml` 合入（#41）；Soul `ci.yml` 零 diff
 - [x] B10 复审合入（#42，ACCEPT，0 HIGH/MED）
@@ -115,7 +116,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 
 ## 下一轮重点（ROUND 3）
 
-B03 上传 IA 已合（#43）。下一刀：**Opus 实现 `/create` 上传**——同 PR 上 `bead-v1` IDB + BD20 命名空间；禁止 localStorage Grid。B06/B07、AL-4、B04/B05 MED-1 后置。
+B03 实现预测试修订在 #45。下一刀：等测试绿后路径吸收 + 浏览器核 `/create?entry=upload` + Fable 复审。B06 实现硬后置于 B03 合入。AL-4、B04/B05 MED-1 后置。
 
 ```text
 ROUND 2（进行中）
@@ -127,7 +128,8 @@ Commit        15ad3b3 absorb B04；本提交记进度
 PR            #16 #32–#37
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B05 实现；B10 workflow；MED-1 后置
-在途          [R3 Opus B03 implement](https://cursor.com/agents/bc-2919c00f-1dff-5f7f-bb0a-9107a34f58a1)
+在途          [R3 Opus B03 implement](https://cursor.com/agents/bc-2919c00f-1dff-5f7f-bb0a-9107a34f58a1) → #45 `3b572a1`（测试未齐）
+已收          [R3 Fable B06 editor IA](https://cursor.com/agents/bc-c104f901-b479-501d-9a47-6b90381b06b2) → #44
 已收          [R3 Fable B03 upload IA](https://cursor.com/agents/bc-f50eea16-cc7b-5263-bcc1-e07033175f52) → #43
 已收          [R2 Fable review B10](https://cursor.com/agents/bc-f2043eb1-5f82-5964-99a9-ff585747319c) → #42
 已收          [R2 Opus B10 workflow](https://cursor.com/agents/bc-08c28463-3949-5d72-b729-c048eaf21aa2) → #41
