@@ -27,3 +27,13 @@ Do not start Goal 2. Do not silent-patch F04c. Do not pull SQLCipher into algo c
 ## Round status
 
 - Round 1: in flight
+- R1 fable-b: G3 spec delivered — `.agent_workspace/unblock/round1/fable-b-G3.md` (docs only, no
+  crate changes). Refines round2/fable-b/GRAPH_CORRECTION.md against ALGO_FROZEN + frozen COPY_ZH:
+  fields (3 optional lock fields on `TieStrength`, `first/last_contact_utc` → `Option` for GC-7),
+  rebuild clobber rules R1–R6 (verdict preserved verbatim, band = effective, forget beats lock,
+  correction-row survivor edge, byte-identical idempotence scoped to graph rows), soulcore
+  `correct_tie`/`release_tie`/`band_named` (audit reuses `ProfileCorrect`, receipts are tokens —
+  no new Chinese copy while COPY_ZH is frozen). GC-1..8, 10 implementable this branch; **GC-9
+  split**: GC-9a (suppress the filing sentence on a locked edge — frozen P5 must not render, no
+  homemade variant either) implementable now; GC-9b (「由你本人指定」 variant) blocked on an
+  additive COPY_ZH key via DECISIONS (fable-a slot). G3 composes with G1 in either landing order.
