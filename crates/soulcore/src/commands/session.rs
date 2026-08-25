@@ -191,6 +191,20 @@ pub const ENDPOINT_UNPARSABLE_NOTICE: &str = "这个地址不像一个端点：�
 /// A collector that would not wind down. Rare enough to be worth a sentence.
 pub const COLLECT_NOT_STOPPED_NOTICE: &str = "同意已经收回，但采集线程没有正常收尾：";
 
+/// What an import that started writing and then stopped is told.
+///
+/// The counterpart of [`IMPORT_REFUSED_NOTICE`], which is for a file that never
+/// got as far as the store. This one is for a file that did: the events, the
+/// people and the graph they imply go in as one transaction, so a failure
+/// anywhere in it rolls the whole file back. Saying so is the part that matters
+/// to the person reading it. Imported events carry no external id, so before
+/// the wrap a half-written import could only be finished by re-importing the
+/// file, which wrote a second copy of everything that had already landed —
+/// "再导一次" was advice with a cost attached. It no longer has one.
+pub const IMPORT_ROLLED_BACK_NOTICE: &str = "这个文件没有导入：写到一半出了问题，\
+    整份导入已经回滚，库里一行都没有留下。同一个文件可以直接再导一次，不会多出一份事件。\
+    下面写的是哪里出的问题：";
+
 /// Where this machine keeps Soul's data.
 pub fn data_directory() -> Result<PathBuf, DirectoryError> {
     if let Some(named) = non_empty_var(DATA_DIRECTORY_OVERRIDE) {
@@ -1039,11 +1053,13 @@ impl Session {
         let store = self.opened_store()?;
         let view = {
             let mut store = hold(&store);
-            store.transact(|store| -> Result<ImportReceiptView, SessionRefusal> {
-                let receipt = import_commands::commit(store, staged, at)?;
-                let build = graph_commands::rebuild(store, at)?;
-                Ok(ImportReceiptView::of(&receipt, build.edges_written.len()))
-            })?
+            store
+                .transact(|store| -> Result<ImportReceiptView, SessionRefusal> {
+                    let receipt = import_commands::commit(store, staged, at)?;
+                    let build = graph_commands::rebuild(store, at)?;
+                    Ok(ImportReceiptView::of(&receipt, build.edges_written.len()))
+                })
+                .map_err(rolled_back)?
         };
         // The people this file added are people whose names must not travel.
         // The guard above is released first: `sync_identifiers` takes it again
@@ -1592,6 +1608,23 @@ fn hold(store: &Arc<Mutex<SqlCipherStore>>) -> MutexGuard<'_, SqlCipherStore> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Say, in front of whatever refused, that the import it refused is gone.
+///
+/// Three layers can stop a commit and none of them knows it was wrapped: the
+/// store, `soul-import`, and the graph rebuild that runs before the
+/// transaction closes. Each explains what went wrong and none of them can say
+/// what is left, which is the one thing the user has to know before deciding
+/// whether to press 导入 again. See [`IMPORT_ROLLED_BACK_NOTICE`].
+///
+/// The reason code is left alone. It is the vocabulary an audit reader shares
+/// with the screen, and rolling back is not a different reason to refuse.
+fn rolled_back(refusal: SessionRefusal) -> SessionRefusal {
+    SessionRefusal {
+        explanation: format!("{IMPORT_ROLLED_BACK_NOTICE}\n{}", refusal.explanation),
+        ..refusal
+    }
+}
+
 /// One Telegram export, as JSON, or a refusal that says where the file stops
 /// being readable without quoting what is there.
 ///
@@ -1750,21 +1783,15 @@ impl From<soul_import::defect::ImportFailure> for SessionRefusal {
 
 /// A file that parsed and then could not be stored.
 ///
-/// Said differently from a parse failure on purpose, and no longer for the
-/// reason it used to be: [`Session::commit_import`] runs the commit and the
-/// rebuild in one [`SqlCipherStore::transact`], so a failure here rolls the
-/// whole file back rather than leaving part of the export behind. What the
-/// user is told is that nothing landed and the same file can go in again —
-/// which, unlike the half-written case this replaces, does not cost them a
-/// duplicate copy of every message that had already been written.
+/// What is left behind is not said here, because it is not this error's to
+/// say: whichever layer refused, [`Session::commit_import`] wraps the answer
+/// in [`IMPORT_ROLLED_BACK_NOTICE`], and a sentence about atomicity in one of
+/// the two refusals and not the other would read as a difference between them.
 impl From<soul_import::commit::ImportError> for SessionRefusal {
     fn from(error: soul_import::commit::ImportError) -> SessionRefusal {
         SessionRefusal {
             reason_code: ReasonCode::Routine.as_str().to_owned(),
-            explanation: format!(
-                "这次导入没有做完：{error}。整份导入是一个事务，中途失败会整个回滚，\
-                 库里不会留下写了一半的导入；把问题解决之后同一个文件重新导一次就行，不会多出一份事件。"
-            ),
+            explanation: format!("这次导入没有做完：{error}"),
         }
     }
 }
