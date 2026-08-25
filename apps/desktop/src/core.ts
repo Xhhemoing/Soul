@@ -335,8 +335,8 @@ export interface GivenAnswer {
  * One answer the core recorded and did not apply, and why.
  *
  * `reason` is a machine token — `axis_locked_by_user` — and not a sentence:
- * the words a user reads belong to `COPY_ZH.md`, which has no line for this
- * yet.
+ * the words a user reads belong to `COPY_ZH.md` §7, which the profile page
+ * looks the token up in rather than printing it.
  */
 export interface IgnoredAnswer {
   readonly question_id: string;
