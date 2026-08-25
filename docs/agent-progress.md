@@ -14,7 +14,7 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core + TS + DATA-1 + AL + B04 + B05 + B10 workflow |
-| 当前任务 | ROUND 3：B07 导入导出已吸收（#51）；测试/复审/浏览器核在途 |
+| 当前任务 | ROUND 3：B07 ACCEPT-WITH-NITS（#52）；本机 36/566 绿；导入导出浏览器核通过 |
 | PR | #16 专属线；#20–#46（#45 B03 实现；#46 B07 IA） |
 | Merge | B04 `15ad3b3`；B05 `8526c5c`；B10 本提交；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读；hosted Bead CI 空 runner（非产品失败） |
@@ -32,7 +32,7 @@
 | Cache | 无 | 后置 |
 | 第三方 | 无品牌色板授权 | fixture `generic-5mm` |
 | 核心业务 | 色号 + BOM + 四模式 steps 已对 rust fixture；AL 复审 PASS | AL-4（MED）rust 边界 fixture 后置；B04 |
-| 测试 | `@bead/app` **32 文件 / 490**；bead-core 153 | B07 实现锁后置 |
+| 测试 | `@bead/app` **36 文件 / 566**；bead-core 153 | B08 / AL-4 后置 |
 | 构建 | Soul just/pnpm | 隔离，勿改根脚本 |
 | CI/CD | 独立 `bead.yml` 已合；hosted 两作业 3s 空 runner（无 step） | 本机命令为门；勿 empty-commit |
 | 性能 | 无转图基准 | 后置大图 |
@@ -107,7 +107,9 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] B06 实现吸收 #48（`/edit/:id` + blank mint）
 - [x] B06 复审 #49 REJECT（HIGH-1 拖拽 capture）；修复吸收 #50
 - [x] B07 导入导出 IA 合入（#46，`round3-import-export.md` D-IE-1..20）
-- [x] B07 实现吸收 #51（`.beadproj` v1；实现席报 36/566）
+- [x] B07 实现吸收 #51（`.beadproj` v1）
+- [x] B07 复审合入（#52，ACCEPT-WITH-NITS，0 HIGH / 1 MED 测试缺口）
+- [x] B07 浏览器核：`.pat` UNSUPPORTED_FORMAT；png 导向上传；坏 JSON SCHEMA_INVALID；Workspace 导出下载
 - [x] B05 复审合入（#40，ACCEPT；MED-1 blob URL 后置）
 - [x] B10 独立 `bead.yml` 合入（#41）；Soul `ci.yml` 零 diff
 - [x] B10 复审合入（#42，ACCEPT，0 HIGH/MED）
@@ -122,7 +124,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 
 ## 下一轮重点（ROUND 3）
 
-B07 已吸收（#51）。下一刀：本机测试 + 浏览器核导入导出 + Fable 复审。AL-4、MED-1 后置。
+B07 复审 ACCEPT-WITH-NITS，浏览器核通过。下一刀：**B08 画廊 IA** 或 AL-4 / MED-1。不合 unique trunk。
 
 ```text
 ROUND 2（进行中）
@@ -134,6 +136,8 @@ Commit        15ad3b3 absorb B04；本提交记进度
 PR            #16 #32–#37
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B05 实现；B10 workflow；MED-1 后置
+已收          [R3 Fable review B07](https://cursor.com/agents/bc-1b7ae4a2-9407-5270-b668-66e03e95f421) → #52
+已核          B07：假 .pat 拒绝；png 导向上传；坏 beadproj 拒绝；Workspace 导出下载
 已收          [R3 Opus B07 implement](https://cursor.com/agents/bc-b5066476-920e-5f1d-a9ee-abfcf125aba1) → #51
 已核          B06：blank mint → /edit/proj-* → 单次拖拽 14 颗 → 刷新仍在 → 去拼装同图
 已收          [R3 Opus B06 drag fix](https://cursor.com/agents/bc-44e29081-a035-5f8d-adeb-b9f2cc10e5ba) → #50
