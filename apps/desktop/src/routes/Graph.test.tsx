@@ -47,8 +47,10 @@ describe("人脉图页", () => {
     expect(people).toHaveTextContent("往来 6 次");
 
     const ties = screen.getByTestId("ties-list");
+    expect(ties).toHaveTextContent("中等");
     expect(ties).toHaveTextContent("发出 3");
     expect(ties).toHaveTextContent("一对一说过话");
+    expect(ties.textContent ?? "").not.toMatch(/往来较少|往来较多/);
     expect(screen.getByTestId("tie-evidence")).toHaveTextContent("依据 2 条证据");
 
     // 这一行既要说清节点和边留在本机，也要说清同一页上的「看这个人的摘要」是一条出网路径：
