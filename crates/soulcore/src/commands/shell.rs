@@ -19,6 +19,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use soul_policy::ReasonCode;
+
 use crate::config::{CloudState, Config};
 
 /// The executable's file stem, from PRODUCT_LOCK: the process is `soul.exe`
@@ -178,26 +180,70 @@ pub struct WizardAnswers {
 /// wizard later.
 pub fn complete_wizard(answers: &WizardAnswers) -> Result<ConfigSnapshot, WizardRefused> {
     if !answers.acknowledged_defaults_are_off {
-        return Err(WizardRefused::NotAcknowledged);
+        return Err(WizardRefused::not_acknowledged());
     }
 
     let config = Config::default();
     let open = config.open_capabilities();
     if !open.is_empty() {
-        return Err(WizardRefused::CapabilityLeftOpen {
-            open: open.into_iter().map(str::to_owned).collect(),
-        });
+        return Err(WizardRefused::capability_left_open(&open));
     }
 
     Ok(ConfigSnapshot::of(&config))
 }
 
-/// Why a wizard did not finish.
+/// What the wizard says when the box at the bottom is not ticked.
+pub const WIZARD_NOT_ACKNOWLEDGED_NOTICE: &str = "你还没勾上「我读过上面这几行」，\
+    向导就没有可以结束的东西。什么都没有写下，勾上之后再点一次就行。";
+
+/// Why a wizard did not finish, in the shape every other refused command uses.
+///
+/// A code out of `soul-policy`'s frozen vocabulary and one sentence in Soul's
+/// own words — the same two fields as
+/// [`SessionRefusal`](crate::commands::session::SessionRefusal), because the
+/// shell has one renderer for a refusal and it reads exactly those two off a
+/// rejected promise. This used to be an internally tagged enum, so the wizard
+/// crossed the IPC as `{"reason": "not_acknowledged"}`: `asRefusal` did not
+/// recognize it, and the first screen a new user sees was the one screen whose
+/// refusal came out as the code `unavailable` over `[object Object]`.
+///
+/// Neither code is a word the frozen vocabulary coined for a first-run wizard,
+/// and neither reaches the audit chain — the wizard appends nothing. They are
+/// borrowed for the screen, and the borrowing is the same one WP11 wrote down:
+/// a capability the user never agreed to is `CONSENT_MISSING`, and a step that
+/// was simply not taken yet is `ROUTINE`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-#[serde(rename_all = "snake_case", tag = "reason")]
-pub enum WizardRefused {
-    #[error("the wizard was not acknowledged, so there is nothing to finish")]
-    NotAcknowledged,
-    #[error("the wizard would have left these on, and AC-02 says they are off: {}", open.join(", "))]
-    CapabilityLeftOpen { open: Vec<String> },
+#[serde(deny_unknown_fields)]
+#[error("{explanation}")]
+pub struct WizardRefused {
+    pub reason_code: String,
+    pub explanation: String,
+}
+
+impl WizardRefused {
+    /// The box was not ticked, so there is nothing to finish.
+    pub fn not_acknowledged() -> WizardRefused {
+        WizardRefused {
+            reason_code: ReasonCode::Routine.as_str().to_owned(),
+            explanation: WIZARD_NOT_ACKNOWLEDGED_NOTICE.to_owned(),
+        }
+    }
+
+    /// The wizard would have handed back a configuration with a switch on.
+    ///
+    /// The switches are named, because a refusal a user cannot act on is a
+    /// wall. They are field names rather than prose for the reason
+    /// [`Config::open_capabilities`] returns field names: the sentence has to
+    /// stay true when somebody adds a capability, and it is the configuration
+    /// that knows what it left open.
+    pub fn capability_left_open(open: &[&str]) -> WizardRefused {
+        WizardRefused {
+            reason_code: ReasonCode::ConsentMissing.as_str().to_owned(),
+            explanation: format!(
+                "向导交出去的配置必须是什么都没打开的，而这一份里还开着：{}。\
+                 向导没有结束，也没有写下任何东西。",
+                open.join("、"),
+            ),
+        }
+    }
 }

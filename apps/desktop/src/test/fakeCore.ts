@@ -736,6 +736,10 @@ export const CLOSED_CLOUD: CloudNotice = {
 export const LLM_ENDPOINT_SESSION_ONLY_NOTICE =
   "地址只在这次运行里有效，退出 Soul 再打开需要重新填写。填写的时候不会访问这个地址，只有你在起草页确认生成、或在人脉图上看某个人的摘要时才会。";
 
+/** `soulcore::commands::shell::WIZARD_NOT_ACKNOWLEDGED_NOTICE`. */
+export const WIZARD_NOT_ACKNOWLEDGED_NOTICE =
+  "你还没勾上「我读过上面这几行」，向导就没有可以结束的东西。什么都没有写下，勾上之后再点一次就行。";
+
 /** `soulcore::commands::session::ENDPOINT_UNPARSABLE_NOTICE`. */
 export const ENDPOINT_UNPARSABLE_NOTICE =
   "这个地址不像一个端点：要 http:// 或 https:// 开头，后面跟主机名，端口不写就按 80 或 443 算，比如 http://127.0.0.1:11434/v1；地址里不能带用户名和密码。这一次什么都没有保存，端点还是没有填写。";
@@ -997,7 +1001,10 @@ export function installFakeCore(
         const answers = (payload as { answers?: { acknowledged_defaults_are_off?: boolean } })
           .answers;
         if (answers?.acknowledged_defaults_are_off !== true) {
-          throw "the wizard was not acknowledged, so there is nothing to finish";
+          throw {
+            reason_code: "ROUTINE",
+            explanation: WIZARD_NOT_ACKNOWLEDGED_NOTICE,
+          };
         }
         return snapshot;
       }
