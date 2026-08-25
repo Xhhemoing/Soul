@@ -16,15 +16,13 @@ AUTO → SCAN/PLAN（本轮）+ 合并处置（只合已证明安全的）+ 第�
 
 ## Round 1 六路（云端，禁止同文件）
 
-云端同时新开 VM 上限为 3；本回合先入座 4 路，opus-b / gpt-sol-a 在额度空出后补派。
-
 | 代理 | 模型 | 产物 | 云端 id |
 |---|---|---|---|
 | fable-a | claude-fable-5-thinking-xhigh | `docs/BRANCH_MAP.md` | `bc-963470bd-68be-58f2-ab2c-2d07bcc1c167` |
 | fable-b | claude-fable-5-thinking-xhigh | `docs/FIRST_FORMAL_TEST.md` | `bc-85764013-e04d-5cb6-9558-ea28a4673b42` |
 | opus-a | claude-opus-5-thinking-high-fast | `scripts/branch-disposition.sh`（及必要测试） | `bc-6b504d02-c2aa-57ac-8e1c-99d3bf37c1d2` |
-| opus-b | claude-opus-5-thinking-high-fast | 只改 `scripts/author-manual-checklist.md` 第 0 节：点名候选树 | 待补派 |
-| gpt-sol-a | gpt-5.6-sol-xhigh-fast | `.agent_workspace/orchestrator-c441/round4/gpt-sol-a.md` | 待补派 |
+| opus-b | claude-opus-5-thinking-high-fast | 只改 `scripts/author-manual-checklist.md` 第 0 节：点名候选树 | `bc-8170e09a-21a7-5d6d-884d-00087329e6a0` |
+| gpt-sol-a | gpt-5.6-sol-xhigh-fast | `.agent_workspace/orchestrator-c441/round4/gpt-sol-a.md` | `bc-551bc314-dac0-5819-b32b-f0eeb7146e62` |
 | gpt-sol-b | gpt-5.6-sol-xhigh-fast | `.agent_workspace/orchestrator-c441/round4/gpt-sol-b.md` | `bc-ef8b00bd-7407-5b0c-a432-eaec582ae6b4` |
 
 ## 本机已知 remote（派单时点，可能落后 1–2h）

@@ -20,3 +20,7 @@
 | opus-d P0 归属位形状 | 本机 `f53c3ae`…`8a0a061` |
 
 残留（钉死、不得称收口）：空图 + 豁免条 + 未导入姓名不在说话动词前。N4 hosted CI、N5 Win11 手动、N6 PR #7 仍要用户。
+
+## Round 4（分支盘点 + 第一次正式测试方案）
+
+3 轮 × 6 云端已开 Round 1。路由 `.agent_workspace/orchestrator-c441/ROUND4-ROUTING.md`。LOOP20 仍 QUEUED。不盲合 `#4` / `#7` / `main`→主干。
