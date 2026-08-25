@@ -14,7 +14,7 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core + TS + DATA-1 + AL + B04 + B05 + B10 workflow |
-| 当前任务 | ROUND 3：B03 实现已吸收（#45）；本机测试/浏览器核/Fable 复审在途；B07 IA #46 |
+| 当前任务 | ROUND 3：B03 ACCEPT-WITH-NITS（#47）；本机 29/426 绿；浏览器上传流通过 |
 | PR | #16 专属线；#20–#46（#45 B03 实现；#46 B07 IA） |
 | Merge | B04 `15ad3b3`；B05 `8526c5c`；B10 本提交；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读；hosted Bead CI 空 runner（非产品失败） |
@@ -32,7 +32,7 @@
 | Cache | 无 | 后置 |
 | 第三方 | 无品牌色板授权 | fixture `generic-5mm` |
 | 核心业务 | 色号 + BOM + 四模式 steps 已对 rust fixture；AL 复审 PASS | AL-4（MED）rust 边界 fixture 后置；B04 |
-| 测试 | `@bead/app` 258 + bead-core 153；覆盖探针已盘点 | T-ASM/T-INV 等 B04/B05 实现锁 |
+| 测试 | `@bead/app` **29 文件 / 426**；bead-core 153 | B06/B07 实现锁后置 |
 | 构建 | Soul just/pnpm | 隔离，勿改根脚本 |
 | CI/CD | 独立 `bead.yml` 已合；hosted 两作业 3s 空 runner（无 step） | 本机命令为门；勿 empty-commit |
 | 性能 | 无转图基准 | 后置大图 |
@@ -101,6 +101,8 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] B04 复审合入 `76ae0ef`（#38，ACCEPT；MED-1 行窗口写盘后置）
 - [x] B03 上传 IA 合入（#43，`round3-create-upload.md` D-UP-1..16）
 - [x] B03 实现吸收 #45（`bead-v1` + BD20 + CreatePage 测试改写）
+- [x] B03 复审合入（#47，ACCEPT-WITH-NITS，0 HIGH/MED / 4 LOW）
+- [x] B03 浏览器核：上传红图 → 28×28 预览 → 转入拼装 → 库存 G15 缺口无 URL → 画廊史莱姆不回归；刷新后网格仍在
 - [x] B06 像素编辑 IA 合入（#44，`round3-pixel-editor.md` D-ED-1..21）
 - [x] B07 导入导出 IA 合入（#46，`round3-import-export.md` D-IE-1..20）
 - [x] B05 复审合入（#40，ACCEPT；MED-1 blob URL 后置）
@@ -117,7 +119,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 
 ## 下一轮重点（ROUND 3）
 
-B03 已吸收。下一刀：本机 `@bead/app` 测试 + 浏览器核上传流 + Fable 复审。B06/B07 实现硬后置于复审 ACCEPT。AL-4、B04/B05 MED-1 后置。
+B03 复审 ACCEPT-WITH-NITS，浏览器核通过。下一刀：**B06 像素编辑实现**（切在本 tip 之后）。B07 实现、AL-4、B04/B05 MED-1 后置。
 
 ```text
 ROUND 2（进行中）
@@ -129,6 +131,8 @@ Commit        15ad3b3 absorb B04；本提交记进度
 PR            #16 #32–#37
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B05 实现；B10 workflow；MED-1 后置
+已收          [R3 Fable review B03](https://cursor.com/agents/bc-dda3ba42-5efd-5794-893b-ccd3dcd9eace) → #47
+已核          B03 上传流：预览/保存/库存/画廊回归/刷新 IDB 均通过
 已收          [R3 Opus B03 implement](https://cursor.com/agents/bc-2919c00f-1dff-5f7f-bb0a-9107a34f58a1) → #45
 已收          [R3 Fable B07 import IA](https://cursor.com/agents/bc-e46705b1-e91b-55ec-8c47-404ef086f3c6) → #46
 已收          [R3 Fable B06 editor IA](https://cursor.com/agents/bc-c104f901-b479-501d-9a47-6b90381b06b2) → #44
