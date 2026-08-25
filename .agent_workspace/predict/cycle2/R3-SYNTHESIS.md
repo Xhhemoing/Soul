@@ -6,7 +6,7 @@ Parent: cursor-grok-4.6-high。已收：opus-a/b、gpt-sol-a/b、fable-a/b。迟
 ## 冻结下来的结构
 
 1. 文件后继共享形状：**只从今天的 move 集合里减，从不新造 move**（S1-b 提升否决）。
-2. 短路：S1（KindDisputed）在 S3（RecentlyModified）之前；吃 as_of 的理由排最后。
+2. S1 与 S3 的组合有两套并列架构（短路内 S1 先 vs S3 先抑制再嗅头），见 ESSENCE §2.5；吃 as_of 的理由仍须排最后。
 3. `as_of_day` **不进** `plan_hash`。gpt-sol-a 给出跨零点判决测试与反向对照。
 4. S1 默认关：零读上界造不出（撒谎频率必须读字节）。形状门今天可测，收益线饥饿。
 5. S2 默认只注解。opus-b 否决「移入 `重复/`」；该分歧保留给测试日，见 ESSENCE §2.5。
