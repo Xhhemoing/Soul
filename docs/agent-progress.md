@@ -11,10 +11,10 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 | Field | Value |
 |---|---|
-| Current task | Opus in flight: Session §6 pin; Graph+Profile same-band pin; name-harvest fold. Fable still running: key-blob TOCTOU, security, AC-31 if not yet returned. Consent/collect/7B: NO_HIGH_VALUE |
+| Current task | Opus in flight: Session §6 pin; Graph+Profile same-band; name-harvest fold; `as_of=None` projection suppression test. Fable still running: key-blob TOCTOU, security. AC-31-on-this-tree was a misnomer (contract is AC-01–26; real-SQLCipher already pinned). |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
-| Exclusive tip | `d16e4cf` / PR #15 |
+| Exclusive tip | `b7c8563` / PR #15 |
 
 ### Round 4 Fable dispatch (launched, not yet returned)
 
