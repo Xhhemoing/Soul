@@ -4,8 +4,11 @@ import {
   applyFraming,
   aspectTarget,
   cropImage,
+  planFixedBoards,
+  renderFit,
   resampleBox,
   resampleNearest,
+  type FitPlan,
 } from "./framing.ts";
 import { AlgoError, createImage, imageFromPixels, readAlpha, readRgb } from "./image.ts";
 import { seededInt, seededRandom } from "../test/random.ts";
@@ -173,6 +176,75 @@ describe("T-SCL-5 重采样空间锁定（线性光）", () => {
     const out = resampleBox(source, 1, 1);
     expect(readAlpha(out, 0, 0)).toBe(0);
     expect(readRgb(out, 0, 0)).toEqual({ r: 0, g: 0, b: 0 });
+  });
+});
+
+describe("oracle 的固定拼板框定", () => {
+  const BOARD = { name: "4x4", width: 4, height: 4 };
+
+  /** A plan over the whole image, so a case can pin the sampler without cover-crop. */
+  function wholeImagePlan(
+    width: number,
+    height: number,
+    cellsWide: number,
+    cellsHigh: number,
+  ): FitPlan {
+    return {
+      board: { name: `${cellsWide}x${cellsHigh}`, width: cellsWide, height: cellsHigh },
+      cellsWide,
+      cellsHigh,
+      boardsAcross: 1,
+      boardsDown: 1,
+      source: { x: 0, y: 0, width, height },
+      croppedFraction: 0,
+    };
+  }
+
+  it("方图落在方板上不裁剪，拼板数向上取整", () => {
+    const plan = planFixedBoards(100, 100, { name: "28x28", width: 28, height: 28 }, 1, 1);
+    expect([plan.cellsWide, plan.cellsHigh]).toEqual([28, 28]);
+    expect(plan.croppedFraction).toBeCloseTo(0, 12);
+    expect([plan.boardsAcross, plan.boardsDown]).toEqual([1, 1]);
+  });
+
+  it("宽图按 cover 居中裁剪，两侧各切一半", () => {
+    const plan = planFixedBoards(200, 100, BOARD, 1, 1);
+    expect(plan.source).toEqual({ x: 50, y: 0, width: 100, height: 100 });
+    expect(plan.croppedFraction).toBeCloseTo(0.5, 12);
+  });
+
+  it("nearest 取格中心，逐格对应放大前的逻辑像素", () => {
+    const source = imageFromPixels(16, 16, (x, y) => [
+      Math.floor(x / 4) * 60,
+      Math.floor(y / 4) * 60,
+      0,
+      255,
+    ]);
+    const out = renderFit(source, planFixedBoards(16, 16, BOARD, 1, 1), "nearest");
+    expect([out.width, out.height]).toEqual([4, 4]);
+    expect(readRgb(out, 0, 0)).toEqual({ r: 0, g: 0, b: 0 });
+    expect(readRgb(out, 3, 2)).toEqual({ r: 180, g: 120, b: 0 });
+  });
+
+  /** T-SCL-5 again, on the oracle-shaped sampler: 128 would mean code values. */
+  it("box-average 也在线性光里平均：[黑, 白] 两格 → 188", () => {
+    const source = imageFromPixels(2, 1, (x) => (x === 0 ? [0, 0, 0, 255] : [255, 255, 255, 255]));
+    const out = renderFit(source, wholeImagePlan(2, 1, 1, 1), "box-average");
+    expect(readRgb(out, 0, 0)).toEqual({ r: 188, g: 188, b: 188 });
+    expect(readAlpha(out, 0, 0)).toBe(255);
+  });
+
+  it("整格透明的格子回到透明黑，而不是被邻格的颜色抹平", () => {
+    const source = imageFromPixels(4, 2, (x) => (x < 2 ? [255, 0, 0, 255] : [0, 0, 0, 0]));
+    const out = renderFit(source, wholeImagePlan(4, 2, 2, 1), "box-average");
+    expect(readAlpha(out, 0, 0)).toBe(255);
+    expect(readRgb(out, 0, 0)).toEqual({ r: 255, g: 0, b: 0 });
+    expect(readAlpha(out, 1, 0)).toBe(0);
+  });
+
+  it("0 尺寸与 0 块数抛 AlgoError", () => {
+    expect(() => planFixedBoards(0, 4, BOARD, 1, 1)).toThrow(AlgoError);
+    expect(() => planFixedBoards(4, 4, BOARD, 0, 1)).toThrow(AlgoError);
   });
 });
 

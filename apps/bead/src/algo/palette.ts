@@ -3,6 +3,11 @@
  * NOT a transcription of any real brand's colour card — the ids and names are
  * this project's own, so nothing here depends on a vendor list.
  *
+ * The entries are the oracle's (`crates/bead-core/src/palette.rs`), code for
+ * code and hex for hex. BD18/BD8 make `bead-core` the algorithm oracle, and a
+ * colour-code sequence can only be compared across the two implementations when
+ * the same id means the same colour on both sides (AT-1).
+ *
  * Nearest-colour lookup pins contract gaps G2/G6: minimise ΔE00, and on an
  * exact tie take the lowest palette index so Rust and TypeScript cannot drift
  * apart at a near tie.
@@ -23,54 +28,67 @@ export interface Palette {
   readonly entries: readonly PaletteEntry[];
 }
 
-function entry(id: string, displayName: string, r: number, g: number, b: number): PaletteEntry {
-  return { id, displayName, rgb: { r, g, b } };
+function entry(id: string, displayName: string, hex: string): PaletteEntry {
+  const value = Number.parseInt(hex.slice(1), 16);
+  return {
+    id,
+    displayName,
+    rgb: { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255 },
+  };
 }
 
 export const GENERIC_5MM: Palette = {
   id: "generic-5mm",
   displayName: "通用 5mm 熔豆板",
   entries: [
-    entry("G01", "纯白", 255, 255, 255),
-    entry("G02", "米白", 245, 238, 220),
-    entry("G03", "浅灰", 200, 200, 200),
-    entry("G04", "中灰", 150, 150, 150),
-    entry("G05", "深灰", 90, 90, 90),
-    entry("G06", "纯黑", 0, 0, 0),
-    entry("G07", "粉红", 255, 170, 190),
-    entry("G08", "亮红", 230, 40, 50),
-    entry("G09", "深红", 150, 25, 35),
-    entry("G10", "橙", 245, 130, 40),
-    entry("G11", "浅橙", 250, 190, 120),
-    entry("G12", "黄", 250, 220, 60),
-    entry("G13", "浅黄", 250, 240, 170),
-    entry("G14", "金", 215, 170, 60),
-    entry("G15", "嫩绿", 170, 220, 120),
-    entry("G16", "亮绿", 70, 175, 80),
-    entry("G17", "深绿", 25, 105, 60),
-    entry("G18", "墨绿", 15, 60, 45),
-    entry("G19", "青", 60, 190, 190),
-    entry("G20", "浅蓝", 150, 205, 235),
-    entry("G21", "亮蓝", 40, 120, 200),
-    entry("G22", "深蓝", 25, 55, 130),
-    entry("G23", "藏青", 18, 30, 70),
-    entry("G24", "淡紫", 200, 175, 225),
-    entry("G25", "紫", 130, 70, 175),
-    entry("G26", "深紫", 75, 35, 110),
-    entry("G27", "品红", 215, 60, 150),
-    entry("G28", "玫红", 240, 110, 160),
-    entry("G29", "棕", 120, 80, 50),
-    entry("G30", "浅棕", 185, 140, 100),
-    entry("G31", "肤色", 250, 215, 185),
-    entry("G32", "沙色", 225, 200, 160),
-    entry("G33", "橄榄", 130, 140, 60),
-    entry("G34", "军绿", 90, 105, 70),
-    entry("G35", "天蓝", 110, 180, 230),
-    entry("G36", "湖蓝", 30, 150, 175),
-    entry("G37", "珊瑚", 250, 145, 130),
-    entry("G38", "酒红", 110, 30, 60),
-    entry("G39", "银灰", 175, 180, 185),
-    entry("G40", "炭灰", 50, 52, 58),
+    entry("G01", "White", "#FFFFFF"),
+    entry("G02", "Cream", "#F5EFE0"),
+    entry("G03", "Light Grey", "#D3D3D3"),
+    entry("G04", "Grey", "#9E9E9E"),
+    entry("G05", "Dark Grey", "#5C5C5C"),
+    entry("G06", "Black", "#000000"),
+    entry("G07", "Silver", "#B7BFC6"),
+    entry("G08", "Slate", "#6B7A85"),
+    entry("G09", "Charcoal", "#2B2F33"),
+    entry("G10", "Pale Pink", "#FFD9E2"),
+    entry("G11", "Pink", "#FF9EC4"),
+    entry("G12", "Rose", "#F0559A"),
+    entry("G13", "Magenta", "#E0218A"),
+    entry("G14", "Light Red", "#FF6F61"),
+    entry("G15", "Red", "#E4032E"),
+    entry("G16", "Dark Red", "#9B1B24"),
+    entry("G17", "Salmon", "#FFA48A"),
+    entry("G18", "Orange", "#F5821F"),
+    entry("G19", "Dark Orange", "#D2601A"),
+    entry("G20", "Peach", "#FFCBA4"),
+    entry("G21", "Light Yellow", "#FFF3A1"),
+    entry("G22", "Yellow", "#FFD400"),
+    entry("G23", "Gold", "#E0A526"),
+    entry("G24", "Lime", "#C6DE41"),
+    entry("G25", "Light Green", "#8CC63F"),
+    entry("G26", "Green", "#2E9E45"),
+    entry("G27", "Dark Green", "#14602D"),
+    entry("G28", "Mint", "#A8E6CF"),
+    entry("G29", "Teal", "#009B9F"),
+    entry("G30", "Dark Teal", "#00666B"),
+    entry("G31", "Sky Blue", "#8FD3F4"),
+    entry("G32", "Light Blue", "#4FA3E3"),
+    entry("G33", "Blue", "#0B61A4"),
+    entry("G34", "Dark Blue", "#123A6B"),
+    entry("G35", "Navy", "#0B1E3C"),
+    entry("G36", "Periwinkle", "#9FA8DA"),
+    entry("G37", "Violet", "#7A5CC4"),
+    entry("G38", "Purple", "#59259E"),
+    entry("G39", "Dark Purple", "#3B1660"),
+    entry("G40", "Lavender", "#D6C7EA"),
+    entry("G41", "Beige", "#E3C79A"),
+    entry("G42", "Tan", "#C9A06A"),
+    entry("G43", "Light Brown", "#A9713F"),
+    entry("G44", "Brown", "#7B4B25"),
+    entry("G45", "Dark Brown", "#4A2B14"),
+    entry("G46", "Skin Light", "#FFE0C4"),
+    entry("G47", "Skin Medium", "#E8B48A"),
+    entry("G48", "Skin Deep", "#A96A46"),
   ],
 };
 

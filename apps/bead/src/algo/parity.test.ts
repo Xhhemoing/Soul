@@ -7,9 +7,14 @@ import { imageToPattern, type PipelineOptions } from "./pipeline.ts";
 import { splitSteps, type SplitMode } from "./steps.ts";
 
 /**
- * T-PAR-1. `fixtures/parity.json` is the file WP-B01 has to consume too: raw
- * RGBA in, colour codes out. Nothing here decodes a PNG, because a browser will
- * apply an embedded ICC profile and the Rust `image` crate will not (T-PAR-2).
+ * `fixtures/parity.json` locks the TypeScript pipeline's own path: the
+ * detector's verdict, the undone up-scale, aspect framing and the four step
+ * modes, none of which the oracle expresses. Cross-language colour-code parity
+ * lives in `oracle-parity.test.ts`, which replays
+ * `crates/bead-core/fixtures/parity/*.json` unchanged (AT-1).
+ *
+ * Nothing here decodes a PNG either way, because a browser will apply an
+ * embedded ICC profile and the Rust `image` crate will not (T-PAR-2).
  */
 function decodeHex(hex: string): Uint8ClampedArray {
   const bytes = new Uint8ClampedArray(hex.length / 2);
@@ -19,7 +24,7 @@ function decodeHex(hex: string): Uint8ClampedArray {
   return bytes;
 }
 
-describe("T-PAR-1 共享 parity fixture", () => {
+describe("T-PAR-1 TS 管线回归锁", () => {
   it("覆盖像素图、照片（抖动开/关）与含透明四条路径", () => {
     expect(fixture.palette).toBe(GENERIC_5MM.id);
     expect(fixture.cases.map((it) => it.name)).toEqual([

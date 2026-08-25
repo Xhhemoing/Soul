@@ -34,7 +34,7 @@ describe("像素图路径", () => {
     });
     expect(result.grid.width).toBe(6);
     expect(result.grid.height).toBe(6);
-    expect(result.bom.map((row) => row.code).sort()).toEqual(["G08", "G12", "G21"]);
+    expect(result.bom.map((row) => row.code).sort()).toEqual(["G15", "G22", "G33"]);
   });
 
   it("像素图路径强制关闭抖动，并如实报告", () => {
@@ -66,14 +66,16 @@ describe("像素图路径", () => {
  * its last cell is usually cut short. Deriving the nearest-neighbour sample
  * point from `sourceWidth / targetWidth` instead of the detected geometry made
  * the point drift across cell borders: the review's 9×4 case came back
- * `[G08, G08, G15]`, reading the second logical pixel out of the red cell and
- * dropping the blue one entirely.
+ * `[G08, G08, G15]` under the palette of the day, reading the second logical
+ * pixel out of the red cell and dropping the blue one entirely.
  */
 describe("AT-2 截断与相位偏移的放大图", () => {
-  const RED = [255, 0, 0, 255] as const;
-  const GREEN = [0, 255, 0, 255] as const;
-  const BLUE = [0, 0, 255, 255] as const;
-  const YELLOW = [255, 255, 0, 255] as const;
+  // Exact palette swatches, so the assertion is about which cell was sampled
+  // and never about which bead a borderline colour rounds to.
+  const RED = [228, 3, 46, 255] as const;
+  const GREEN = [46, 158, 69, 255] as const;
+  const BLUE = [11, 97, 164, 255] as const;
+  const YELLOW = [255, 212, 0, 255] as const;
 
   /** A 4×-up-scaled strip whose cell borders sit at `offset + 4k`. */
   function strip(width: number, offset: number, colors: readonly (readonly number[])[]) {
@@ -106,7 +108,7 @@ describe("AT-2 截断与相位偏移的放大图", () => {
       offsetY: 0,
     });
     expect(actual.size).toEqual([3, 1]);
-    expect(actual.codes).toEqual(["G08", "G15", "G25"]);
+    expect(actual.codes).toEqual(["G15", "G26", "G33"]);
     expect(new Set(actual.codes).size).toBe(3);
   });
 
@@ -120,7 +122,7 @@ describe("AT-2 截断与相位偏移的放大图", () => {
       offsetY: 0,
     });
     expect(actual.size).toEqual([3, 1]);
-    expect(actual.codes).toEqual(["G08", "G15", "G25"]);
+    expect(actual.codes).toEqual(["G15", "G26", "G33"]);
   });
 
   it("相位偏移 3px 且末格被截：两端的残格都保留", () => {
@@ -133,7 +135,7 @@ describe("AT-2 截断与相位偏移的放大图", () => {
       offsetY: 0,
     });
     expect(actual.size).toEqual([4, 1]);
-    expect(actual.codes).toEqual(["G08", "G15", "G25", "G12"]);
+    expect(actual.codes).toEqual(["G15", "G26", "G33", "G22"]);
   });
 });
 

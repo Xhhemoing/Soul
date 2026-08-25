@@ -9,7 +9,13 @@
  */
 
 import { clamp, linearToSrgb, roundHalfUp, srgbToLinear } from "./color.ts";
-import { AlgoError, createImage, type RgbaImage } from "./image.ts";
+import {
+  AlgoError,
+  createImage,
+  isOpaque,
+  OPAQUE_ALPHA_THRESHOLD,
+  type RgbaImage,
+} from "./image.ts";
 
 export const BOARD_28 = 28;
 export const BOARD_56 = 56;
@@ -27,7 +33,15 @@ export type Framing =
   /** Keep the aspect ratio, longest side becomes `maxSide` (default 28). */
   | { readonly mode: "aspect"; readonly maxSide?: number }
   /** Manual viewport: crop in source pixels, then multiply by `scale`. */
-  | { readonly mode: "manual"; readonly scale: number; readonly crop: CropRect };
+  | { readonly mode: "manual"; readonly scale: number; readonly crop: CropRect }
+  /** The oracle's `FitMode::FixedBoards`: a bead count, centre-cropped to fit. */
+  | {
+      readonly mode: "fixed-boards";
+      readonly board: BoardSpec;
+      readonly cols: number;
+      readonly rows: number;
+      readonly sampling: Sampling;
+    };
 
 export const DEFAULT_MAX_SIDE = BOARD_28;
 
@@ -267,6 +281,167 @@ export function collapseLattice(image: RgbaImage, lattice: CellLattice): RgbaIma
   return out;
 }
 
+/**
+ * A pegboard, in bead cells. Mirrors `bead_core::fit::BoardSpec` so a fixture
+ * written by the oracle can be replayed here without translating its framing.
+ */
+export interface BoardSpec {
+  readonly name: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** How to read source pixels when the cell grid is coarser than the image. */
+export type Sampling = "nearest" | "box-average";
+
+/** The rectangle of source pixels that ends up on the boards, in pixel units. */
+export interface SourceRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** A framing decision: what to sample, and onto what. */
+export interface FitPlan {
+  readonly board: BoardSpec;
+  readonly cellsWide: number;
+  readonly cellsHigh: number;
+  readonly boardsAcross: number;
+  readonly boardsDown: number;
+  readonly source: SourceRect;
+  /** Share of the source image left outside `source`, 0…1. */
+  readonly croppedFraction: number;
+}
+
+/** The largest centred rectangle of the given aspect that fits in the source. */
+function coverRect(sourceWidth: number, sourceHeight: number, targetAspect: number): SourceRect {
+  if (sourceWidth / sourceHeight > targetAspect) {
+    const width = sourceHeight * targetAspect;
+    return { x: (sourceWidth - width) / 2, y: 0, width, height: sourceHeight };
+  }
+  const height = sourceWidth / targetAspect;
+  return { x: 0, y: (sourceHeight - height) / 2, width: sourceWidth, height };
+}
+
+/**
+ * `bead_core::fit::fixed_boards`: a bead count the user already owns the boards
+ * for, with the image centre-cropped to that shape.
+ */
+export function planFixedBoards(
+  sourceWidth: number,
+  sourceHeight: number,
+  board: BoardSpec,
+  cols: number,
+  rows: number,
+): FitPlan {
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
+    throw new AlgoError("InvalidDimensions", `${sourceWidth}×${sourceHeight} 没有像素`);
+  }
+  if (board.width <= 0 || board.height <= 0 || cols <= 0 || rows <= 0) {
+    throw new AlgoError("InvalidDimensions", "拼板尺寸与块数都必须为正");
+  }
+  const cellsWide = board.width * cols;
+  const cellsHigh = board.height * rows;
+  const source = coverRect(sourceWidth, sourceHeight, cellsWide / cellsHigh);
+
+  const whole = sourceWidth * sourceHeight;
+  const overlapW = Math.min(source.x + source.width, sourceWidth) - Math.max(source.x, 0);
+  const overlapH = Math.min(source.y + source.height, sourceHeight) - Math.max(source.y, 0);
+  const kept = clamp(Math.max(overlapW, 0) * Math.max(overlapH, 0), 0, whole);
+  return {
+    board,
+    cellsWide,
+    cellsHigh,
+    boardsAcross: Math.ceil(cellsWide / board.width),
+    boardsDown: Math.ceil(cellsHigh / board.height),
+    source,
+    croppedFraction: 1 - kept / whole,
+  };
+}
+
+/** The pixel at `(x, y)`, or fully transparent outside the image. */
+function samplePixel(image: RgbaImage, x: number, y: number): [number, number, number, number] {
+  if (x < 0 || y < 0 || x >= image.width || y >= image.height) return [0, 0, 0, 0];
+  const o = (y * image.width + x) * 4;
+  return [image.data[o]!, image.data[o + 1]!, image.data[o + 2]!, image.data[o + 3]!];
+}
+
+/**
+ * Mean of the covered pixels, colour averaged in linear light.
+ *
+ * Alpha is averaged over every covered sample and then re-thresholded, but
+ * colour is averaged over the opaque samples only, so a transparent neighbour
+ * cannot drag an edge cell towards whatever sits behind the alpha.
+ */
+function boxAverageCell(
+  image: RgbaImage,
+  x0: number,
+  y0: number,
+  cellW: number,
+  cellH: number,
+): [number, number, number, number] {
+  const firstX = Math.floor(x0);
+  const firstY = Math.floor(y0);
+  const lastX = Math.max(Math.ceil(x0 + cellW) - 1, firstX);
+  const lastY = Math.max(Math.ceil(y0 + cellH) - 1, firstY);
+
+  let linearR = 0;
+  let linearG = 0;
+  let linearB = 0;
+  let opaque = 0;
+  let alphaSum = 0;
+  let total = 0;
+
+  for (let y = firstY; y <= lastY; y += 1) {
+    for (let x = firstX; x <= lastX; x += 1) {
+      const [r, g, b, a] = samplePixel(image, x, y);
+      total += 1;
+      alphaSum += a;
+      if (!isOpaque(a)) continue;
+      opaque += 1;
+      linearR += srgbToLinear(r);
+      linearG += srgbToLinear(g);
+      linearB += srgbToLinear(b);
+    }
+  }
+
+  if (total === 0 || opaque === 0 || alphaSum / Math.max(total, 1) < OPAQUE_ALPHA_THRESHOLD) {
+    return [0, 0, 0, 0];
+  }
+  return [
+    linearToSrgb(linearR / opaque),
+    linearToSrgb(linearG / opaque),
+    linearToSrgb(linearB / opaque),
+    255,
+  ];
+}
+
+/** `bead_core::fit::render`: sample `image` through `plan` into cell pixels. */
+export function renderFit(image: RgbaImage, plan: FitPlan, sampling: Sampling): RgbaImage {
+  const { cellsWide, cellsHigh, source } = plan;
+  const cellW = source.width / cellsWide;
+  const cellH = source.height / cellsHigh;
+
+  const out = createImage(cellsWide, cellsHigh);
+  for (let cy = 0; cy < cellsHigh; cy += 1) {
+    const y0 = source.y + cy * cellH;
+    for (let cx = 0; cx < cellsWide; cx += 1) {
+      const x0 = source.x + cx * cellW;
+      const pixel =
+        sampling === "nearest"
+          ? samplePixel(image, Math.floor(x0 + cellW / 2), Math.floor(y0 + cellH / 2))
+          : boxAverageCell(image, x0, y0, cellW, cellH);
+      const dst = (cy * cellsWide + cx) * 4;
+      out.data[dst] = pixel[0];
+      out.data[dst + 1] = pixel[1];
+      out.data[dst + 2] = pixel[2];
+      out.data[dst + 3] = pixel[3];
+    }
+  }
+  return out;
+}
+
 /** Applies a framing choice and returns the framed RGBA buffer. */
 export function applyFraming(image: RgbaImage, framing: Framing): RgbaImage {
   if (image.width <= 0 || image.height <= 0) {
@@ -275,6 +450,12 @@ export function applyFraming(image: RgbaImage, framing: Framing): RgbaImage {
   switch (framing.mode) {
     case "board":
       return resampleBox(image, framing.size, framing.size);
+    case "fixed-boards":
+      return renderFit(
+        image,
+        planFixedBoards(image.width, image.height, framing.board, framing.cols, framing.rows),
+        framing.sampling,
+      );
     case "aspect": {
       const target = aspectTarget(image.width, image.height, framing.maxSide ?? DEFAULT_MAX_SIDE);
       return resampleBox(image, target.width, target.height);

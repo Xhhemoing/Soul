@@ -21,7 +21,7 @@ describe("generic-5mm 色板", () => {
       expect(seen.has(key)).toBe(false);
       seen.add(key);
     }
-    expect(GENERIC_5MM.entries.length).toBe(40);
+    expect(GENERIC_5MM.entries.length).toBe(48);
   });
 
   // If two palette entries were closer than the substitute threshold the
