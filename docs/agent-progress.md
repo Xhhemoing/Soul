@@ -11,7 +11,7 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 | Field | Value |
 |---|---|
-| Current task | Round 5 Fable still in flight (cross-slice, forget×summary, R4 review, G1+, perf). #3 D55 park; #5 audit crash NO_HIGH_VALUE; #6 usage-policy BLOCKED, replaced by #6b HIGH_VALUE multiline provenance (Opus in flight); #9 Windows checklist honesty landed; #10 DPAPI unrecoverability notice landed on `store_notice`. E1 mutex stall parked P2. Hosted Windows `LockFileEx` pending billing. |
+| Current task | Round 5: dispatching Opus for forget×summary, research `research_export`, G1+ owner-fold. R4 landing review still in flight. Import commit transaction parked until those land (touches `session.rs`/`store.rs`). #3 D55 park. E1 mutex stall parked P2. Hosted CI billing-blocked. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
 | Exclusive tip | key-blob reclaim merged; PR #15 |
@@ -30,6 +30,10 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 | 8 | Bounded performance probe (synthetic import→rebuild→summary) or evidenced NO_HIGH_VALUE |
 | 9 | Windows-only / author-checklist desk-check (record BLOCKED if unrunnable) |
 | 10 | Independent synthesis vs four author requirements; Round 6 directions |
+
+### Round 6 directions (queued — do not start until Round 5 close)
+
+From R5 #10: schema-version honesty; `store_opened=false` across routes; AC-21 headless lag vs 38 commands; 38-command adversarial IPC; long-horizon aging; backup/key-loss (notice already landed); Telegram 2026 export-shape; gate coverage post-port; AD-12 consent board; Session lock-order inventory excluding parked P2 E1 stall.
 
 ## ROUND 4 record
 

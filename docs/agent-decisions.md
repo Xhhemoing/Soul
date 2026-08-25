@@ -1,6 +1,6 @@
 # Agent decisions (this parent run)
 
-Additive log for `cursor/soul-integration-4a8e`. Does **not** replace `docs/DECISIONS.md` (D1–D60). New product-direction boards still go there.
+Additive log for `cursor/soul-integration-4a8e`. Does **not** replace `docs/DECISIONS.md` (D1–D61). New product-direction boards still go there.
 
 | ID | Decision | Why |
 |---|---|---|
@@ -18,3 +18,4 @@ Additive log for `cursor/soul-integration-4a8e`. Does **not** replace `docs/DECI
 | AD-12 | Collect consent remaining session-only is a DECISIONS board item, not a silent persist. Default-off is the lock; per-launch reset is an extra product choice. | R2 Fable #5 (async-capped; same conclusion as R1 frontend). |
 | AD-13 | AD-9 ships as four additive `COPY_ZH.md` §6 keys (强→中等 / 中等→弱 / 封弱 / 群里撑着) rendered by a pure function in `soul-draft` and joined onto the existing `person_summary` points. No new IPC command, no new threshold, no learned model: the projection reads `DEMOTE_ONE_BAND_DAYS` / `FORCE_WEAK_DAYS` from `soul_algo_tie::constants` and the dates already on the edge, with `as_of` passed in. Suppressed on Weak, user-locked edges, edges with no citable evidence, and edges already past `FORCE_WEAK_DAYS`. | AD-9 asked for copy first; D52 forbids a third copy of the day constants; GC-9a already rules that a user-set band is not the machine's to forecast. |
 | AD-14 | COPY_ZH §6 uses `{降档天数}` / `{封弱天数}` for the two clock constants. `{天数}` remains the §0 glossary word for active natural days and is not reused in §6 templates. Rendered product was already interpolating the right constant; this is a frozen-file honesty fix only. | R4 Fable #6: §0 `{天数}` collided with §6 thresholds and §6 overloaded the same token for 180 and 360. |
+| AD-15 | Empty-graph + AC-13 exemption + a name not before a speech verb remains an accounted residual. Do not add a name detector in v0.1. PRODUCT_LOCK's unconditional placeholder stays the promise (D61). | R5 synthesis: not closable by an Opus slice without inventing NER. |
