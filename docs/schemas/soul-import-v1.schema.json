@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soul.local/schemas/soul-import-v1.schema.json",
+  "title": "soul-import-v1 line",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "format", "version", "exported_at"],
+      "properties": {
+        "type": { "const": "header" },
+        "format": { "const": "soul-import-v1" },
+        "version": { "const": 1 },
+        "exported_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "occurred_at", "sender_scope", "conversation_id", "sender_id", "text"],
+      "properties": {
+        "type": { "const": "message" },
+        "id": { "type": "string", "minLength": 1 },
+        "occurred_at": { "type": "string", "format": "date-time" },
+        "sender_scope": { "enum": ["self", "third_party"] },
+        "conversation_id": { "type": "string" },
+        "sender_id": { "type": "string" },
+        "text": { "type": "string" }
+      }
+    }
+  ]
+}

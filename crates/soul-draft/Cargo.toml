@@ -1,0 +1,33 @@
+[package]
+name = "soul-draft"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "WP10: drafting a reply in the user's own voice, and the people summary behind it. Pure logic; the one E1 request lives in soulcore."
+
+# No database and no HTTP client, for the same reason `soul-profile` has
+# neither: the drafting logic is pure, so it runs against `FakeStore` in a unit
+# test and against SQLCipher through `soulcore`. The one E1 request path lives
+# in `soulcore::commands::draft`, which is why `soul-egress` is deliberately
+# absent here — a draft crate that could reach the network would be a draft
+# crate that could send.
+#
+# The dependency set is the one ST-01 was scoped against, written once so the
+# implementation of WP10 never has to touch a manifest.
+[dependencies]
+soul-schema = { workspace = true }
+soul-store-api = { workspace = true }
+soul-policy = { workspace = true }
+soul-profile = { workspace = true }
+soul-graph = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+soul-store = { workspace = true }
+soul-testkit = { workspace = true }
+tempfile = { workspace = true }

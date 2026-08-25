@@ -1,0 +1,8 @@
+{
+  "description": "AC-12 默认起草泄漏检查；取值复用 fixtures/leakage/third_party_unicode.json。",
+  "third_party": {
+    "body": "明天上午十点在公司门口见",
+    "name": "李雷",
+    "account": "@wang_xiao2"
+  }
+}

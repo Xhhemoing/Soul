@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soul.local/schemas/memory.schema.json",
+  "title": "SoulMemory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "memory_id", "type", "content_key_id", "forget_state"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "memory_id": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" },
+    "type": { "enum": ["episodic", "semantic", "procedural", "preference", "commitment"] },
+    "title_ref": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/sealedText" },
+    "summary_ref": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/sealedText" },
+    "source_event_ids": {
+      "type": "array",
+      "items": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" }
+    },
+    "evidence_ids": {
+      "type": "array",
+      "items": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" }
+    },
+    "content_key_id": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" },
+    "forget_state": { "enum": ["active", "pending_forget", "forgotten"] },
+    "third_party_content_present": { "type": "boolean" }
+  }
+}

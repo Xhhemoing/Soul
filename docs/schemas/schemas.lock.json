@@ -1,0 +1,17 @@
+{
+  "note": "SHA-256 of every document in docs/schemas/. Regenerate with `cargo run -p xtask -- schema-freeze --write` and only in a change that has approval to touch the frozen contracts. `--check` runs in CI.",
+  "algorithm": "sha256",
+  "schemas": {
+    "_defs.schema.json": "5e565260e72d17dd0a93445df6b2dc16ced44827c53200d9af02585b350be7e7",
+    "audit.schema.json": "4c6b96dd33c3112278443b2d7e1845fa415a66e740405ad3d247b5a79ee2cc83",
+    "contact.schema.json": "b94ad999fb8ba6c29e8f6d1549a180368c8ec0baae2650177ce94889cea9e9b6",
+    "event.schema.json": "51f81dc9d435c158470a0267f30ac9d280ee38ea905269b48ab5c2655d28b96d",
+    "evidence.schema.json": "c597c3a9841371ad4ccd012415e85d6c565daa4d2e3a0cf15e8d4ae57f5478fa",
+    "export-manifest.schema.json": "b71339c2db9c7a209c72f333e371a217e5b4d0bac7b120a03ec54dbd4432c95c",
+    "inference.schema.json": "ad29b20ddca24d7cb3ecb987d2be39b092d7d6d8d6a88b2ca3eb21f69ef9283f",
+    "memory.schema.json": "c4a522422b5b881a481d73676c158f22158b7bfddfefffb7a1441d52dd36a687",
+    "profile.schema.json": "51b5c6110ba9696f5799ee5b1c37469eb711775e7f2feb929eb612c2351babe1",
+    "relationship.schema.json": "df34747e28ef2e01ff02f094b26a2b7722c096256563474835f2c61f1ec122ff",
+    "soul-import-v1.schema.json": "9bff534f1c1ab9b24eac3c2054685ef241ded47aa343265dde57251ea5887928"
+  }
+}

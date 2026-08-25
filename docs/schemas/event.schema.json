@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soul.local/schemas/event.schema.json",
+  "title": "SoulEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "ts", "source", "kind", "actor_subject", "privacy"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "event_id": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" },
+    "ts": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/timestamp" },
+    "source": {
+      "enum": [
+        "collector.foreground_app",
+        "import.soul_import_v1",
+        "import.telegram_desktop",
+        "ui.questionnaire",
+        "ui.paste",
+        "core.memory",
+        "core.forget"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "app.foreground",
+        "message.observed",
+        "import.item",
+        "questionnaire.answer",
+        "memory.write",
+        "forget.execute"
+      ]
+    },
+    "actor_subject": { "enum": ["self", "third_party", "system"] },
+    "consent_id": {
+      "oneOf": [
+        { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" },
+        { "type": "null" }
+      ]
+    },
+    "privacy": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/privacy" },
+    "body_ref": {
+      "oneOf": [
+        { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/sealedText" },
+        { "type": "null" }
+      ]
+    }
+  }
+}

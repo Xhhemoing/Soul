@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0.0",
+  "profile_id": "0192b0c0-5001-7a00-8b00-000000000000",
+  "voice": {
+    "register": "plain",
+    "directness": "balanced",
+    "warmth": "even",
+    "emoji_use": "sparing",
+    "user_set": []
+  },
+  "trait_axes": [
+    {
+      "axis_id": "0192b0c0-5001-7a01-8b01-000000000001",
+      "label": "好奇与开放",
+      "position": "unknown",
+      "evidence_band": "none",
+      "locked_by_user": false,
+      "clinical_claim": false
+    },
+    {
+      "axis_id": "0192b0c0-5001-7a02-8b02-000000000002",
+      "label": "条理与执行",
+      "position": "unknown",
+      "evidence_band": "none",
+      "locked_by_user": false,
+      "clinical_claim": false
+    },
+    {
+      "axis_id": "0192b0c0-5001-7a03-8b03-000000000003",
+      "label": "社交能量",
+      "position": "unknown",
+      "evidence_band": "none",
+      "locked_by_user": false,
+      "clinical_claim": false
+    },
+    {
+      "axis_id": "0192b0c0-5001-7a04-8b04-000000000004",
+      "label": "协作与体谅",
+      "position": "unknown",
+      "evidence_band": "none",
+      "locked_by_user": false,
+      "clinical_claim": false
+    },
+    {
+      "axis_id": "0192b0c0-5001-7a05-8b05-000000000005",
+      "label": "情绪起伏",
+      "position": "unknown",
+      "evidence_band": "none",
+      "locked_by_user": false,
+      "clinical_claim": false
+    }
+  ],
+  "clinical_claim": false
+}

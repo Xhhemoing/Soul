@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # Fail fast on a network hiccup instead of hanging a runner.
+  CARGO_NET_RETRY: 3
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint (fmt, clippy, cargo-deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.83
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: lint
+
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      # cargo-deny is installed as a prebuilt binary rather than built from
+      # source: recent releases need a newer rustc than the pinned 1.83, and
+      # releases old enough to build here cannot parse the current advisory
+      # database. The binary itself does not care which toolchain is pinned.
+      - name: install cargo-deny
+        run: |
+          set -euo pipefail
+          version=0.18.6
+          url="https://github.com/EmbarkStudios/cargo-deny/releases/download/${version}/cargo-deny-${version}-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL "$url" | tar xz -C /tmp
+          echo "/tmp/cargo-deny-${version}-x86_64-unknown-linux-musl" >> "$GITHUB_PATH"
+
+      - name: cargo deny
+        run: cargo deny check
+
+  test-linux:
+    name: test (ubuntu, headless)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.83
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: test-linux
+
+      # `just ci` ends with ui-lint and ui-test, which are real pnpm commands
+      # since WP09. The store cache is what keeps that from costing a minute.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # `just` is the documented entry point. 1.46.0 is the last release that
+      # builds on Rust 1.83; the recipes it runs are plain cargo commands, and
+      # each one is also written out in the justfile comments.
+      - name: install just
+        run: cargo install just --locked --version 1.46.0
+
+      - name: just ci
+        run: just ci
+
+  test-windows:
+    name: test (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Pair with .gitattributes eol=lf so schema files are not rewritten as CRLF.
+          # Hashing also normalizes newlines; this keeps rustfmt from fighting the runner.
+          lfs: false
+
+      - uses: dtolnay/rust-toolchain@1.83
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: test-windows
+
+      # The SQLCipher smoke test builds vendored OpenSSL, which needs perl and
+      # NASM. Both are preinstalled on windows-latest; naming them here makes
+      # the dependency visible if that ever changes.
+      - name: report build prerequisites
+        shell: bash
+        run: |
+          perl --version | head -2 || echo "perl missing"
+          nasm -v || echo "nasm missing"
+
+      # Windows is the target platform, so the whole workspace is exercised
+      # here, including crates/soul-store-api/tests/sqlcipher_smoke.rs.
+      - name: cargo test
+        run: cargo test --workspace --all-targets
+
+      # apps/desktop/src-tauri is its own cargo workspace and is therefore not
+      # covered by the line above. Windows is the only runner that can build it
+      # without installing a GUI stack for a platform Soul does not ship on, so
+      # this is where the shell, the tray code and the asInvoker manifest get
+      # compiled. The tray icon itself is still author-manual: no runner has a
+      # notification area to look at.
+      #
+      # ipc_roundtrip links WebView2. On windows-latest the test harness
+      # process fails to start with STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)
+      # before any assertion runs — the runner's WebView2Loader.dll does not
+      # export what the mock IPC runtime imports. AC-02 and AC-22 stay covered
+      # by soulcore + vitest. Do not use --all-targets here: that still
+      # *loads* ipc_roundtrip.exe. A new desktop test that does not touch the
+      # mock runtime must be named on this list; one that does belongs in the
+      # --no-run step below.
+      - name: cargo test (desktop shell)
+        run: >
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+          --lib --bins
+          --test command_surface
+          --test no_egress_path
+          --test shell_is_local_only
+          --test store_session
+
+      # ipc_roundtrip is still compiled, and a compile error in it still fails
+      # the build; what is skipped is loading the harness that cannot start.
+      - name: cargo test --no-run (ipc_roundtrip)
+        run: >
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+          --test ipc_roundtrip --no-run

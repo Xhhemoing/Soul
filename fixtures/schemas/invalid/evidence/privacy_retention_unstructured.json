@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0.0",
+  "evidence_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a10",
+  "kind": "message",
+  "subject": "mixed",
+  "source_refs": [{ "event_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a01" }],
+  "strength": "moderate",
+  "privacy": {
+    "subject": "mixed",
+    "derivation": "derived",
+    "purposes": ["soul_profile"],
+    "retention": { "mode": "forever" },
+    "egress": { "e0": "deny", "e1": "placeholder", "research_export": "deny" }
+  }
+}

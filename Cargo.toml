@@ -1,8 +1,81 @@
 [workspace]
 resolver = "2"
-members = ["crates/soul-algo-tie", "crates/soul-algo-trait"]
+members = [
+  "crates/soul-schema",
+  "crates/soul-store-api",
+  "crates/soul-store",
+  "crates/soul-policy",
+  "crates/soul-egress",
+  "crates/soul-graph",
+  "crates/soul-import",
+  "crates/soul-testkit",
+  "crates/xtask",
+  "crates/soulcore",
+  "crates/soul-profile",
+  "crates/soul-memory",
+  "crates/soul-collect",
+  "crates/soul-draft",
+  "crates/soul-fileplan",
+  "crates/soul-algo-tie",
+  "crates/soul-algo-trait",
+]
 
 [workspace.package]
+version = "0.1.0"
 edition = "2021"
 rust-version = "1.83"
-license = "LicenseRef-All-Rights-Reserved"
+license = "LicenseRef-Soul-Proprietary"
+publish = false
+
+# Every third-party version used anywhere in the workspace is pinned here.
+# Member crates must reference them with `workspace = true`.
+[workspace.dependencies]
+anyhow = "1.0.95"
+thiserror = "2.0.11"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.135"
+sha2 = "0.10.8"
+uuid = { version = "1.11.1", features = ["v7", "serde"] }
+jsonschema = { version = "0.26.2", default-features = false }
+rusqlite = "0.32.1"
+chacha20poly1305 = { version = "0.10.1", features = ["getrandom"] }
+fail = "0.5.1"
+unicode-normalization = "0.1.24"
+tempfile = "3.15.0"
+cargo_metadata = "0.19.1"
+walkdir = "2.5.0"
+axum = "0.7.9"
+tokio = "1.43.0"
+hex = "0.4.3"
+# No `derive` feature: zeroize_derive 1.5 needs edition 2024, and this
+# workspace is pinned to Rust 1.83. `Zeroize` for `[u8; N]` is enough.
+zeroize = "1.8.1"
+# The workspace's only HTTP client, and only `soul-egress` may name it. Pinned
+# exactly: 0.12.10 and later pull transitive crates that need Rust 1.85, and
+# this workspace is pinned to 1.83. `default-features = false` drops
+# native-tls, HTTP/2 and the macOS system-configuration hook; rustls is
+# selected explicitly so Windows and Linux run the same TLS code.
+reqwest = { version = "=0.12.9", default-features = false, features = [
+  "rustls-tls",
+  "blocking",
+] }
+
+# The versions are redundant for a path dependency but keep cargo-deny's
+# wildcard check meaningful for the third-party graph.
+soul-schema = { path = "crates/soul-schema", version = "0.1.0" }
+soul-store-api = { path = "crates/soul-store-api", version = "0.1.0" }
+soul-store = { path = "crates/soul-store", version = "0.1.0" }
+soul-policy = { path = "crates/soul-policy", version = "0.1.0" }
+soul-egress = { path = "crates/soul-egress", version = "0.1.0" }
+soul-graph = { path = "crates/soul-graph", version = "0.1.0" }
+soul-import = { path = "crates/soul-import", version = "0.1.0" }
+soul-testkit = { path = "crates/soul-testkit", version = "0.1.0" }
+soul-profile = { path = "crates/soul-profile", version = "0.1.0" }
+soul-memory = { path = "crates/soul-memory", version = "0.1.0" }
+soul-collect = { path = "crates/soul-collect", version = "0.1.0" }
+soul-draft = { path = "crates/soul-draft", version = "0.1.0" }
+soul-fileplan = { path = "crates/soul-fileplan", version = "0.1.0" }
+soul-algo-tie = { path = "crates/soul-algo-tie", version = "0.3.0" }
+
+[profile.test]
+opt-level = 1

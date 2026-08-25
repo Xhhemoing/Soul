@@ -1,7 +1,7 @@
 # 算法验证优化 — 进度
 
 - 分支：`cursor/algo-verify-opt-a073`
-- PR：https://github.com/Xhhemoing/Soul/pull/5
+- PR：https://github.com/Xhhemoing/Soul/pull/5（已合入 `main`）
 - 循环：R1–R3 + Round X 全部完成
 
 ## 冻结
@@ -13,4 +13,4 @@
 1. **T4D** — `crates/soul-algo-tie`
 2. **A0** — `crates/soul-algo-trait`
 
-`cargo test --workspace` 绿。交叉验证后解释层已按计数说话，Unix 0 哨兵已修。
+Goal 1 实现进度见 `.agent_workspace/dev-sota/PROGRESS.md` 与 `docs/STATUS.md`。

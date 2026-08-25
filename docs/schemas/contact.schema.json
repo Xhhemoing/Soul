@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soul.local/schemas/contact.schema.json",
+  "title": "SoulContact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contact_id", "contact_class", "forget_state"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "contact_id": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" },
+    "contact_class": { "enum": ["self", "third_party", "group", "service"] },
+    "display_label_ref": {
+      "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/sealedText"
+    },
+    "identifiers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "value_hash"],
+        "properties": {
+          "kind": { "enum": ["phone", "email", "handle", "platform_uid"] },
+          "value_hash": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/sha256" }
+        }
+      }
+    },
+    "forget_state": { "enum": ["active", "pending_forget", "forgotten"] }
+  }
+}

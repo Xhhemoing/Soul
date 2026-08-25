@@ -1,0 +1,38 @@
+{
+  "about": "The AC-03 path: the user brought no export, so the wizard asks instead. Every answer is the user's own words about themselves, which is why the evidence they produce is `user_stated` and the sealed bodies carry `subject: self`. The blank answer is deliberate — a question the user skipped must leave no row at all.",
+  "answered_at": "2026-08-24T09:30:00Z",
+  "answers": [
+    {
+      "question_key": "voice.directness",
+      "text": "基本是直接说，上周跟合作方开会我第一句就把预算问题摆出来了。"
+    },
+    {
+      "question_key": "voice.register",
+      "text": "不太熟的人我会写得正式一点，标点也写全。"
+    },
+    {
+      "question_key": "voice.length",
+      "text": "拆成几条短的，一长段别人读着累。"
+    },
+    {
+      "question_key": "boundary.topics",
+      "text": "家里人的健康状况，别替我起草也别分析。"
+    },
+    {
+      "question_key": "boundary.availability",
+      "text": "晚上十一点以后基本不回。"
+    },
+    {
+      "question_key": "preference.decision_style",
+      "text": "   "
+    },
+    {
+      "question_key": "relationship.close_circle",
+      "text": "同事、几个老同学、家里人，大概就这三类。"
+    },
+    {
+      "question_key": "value.what_matters",
+      "text": "别替我做决定，尤其是别替我回复人。"
+    }
+  ]
+}

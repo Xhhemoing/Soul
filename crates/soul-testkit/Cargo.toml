@@ -1,0 +1,26 @@
+[package]
+name = "soul-testkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Test-only instruments: leakage checker, crash harness, mock LLM endpoint, fixture loader. Never a normal dependency of a shipped crate."
+
+# This crate is the one place an HTTP stack is allowed, because AC-11/AC-12
+# need a real loopback endpoint to record what a draft request would contain.
+# `xtask e0-audit` therefore walks the normal dependency graph of the shipped
+# crates only; soul-testkit may appear as a dev-dependency and nowhere else.
+[dependencies]
+soul-schema = { workspace = true }
+anyhow = { workspace = true }
+fail = { workspace = true, features = ["failpoints"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+unicode-normalization = { workspace = true }
+axum = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "sync", "macros", "time"] }
+
+[dev-dependencies]
+rusqlite = { workspace = true, features = ["bundled"] }
+tempfile = { workspace = true }

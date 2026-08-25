@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soul.local/schemas/evidence.schema.json",
+  "title": "SoulEvidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "evidence_id", "kind", "subject", "source_refs", "strength"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "evidence_id": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/uuid7" },
+    "kind": {
+      "enum": [
+        "message",
+        "app_usage",
+        "questionnaire",
+        "user_statement",
+        "user_correction",
+        "aggregate"
+      ]
+    },
+    "subject": { "enum": ["self", "third_party", "mixed", "system"] },
+    "source_refs": { "type": "array", "minItems": 1, "items": { "type": "object" } },
+    "strength": {
+      "allOf": [
+        { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/evidenceBand" },
+        { "enum": ["weak", "moderate", "strong"] }
+      ]
+    },
+    "method": { "enum": ["user_stated", "manual", "heuristic", "statistical", "llm"] },
+    "exportable_to_research": { "type": "boolean", "default": false },
+    "privacy": { "$ref": "https://soul.local/schemas/_defs.schema.json#/$defs/privacy" }
+  }
+}
