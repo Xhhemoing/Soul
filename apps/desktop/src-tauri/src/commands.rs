@@ -118,6 +118,26 @@ pub fn person_summary(
     session.held().person_summary(&contact_id)
 }
 
+/// The user corrected the band on one tie. AC-07 on the graph side: a later
+/// rebuild recounts and leaves the band where they put it.
+#[tauri::command]
+pub fn correct_tie(
+    session: State<'_, SessionState>,
+    relationship_id: String,
+    band: String,
+) -> Result<PeopleGraphView, SessionRefusal> {
+    session.held().correct_tie(&relationship_id, &band)
+}
+
+/// The user handed the band back to the counts.
+#[tauri::command]
+pub fn release_tie(
+    session: State<'_, SessionState>,
+    relationship_id: String,
+) -> Result<PeopleGraphView, SessionRefusal> {
+    session.held().release_tie(&relationship_id)
+}
+
 /// Draft a reply to something the user pasted. Never sends it, and on this
 /// path never builds a request body either.
 #[tauri::command]
@@ -387,6 +407,8 @@ pub const COMMAND_NAMES: &[&str] = &[
     "preview_plan",
     "people_graph",
     "person_summary",
+    "correct_tie",
+    "release_tie",
     "draft_reply",
     "draft_notices",
     "prepare_draft",
