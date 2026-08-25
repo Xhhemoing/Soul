@@ -33,14 +33,15 @@ import {
  * D-ED-1: the editable set is projects with no gallery pattern behind them and
  * a document that loads. A gallery fixture is build-time read-only code and its
  * palette is a per-pattern gallery table that `PatternDoc` cannot name, so
- * those get a guard screen pointing at WP-B08 rather than a broken canvas.
+ * those get a guard screen pointing at the detail page's Fork (D-GAL-14 ①)
+ * rather than a broken canvas.
  */
 
 export const HYDRATING_NOTE = "正在读取本地项目……";
 export const UNKNOWN_PROJECT_NOTE =
   "这个项目不存在。编辑器只接受项目 id（proj- 开头）；画廊图纸要先「加入待拼」或「转入工作台」。";
 export const GALLERY_NOTE =
-  "画廊图纸的网格是只读的——Fork 改色归 WP-B08，现在还改不了它的色板。";
+  "画廊图纸的网格是只读的——回图纸详情页 Fork 一份副本即可改色。";
 export const LOADING_DOC_NOTE = "正在读取豆图……";
 export const NO_DOC_NOTE =
   "这个项目还没有豆图文档。它不是空白项目，也没有转换结果可以编辑。";
