@@ -11,7 +11,7 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 | Field | Value |
 |---|---|
-| Current task | Round 5: merged forget×summary, research `research_export`, G1+ owner-fold onto exclusive. Fable review next. Import commit transaction still queued (`session.rs`/`append_event`). D55 park. P2 E1 mutex. Hosted CI billing-blocked. |
+| Current task | Round 5 landings merged: forget×summary, research disposition, G1+ owner-fold, import transaction wrap, forgotten-peer tie-correct. Close Round 5 after a Fable pass on the last hole. D55 hashed-dedup parked. P2 E1 mutex parked. Hosted CI billing-blocked. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
 | Exclusive tip | forget-summary + research-disposition + g1-owner-fold merged; PR #15 |
