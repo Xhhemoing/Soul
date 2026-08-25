@@ -14,8 +14,8 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core 已合入；CI/IA/算法/地图审查齐 |
-| 当前任务 | O3 转图；Opus 修 SH-1..4；core Fable Review 等 VM |
-| PR | #16 专属线；#20 CI；#21 壳；#22 壳 Review；#23 core |
+| 当前任务 | O3 已合入；SH-1..4 仍在修；TS 管线 Fable Review 在跑 |
+| PR | #16 专属线；#20–#24（#24 转图管线） |
 | Merge | 壳、core、壳 Review 文档已合进专属线；不合 unique trunk |
 | Blocked | F4/S1/S2 与 core Review 等 VM |
 
@@ -31,7 +31,7 @@
 | Storage | 无 bead | WP-B09 |
 | Cache | 无 | 后置 |
 | 第三方 | 无品牌色板授权 | fixture `generic-5mm` |
-| 核心业务 | bead-core 已合入（本机测试绿） | O3 TS 对照；B04/B05 |
+| 核心业务 | rust oracle + TS 管线都已合入 | Fable 对照色号；B04/B05 |
 | 测试 | 壳 43 + bead-core 全绿 | B10 独立 workflow 仍缺 |
 | 构建 | Soul just/pnpm | 隔离，勿改根脚本 |
 | CI/CD | Soul ci.yml | B10 独立 job |
@@ -64,7 +64,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 | F5 | claude-fable-5-thinking-xhigh | 测试 / CI 隔离 | **完成** `814250f` → #20 **MERGED**。门禁升为 BD17 |
 | O1 | claude-opus-5-thinking-high-fast | **唯一实现** WP-B01 `crates/bead-core` | **完成并合入** `5d62896` #23。本机 `cargo test --manifest-path crates/bead-core/Cargo.toml` 绿 |
 | O2 | claude-opus-5-thinking-high-fast | **唯一实现** WP-B02 `apps/bead` | **完成** `dc35ef0` → 已 merge。43 tests（子代理）。#21 |
-| O3 | claude-opus-5-thinking-high-fast | **唯一实现** `apps/bead/src/algo/`（BD14） | **在跑** [bc-18d36cad](https://cursor.com/agents/bc-18d36cad-cd28-5ad7-abf7-a4760b9ea5e6) 分支 `cursor/bead-r1-algo-ts-c441` |
+| O3 | claude-opus-5-thinking-high-fast | **唯一实现** `apps/bead/src/algo/`（BD14） | **完成并合入** `5ca90c2` #24。本机 `@bead/app` 20 文件 217 绿。`/create` 上传仍故意不接线 |
 | S1 | gpt-5.6-sol-xhigh-fast | 覆盖缺口探针 | **BLOCKED** 等 VM |
 | S2 | gpt-5.6-sol-xhigh-fast | 构建/CI/性能探针 | **BLOCKED** 等 VM |
 
@@ -86,8 +86,9 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] F5 CI 清单合入（#20）
 - [ ] F4/S1/S2
 - [x] 壳 Fable Review 合入（#22）；SH-1..4 已派 Opus
-- [ ] O3 转图管线
-- [ ] core Fable Review（VM 上限）
+- [x] O3 转图管线合入（#24），本机 217 绿
+- [ ] TS 管线 Fable Review 在跑；core Review 仍等 VM
+- [ ] `/create` 上传接线（独立变更，勿打坏 B02 文案测试）
 - [x] 可导航的应用壳（转图仍 stub，O3 在换）
 - [x] 本机复核：`@bead/app` 9 文件 43 绿；`@soul/desktop` 14 文件 172 绿；lockfile frozen 一致
 
