@@ -7,29 +7,44 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 ## Current round
 
-**ROUND 7** — review the R6 landings and scan remaining honesty gaps. Do not re-open closed R4–R6 items (D55, D61, D62, D63, P2 E1 mutex, owner-fold, import-tx wrap, forget×summary, events_by_source, closed-store E1).
+**ROUND 8** — new product-path honesty hunts. Do not re-open closed R4–R7 items (D55, D61–D63, P2 E1 mutex, owner-fold, import-tx wrap, forget×summary, events_by_source, closed-store E1, COMMANDS=38 pin, research_export, projection-on-Graph).
 
 | Field | Value |
 |---|---|
-| Current task | Round 6 closed. Round 7 Fable: landings review; remaining store_opened; remaining collect queries; Import/PRODUCT_LOCK three-way pin; smoke vs e1-watch vs Graph UI; research preview remainder; COMMANDS=38 pin; STATUS vs Windows BLOCKED; `@` alias leakage; author-four synthesis. |
+| Current task | Round 7 closed, all ten NO_HIGH_VALUE. Round 8 Fable: eleven-route state; fileplan write-absence; memory/forget ledger; schema freeze vs additive index; E1 HITL/redirect/cap; config.json two-field pin; injection remaining; local-gate count honesty; Unicode/path; draft voice vs locked axes. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
-| Exclusive tip | `e093da1`; PR #15 |
+| Exclusive tip | Round 7 close; PR #15 |
 
-### Round 7 Fable dispatch
+### Round 8 Fable dispatch
 
 | # | Direction |
 |---|---|
-| 1 | Review the four R6 code landings plus the Telegram menu-copy commit for regressions |
-| 2 | Remaining `store_opened=false` surfaces after the E1 closed-store gate (wizard, tray, collect, import, graph) |
-| 3 | Remaining collect / audit O(n) after `events_by_source` (other unindexed columns, `/audit` pagination) |
-| 4 | Import UI + refusal + PRODUCT_LOCK three-way pin of the full-export menu |
-| 5 | Headless smoke sentence vs `e1-watch` vs Graph UI: does the demotion-clock sentence actually reach the screen |
-| 6 | Research preview remainder after `research_export` became load-bearing |
-| 7 | COMMANDS.md / IPC / desktop invoke still 38; no silent command growth |
-| 8 | STATUS / checklist honesty vs Windows NSIS/DPAPI/tray still BLOCKED on this Linux host |
-| 9 | Telegram `@` alias landing: fixture usernames, partner names, and refusals still do not leak |
-| 10 | Author four-requirement synthesis vs remaining BLOCKED items (hosted CI, author checklist, file write v0.1.1) |
+| 1 | Eleven desktop routes: collect consent, endpoint, `store_opened`, and forgotten nodes stay consistent across screens |
+| 2 | Fileplan remaining write-absence: authorize/preview/paste-wrapping; no execute command |
+| 3 | Memory write/edit/forget vs destroyed-key ledger and audit remaining |
+| 4 | Schema freeze vs live types after additive `events_by_source` (`STORE_SCHEMA_VERSION` stays 2) |
+| 5 | E1 remaining: HITL token-once, redirect, plan_hash, 4 MiB cap, multiline (not the parked mutex, not closed-store) |
+| 6 | `config.json` two-field `deny_unknown_fields` pin vs any silent persist after D63 |
+| 7 | Injection remaining on paste / import / filename (not D61 NER) |
+| 8 | Local `just ci` / STATUS test-count honesty vs current vitest and crate counts |
+| 9 | Unicode / Windows-path remaining: fileplan MAX_PATH, paste quotes, import Han fold |
+| 10 | Draft / profile voice remaining vs locked axes (AC-07 product path) |
+
+## ROUND 7 record
+
+| Field | Value |
+|---|---|
+| ROUND | 7 |
+| 子代理任务 | 10× Fable: R6 landings review; remaining `store_opened`; remaining O(n); Import menu pin; projection-on-Graph; research remainder; `COMMANDS` 38 pin; STATUS/Windows honesty; Telegram `@` leak; author-four synthesis |
+| 发现问题 | None at HIGH_VALUE. Below-bar: WP02 `## 阻塞 / 无` stale vs Goal 1 BLOCKED; STATUS header still said Round 6 in flight; smoke counts any projection closer rather than `MODERATE_TO_WEAK_KEY`; `forget_memory` closed-store copy uses plan-hash mismatch |
+| 修复问题 | Parent docs only: STATUS header + WP02 阻塞 clarification. No product-code landing |
+| 测试结果 | Reviewers re-ran pinned suites on `c470d67`: session_e1 33; e1_watch 5; telegram 12; session_import 13; events_by_source_index 2; headless_main_flow 5; e0-audit clean. Author-four: 29 focused session tests + 90 vitest across six requirement screens |
+| Commit | this closeout (docs) |
+| PR | #15 |
+| Merge状态 | Exclusive → `main` still `BLOCKED`. PR #7 still not merged |
+| 下一轮重点 | Eleven-route state; fileplan write-absence; memory/forget ledger; schema freeze; E1 HITL/redirect/cap; config.json pin; injection; local-gate counts; Unicode/path; draft voice vs lock |
+| NO_HIGH_VALUE | All ten scanners. Landings hold. Projection reaches Graph. Research honors `research_export`. `COMMANDS` 38 three-way pin (no COMMANDS.md file; the pin is `core.ts`). `/audit` and research-preview full scans stay P2. Author four requirements wired; remaining BLOCKED are hosted CI, author Win11 checklist, file write v0.1.1, D55, P2 E1 mutex, D61 |
 
 ## ROUND 6 record
 
