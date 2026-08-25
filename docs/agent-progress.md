@@ -14,8 +14,8 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core 已合入；CI/IA/算法/地图审查齐 |
-| 当前任务 | 对齐复查已合入；Opus 修 DATA-1 与 AL-2/AL-3 |
-| PR | #16 专属线；#20–#30（#30 对齐复查） |
+| 当前任务 | DATA-1 已合入；Opus 仍在修 AL-2/AL-3 |
+| PR | #16 专属线；#20–#31（#31 DATA-1） |
 | Merge | 壳、core、壳 Review 文档已合进专属线；不合 unique trunk |
 | Blocked | F4/S1/S2 等 VM |
 
@@ -37,7 +37,7 @@
 | CI/CD | Soul ci.yml | B10 独立 job |
 | 性能 | 无转图基准 | 后置大图 |
 | 安全 | Soul 锁不适用于 bead UI | 本地 XSS/文件导入审查 |
-| 可靠性 | 项目在 localStorage；写失败会被吞（DATA-1） | Opus 跟进 |
+| 可靠性 | 写失败后读写同切内存并提示 | AL-2/AL-3 仍在途 |
 
 ## ROUND 0（本父代理，文档 only）
 
