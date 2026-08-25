@@ -295,8 +295,14 @@ fn an_exempted_turn_placeholds_a_latin_display_label_in_front_of_a_verb_of_sayin
 /// The test asserts the current answer so that the hole is a fact somebody has
 /// to change a test to move, rather than something to rediscover. What closes
 /// it is the contact graph — [`KnownIdentifiers`], which `soulcore` fills from
-/// the contact rows and which covers every line below the moment anything is
-/// imported — or a step the user sees before the request leaves.
+/// the contact rows — or a step the user sees before the request leaves.
+///
+/// The second half of the test is that graph, and it registers `李 雷` with the
+/// space in it, because that is the string a Telegram export seals and the
+/// only spelling of that name `soulcore` ever hands the redactor. Handing it
+/// `李雷` instead would have proved the set is consulted and nothing about the
+/// product: the unspaced spelling is covered because `add_name` folds a spaced
+/// label, not because anybody registered it.
 #[test]
 fn the_names_the_shapes_still_cannot_see_are_written_down_here() {
     let redactor = Redactor::new(KnownIdentifiers::new());
@@ -329,7 +335,7 @@ fn the_names_the_shapes_still_cannot_see_are_written_down_here() {
     // And the same names, once anything at all has been imported.
     let knowing = Redactor::new(
         KnownIdentifiers::new()
-            .with_name("李雷")
+            .with_name(SPACED_LABEL)
             .with_name("小王")
             .with_name("张伟")
             .with_name("Wang Xiao"),
@@ -354,6 +360,114 @@ fn the_names_the_shapes_still_cannot_see_are_written_down_here() {
                 redacted.as_str(),
             );
         }
+    }
+}
+
+/// A label the graph learned is placeheld in the spelling a person writes, not
+/// only the spelling the export sealed.
+///
+/// This is the product's own path and it has no shape in it: the turn below is
+/// the user's own, so neither of the two shape rules runs, and a placeholder in
+/// these bytes can only have come from the identifier set. `李 雷` is what
+/// `soulcore` registers, because it is what the file said; `李雷` is what the
+/// paste says, because that is how the name is written everywhere that is not
+/// a contact card. Before the fold those were two different strings to a
+/// `String::replace`, and the second one travelled.
+#[test]
+fn a_spaced_label_the_graph_learned_covers_the_unspaced_spelling_too() {
+    let knowing = Redactor::new(KnownIdentifiers::new().with_name(SPACED_LABEL));
+
+    let turns = vec![Turn::new(
+        Uuid::now_v7(),
+        SealedSubject::Owner,
+        "周五的方案我下周交给李雷，你不用管",
+    )];
+    let redacted = knowing.redact_for_e1(&turns);
+
+    assert!(
+        !redacted.as_str().contains(NAME),
+        "the name this Soul imported travelled in the spelling everybody uses: {}",
+        redacted.as_str(),
+    );
+    assert!(
+        redacted.as_str().contains(NAME_PLACEHOLDER),
+        "the name was dropped rather than placeheld: {}",
+        redacted.as_str(),
+    );
+    assert!(
+        redacted.as_str().contains("方案"),
+        "the placeholder is supposed to be the name and not the sentence: {}",
+        redacted.as_str(),
+    );
+
+    // The spelling that was registered is of course still covered.
+    let spaced = vec![Turn::new(
+        Uuid::now_v7(),
+        SealedSubject::Owner,
+        format!("联系人卡片上写的是 {SPACED_LABEL}，别改"),
+    )];
+    assert!(
+        !knowing
+            .redact_for_e1(&spaced)
+            .as_str()
+            .contains(SPACED_LABEL),
+        "folding a label may not cost it the spelling it was registered in",
+    );
+}
+
+/// The fold stops where the label shape stops.
+///
+/// Taking the spaces out of a string is only safe while the string is shaped
+/// like a name, because what comes out is matched literally against every draft
+/// afterwards. Two things are deliberately outside the shape: a run longer than
+/// a person's name, which is what a group title looks like; and a label in a
+/// script that spaces its words anyway, where `WangXiao` is a spelling nobody
+/// has ever typed and matching it would buy nothing.
+///
+/// Both are asserted through the user's own turn, where no shape rule runs, so
+/// the answer is the identifier set's and nothing else's.
+#[test]
+fn a_label_that_is_not_shaped_like_a_name_is_registered_as_written_only() {
+    for (label, registered_in_prose, folded_in_prose) in [
+        // Four groups and seven characters: past the end of a name.
+        (
+            "项目 组 周会 通知",
+            "群名片上写着项目 组 周会 通知，别动",
+            "这次项目组周会通知发得有点晚",
+        ),
+        // A script that spaces every word carries no signal in the space.
+        (
+            "Wang Xiao",
+            "The card still says Wang Xiao, leave it",
+            "The WangXiao line in the sheet is a typo",
+        ),
+    ] {
+        let knowing = Redactor::new(KnownIdentifiers::new().with_name(label));
+        let folded: String = label.chars().filter(|c| *c != ' ').collect();
+
+        let as_written = knowing.redact_for_e1(&[Turn::new(
+            Uuid::now_v7(),
+            SealedSubject::Owner,
+            registered_in_prose,
+        )]);
+        assert!(
+            !as_written.as_str().contains(label),
+            "`{label}` was registered and did not travel as a placeholder: {}",
+            as_written.as_str(),
+        );
+
+        let as_folded = knowing.redact_for_e1(&[Turn::new(
+            Uuid::now_v7(),
+            SealedSubject::Owner,
+            folded_in_prose,
+        )]);
+        assert!(
+            as_folded.as_str().contains(folded.as_str()),
+            "`{folded}` is now placeheld, so the fold has grown past the label \
+             shape — check that `add_name` and the spaced-label scrub still \
+             agree on what a name looks like: {}",
+            as_folded.as_str(),
+        );
     }
 }
 

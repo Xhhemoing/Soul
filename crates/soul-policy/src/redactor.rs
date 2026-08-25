@@ -92,11 +92,45 @@ impl KnownIdentifiers {
         self
     }
 
+    /// Registers the label as it was written, and — when it is written the way
+    /// an export writes one — the same name with its spaces taken out.
+    ///
+    /// This is where the spelling an import produces meets the spelling
+    /// everybody else uses. A Telegram export writes a display name as `李 雷`,
+    /// that is the string `soul-import` seals, and `soulcore` registers what it
+    /// reads back. Chinese prose does not space its characters, so the person
+    /// who is called that is written `李雷` in a paste, in a message, and in
+    /// the one turn a user confirmed twice for. [`Redactor::scrub_identifiers`]
+    /// is a `String::replace` over this set, so registering only the export's
+    /// spelling left the ordinary one reaching the endpoint out of an imported
+    /// Soul — 「姓名与账号两种情况下都占位」 has no such condition in it.
+    ///
+    /// The fold is exactly the shape [`scrub_spaced_label_shapes`] reads, held
+    /// to the whole label: two to four groups of one or two Han characters,
+    /// single spaces between them, six characters at most. `Wang Xiao` is not
+    /// folded, because `WangXiao` is not a spelling anybody writes; a script
+    /// that spaces its words carries no signal in the spacing.
+    ///
+    /// # What the fold costs
+    ///
+    /// A folded name is replaced wherever those characters stand, including in
+    /// prose the user wrote themselves, and two Han characters are sometimes an
+    /// ordinary word. [`NOT_A_NAME`] is consulted, but it is short and was
+    /// written for a different rule, so a label whose folded form is an
+    /// everyday word that is not on it — a nickname stored as `明 天`, folding
+    /// to `明天` — costs that word a placeholder. The trade is deliberate and
+    /// it is one-directional: the spaced label is a person this Soul imported,
+    /// a placeholder too many is something the user can see and work around,
+    /// and a name on the wire is not.
     pub fn add_name(&mut self, name: &str) -> &mut Self {
         let normalized = normalize(name);
-        if !normalized.is_empty() {
-            self.names.insert(normalized);
+        if normalized.is_empty() {
+            return self;
         }
+        if let Some(folded) = fold_spaced_label(&normalized) {
+            self.names.insert(folded);
+        }
+        self.names.insert(normalized);
         self
     }
 
@@ -413,13 +447,12 @@ fn scrub_identifier_shapes(text: &str) -> String {
 /// A name written the ordinary way — `李雷` inside a sentence — has no
 /// spelling to recognize; what it can have is a position, which is
 /// [`scrub_attributed_name_shapes`]'s half of the job.
+///
+/// The three numbers below are module-scope because
+/// [`KnownIdentifiers::add_name`] folds a registered label by the same ones. A
+/// fold and a shape that drifted apart would leave a spelling in the
+/// identifier set that this cannot recognize, or the other way round.
 fn scrub_spaced_label_shapes(text: &str) -> String {
-    /// A given name is one or two characters; a surname likewise.
-    const MAX_GROUP: usize = 2;
-    /// `欧阳 娜娜` is four, and three groups of two is the generous end.
-    const MAX_CHARS: usize = 6;
-    const MAX_GROUPS: usize = 4;
-
     let scalars: Vec<char> = text.chars().collect();
     let mut out = String::with_capacity(text.len());
     let mut index = 0usize;
@@ -446,6 +479,35 @@ fn scrub_spaced_label_shapes(text: &str) -> String {
     }
 
     out
+}
+
+/// A given name is one or two characters; a surname likewise.
+const MAX_GROUP: usize = 2;
+/// `欧阳 娜娜` is four, and three groups of two is the generous end.
+const MAX_CHARS: usize = 6;
+const MAX_GROUPS: usize = 4;
+
+/// A registered label with its spaces taken out, when the label is exactly the
+/// shape [`scrub_spaced_label_shapes`] reads.
+///
+/// The whole string has to be the shape, which is the difference between this
+/// and the scrub: there the shape is looked for inside prose, here the label
+/// either is one or is not. Two groups are the minimum, so a label with no
+/// space in it cannot reach the fold, and neither can `Wang Xiao`, whose
+/// groups are not Han. A folded form that is an everyday word in
+/// [`NOT_A_NAME`] is left unregistered rather than costing that word a
+/// placeholder everywhere it appears.
+fn fold_spaced_label(label: &str) -> Option<String> {
+    let scalars: Vec<char> = label.chars().collect();
+    if spaced_label_end(&scalars, 0, MAX_GROUP, MAX_GROUPS, MAX_CHARS) != Some(scalars.len()) {
+        return None;
+    }
+    let folded: String = scalars
+        .iter()
+        .copied()
+        .filter(|c| !is_label_space(*c))
+        .collect();
+    (!NOT_A_NAME.contains(&folded.as_str())).then_some(folded)
 }
 
 /// Where the spaced label starting at `start` ends, if there is one.
@@ -528,10 +590,14 @@ fn spaced_label_end(
 ///   examined and the run does not end at a name.
 ///
 /// Closing those needs either the contact graph ([`KnownIdentifiers`], which
-/// `soulcore` fills from the contact rows and which covers all of them once
-/// anything has been imported) or a step the user sees before the bytes leave.
-/// `soulcore`'s `session_e1` pins the remaining hole in a test rather than
-/// leaving it to be rediscovered.
+/// `soulcore` fills from the contact rows) or a step the user sees before the
+/// bytes leave. The graph covers all three for anybody it holds, position and
+/// surname and run alike, and it does so in the spelling a person writes as
+/// well as the spaced one an export seals, because
+/// [`KnownIdentifiers::add_name`] folds the spaces out of a label shaped like
+/// one. What is left over is a person the graph never learned about, which on
+/// a Soul that has imported nothing is everybody; `soulcore`'s `session_e1`
+/// pins that in a test rather than leaving it to be rediscovered.
 fn scrub_attributed_name_shapes(text: &str) -> String {
     let scalars: Vec<char> = text.chars().collect();
     let mut out = String::with_capacity(text.len());
