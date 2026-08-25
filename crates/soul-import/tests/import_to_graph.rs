@@ -398,6 +398,87 @@ fn a_file_that_names_the_user_twice_still_leaves_one_owner() {
     assert_eq!(edges[0].tie_strength.incoming_count, 2);
 }
 
+/// `date-time` lets a file carry an offset, and the graph orders instants by
+/// comparing the strings it stored. An offset that survives into the store
+/// makes that comparison lie.
+///
+/// The pinned case: `2026-08-20T23:00:00+08:00` is 15:00Z and therefore
+/// *earlier* than `2026-08-20T16:00:00Z`, while as strings it sorts later,
+/// because `'2' > '1'`. Unnormalized, the peer's last contact reads as an
+/// evening that had not happened yet and their first contact reads as the
+/// wrong message.
+#[test]
+fn an_offset_timestamp_is_stored_as_the_instant_it_means() {
+    let lines = [
+        r#"{"type":"header","format":"soul-import-v1","version":1,"exported_at":"2026-08-24T08:00:00+08:00"}"#,
+        r#"{"type":"message","id":"z-0001","occurred_at":"2026-08-20T23:00:00+08:00","sender_scope":"third_party","conversation_id":"c-01","sender_id":"u-a","text":"晚上到家再说"}"#,
+        r#"{"type":"message","id":"z-0002","occurred_at":"2026-08-20T16:00:00Z","sender_scope":"self","conversation_id":"c-01","sender_id":"u-self","text":"好，我等你消息"}"#,
+        r#"{"type":"message","id":"z-0003","occurred_at":"2026-08-20T09:30:00-05:00","sender_scope":"third_party","conversation_id":"c-01","sender_id":"u-a","text":"我先出门"}"#,
+    ];
+
+    let staged = soul_import::soul_import_v1::parse(&lines.join("\n")).expect("valid");
+    let instants: Vec<&str> = staged
+        .messages
+        .iter()
+        .map(|message| message.occurred_at.as_str())
+        .collect();
+    assert_eq!(
+        instants,
+        vec![
+            "2026-08-20T15:00:00Z",
+            "2026-08-20T16:00:00Z",
+            "2026-08-20T14:30:00Z",
+        ],
+        "an offset is applied at parse, not carried into the store",
+    );
+    assert_eq!(
+        staged.exported_at.as_ref().map(|at| at.as_str()),
+        Some("2026-08-24T00:00:00Z"),
+        "the header's instant is normalized on the same terms",
+    );
+
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = SqlCipherStore::open(
+        dir.path().join("soul.db"),
+        &TestKeyProvider::from_seed(SEED),
+    )
+    .expect("open");
+    soul_import::commit::commit(&mut store, &staged).expect("commit");
+    soul_graph::rebuild(&mut store).expect("rebuild");
+    let graph = soul_graph::load(&store).expect("load");
+
+    let peer = contact_for(&store, "u-a");
+    let edges = graph.edges_for(peer);
+    assert_eq!(edges.len(), 1);
+    let strength = &edges[0].tie_strength;
+    assert_eq!(
+        strength.last_contact_utc.as_str(),
+        "2026-08-20T16:00:00Z",
+        "the latest instant is 16:00Z; `23:00+08:00` only looks later as a string",
+    );
+    assert_eq!(
+        strength.first_contact_utc.as_str(),
+        "2026-08-20T14:30:00Z",
+        "and the earliest is the one that was written five and a half hours behind UTC",
+    );
+    assert_eq!(
+        strength
+            .last_direct_contact_utc
+            .as_ref()
+            .map(|at| at.as_str()),
+        Some("2026-08-20T16:00:00Z"),
+    );
+    assert!(
+        [
+            strength.first_contact_utc.as_str(),
+            strength.last_contact_utc.as_str(),
+        ]
+        .iter()
+        .all(|instant| instant.ends_with('Z')),
+        "what the edge displays is UTC, which is what makes comparing the strings sound",
+    );
+}
+
 /// The contact the file called `handle`, by the digest the importer stored.
 fn contact_for(store: &SqlCipherStore, handle: &str) -> Uuid {
     let wanted = soul_import::ParticipantHandle::platform_uid(handle)

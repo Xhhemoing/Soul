@@ -119,9 +119,24 @@ pub fn parse_with(schemas: &SchemaSet, text: &str) -> Result<StagedImport, Impor
                     ));
                     continue;
                 }
-                exported_at = Some(header.exported_at);
+                // The contract's `date-time` permits an offset, and everything
+                // downstream orders instants by comparing their stored
+                // strings. So the offset is applied here, once, rather than
+                // left for each reader to get right. See `instant::to_utc`.
+                match instant::to_utc(header.exported_at.as_str()) {
+                    Some(utc) => exported_at = Some(utc),
+                    None => defects.push(unreadable_instant(&locator, "exported_at")),
+                }
             }
-            Ok(ImportLine::Message(message)) => raw_messages.push((number, message)),
+            Ok(ImportLine::Message(mut message)) => {
+                match instant::to_utc(message.occurred_at.as_str()) {
+                    Some(utc) => {
+                        message.occurred_at = Timestamp::new(utc);
+                        raw_messages.push((number, message));
+                    }
+                    None => defects.push(unreadable_instant(&locator, "occurred_at")),
+                }
+            }
             Err(_) => {
                 // The schema accepted the line and the model did not, which
                 // means the two have drifted apart. The deserializer's own
@@ -188,10 +203,26 @@ pub fn parse_with(schemas: &SchemaSet, text: &str) -> Result<StagedImport, Impor
 
     Ok(StagedImport {
         source: SOURCE,
-        exported_at: exported_at.map(|value| Timestamp::new(value.as_str().to_owned())),
+        exported_at: exported_at.map(Timestamp::new),
         participants: participants.into_participants(),
         messages,
     })
+}
+
+/// A timestamp the contract allows and Soul cannot store.
+///
+/// Only reachable for an instant within a day of the ends of the calendar,
+/// where applying the offset leaves a year of five digits or a negative one.
+/// Refusing the file is the alternative to writing a row that would make every
+/// later graph rebuild fail on something nobody can edit.
+fn unreadable_instant(locator: &Locator, field: &'static str) -> Defect {
+    Defect::field(
+        locator.clone(),
+        field,
+        "names an instant that cannot be written in UTC: applying its offset leaves a year \
+         outside 0001 through 9999"
+            .to_owned(),
+    )
 }
 
 /// What the contract asks of one line, said in the contract's own words.

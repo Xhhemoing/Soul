@@ -374,6 +374,45 @@ fn two_owners_are_refused_before_anything_is_written() {
     assert!(store.list_evidence().expect("evidence").is_empty());
 }
 
+/// An instant the contract allows and Soul cannot write down.
+///
+/// Normalizing to UTC moves an instant by up to a day, which at the ends of
+/// the calendar leaves a year of five digits or a negative one — a row every
+/// later reader would choke on. The file is refused, naming the field, rather
+/// than stored.
+#[test]
+fn an_offset_that_walks_off_the_calendar_is_refused_by_field() {
+    let line = |occurred_at: &str| {
+        format!(
+            concat!(
+                r#"{{"type":"header","format":"soul-import-v1","version":1,"#,
+                r#""exported_at":"2026-08-24T08:00:00Z"}}"#,
+                "\n",
+                r#"{{"type":"message","id":"m-1","occurred_at":"{}","sender_scope":"self","#,
+                r#""conversation_id":"c-1","sender_id":"u-self","text":"hi"}}"#,
+                "\n",
+            ),
+            occurred_at,
+        )
+    };
+
+    let failure = soul_import::soul_import_v1::parse(&line("9999-12-31T23:00:00-05:00"))
+        .expect_err("year 10000");
+    assert!(
+        failure.mentions_field("occurred_at"),
+        "the field that cannot be stored has to be named:\n{failure}",
+    );
+    assert_eq!(failure.locators(), vec![&Locator::Line(2)]);
+
+    // A day earlier is an ordinary instant and converts.
+    let staged = soul_import::soul_import_v1::parse(&line("9999-12-30T23:00:00-05:00"))
+        .expect("still on the calendar");
+    assert_eq!(
+        staged.messages[0].occurred_at.as_str(),
+        "9999-12-31T04:00:00Z",
+    );
+}
+
 /// A file with no header is refused rather than half-read.
 #[test]
 fn a_file_without_a_header_is_refused() {
