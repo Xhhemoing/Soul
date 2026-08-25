@@ -10,34 +10,34 @@
 
 | 项 | 值 |
 |---|---|
-| 当前轮次 | ROUND 1 收尾 / ROUND 2 启动 |
+| 当前轮次 | ROUND 2 |
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
-| 已检查模块 | 壳 + bead-core 已合入；CI/IA/算法/地图审查齐 |
-| 当前任务 | DATA-1 已合入；Opus 仍在修 AL-2/AL-3 |
-| PR | #16 专属线；#20–#31（#31 DATA-1） |
-| Merge | 壳、core、壳 Review 文档已合进专属线；不合 unique trunk |
-| Blocked | F4/S1/S2 等 VM |
+| 已检查模块 | 壳 + bead-core + TS 管线 + DATA-1 + AL-1/2/3 |
+| 当前任务 | AL 已合入；下一刀 B04 IA + AL 复审 |
+| PR | #16 专属线；#20–#31。AL 子支已并入专属线（对 #16 底无独立 diff，不另开 #32） |
+| Merge | AL @ `331b513`；不合 unique trunk |
+| Blocked | 子代理 `gh` 只读（BLOCKED_PR）；云端异步 VM ≈3 |
 
 ## 已检查模块（11.5）
 
 | 面 | 现状 | 下一动作 |
 |---|---|---|
-| 前端 | 壳 + SH-1..4 已合入 | B04 沉浸拼装 |
+| 前端 | 壳 + SH-1..4 已合入；`/assemble` 仍是静态占位 | B04 沉浸拼装 |
 | 后端 | 无 bead 服务 | v0 本机，不造第二灵魂核 |
 | API | 无 bead API | 本地 store 契约 |
-| 数据库 | Soul 加密 SQLite，与 bead 无关 | WP-B09 IndexedDB |
+| 数据库 | Soul 加密 SQLite，与 bead 无关 | WP-B09 IndexedDB（Grid 落盘才上，BD19） |
 | 登录与权限 | Soul HITL/E1；bead 无账号 | 单机；图纸默认不出网 |
-| Storage | localStorage 够用到方板步进；Grid 落盘才上 IDB（BD19） | DATA-1；B04 只存游标 |
+| Storage | DATA-1 已合：写失败后读写同切内存并提示 | B04 只存游标（mode/stepIndex/elapsedMs） |
 | Cache | 无 | 后置 |
 | 第三方 | 无品牌色板授权 | fixture `generic-5mm` |
-| 核心业务 | 四份 rust parity 色号已对照；步骤/检测仍分叉 | ROUND 2 按价值再动 |
-| 测试 | 壳 43 + bead-core 全绿 | B10 独立 workflow 仍缺 |
+| 核心业务 | 色号 + BOM + 四模式 steps 已对 rust fixture | 判定器/框定/检测退化按 align-review 不动 |
+| 测试 | `@bead/app` 22 文件 **258** 绿；bead-core 153 | B10 独立 workflow 仍缺 |
 | 构建 | Soul just/pnpm | 隔离，勿改根脚本 |
 | CI/CD | Soul ci.yml | B10 独立 job |
 | 性能 | 无转图基准 | 后置大图 |
 | 安全 | Soul 锁不适用于 bead UI | 本地 XSS/文件导入审查 |
-| 可靠性 | 写失败后读写同切内存并提示 | AL-2/AL-3 仍在途 |
+| 可靠性 | DATA-1 已合 | AL 复审 |
 
 ## ROUND 0（本父代理，文档 only）
 
@@ -84,14 +84,18 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] F3 算法契约合入（#18）
 - [x] F1 地图收进专属线；BD14–BD16 已拍
 - [x] F5 CI 清单合入（#20）
-- [ ] F4/S1/S2
-- [x] 壳 Fable Review 合入（#22）；SH-1..4 合入（#25），220 绿
+- [x] F4 数据审查合入（#29）；DATA-1 合入（#31）
+- [x] 壳 Fable Review 合入（#22）；SH-1..4 合入（#25）
 - [x] O3 转图管线合入（#24）
-- [x] AT-2 + rust parity 对齐合入（#28），本机 246 + 153 绿
-- [ ] TS 管线 Fable Review 在跑；core Review 仍等 VM
-- [ ] `/create` 上传接线（独立变更，勿打坏 B02 文案测试）
-- [x] 可导航的应用壳（转图仍 stub，O3 在换）
-- [x] 本机复核：`@bead/app` 9 文件 43 绿；`@soul/desktop` 14 文件 172 绿；lockfile frozen 一致
+- [x] AT-2 + rust parity 对齐合入（#28）
+- [x] TS / core / align Review 合入（#26 #27 #30）
+- [x] AL-1/2/3 合入专属线 `331b513`（抖动取整 + steps slug/断言 + 分叉表）
+- [ ] B04 沉浸拼装 IA + 实现
+- [ ] B05 库存/BOM UI
+- [ ] `/create` 上传接线（独立变更；若持久化 Grid 必须同时上 IDB，BD19）
+- [ ] B10 独立 bead workflow
+- [ ] S1/S2 覆盖与构建探针
+- [x] 本机复核：`@bead/app` 22 文件 258 绿（2026-08-25，AL 吸收后）
 
 ## 已知问题 / 禁令
 
@@ -100,9 +104,32 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - 不要把 bead 加进根 Cargo workspace。
 - hosted Soul CI 空 runner（Billing）与本线无关，不要 empty-commit 去「修」。
 
-## 下一轮重点（ROUND 2 预告）
+## 下一轮重点（ROUND 2）
 
-审 O1（CIEDE2000 + 并列规则 + golden）；审 O2（lockfile 同提交、no-egress）；O3 打通 `apps/bead/src/algo/` 与 golden 色号对照；B09 存储契约。
+AL 三项已合。下一刀：**B04 沉浸拼装**（先 Fable IA，再 Opus 实现）。B05 库存 UI、B10 隔离 CI、导入消毒审查、S1/S2 探针仍缺席。判定器/产品框定/检测退化按 align-review §4 NO_HIGH_VALUE，不动。
+
+```text
+ROUND 2（进行中）
+子代理任务    F4 数据审查；DATA-1；AL-1/2/3；下一席 AL 复审 + B04 IA
+发现问题      抖动查表未取整；steps 缺 parity；contract 分叉表过期；写失败静默降级
+修复问题      DATA-1 #31；AL @ 331b513（81184be / c0d346f / f0e6a21）
+测试结果      @bead/app 258 绿；bead-core 153 绿（未改 rust）
+Commit        331b513 merge AL；本提交记进度
+PR            #16 更新；AL 子支对专属线已无独立 diff（先合后开 PR 被拒）
+Merge状态     已进专属线；不合 unique trunk
+下一轮重点    B04 IA → B04 实现（只存游标）；B05；B10
+```
+
+### ROUND 2 · AL-1/2/3 吸收
+
+来源：[R2 Opus AL-2 AL-3](https://cursor.com/agents/bc-2dbfdfac-21a3-5f48-8505-07cf5535e917)  
+分支 `cursor/bead-r2-al23-c441`（基于当时专属线 `6e9f3c1`，不含 DATA-1；与 store 无路径冲突）。
+
+- AL-1 `81184be`：contract.md 分叉表按 rust 现状。
+- AL-2 `c0d346f`：`dither.ts` 查表前 `toChannel`；G7；`fixtures/parity.json` 两条开抖动用例重生成。
+- AL-3 `f0e6a21`：`Phase::slug` `inner-edge`；四份 oracle steps 逐组断言。
+
+禁区守住：`crates/bead-core` 零触碰。
 
 ### ROUND 1 · F1 交付
 
