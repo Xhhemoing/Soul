@@ -2,6 +2,8 @@
 
 单一事实来源。每个子代理完工必须更新本文件。
 
+本父代理专属线：`cursor/soul-integration-4a8e`，从本文件所在的 unique trunk 长出。本轮进度与合入/Blocked 记账写在 [`agent-progress.md`](agent-progress.md)；本跑拍板写在 [`agent-decisions.md`](agent-decisions.md)。**不要**把本段读成 Goal 1 已关闭或 `main` 已有应用。
+
 ## 当前里程碑
 
 **`PLAN_FROZEN`**。Goal 1 **还不能关**。
