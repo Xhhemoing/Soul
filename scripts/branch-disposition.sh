@@ -142,10 +142,11 @@ if forbidden_name "$name"; then
 fi
 
 target=""
-if git rev-parse -q --verify "$REMOTE/$name" >/dev/null; then
-  target="$REMOTE/$name"
-elif git rev-parse -q --verify "$name" >/dev/null; then
+# Prefer a local continuation (it may be ahead of origin) over the remote tip.
+if git rev-parse -q --verify "$name" >/dev/null; then
   target="$name"
+elif git rev-parse -q --verify "$REMOTE/$name" >/dev/null; then
+  target="$REMOTE/$name"
 else
   echo "branch-disposition: unknown branch $MERGE_NAME" >&2
   exit 2
