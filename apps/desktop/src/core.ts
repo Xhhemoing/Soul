@@ -145,7 +145,13 @@ export interface TieEdge {
   readonly from_contact_id: string;
   readonly to_contact_id: string;
   readonly types: readonly string[];
+  /** The band in force: the user's own on a corrected tie, the machine's otherwise. */
   readonly band: string;
+  readonly locked_by_user: boolean;
+  /** Present exactly when `locked_by_user`. */
+  readonly user_band: string | null;
+  /** What the counts say, kept beside the effective band. */
+  readonly machine_band: string | null;
   readonly interaction_count: number;
   readonly outgoing_count: number;
   readonly incoming_count: number;
