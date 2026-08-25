@@ -49,9 +49,7 @@ fn the_endpoint_path_reaches_the_endpoint_and_nowhere_else() {
     let steps: Vec<&str> = report.steps.iter().map(|step| step.name.as_str()).collect();
     assert_eq!(
         steps,
-        [
-            "import", "endpoint", "prepare", "generate", "summary", "replay", "audit"
-        ],
+        ["import", "endpoint", "prepare", "generate", "summary", "replay", "audit"],
         "the run did not drive the whole path",
     );
 
@@ -89,7 +87,10 @@ fn the_endpoint_path_reaches_the_endpoint_and_nowhere_else() {
 /// The same thing through the binary, which is the only way to reach it.
 #[test]
 fn the_command_reports_ok_and_exits_zero() {
-    let output = binary().arg("e1-watch").output().expect("run soul-headless");
+    let output = binary()
+        .arg("e1-watch")
+        .output()
+        .expect("run soul-headless");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{stderr}");
 

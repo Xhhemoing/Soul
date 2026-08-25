@@ -441,9 +441,7 @@ fn flow(scratch: &Path, endpoint: &LoopbackEndpoint) -> Result<FlowOutcome, Head
         .count();
     require(
         requests_recorded == EXPECTED_REQUESTS,
-        format!(
-            "{requests_recorded} request(s) are in the chain and {EXPECTED_REQUESTS} went out",
-        ),
+        format!("{requests_recorded} request(s) are in the chain and {EXPECTED_REQUESTS} went out",),
     )?;
     step(
         "audit",
