@@ -71,6 +71,16 @@ function beadCount(): number {
   return Number(/共 (\d+) 颗豆/.exec(label)?.[1] ?? -1);
 }
 
+/** Installs a DOM method jsdom does not implement, and takes it away again. */
+function stubOwn<T extends object, K extends keyof T>(host: T, key: K, value: T[K]): () => void {
+  const original = Object.getOwnPropertyDescriptor(host, key);
+  Object.defineProperty(host, key, { configurable: true, writable: true, value });
+  return () => {
+    if (original === undefined) Reflect.deleteProperty(host, key);
+    else Object.defineProperty(host, key, original);
+  };
+}
+
 async function occupiedInStore(repository: Repository, id: ProjectId): Promise<number> {
   const doc = await repository.loadPatternDoc(id);
   return doc === null ? -1 : [...doc.cells].filter((cell) => cell !== -1).length;
@@ -230,6 +240,61 @@ describe("T-ED-10 画笔与对称（D-ED-8 / D-ED-9）", () => {
     // 一笔 = 一条历史：撤销一次整笔消失。
     fireEvent.click(screen.getByRole("button", { name: "撤销" }));
     expect(beadCount()).toBe(0);
+  });
+
+  it("指针捕获把 pointermove 重定向到容器后，拖笔依然落满整条", async () => {
+    await openEditor();
+    const grid = screen.getByTestId("editor-grid");
+    // jsdom 两样都没有，所以上面那条测试走的是「未捕获」路径。真实浏览器里
+    // 捕获一开，其后每个 pointermove 的 target 都是容器，格子只能靠命中测试
+    // 找回——这里把两者都补上，钉住生产路径。
+    const captured: number[] = [];
+    const restoreCapture = stubOwn(Element.prototype, "setPointerCapture", (pointerId: number) => {
+      captured.push(pointerId);
+    });
+    let under: Element | null = null;
+    const restoreHitTest = stubOwn(document, "elementFromPoint", () => under);
+
+    try {
+      fireEvent.pointerDown(cellAt(0, 0), { pointerId: 1 });
+      expect(captured).toEqual([1]);
+      for (const x of [1, 2, 3]) {
+        under = cellAt(x, 0);
+        fireEvent.pointerMove(grid, { pointerId: 1, clientX: x * 12, clientY: 0 });
+      }
+      fireEvent.pointerUp(grid, { pointerId: 1 });
+    } finally {
+      restoreHitTest();
+      restoreCapture();
+    }
+
+    expect(beadCount()).toBe(4);
+    fireEvent.click(screen.getByRole("button", { name: "撤销" }));
+    expect(beadCount()).toBe(0);
+  });
+
+  it("捕获期间指针移出板外不画格，回到板上笔画继续", async () => {
+    await openEditor();
+    const grid = screen.getByTestId("editor-grid");
+    const restoreCapture = stubOwn(Element.prototype, "setPointerCapture", () => {});
+    let under: Element | null = null;
+    const restoreHitTest = stubOwn(document, "elementFromPoint", () => under);
+
+    try {
+      fireEvent.pointerDown(cellAt(0, 0), { pointerId: 1 });
+      under = document.body; // 板外：命中测试拿到的不是格子
+      fireEvent.pointerMove(grid, { pointerId: 1 });
+      expect(beadCount()).toBe(1);
+
+      under = cellAt(0, 1);
+      fireEvent.pointerMove(grid, { pointerId: 1 });
+      fireEvent.pointerUp(grid, { pointerId: 1 });
+    } finally {
+      restoreHitTest();
+      restoreCapture();
+    }
+
+    expect(beadCount()).toBe(2);
   });
 });
 
