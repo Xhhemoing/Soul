@@ -7,29 +7,44 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 ## Current round
 
-**ROUND 8** — new product-path honesty hunts. Do not re-open closed R4–R7 items (D55, D61–D63, P2 E1 mutex, owner-fold, import-tx wrap, forget×summary, events_by_source, closed-store E1, COMMANDS=38 pin, research_export, projection-on-Graph).
+**ROUND 9** — remaining surface honesty that R8 did not cover. Do not re-open closed R4–R8 items (D55, D61–D63, P2 E1 mutex, fileplan write-absence, config.json two-field pin, COMMANDS=38, research_export, projection-on-Graph, closed-store E1, events_by_source, HITL/redirect/cap landings).
 
 | Field | Value |
 |---|---|
-| Current task | Round 7 closed, all ten NO_HIGH_VALUE. Round 8 Fable: eleven-route state; fileplan write-absence; memory/forget ledger; schema freeze vs additive index; E1 HITL/redirect/cap; config.json two-field pin; injection remaining; local-gate count honesty; Unicode/path; draft voice vs locked axes. |
+| Current task | Round 8 closed. Docs-only HIGH_VALUE: STATUS local-gate counts now record exclusive tip vitest 190 / ipc_roundtrip 56. Round 9 Fable: Tauri capabilities; COPY_ZH twins; collect Bucket/duration; audit forbidden-fields; wizard persist; Graph as_of clock; A2 vs COPY_ZH; headless-vs-ci honesty; cfg(windows) skipped vs STATUS; remaining landable vs author-machine-only. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
-| Exclusive tip | Round 7 close; PR #15 |
+| Exclusive tip | Round 8 close; PR #15 |
 
-### Round 8 Fable dispatch
+### Round 9 Fable dispatch
 
 | # | Direction |
 |---|---|
-| 1 | Eleven desktop routes: collect consent, endpoint, `store_opened`, and forgotten nodes stay consistent across screens |
-| 2 | Fileplan remaining write-absence: authorize/preview/paste-wrapping; no execute command |
-| 3 | Memory write/edit/forget vs destroyed-key ledger and audit remaining |
-| 4 | Schema freeze vs live types after additive `events_by_source` (`STORE_SCHEMA_VERSION` stays 2) |
-| 5 | E1 remaining: HITL token-once, redirect, plan_hash, 4 MiB cap, multiline (not the parked mutex, not closed-store) |
-| 6 | `config.json` two-field `deny_unknown_fields` pin vs any silent persist after D63 |
-| 7 | Injection remaining on paste / import / filename (not D61 NER) |
-| 8 | Local `just ci` / STATUS test-count honesty vs current vitest and crate counts |
-| 9 | Unicode / Windows-path remaining: fileplan MAX_PATH, paste quotes, import Han fold |
-| 10 | Draft / profile voice remaining vs locked axes (AC-07 product path) |
+| 1 | Tauri capabilities / plugins / wry args: still `core:default` only, no http/fs/shell plugin |
+| 2 | COPY_ZH / `contract.test.ts` twins vs live UI notices |
+| 3 | Collect remaining: `Bucket` declaration, sealed `duration_ms`, D23 foreground-only |
+| 4 | Audit forbidden-fields remaining after R6/R7 landings |
+| 5 | Wizard `complete_wizard` vs two-field persist remaining |
+| 6 | Graph rebuild `as_of` single-clock remaining (D45) |
+| 7 | A2 renderer vs COPY_ZH remaining (D40) |
+| 8 | Headless / `e1-watch` vs `just ci` honesty: instruments not claimed as CI gates |
+| 9 | `cfg(windows)` tests skipped on this Linux host vs STATUS claims |
+| 10 | Synthesis: remaining landable v0.1 slices vs author-machine-only / parked items |
+
+## ROUND 8 record
+
+| Field | Value |
+|---|---|
+| ROUND | 8 |
+| 子代理任务 | 10× Fable: eleven-route state; fileplan write-absence; memory/forget ledger; schema freeze vs index; E1 HITL/redirect/cap; config.json pin; injection; local-gate counts; Unicode/path; draft voice vs lock |
+| 发现问题 | STATUS still quoted unique-trunk `478f19f` vitest 161 / `ipc_roundtrip` 50 as the current gate; this tip is vitest 190 / `ipc_roundtrip` 56 |
+| 修复问题 | Docs-only: STATUS milestone, AC-26 row, 下一步, and SOUL-7C local-green line now name exclusive-tip counts beside the `478f19f` historical record |
+| 测试结果 | Reviewers: vitest 190; ipc_roundtrip 56; command_surface 6; no_egress_path 3; one_store 3; shell_is_local_only 21; schema-freeze --check matches lock |
+| Commit | this closeout (docs) |
+| PR | #15 |
+| Merge状态 | Exclusive → `main` still `BLOCKED`. PR #7 still not merged |
+| 下一轮重点 | Tauri capabilities; COPY_ZH twins; collect Bucket; audit fields; wizard persist; as_of clock; A2 vs COPY_ZH; headless-vs-ci; cfg(windows) vs STATUS; landable vs author-machine |
+| NO_HIGH_VALUE | Eleven-route state; fileplan write-absence; memory/forget ledger (P3 WAL-busy / headless execute_forget); schema freeze; E1 HITL remainder; config.json pin; injection; Unicode/path; draft voice vs lock |
 
 ## ROUND 7 record
 
