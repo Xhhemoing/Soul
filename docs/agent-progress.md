@@ -11,7 +11,7 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 | Field | Value |
 |---|---|
-| Current task | Opus in flight: Session §6 pin; Graph+Profile same-band; name-harvest fold; `as_of=None` projection suppression test. Fable still running: key-blob TOCTOU, security. AC-31-on-this-tree was a misnomer (contract is AC-01–26; real-SQLCipher already pinned). |
+| Current task | Opus in flight: Session §6 pin; Graph same-band; name-harvest; as_of=None; forget-impact bind; collect `count_events`. Fable still running: key-blob TOCTOU. Security #2 (session mutex vs 120s E1) stays parked P2 unless a later round upgrades it. E1 body-size cap queued until a slot frees. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
 | Exclusive tip | `b7c8563` / PR #15 |
