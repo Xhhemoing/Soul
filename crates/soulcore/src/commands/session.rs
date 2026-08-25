@@ -1291,18 +1291,22 @@ impl Session {
         let store = self.opened_store()?;
         let at = now_unix_seconds();
         let entry = self.consent.grant(COLLECTION_TOPIC, at);
-        collect_commands::record_consent_change(&mut hold(&store), entry, at)?;
         // The ledger is the authority, and the in-memory [`Config`] now agrees
         // with it, exactly the way [`Session::set_user_endpoint`] makes the
         // configuration agree with the guard. Without this the overview badge
         // read 全部能力默认关闭 while a collector was writing events, which is
-        // the kind of disagreement a privacy claim cannot survive. The grant
-        // is what is recorded, not the thread: a machine with no foreground
-        // source has still had a capability opened on it, the same fact
-        // `collect_status.consent_granted` reports. Nothing is persisted —
+        // the kind of disagreement a privacy claim cannot survive. This runs
+        // before the append below for the reason the revocation's does: the
+        // ledger has already granted, and a chain that cannot be written to is
+        // a problem to report, not a reason to show a capability as closed.
+        // What the flag tracks is that grant — not an audit row that landed,
+        // and not a collector that is running, since a machine with no
+        // foreground source has still had a capability opened on it, the same
+        // fact `collect_status.consent_granted` reports. Nothing is persisted —
         // [`StoredConfig`] has no field for this and does not gain one — so
         // AC-02 still holds by there being nowhere to write it down.
         self.config.collect_enabled = true;
+        collect_commands::record_consent_change(&mut hold(&store), entry, at)?;
 
         self.collect_problem = match source {
             Ok(source) => {
