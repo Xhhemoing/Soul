@@ -90,7 +90,11 @@
 
 ## Tests
 
-- Static source trace only in the first report pass; no product file was changed.
+- `cargo test -p soulcore --test session_e1 with_nothing_imported_the_same_name_is_a_word_like_any_other -- --exact` — **1 passed**; this is the existing control that confirms the unknown name reaches the endpoint.
+- `cargo test -p soul-draft --test people_summary` — **12 passed**; confirms the current suite accepts a free-form non-clinical endpoint narrative while preserving evidence only on the original points.
+- `cargo test -p soul-policy --test net_guard` — **10 passed**.
+- `cargo run -p xtask -- e0-audit` — **clean**; 14 shipped crates walked, 186 source files scanned.
+- No product file was changed.
 
 ## Assumptions / do-not-touch
 
