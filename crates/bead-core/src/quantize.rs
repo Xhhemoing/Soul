@@ -25,7 +25,7 @@
 
 use std::collections::HashMap;
 
-use crate::color::{Rgb, Rgba};
+use crate::color::{to_channel, Rgb, Rgba};
 use crate::grid::Grid;
 use crate::image::Image;
 use crate::palette::{ColorId, Palette};
@@ -145,9 +145,9 @@ fn map_dithered(image: &Image, palette: &Palette) -> MapTrace {
             }
             let current = work[here];
             let clamped = Rgb::new(
-                clamp_channel(current[0]),
-                clamp_channel(current[1]),
-                clamp_channel(current[2]),
+                to_channel(current[0]),
+                to_channel(current[1]),
+                to_channel(current[2]),
             );
             let chosen = palette.nearest(clamped).id;
             out[here] = Some(chosen);
@@ -184,10 +184,6 @@ fn map_dithered(image: &Image, palette: &Palette) -> MapTrace {
     }
 }
 
-fn clamp_channel(value: f64) -> u8 {
-    crate::color::to_channel(value)
-}
-
 #[cfg(test)]
 mod unit {
     use super::*;
@@ -198,10 +194,12 @@ mod unit {
         assert!((total - 1.0).abs() < 1e-12);
     }
 
+    /// The accumulator runs past both ends of the range on purpose, so what it
+    /// does there is part of the contract rather than an accident.
     #[test]
-    fn clamping_saturates_rather_than_wrapping() {
-        assert_eq!(clamp_channel(-40.0), 0);
-        assert_eq!(clamp_channel(300.0), 255);
-        assert_eq!(clamp_channel(127.6), 128);
+    fn an_out_of_range_accumulation_saturates_rather_than_wrapping() {
+        assert_eq!(to_channel(-40.0), 0);
+        assert_eq!(to_channel(300.0), 255);
+        assert_eq!(to_channel(127.6), 128);
     }
 }
