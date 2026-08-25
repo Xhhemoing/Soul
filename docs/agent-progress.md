@@ -14,8 +14,8 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core 已合入；CI/IA/算法/地图审查齐 |
-| 当前任务 | SH-1..4 已合入；TS 管线与 core 的 Fable Review 在跑 |
-| PR | #16 专属线；#20–#25（#25 SH 跟进） |
+| 当前任务 | TS Review 已收；Opus 按 BD18 修 AT-2 并对齐 rust oracle；core Review 仍在跑 |
+| PR | #16 专属线；#20–#26（#26 TS 管线 Review） |
 | Merge | 壳、core、壳 Review 文档已合进专属线；不合 unique trunk |
 | Blocked | F4/S1/S2 等 VM |
 
@@ -31,7 +31,7 @@
 | Storage | 无 bead | WP-B09 |
 | Cache | 无 | 后置 |
 | 第三方 | 无品牌色板授权 | fixture `generic-5mm` |
-| 核心业务 | rust oracle + TS 管线都已合入 | Fable 对照色号；B04/B05 |
+| 核心业务 | rust 合同后为 oracle；TS 尚未对齐（AT-1） | Opus 对齐 parity + 修 AT-2 |
 | 测试 | 壳 43 + bead-core 全绿 | B10 独立 workflow 仍缺 |
 | 构建 | Soul just/pnpm | 隔离，勿改根脚本 |
 | CI/CD | Soul ci.yml | B10 独立 job |
