@@ -7,13 +7,27 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 ## Current round
 
-**ROUND 3** — Fable-review the T4D port, then land graph-correction UI, prediction thin slice, wizard refusal shape, first-run key-blob race.
+**ROUND 4** — close remaining honesty/test gaps; keep covering modules that still have real defects.
 
 | Field | Value |
 |---|---|
-| Current task | Fable review of merged T4D; Opus owners for SOUL-7A (graph UI), AD-9 prediction copy+renderer, wizard `SessionRefusal` shape, `keys.dpapi` create_new race |
-| Parent model | product/account setting (not a Task slug) |
+| Current task | Fable: consent topology, name-harvest variants, collect-vs-egress mutex, AC-31 real-store gap. Opus: projection product-boundary pin; key-blob empty-file reclaim TOCTOU |
+| Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
+
+## ROUND 3 record
+
+| Field | Value |
+|---|---|
+| ROUND | 3 |
+| 子代理任务 | 10× Fable (T4D review, independent, frontend, AC map, remaining modules, G2 UI gap, graph-UI review, prediction review, wizard+keys review, synthesis) + 5× Opus (graph UI, prediction, wizard, key-blob, intake ignored UI) |
+| 发现问题 | T4D port genuine; SOUL-7A/7B/AD-9/wizard/key-blob needed; key-blob empty-file concurrent reclaim TOCTOU residual; projection lacks Session-level pin |
+| 修复问题 | COMMANDS 36→38 graph correction UI; COPY_ZH §6 projection on person_summary; wizard `{reason_code,explanation}`; keys.dpapi `create_new`; Profile ignored receipt (SOUL-7B) |
+| 测试结果 | Parent: `cargo test -p soul-draft -p soul-store -p soulcore` green (projection 20, session_graph_correct 6, session_e1 31, shell wizard 12). Fable: vitest 177 then 182; ipc_roundtrip 56 |
+| Commit | merges of `predict-slice`, `key-blob-race`, `wizard-refusal`, `graph-correct-ui`, `intake-ignored-ui` |
+| PR | #15 |
+| Merge状态 | Exclusive line has the merges. → `main` still `BLOCKED`. PR #7 still not merged |
+| 下一轮重点 | SOUL-7B merged this closeout; next: projection product pin, key-blob reclaim TOCTOU, consent scan, name variants |
 
 ## ROUND 2 record
 
