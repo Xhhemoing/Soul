@@ -79,6 +79,27 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 |---|---|---|---|
 | R1 start | Exclusive branch tracker | `3c6354f` (rebased) / #15 | Not to `main` |
 | R1 end | FF onto c441 + this record | (this commit) / #15 | Same |
+| R2 | Opus T4D port, 7 commits `f7a1a88`…`aac2b39` on `cursor/port-t4d-4a8e` | branch off `9ca342a` | Onto the exclusive line only |
+
+### Opus T4D port (Round 2)
+
+Sources copied from `origin/cursor/goal1-unblock-a073` (verified 2026-08-25 at
+`6133307`), never by merging PR #7. Phase per commit: frozen algo crates into
+the workspace; soul-graph T4D plus the typed `tie_strength` schema and its lock
+digest in one commit; soul-import G1+ attribution and the D37/D38 clocks;
+soul-draft on the frozen A2 renderer; soul-profile G2 intake lock with the
+soulcore correction commands and the xtask denylist exemptions; the desktop
+hunk merge; and the three gap tests (AC-29 self-heal at the store, AC-34
+`last_contact`, fixture parity against `score()`, D52 constant equality).
+
+Hand-merged both ways rather than taken from one side: `soul-import`'s
+`commit.rs` and `tests/telegram.rs`, `soulcore`'s `session_import.rs`,
+`soul-draft`'s `analysis.rs` and `tests/people_summary.rs`, and the four
+desktop TypeScript files. No IPC command was added: `COMMANDS` is still 36.
+
+`just ci` green locally on `aac2b39`. Hosted still billing-blocked, and the
+`src-tauri` sub-workspace was not built here (no GTK/WebView stack on this
+box).
 
 ## Blocked
 
@@ -87,7 +108,10 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 - Merge of PR #7 / #4 / #2 (contract or D49).
 - Author Win11 manual checklist.
 - Parent has no merge-PR capability — record and continue.
-- Prediction thin slice blocked on T4D port.
+- Prediction thin slice unblocked: T4D is on `cursor/port-t4d-4a8e`.
+- Desktop shell cargo tests (`apps/desktop/src-tauri`) cannot run on this box:
+  the GTK/WebView system libraries are missing, so only its `Cargo.lock` was
+  refreshed.
 
 ## Next round focus
 

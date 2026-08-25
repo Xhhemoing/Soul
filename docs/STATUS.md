@@ -877,6 +877,16 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 方案：`docs/FIRST_FORMAL_TEST.md`。分支图：`docs/BRANCH_MAP.md`。唯一主干已快进到 `origin/cursor/first-test-candidate-c441`（与 `origin/cursor/goal1-build-audit-c441` 同尖端）。`scripts/branch-disposition.sh` 拒绝合 `#4` / `#7` / `main` / closeout。本机 Linux 段 A 已绿。这不是 hosted 绿，也不是 Win11 AC-01。
 
+## T4D / A0 / G1+ / G2 / G3 / A2 已移植到本树（核于 2026-08-25）
+
+分支 `cursor/port-t4d-4a8e`，从 `cursor/soul-integration-4a8e`（`9ca342a`）长出，七个提交 `f7a1a88`…`aac2b39`。**没有合 PR #7、没有合 `main`、没有 rebase 主干**：文件是从 `origin/cursor/goal1-unblock-a073`（核于 2026-08-25 尖端 `6133307`）逐个 checkout 过来的，两边都改过的文件按 hunk 手工合并，主干先前加的测试一条都没有丢。冻结算法 crate 的规则与常量一个字节都没动。
+
+落地内容：两个冻结 crate `crates/soul-algo-tie` / `crates/soul-algo-trait` 进工作区成员表，依赖按 0.3.0 路径钉住（D50 / D51），`docs/DECISIONS.md` 补齐 D32–D60。人脉图重建改走 T4D（`t4d_adapt.rs`、`build.rs` 换掉本地 3/10/3、`model.rs` 三元锁字段、`correct.rs`），`docs/schemas/relationship.schema.json` 的 `tie_strength` 收成可复核面并与 `schemas.lock.json` 同批重算（D42 / D45 / D48 / D59）。导入侧 owner 群消息不再产生 Outgoing 归因（D47），`date_unixtime` 越界与不存在的民事日在入库前判缺陷（D37 / D38）；`soulcore` 的 `evidence_written` 钉成 G1+ 之后的 15。人事摘要改由冻结的 `soul_algo_trait::a2_render` 出话，锁定边丢掉 `filed_band` 而不是自造「由你本人指定」（D35 / D40）——本树原有的端点出处文案与 `ENDPOINT_LINE_PREFIX` 保留，只把一条引用旧本地散文的断言改指冻结模板。问卷再答不再移动已锁轴，被拒答案照常落库并以 `axis_locked_by_user` 回报（D39 / D46）。界面上档位词换成 COPY_ZH 的 弱 / 中等 / 强，`TieEdge` 与 `IntakeReceipt` 加法字段；本树那段点名「看这个人的摘要」是 E1 触发的只留本机说明与 FORGET / LLM 文案原样保留，**没有新增 IPC，`COMMANDS` 仍是 36**，纠正仍只在 `soulcore` 命令面上。
+
+补的门禁：`crates/soul-graph/tests/t4d_fixture_parity.rs` 把冻结 crate 自己的 21 个夹具写进真库，逐条比对 `soul_algo_tie::score` 与 rebuild 读回的档位与分列计数，并断言全库只有一个 `as_of`；AC-29 的 `lilei_12` 仍 strong、自愈路径 `group_heavy_plus_three_directs` 回 moderate 在同一条测试里。`crates/soul-import/tests/import_to_graph.rs` 补 AC-34 的 `last_contact` 那一半：owner 的群消息晚于两位历史发言人，两条边的 `last_contact` 不被它刷新。`crates/soul-draft/tests/day_constants_agree.rs` 钉 `DEMOTE_ONE_BAND_DAYS == DORMANT_AFTER_DAYS`，并扫产品 crate 与壳的源码，确认 180 / 360 没有第三处（D52）。
+
+本机在 `aac2b39`（本轮最后一个动代码的提交，之后两个只动 `docs/`）这棵树上 `just ci` 全绿（lint / schema-freeze / e0-audit / denylist-audit / fixtures-verify / `cargo test --workspace --all-targets` / smoke-lint / sbom / ui-lint / ui-test 14 文件 172 项）。**本机绿不是 hosted 绿**：hosted 仍是账本/额度阻塞，本轮没有产品 run。`apps/desktop/src-tauri` 这个独立工作区在本机装不起 GTK/WebView 依赖，因此桌面壳的 `cargo` 测试本轮没跑过，只更新了它的 `Cargo.lock`。
+
 ## 下一步
 
 批 3–5 与 WP13、DPAPI 都已完成。`2e72ddf` 上 CI 五门全绿。HEAD 本机 `just ci-full` 与桌面壳 `--all-targets` 绿于产品 `478f19f` 的树（vitest 161，`ipc_roundtrip` 50，`shell_is_local_only` 21，`cargo deny` 四项 ok）；`6e358b3` 补了档案页轴说明与 Explorer 引号路径；`88cf931` 补了第二次启动不进第二份库；`928ef5a` 补了遗忘 SSD 诚实、文件页引号提示、WebView2 args；`f0a2363` 补了研究空状态；`17b56e9` 补了向导授权说明不暗示能写；`90c2d25` 补了端点说明点名起草生成与人脉图摘要；`0de3e90` 补了人脉图「只留在本机」那行点名摘要按钮会把往来次数发给已填端点；`478f19f` 补了向导欢迎那段点名后来的模型端点是例外、发出去的内容会先占位。hosted 五门没有 runner。原先写在这里的产品缺口已经做完，剩下的是 hosted 与真机：

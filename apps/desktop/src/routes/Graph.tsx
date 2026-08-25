@@ -30,13 +30,14 @@ import {
 import { asRefusal, Refused } from "../refusal";
 
 /**
- * The band, in words. A band is how much was observed, not how much anything
- * is worth: the counts are on screen beside it so the reader can check.
+ * The band, in words. COPY_ZH allows only 弱 / 中等 / 强 for a档位; the
+ * counts sit beside it so the reader can check the observation, not a
+ * homemade scale (较少 / 较多).
  */
 const BAND: Record<string, string> = {
-  weak: "观察到的往来较少",
-  moderate: "观察到的往来中等",
-  strong: "观察到的往来较多",
+  weak: "弱",
+  moderate: "中等",
+  strong: "强",
 };
 
 /** The shapes `soul-graph` will admit to seeing. It names no relationships. */

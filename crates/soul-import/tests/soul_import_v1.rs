@@ -276,6 +276,50 @@ fn a_field_name_carrying_prose_is_dropped_rather_than_repeated() {
     }
 }
 
+/// D38. A date the calendar does not have is a generated field, not a moment.
+/// The schema refuses the line either way, but by way of its top-level `oneOf`
+/// — "matches neither branch", which tells nobody anything. Naming the field
+/// is the restatement's job, and the restatement is also what would refuse the
+/// line in a build compiled without format assertions.
+#[test]
+fn a_day_the_month_does_not_have_is_not_an_instant() {
+    let line = |occurred_at: &str| {
+        format!(
+            concat!(
+                r#"{{"type":"header","format":"soul-import-v1","version":1,"#,
+                r#""exported_at":"2026-08-24T08:00:00Z"}}"#,
+                "\n",
+                r#"{{"type":"message","id":"m-1","occurred_at":"{}","sender_scope":"self","#,
+                r#""conversation_id":"c-1","sender_id":"u-self","text":"hi"}}"#,
+                "\n",
+            ),
+            occurred_at,
+        )
+    };
+
+    let failure =
+        soul_import::soul_import_v1::parse(&line("2026-02-31T00:00:00Z")).expect_err("no such day");
+    assert!(
+        failure.mentions_field("occurred_at"),
+        "the field that is wrong has to be named:\n{failure}",
+    );
+    assert!(
+        failure
+            .defects
+            .iter()
+            .any(|defect| defect.reason.contains("RFC 3339")),
+        "the sentence has to come from this crate's restatement, not from the \
+         validator's fallback:\n{failure}",
+    );
+    assert!(
+        soul_import::soul_import_v1::parse(&line("2025-02-29T00:00:00Z")).is_err(),
+        "2025 is not a leap year",
+    );
+    let staged = soul_import::soul_import_v1::parse(&line("2024-02-29T00:00:00Z"))
+        .expect("2024 is a leap year");
+    assert_eq!(staged.messages.len(), 1);
+}
+
 /// A file with no header is refused rather than half-read.
 #[test]
 fn a_file_without_a_header_is_refused() {

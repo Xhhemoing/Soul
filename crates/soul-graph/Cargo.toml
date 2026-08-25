@@ -8,6 +8,7 @@ publish = false
 description = "Soul's people graph: nodes are people, edges carry interaction strength, relationship type, last contact and evidence. Never leaves the machine."
 
 [dependencies]
+soul-algo-tie = { workspace = true }
 soul-schema = { workspace = true }
 soul-store-api = { workspace = true }
 # For the audit content a graph rebuild owes the chain. No HTTP client sits
