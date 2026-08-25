@@ -20,8 +20,13 @@
 //! Two scenarios:
 //!
 //! * `STORE_EVENT_COMMIT_MID` fires inside the third event an import commit
-//!   writes. Reopening must show the two committed events, exactly one lost,
-//!   and a chain the 审计 page can still verify.
+//!   writes. `Session::commit_import` runs the whole file — the events, the
+//!   people, the graph rebuild and the audit entries all three owe — inside one
+//!   `SqlCipherStore::transact`, so what a power loss there costs is the import
+//!   and not one message of it. Reopening must show none of it, a chain the
+//!   审计 page can still verify, and the same file importable again with no
+//!   duplicate events, which is the thing a half-written import could not
+//!   offer.
 //! * `FORGET_CK_DELETE_MID` fires between destroying one content key and the
 //!   next. Reopening must show a memory that is all of one thing — readable
 //!   and active, or forgotten and unopenable — and never half of each.
@@ -174,13 +179,32 @@ fn child_forgets_a_memory_through_a_session_and_may_die_mid_destruction() {
 
 // -------------------------------------------------------------- parents ---
 
-/// AC-24 through the product: a launch that died mid-commit reopens as a
-/// launch, with one write lost and everything else where it was.
+/// AC-24 through the product, re-pinned: a launch that died mid-commit reopens
+/// as a launch, with the interrupted import gone whole and everything that was
+/// already there where it was.
 ///
-/// `2*off->panic` lets the first two events through and kills the third
-/// inside its transaction, which is the state a power loss leaves behind.
+/// `2*off->panic` lets the first two events through and kills the third inside
+/// its savepoint, which is the state a power loss leaves behind. What the two
+/// that got through cost has changed, and deliberately: they were written
+/// inside the transaction `Session::commit_import` opens, and nothing committed
+/// it, so reopening finds none of the three rather than two of them.
+///
+/// That is a stronger reading of AC-24's "at most one uncommitted write may be
+/// lost", not a weaker one. The unit that was being written is the import — the
+/// events, the people, the graph derived from them and the audit entries the
+/// commit owes are one write, because none of them means anything without the
+/// others — and exactly one of those is lost. The store-level promise is
+/// unchanged and `soul-store`'s own `crash_recovery.rs` still holds it: a bare
+/// `append_event` with nobody wrapping it commits on its own, and a crash there
+/// costs that one row.
+///
+/// The half-written outcome this replaces was not merely untidy. Imported
+/// events carry no external id, so a user who re-imported the file to finish
+/// the job got a second copy of everything that had survived; the only way to
+/// recover was not to. The last third of this test is that: the same file, the
+/// same directory, and the message count of one import.
 #[test]
-fn a_session_that_died_mid_import_reopens_with_one_write_lost_and_a_chain_that_verifies() {
+fn a_session_that_died_mid_import_reopens_with_the_whole_import_rolled_back() {
     let (keep, directory) = scratch("import-crash");
 
     let outcome = run_crashing_subprocess(
@@ -208,26 +232,22 @@ fn a_session_that_died_mid_import_reopens_with_one_write_lost_and_a_chain_that_v
 
     assert_eq!(
         events_in(&session),
-        MESSAGES - 1,
-        "AC-24: at most one uncommitted write may be lost",
+        0,
+        "an import is one write: a crash inside it must leave none of it, \
+         and two committed events would be a partial import no retry can fix",
     );
-
-    // The commit never returned, so the receipt's entry was never appended
-    // and the graph was never rebuilt. What must still be true is that the
-    // chain the 审计 page plays back verifies, and that the people the commit
-    // did write are readable.
-    assert_chain_holds_no_prose(&session, SPOKEN);
     assert!(
-        !session
+        session
             .people()
             .expect("the graph reads back")
             .people
             .is_empty(),
-        "the contacts written before the crash are gone as well",
+        "the contacts the interrupted commit wrote outlived the events it wrote",
     );
+    assert_chain_holds_no_prose(&session, SPOKEN);
 
-    // And the chain can be extended: a launch after a crash is a launch, not
-    // a museum. This is the property a broken `prev_hash` would destroy, and
+    // The chain can be extended: a launch after a crash is a launch, not a
+    // museum. This is the property a broken `prev_hash` would destroy, and
     // reopening alone cannot see it.
     let mut session = session;
     session
@@ -243,6 +263,23 @@ fn a_session_that_died_mid_import_reopens_with_one_write_lost_and_a_chain_that_v
         .entries
         .iter()
         .any(|entry| entry.action == "draft.create"));
+
+    // And the retry the rollback is for. Nothing was left behind to collide
+    // with, so the same export goes in once and counts once.
+    let receipt = session
+        .commit_soul_import_v1(EXPORT)
+        .expect("the file the crash interrupted imports again");
+    assert_eq!(receipt.events_written, MESSAGES);
+    assert_eq!(
+        events_in(&session),
+        MESSAGES,
+        "re-importing after a crash wrote the surviving events a second time",
+    );
+    assert_eq!(
+        receipt.contacts_matched, 0,
+        "the crash left contacts behind for the retry to recognize",
+    );
+    assert_chain_holds_no_prose(&session, SPOKEN);
     drop(keep);
 }
 
