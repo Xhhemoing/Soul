@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { roundHalfUp } from "./color.ts";
 import { quantize } from "./dither.ts";
 import { createImage, imageFromPixels, type RgbaImage } from "./image.ts";
 import { GENERIC_5MM, nearestIndex, preparePalette, type Palette } from "./palette.ts";
@@ -139,6 +140,47 @@ describe("T-FS-7 透明格隔离", () => {
     const out = quantize(createImage(4, 4), { palette: MONO, dither: true });
     expect(out.grid.cells.every((c) => c === null)).toBe(true);
     expect(out.minRunnerUpMargin).toBe(Infinity);
+  });
+});
+
+describe("AL-2 查表前取整到整码值，与 oracle 的 to_channel 同式", () => {
+  // 125 灰落在 G08 Slate 上，残差的 7/16 把第二格推到 241.875 —— 正好跨过 G02
+  // 与 G01 的决策边界：按小数查表得 G02，按 to_channel 取整成 242 再查得 G01。
+  const image = createImage(2, 1, [125, 125, 125, 255, 234, 234, 234, 255]);
+
+  it("残差落在半个码值上时，取整与不取整挑到不同的色", () => {
+    const prepared = preparePalette(GENERIC_5MM);
+    const slate = GENERIC_5MM.entries[nearestIndex({ r: 125, g: 125, b: 125 }, prepared)]!;
+    expect(slate.id).toBe("G08");
+
+    const carried = {
+      r: 234 + (7 / 16) * (125 - slate.rgb.r),
+      g: 234 + (7 / 16) * (125 - slate.rgb.g),
+      b: 234 + (7 / 16) * (125 - slate.rgb.b),
+    };
+    expect(carried).toEqual({ r: 241.875, g: 235.3125, b: 230.5 });
+
+    const fractional = GENERIC_5MM.entries[nearestIndex(carried, prepared)]!.id;
+    const rounded =
+      GENERIC_5MM.entries[
+        nearestIndex(
+          {
+            r: roundHalfUp(carried.r),
+            g: roundHalfUp(carried.g),
+            b: roundHalfUp(carried.b),
+          },
+          prepared,
+        )
+      ]!.id;
+    expect(fractional).toBe("G02");
+    expect(rounded).toBe("G01");
+  });
+
+  it("量化走的是取整那条：第二格是 G01", () => {
+    const out = cells(image, GENERIC_5MM, true).map((cell) =>
+      cell === null ? "" : GENERIC_5MM.entries[cell]!.id,
+    );
+    expect(out).toEqual(["G08", "G01"]);
   });
 });
 

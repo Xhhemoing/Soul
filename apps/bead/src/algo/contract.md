@@ -112,7 +112,11 @@ alpha 自己线性平均。舍入统一走 `roundHalfUp(x) = floor(x + 0.5)`。
 ## G7 Floyd–Steinberg
 
 - 经典 raster 扫描（左→右、上→下），**不做 serpentine**；
-- 误差在 **sRGB 码值**空间按 f64 累计，**不提前夹取**；只在查最近色前夹到 [0,255]；
+- 误差在 **sRGB 码值**空间按 f64 累计，**不提前取整也不提前夹取**；只在查最近色前按
+  oracle 的 `color::to_channel` 取到整码值：先 `roundHalfUp` 再夹到 [0,255]
+  （Rust 的 `round()` 是四舍五入到远离 0，夹取之后与半值向上同一个映射）。小数码值
+  直接查表会在离决策边界半个码值以内挑到另一颗豆子，`dither.test.ts` 的 AL-2 用例
+  钉住这一格；
 - 误差按 7/16 右、3/16 左下、5/16 下、1/16 右下扩散；越界丢弃；
 - 空格既不接收也不中转误差；
 - 抖动关闭时与逐像素独立最近色映射逐格全等。
@@ -179,12 +183,11 @@ premultiplyAlpha: "none" })`，再以自然尺寸 1:1 绘制、`imageSmoothingEn
 | 框定 | `board` / `aspect` / `manual` | `FixedBoards` / `AspectFit`（整板搜索）/ `ScaleCrop`（parity 只走已共享的 `fixed-boards`） |
 | 网格提取（退化语义） | `detectGrid`：变化位置 < 2 或周期 > 64 ⇒ 该轴整幅算一格；「变化」比 RGBA 四字节 | `detect::detect_grid`：主干同式（gcd + 相位、`MAX_CELL_PROBE = 64`、不要求整除）；变化位置 < 2 ⇒ 该轴 1 像素一格（`GridGeometry::NONE`），周期 > 64 ⇒ 取 ≤ 64 的最大因子而不是放弃；「变化」只比不透明像素的 RGB，透明像素一律等价 |
 | 判定器 | `0.5·flat + 0.3·grid + 0.2·color` | `0.45·flat + 0.35·palette + 0.20·block` |
-| 抖动查表 | 输入是未取整的小数码值（仅夹取） | 查表前 `round().clamp()` 到 u8 |
 | Outline→Infill | 分量在非空掩码上 4 邻接，洞 = 边界洪泛不可达，外轮廓 8 邻接判定并优先归类；内边界 slug `inner-border` | 同式（`steps::outline_infill`）；只有 slug 不同，叫 `inner-edge` |
 | 面积平均 | `resampleBox` 按覆盖面积加权 | 覆盖到的整像素等权（本侧 `renderFit` 已同式） |
 
 已经收敛、不要再「收敛」一次的：**排序次键**——`bom.rs` 与 `steps.rs` 都按 `ColorId`
-（色板索引）升序断尾，与 G6 同键，不是 `code` 字符串序。
+（色板索引）升序断尾，与 G6 同键，不是 `code` 字符串序；**抖动查表取整**（G7，AL-2）。
 
 上表的网格提取行只记录退化边角：oracle 的 fixture 生成器不撤放大，这些分支全在 parity
 路径之外，只影响本侧独有的像素图前处理，行为按现状保留。
