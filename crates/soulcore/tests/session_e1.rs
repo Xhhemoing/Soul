@@ -922,6 +922,17 @@ const PASTE_NAMING_A_CONTACT: &str = "李 雷 说周五的场地他已经订好�
 /// [`with_nothing_imported_a_name_without_a_space_is_placeheld_by_where_it_stands`].
 const PASTE_NAMING_A_CONTACT_UNSPACED: &str = "李雷说周五的场地他已经订好了，你直接过来就行";
 
+/// The same unspaced spelling, standing where nothing marks it as a name.
+///
+/// No space to read and no verb of saying behind it, so neither of
+/// `soul-policy`'s two shapes has anything to work with: the only thing that
+/// can placehold this is the contact graph, and the graph holds `李 雷`. That
+/// is the whole distance between the spelling an export seals and the spelling
+/// a person types. See
+/// [`a_name_this_soul_imported_is_placeheld_in_the_spelling_a_person_writes`].
+const PASTE_NAMING_A_CONTACT_UNSPACED_OUTSIDE_ATTRIBUTION: &str =
+    "周五的方案我下周交给李雷，你不用管";
+
 /// The other display label `result_basic.json` seals, in the script that has
 /// no spelling to recognize.
 const LATIN_LABEL: &str = "Wang Xiao";
@@ -1203,6 +1214,87 @@ fn a_display_name_with_no_shape_is_placeheld_because_the_graph_learned_it() {
     drop(keep);
 }
 
+/// The imported name, in the spelling the import never saw.
+///
+/// [`a_name_this_soul_imported_is_placeheld_even_in_a_body_the_user_confirmed`]
+/// proves the contact graph is consulted, and it does so with `李 雷` — the
+/// string the export sealed, the string the store holds, and the string
+/// `known_identifiers` registers. A person writing about that person types
+/// `李雷`. `Redactor::scrub_identifiers` is a `String::replace` over the
+/// registered set, so those were two different names to it: the paste below
+/// has no space for the label shape to read and no verb of saying behind the
+/// name for the position rule, and it went to the endpoint out of the one body
+/// the user was told carried 正文 and nothing else. On an imported Soul, which
+/// is the state the feature exists for.
+///
+/// What closes it is `KnownIdentifiers::add_name` folding the spaces out of a
+/// label that is shaped like a spaced name, so one contact row registers both
+/// spellings. Nothing here hands the redactor anything: the name is registered
+/// by the product, out of the row the import wrote, and the placeholder in
+/// these bytes can only have come from that.
+///
+/// The same paste on a Soul that has imported nobody is `soul-policy`'s
+/// `the_names_the_shapes_still_cannot_see_are_written_down_here`, where it
+/// travels, because there is no graph to fold.
+#[test]
+fn a_name_this_soul_imported_is_placeheld_in_the_spelling_a_person_writes() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut session = Session::open(&directory);
+
+    session
+        .commit_telegram(&telegram_export())
+        .expect("the export commits");
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let labels = stored_third_party_labels(&session);
+    assert!(
+        labels.iter().any(|label| label == IMPORTED_NAME),
+        "the store holds {labels:?}, and the fold below is about the spaced one",
+    );
+    assert!(
+        !labels
+            .iter()
+            .any(|label| label.contains("李雷") && !label.contains(' ')),
+        "nothing registered the unspaced spelling, which is the point: {labels:?}",
+    );
+
+    let exempted = session
+        .prepare_draft(
+            PASTE_NAMING_A_CONTACT_UNSPACED_OUTSIDE_ATTRIBUTION,
+            Some(true),
+        )
+        .expect("a plan");
+    assert!(exempted.carries_exempted_original);
+    session
+        .generate_draft(&exempted.approval())
+        .expect("the endpoint answers");
+
+    let sent = endpoint.requests();
+    assert_eq!(sent.len(), 1, "one approval, one request");
+    assert!(
+        !sent[0].body.contains("李雷"),
+        "the imported contact's name reached the endpoint in the spelling a \
+         person writes: {}",
+        sent[0].body,
+    );
+    assert!(
+        sent[0].body.contains(NAME_PLACEHOLDER),
+        "the name was dropped rather than placeheld: {}",
+        sent[0].body,
+    );
+    // One name, not the message: the user confirmed twice to send this.
+    assert!(
+        sent[0].body.contains("方案"),
+        "the confirmed message did not travel, so the confirmation bought nothing: {}",
+        sent[0].body,
+    );
+    assert!(!sent[0].body.contains(THIRD_PARTY_PLACEHOLDER));
+    drop(keep);
+}
+
 /// The ordinary spelling of a Chinese name, on a Soul that imported nobody.
 ///
 /// [`with_nothing_imported_the_same_name_is_placeheld_by_its_shape`] closed the
@@ -1326,11 +1418,15 @@ fn with_nothing_imported_a_latin_display_label_is_placeheld_by_where_it_stands()
 /// bytes before they leave, or a decision about whether the promise may be
 /// qualified, which lives in PRODUCT_LOCK. Until then the honest reading is
 /// that the exemption keeps the promise for a name that is spelled or placed
-/// like a name, and for every name at all once anything has been imported.
+/// like a name, and for anybody in the contact graph — in the spaced spelling
+/// the export sealed and, since `add_name` folds a spaced Han label, in the
+/// unspaced one a person types as well.
 ///
 /// [`a_display_name_with_no_shape_is_placeheld_because_the_graph_learned_it`]
 /// is this same paste on a Soul that has imported the export, where the
-/// contact graph placeholds it.
+/// contact graph placeholds it, and
+/// [`a_name_this_soul_imported_is_placeheld_in_the_spelling_a_person_writes`]
+/// is the fold.
 #[test]
 fn the_name_shapes_cannot_reach_a_label_standing_outside_an_attribution() {
     let (keep, directory) = scratch();
