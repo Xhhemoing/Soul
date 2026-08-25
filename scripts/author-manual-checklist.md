@@ -12,7 +12,7 @@ CI 到此为止。下面每一条都要在一台 **Windows 11 x64、非管理员
 
 打包在作者机器上做，不在 CI 上做：`tauri build` 会去取 NSIS，那是出网，
 CI 不允许（见 `docs/STATUS.md` WP13「Windows 手动缺口」）。
-从 **HEAD of `cursor/soul-goal1-7b1c`（`0de3e90` 或之后）**打。不要用 `2e72ddf` 的 `windows-binaries` 做卸载：
+从 **HEAD of `cursor/soul-goal1-7b1c`（`478f19f` 或之后）**打。不要用 `2e72ddf` 的 `windows-binaries` 做卸载：
 那次构建还把 `soul.exe` 装进 `%LOCALAPPDATA%\Soul`，卸载会碰到 `keys.dpapi`。
 
 ```powershell
@@ -203,6 +203,9 @@ while ($true) {
       正确的修法是在安装器与文档里说清楚要装什么，**不是**改成让它自己下载。
 - [ ] **中文字体与 DPI**：显示缩放 150% 下，向导那段长说明有没有被截断；
       正文里的中文是不是回退到了别的字体。
+- [ ] **首次向导欢迎那段**：既要写处理过程留在本机，也要点名以后自己填的模型端点是例外、
+      发出去的内容会先占位。只写「处理过程留在本机」那一半就是缺口：设置页填了地址之后
+      起草生成和人脉图摘要都会出网，而向导再也看不到。
 - [ ] **卸载之后用户数据还在不在（Goal 1 必过项）**：卸载完看 `%LOCALAPPDATA%\Soul`。`keys.dpapi` 与 `soul.db` **必须仍在**（前提是安装后曾运行过）。若它们被删，记成 Goal 1 bug，不是「记一下行为」。
 - [ ] **杀毒软件**：Defender 有没有拦下未签名的安装器（SmartScreen 大概率会拦一次）。
       记下来，那是发布前要处理的事，不是这次要绕过的事。
