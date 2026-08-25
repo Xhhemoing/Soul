@@ -1,0 +1,16 @@
+Segment A (Linux, this VM) on cursor/first-test-candidate-c441 @ 62b73cf
+2026-08-25
+
+schema-freeze --check	ok (docs/schemas matches the lock)
+e0-audit	ok (14 crates / 188 files, clean)
+denylist-audit	ok (94 terms / 116 files, clean)
+branch-disposition.selftest.sh	ok
+--merge agent/dev-sota	exit 2, HEAD unchanged
+--merge main	exit 2, HEAD unchanged
+--merge cursor/goal1-closeout-c441-2d70	exit 2, HEAD unchanged
+
+cargo test --workspace --all-targets	ok (0 failed; last crate xtask 33 passed)
+cargo test -p soul-testkit --test fixture_corpus	ok 9/9
+just / cargo-deny / ui-lint / ui-test	not run here (just and cargo-deny not installed)
+hosted AC-26	not this file
+This is not hosted green.
