@@ -41,4 +41,16 @@ describe("Repository（D-UI-5：接口全 async）", () => {
       ),
     ).toEqual({ projects: [], favorites: [], inventory: [] });
   });
+
+  it("缺 backdrop 或 backdrop 不是预设的记录被丢掉", () => {
+    const withoutBackdrop: Partial<Project> = project();
+    delete withoutBackdrop.backdrop;
+    const wrongKind = { ...project(), backdrop: "rainbow" };
+    const wrongColor = { ...project(), backdropColor: 0 };
+
+    expect(
+      parsePersistedState(JSON.stringify({ projects: [withoutBackdrop, wrongKind, wrongColor] })).projects,
+    ).toEqual([]);
+    expect(parsePersistedState(JSON.stringify({ projects: [project()] })).projects).toHaveLength(1);
+  });
 });
