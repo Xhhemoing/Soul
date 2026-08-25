@@ -963,10 +963,7 @@ fn an_endpoint_saved_after_the_plan_refuses_the_stale_approval_over_the_ipc() {
         .expect("the endpoint the user configured answers");
     assert_eq!(described_against.request_count(), 0);
     assert_eq!(saved_afterwards.request_count(), 1);
-    assert_eq!(
-        saved_afterwards.requests()[0].path,
-        "/v1/chat/completions",
-    );
+    assert_eq!(saved_afterwards.requests()[0].path, "/v1/chat/completions");
 
     let chain = shell
         .invoke("audit_chain", json!({}))
