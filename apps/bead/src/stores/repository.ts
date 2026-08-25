@@ -175,7 +175,10 @@ function createLocalStateRepository(storage: Storage | undefined): Repository {
       const checked = toPatternDoc(doc);
       if (checked === null) throw new Error("豆图文档形状不合法，拒绝写入");
       patterns.set(checked.projectId, checked);
-      markFailed();
+      // Rejecting is the whole answer here. `persistenceFailed` is not raised:
+      // the metadata backing is working, and flipping it would move projects,
+      // favourites and inventory onto the empty in-memory copy — losing the
+      // user's real data to report a failure in a different store.
       throw new Error("这个环境没有 IndexedDB，豆图无法保存");
     },
     async deleteProject(id) {

@@ -470,7 +470,9 @@ describe("T-UP-4 打开失败（DATA-1 在 IDB 上重申）", () => {
     ).rejects.toThrow();
     // BD19 红线：网格无论如何都不进 bead.state。
     expect(legacy.getItem(STORAGE_KEY)).not.toContain("cells");
-    expect(repo.isPersistenceFailed()).toBe(true);
+    // 而且元数据这一侧没有被连坐：拒绝写网格不该让已经存住的项目退回空内存副本。
+    expect(repo.isPersistenceFailed()).toBe(false);
+    expect(await repo.loadProjects()).toEqual([owner]);
   });
 });
 
