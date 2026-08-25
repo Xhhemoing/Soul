@@ -1178,6 +1178,13 @@ impl Session {
     /// thread, not off a configuration field. `collect.rs` says why in one
     /// line: a third copy of the answer in a settings file is how a user ends
     /// up being shown "off" by a switch while something is still writing.
+    ///
+    /// [`Config::collect_enabled`] is written when a grant is recorded, but it
+    /// is downstream of this and never consulted by it. The flow is one way —
+    /// ledger to configuration, so the overview badge can render the same fact
+    /// this method reports — and it stops at memory: nothing writes it to
+    /// `config.json`, and nothing reads it back to decide whether collection
+    /// may run.
     pub fn collect_status(&self) -> CollectStatus {
         let running = self.running_collector();
         CollectStatus {
@@ -1241,6 +1248,12 @@ impl Session {
     pub fn revoke_collect_consent(&mut self) -> Result<CollectStatus, SessionRefusal> {
         let at = now_unix_seconds();
         let entry = self.consent.revoke(COLLECTION_TOPIC, at);
+        // Closed in the snapshot as well, so 概览 goes back to 全部能力默认关闭
+        // in the same breath the ledger does. This runs before the store is
+        // consulted for the same reason the revocation itself does: a store
+        // that has gone away is a problem to report, not a reason to keep
+        // showing a capability as open.
+        self.config.collect_enabled = false;
 
         // Stopping is what the user asked for, and it happens whether or not
         // the chain can be written to. A store that has gone away is reported
@@ -1279,6 +1292,17 @@ impl Session {
         let at = now_unix_seconds();
         let entry = self.consent.grant(COLLECTION_TOPIC, at);
         collect_commands::record_consent_change(&mut hold(&store), entry, at)?;
+        // The ledger is the authority, and the in-memory [`Config`] now agrees
+        // with it, exactly the way [`Session::set_user_endpoint`] makes the
+        // configuration agree with the guard. Without this the overview badge
+        // read 全部能力默认关闭 while a collector was writing events, which is
+        // the kind of disagreement a privacy claim cannot survive. The grant
+        // is what is recorded, not the thread: a machine with no foreground
+        // source has still had a capability opened on it, the same fact
+        // `collect_status.consent_granted` reports. Nothing is persisted —
+        // [`StoredConfig`] has no field for this and does not gain one — so
+        // AC-02 still holds by there being nowhere to write it down.
+        self.config.collect_enabled = true;
 
         self.collect_problem = match source {
             Ok(source) => {

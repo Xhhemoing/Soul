@@ -584,7 +584,7 @@ PRODUCT_LOCK v0.1 第七片是「可选的前台应用使用时长采集」，D2
 | 没有前台来源时说实话 | Linux 与开发机上 `platform_source()` 返回 `Unsupported`，于是同意记下来、采集器不起、`source` 是 `unsupported`、notice 写明「这台机器上没有东西在采」。`a_grant_on_a_machine_with_no_foreground_source_says_so` 钉住这三样——报「采集已打开」而底下什么都没看，是这三种状态里最坏的一种 |
 | 壳不能自己换来源 | `command_surface.rs::the_shell_never_hands_the_collector_a_source_of_its_own` 回读 `commands.rs` 与 `lib.rs`，`_with_source` 与 `ForegroundSource` 一个字都不许出现。那个注入口是 `#[doc(hidden)]` 的，存在只为让 AC-09/AC-10 在没有桌面的机器上过得去 |
 | 那一屏 | `apps/desktop/src/routes/Collect.tsx` + `Collect.test.tsx` 9 项：页面上写着采什么（前台哪个应用、待了多久）与不采什么（窗口标题、文件内容、按键、剪贴板），两个按钮是「开始采集」「停止采集」，状态是三种读法之一。整页搜不到 `.exe`、搜不到盘符路径；按钮里没有发送 / 上传 / 导出 / 执行 / 同步；库没开时给的是理由码加核心那句话；整页过 denylist；全程 `forbidNetwork` 没有一次尝试 |
-| 概览那行字改看账本 | `Home.tsx` 自己调 `collect_status`，不再读 `snapshot.collect_enabled`。`App.test.tsx::概览上的采集那一行读的是同意账本，不是配置里的旧字段` 故意让两者不一致——快照说全关，账本说采集器在跑——那行字必须跟着账本 |
+| 概览那行字改看账本 | `Home.tsx` 自己调 `collect_status`，不再读 `snapshot.collect_enabled`。那一行要分「正在采集 / 已经同意但没有在采 / 没有在采集」三种，只有账本知道。（当时徽章还留在快照上，那是本次修掉的洞，见「概览这一页」） |
 | 设置页仍然只有云 | `App.test.tsx::设置页上没有采集开关`：那一页上只有一个 `role="switch"`，按钮文字里没有「采集」。设置是「尚未启用」的通知，采集是一个真有的能力，摆在一起会让人以为它们是同一种东西 |
 | 四句话是核心的话 | `contract.test.ts::采集那四句话都和核心里的常量一模一样` 读 `crates/soulcore/src/commands/session.rs` 的常量：一句是 PRODUCT_LOCK 对这一片的承诺（只记时长、不记标题），另三句是采集仅有的三种状态。「什么都没有在采」是关于一个账本和一条线程的断言，只有核心看得见 |
 | 两侧命令名仍是同一份 | `COMMANDS` 从 31 个长到 34 个，`command_surface.rs` 照旧比对两侧、照旧要求每个 wrapper 体只有一条语句 |
@@ -595,7 +595,7 @@ PRODUCT_LOCK v0.1 第七片是「可选的前台应用使用时长采集」，D2
 
 1. **同意不落盘，所以每次启动都要重按一次。** 这是 AC-02 的形状而不是一个待办：`StoredConfig` 没有地方放它，`ConsentHandle::from_ledger`（那个能从别处载入同意的构造器）在产品代码里一次都没被调用。代价是真心想一直开着采集的用户每次开 Soul 都要点一下「开始采集」。要改成能跨重启，改的不是这一页而是 AC-02，那是产品决定。页面上把这件事写明白了，不是让用户自己发现。
 2. **界面上没有采集间隔、没有选哪些应用、没有排除清单。** `CollectorConfig` 只有一个 `poll_interval`，产品面上连它都不给调：能配的东西越多，「采了什么」这个问题的答案就越依赖用户记得自己配过什么。v0.1 的答案是一句固定的话。
-3. **`Config.collect_enabled` 还在，而且还是恒假。** 没有删，因为 `soul-headless config` 的 AC-02 断言、`open_capabilities()` 和 `is_fully_closed()` 都读它，而那几条说的是「配置文件打不开任何能力」——这仍然是真的，也仍然值得断言。它现在的含义收窄成「配置能不能打开采集」，答案永远是不能；界面上没有一处再读它。
+3. ~~**`Config.collect_enabled` 还在，而且还是恒假。**~~ **已消除（本次）。** 恒假的那个字段正是概览徽章说谎的来源，见下面「概览这一页」。字段没有删，也仍然进不了 `config.json`；变的是同意会在内存里写它。
 4. **`collect_status` 每次都数一遍库里的前台事件。** 一次 `list_events` 加一次 `len()`，页面每次刷新都做。事件多起来之后这会变慢，正确的修法是给 `soul-store-api` 一个 count 入口，那是存储边界的改动。现在的行数下不值得。
 5. **撤销时的审计写在停止之前，而且写不进去也照样停。** 顺序是撤销 → 写链 → 停线程：撤销要第一个发生，因为线程是靠看账本自己停的；链写不进去（库没了）会记进 notice，但不构成把采集器留着跑的理由。这和 WP04 遗留 2「遗忘的审计写在销毁之后」是同一条取舍的两次应用——审计不能挡住用户收回授权。
 6. **`grant_collect_consent_with_source` 是一个 `#[doc(hidden)]` 的注入口。** 没有它，AC-09 与 AC-10 在 `Session` 这一层就只能在 Windows 上证。它不是命令、不在 `COMMAND_NAMES` 里，`command_surface.rs` 回读壳的源码保证壳不会长出一个自己的前台来源。
@@ -745,6 +745,16 @@ PRODUCT_LOCK 对 E1 正文的说法有两半：默认占位是一半，**「二�
 5. **真机那一半没有。** Windows 真机上填一个本机端点再点人脉图里的一个人，没有人做过。作者清单第 9 节现在有这一行。
 6. ~~**粘贴与导入预览这两路注入不进产品链。**~~ **已消除（本次）。** 第十段只补了文件名那一路。`Session::prepare_draft` 成功时一条都不写——注入要等 `generate_draft` 回来才由 `Draft::audit` 带进链，所以「准备完看了一眼计划就取消」在链上什么都不剩，而同一段粘贴走本机 `draft_pasted` 每次都记，两条粘贴路径说法不一致。`preview_soul_import_v1` / `preview_telegram` 从 WP06 起就数出了 `messages_with_injection_markers`，那个数只送到屏幕上：预览完不提交，链上同样没有。现在这两处都在成功之后写一条与文件名那路同形状的 `injection.blocked`（`denied` / `INJECTION_MARKERS_FOUND`，只有 `items`，没有 `bytes`），拒绝仍旧走 `refuse_draft` 不变。提交那条不删——读过一个文件和封存一个文件是两件事，同一份导出先预览后提交就留两行只有计数的记录。**放弃之后链上剩的是一个数，不是一个字。** 证据：`session_e1.rs::a_paste_that_asks_to_be_obeyed_is_counted_into_the_chain_even_when_the_plan_is_discarded`（准备再 `discard_draft`，链上 `injection.blocked`、`items ≥ 1`、`bytes` 为空，序列化后的链里搜不到那段粘贴、`evil.example` 与里面那个名字，`config.json` 键名仍是 `authorized_roots` 与 `wizard_completed`）、`session_import.rs::an_export_that_tries_to_give_instructions_is_counted_even_when_it_is_never_committed`（只预览不提交，`items` 等于屏幕上那个数，链里搜不到语料的任何一句）。干净的粘贴与干净的导入预览不写这一条，各有一条控制测试钉住。**IPC 与页面也钉了**：`ipc_roundtrip.rs` 两条（粘贴完取消、预览完不提交）经 `invoke_handler` 调 `audit_chain`，读回同一条 `injection.blocked`；`Audit.test.tsx` 断言这一条在页面上是「挡下了注入 / 拒绝 / 2 项」，没有正文也没有地址。`E1DraftPlan` 没有加字段（确认屏仍然只有计数，不显示标记也不显示 URL），`config.json` 没有加字段，IPC 命令仍是 36 条。真机上粘一段敌意文本再取消，没有人做过。
 
+## 概览这一页（本次：三处只有翻页才看得出来的不诚实）
+
+三条都不是新切片，是把已经在跑的东西说对。**不加配置字段，不加 IPC 命令（`COMMANDS` 仍 36），不加设置页开关，`StoredConfig` 仍是 `wizard_completed` + `authorized_roots` 两个字段、`deny_unknown_fields`。** 本机绿：`cargo test -p soulcore --test session_collect --test session_commands`（9 / 19）、`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --test ipc_roundtrip --test command_surface`（32 / 6）、`pnpm --filter @soul/desktop test`（14 个文件 151 项）、`cargo fmt --all`。**hosted 没有跑过，作者手动那一半也没有；Goal 1 仍然不能关。**
+
+1. **徽章跟内存里的同意走了。** `Session::grant_collection` 记下同意之后写 `self.config.collect_enabled = true`，撤销时写回假——和 `set_user_endpoint` 写 `self.config.llm_endpoint` 是同一件事，同一个地方（内存），同样不落盘。在这之前概览可以一边说「正在采集」一边挂着「全部能力默认关闭」，而「徽章说的是配置文件不是运行时」这条辩护站不住：端点也是只活一次运行的，它一直翻得动徽章。没有前台来源的机器上也翻——同意本身就是那个能力，和 `collect_status.consent_granted` 同一个判据。AC-02 靠的仍然是文件里没有它的位置：`session_collect.rs::a_restart_reopens_a_closed_collection` 现在同时断言重开之后快照全关、`config.json` 字节里搜不到 `collect` / `consent`；`a_grant_opens_the_capability_in_the_snapshot_too` 与 `a_grant_with_no_foreground_source_still_opens_the_capability` 钉住开与关两侧；`ipc_roundtrip::collection_can_be_granted_and_taken_back_over_the_ipc` 在同意前后各调一次 `config_snapshot`。
+2. **概览进来的时候重新读一次快照。** `App.tsx` 只在启动时读一次，只有设置页把新的交回来，所以在 `/files` 授权一个目录之后概览那行「已授权目录」会一直停在启动时的数。`Home.tsx` 现在像调 `collect_status` 一样调 `config_snapshot`（props 里那份先顶着），而 `/` 离开就卸载，所以回来就是新的。`App.test.tsx::在文件页授权一个目录，回到概览就能看见它` 走的是那条路：授权、切回 `#/`、数变成 1、徽章上出现 `authorized_roots`。没有加命令。
+3. **空的「这一版还没有的东西」不画了。** `ROUTES` 里 `ownedBy` 全是 null，那块只剩一个标题压着一个空 `<ul>`，读起来像「什么都不缺」。改成 `unfinished.length > 0` 才画；没有编造一份未来功能清单。`App.test.tsx::没有东西可写的时候，概览不画那块「还没有的东西」` 钉住今天这一页上没有那个标题。
+
+落地内容：`crates/soulcore/src/commands/session.rs`、`crates/soulcore/tests/session_collect.rs`；`apps/desktop/src-tauri/tests/ipc_roundtrip.rs`；`apps/desktop/src/routes/Home.tsx`、`test/fakeCore.ts`、`App.test.tsx`。
+
 ## Goal 1 门禁对照（`2e72ddf` / run 32754617268；HEAD hosted 未开跑）
 
 CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS Programs 目录、托盘文案钉死、导入 / 采集 / E1 产品面、AC-13 的二次确认、语气与审计落链、第三人显示名进脱敏器、档案页再答、人事摘要走端点、拒绝与文件名注入落链、遗忘拒绝落链、摘要来源上屏，都还没有 hosted package/test 跑过（已知最新一次是空 run [32792125943](https://github.com/Xhhemoing/Soul/actions/runs/32792125943) on `9af2847`）。作者手动那一半没有，所以 Goal 1 **还不能关**。
@@ -752,7 +762,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 | ID | CI / 自动化证据 | 仍缺 |
 |---|---|---|
 | AC-01 | `soul.exe` 内嵌 `asInvoker`；`install-smoke.ps1 -SkipInstall` 验证进程名、清单、`uiAccess=false`（`2e72ddf` package）。HEAD 另用测试钉住托盘文案、`$INSTDIR=%LOCALAPPDATA%\Programs\Soul`、`PREUNINSTALL` 在数据目录上 `Abort`（不弹 `MessageBox`）、以及 `bundle.icon` 文件都在盘上 | 托盘图标是否出现、启动不弹 UAC 的肉眼、标准用户 NSIS 真装真卸（须用 HEAD 在 Win11 上 `tauri build`，不要用 `2e72ddf` 工件）——作者清单 1–4 |
-| AC-02 | headless 主流程 `fully_closed`；`session_commands` 配置形状拒能力字段；smoke「nothing is switched on」 | — |
+| AC-02 | headless 主流程 `fully_closed`；`session_commands` 配置形状拒能力字段；smoke「nothing is switched on」。同意现在会在内存里翻 `collect_enabled`，所以 AC-02 靠的是文件里没有它的位置而不是没有人写过它：`session_collect.rs::a_restart_reopens_a_closed_collection` 与 `ipc_roundtrip::a_restart_finds_collection_off_again` 重开之后同时断言快照全关与 `config.json` 字节里没有那两个词 | — |
 | AC-03 | 问卷 intake 与 `session_screens` / Wizard 测试 | — |
 | AC-04 / AC-05 | 导入 fixture + 无明文残留；Telegram 缺字段可读失败。**壳这一侧也接上了**：`session_import.rs`（过 `Session`、过真库、重开后仍在、数据目录里搜不到原文）、`ipc_roundtrip.rs` 走真的 `invoke_handler`、`Import.test.tsx` 用 fixture 自己的行断言 DOM 上没有正文 | 真机上用界面导一次（作者清单 8，可选，不是门禁项） |
 | AC-06 / AC-08 | 图谱边与推断解引用；≥3 节点 | — |

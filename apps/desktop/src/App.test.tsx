@@ -10,8 +10,11 @@ import { describe, expect, it } from "vitest";
 import { App } from "./App";
 import { ROUTES } from "./router";
 import {
+  aFilesView,
+  CLOSED_SNAPSHOT,
   CLOUD_LABEL,
   COLLECT_RUNNING,
+  COLLECTING_SNAPSHOT,
   forbidNetwork,
   installFakeCore,
   OPEN_SESSION,
@@ -174,19 +177,31 @@ describe("桌面壳", () => {
   });
 
   /**
-   * 概览 used to read `ConfigSnapshot.collect_enabled`, which is false for the
-   * whole life of the process however much is being collected: nothing writes
-   * that field at runtime and `config.json` has nowhere to keep it. The
-   * fixture below is exactly that disagreement — a snapshot saying everything
-   * is closed, and a ledger with a collector running — and the line has to
-   * follow the ledger.
+   * The overview used to lie here, and the lie had a defence.
+   *
+   * 概览's badge reads `ConfigSnapshot`, and nothing wrote
+   * `Config.collect_enabled` at runtime, so the page said 全部能力默认关闭
+   * with a collector running one page over. The defence was that the badge
+   * describes the configuration file rather than the session — but
+   * `set_user_endpoint` has always written the in-memory `Config` and the
+   * badge has always followed it, so the badge was never a claim about the
+   * file. `Session::grant_collection` writes the field now, the same way and
+   * to the same place: memory, and no further, which is why a restart still
+   * finds it closed.
+   *
+   * The line and the badge are still read from two different commands,
+   * because they answer two different questions. `collect_status` knows
+   * whether a thread is running; the snapshot knows whether the capability is
+   * open. Both are given here, and neither may contradict the other.
    */
-  it("概览上的采集那一行读的是同意账本，不是配置里的旧字段", async () => {
-    await startAtRoute("#/", { collect: COLLECT_RUNNING });
+  it("采集开着的时候，概览的徽章不再说全部关闭", async () => {
+    await startAtRoute("#/", { collect: COLLECT_RUNNING, snapshot: COLLECTING_SNAPSHOT });
 
     const fact = await screen.findByTestId("collect-fact");
     expect(fact).toHaveTextContent("正在采集");
-    expect(screen.getByTestId("closed-state")).toHaveTextContent("全部能力默认关闭");
+    const badge = screen.getByTestId("closed-state");
+    expect(badge).not.toHaveTextContent("全部能力默认关闭");
+    expect(badge).toHaveTextContent("collect_enabled");
     expect(within(fact).getByRole("link", { name: "采集" })).toHaveAttribute("href", "#/collect");
   });
 
@@ -194,6 +209,59 @@ describe("桌面壳", () => {
     await startAtRoute("#/");
 
     expect(await screen.findByTestId("collect-fact")).toHaveTextContent("没有在采集");
+    expect(screen.getByTestId("closed-state")).toHaveTextContent("全部能力默认关闭");
+  });
+
+  /**
+   * The shell reads `config_snapshot` once at launch and only 设置 hands it a
+   * newer one, so a directory authorized on /files left this count reading 0
+   * for the rest of the run. The overview asks again on mount now, and this
+   * route unmounts when you leave it, so coming back is a fresh read.
+   */
+  it("概览上的已授权目录数是进来这一页时读的，不是启动时读的", async () => {
+    const core = await startAtRoute("#/", {
+      snapshot: {
+        ...CLOSED_SNAPSHOT,
+        authorized_root_count: 1,
+        fully_closed: false,
+        open_capabilities: ["authorized_roots"],
+      },
+    });
+
+    expect(await screen.findByText("1 个")).toBeVisible();
+    expect(core.callsTo("config_snapshot").length).toBeGreaterThan(1);
+  });
+
+  /**
+   * The same fact as a journey, which is how the staleness was reachable:
+   * /files authorizes a directory and tells nobody but itself, and 概览 had
+   * been holding the number the shell read before the application had a
+   * directory at all.
+   */
+  it("在文件页授权一个目录，回到概览就能看见它", async () => {
+    await startAtRoute("#/files", { authorizing: (path) => aFilesView({ roots: [{ path }] }) });
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText("目录完整路径"), "/home/li/下载");
+    await user.click(screen.getByRole("button", { name: "授权这个目录" }));
+    await screen.findByText("/home/li/下载");
+
+    window.location.hash = "#/";
+    expect(await screen.findByTestId("collect-fact")).toBeVisible();
+    expect(screen.getByText("1 个")).toBeVisible();
+    expect(screen.getByTestId("closed-state")).toHaveTextContent("authorized_roots");
+  });
+
+  /**
+   * `router.tsx` has no `ownedBy` left, so the list under 这一版还没有的东西 is
+   * empty. A heading over an empty list reads as "nothing is missing", which
+   * is a bigger claim than this build can make, so the section is not drawn.
+   */
+  it("没有东西可写的时候，概览不画那块「还没有的东西」", async () => {
+    await startAtRoute("#/");
+
+    await screen.findByTestId("collect-fact");
+    expect(screen.queryByText("这一版还没有的东西")).toBeNull();
   });
 
   it("审计页有内容了，不再是空路由", async () => {

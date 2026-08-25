@@ -210,6 +210,90 @@ fn a_grant_on_a_machine_with_no_foreground_source_says_so() {
     drop(keep);
 }
 
+/// The snapshot the interface renders follows the ledger, not a field that
+/// nothing ever writes.
+///
+/// `ConfigSnapshot.collect_enabled` used to be false for the whole life of the
+/// process, so 概览 said 全部能力默认关闭 while a collector was running and the
+/// defence was that the badge describes the configuration rather than the
+/// runtime. That defence was never true — `set_user_endpoint` writes the
+/// in-memory `Config` and the badge follows it — so consent writes the same
+/// field now. What is being checked is the whole chain: the flag, the sentence
+/// `is_fully_closed` builds out of it, and the name that reaches
+/// `open_capabilities`.
+#[test]
+fn a_grant_opens_the_capability_in_the_snapshot_too() {
+    let (keep, directory) = scratch();
+    let mut session = Session::open(&directory);
+    let source = FakeForegroundSource::showing(APPS[0]).expect("a valid application name");
+
+    let before = session.snapshot();
+    assert!(!before.collect_enabled);
+    assert!(before.fully_closed);
+
+    session
+        .grant_collect_consent_with_source(
+            source.clone(),
+            CollectorConfig::every(TEST_POLL_INTERVAL),
+        )
+        .expect("consent is recorded");
+
+    let granted = session.snapshot();
+    assert!(
+        granted.collect_enabled,
+        "the ledger granted collection and the snapshot still says it is closed",
+    );
+    assert!(
+        !granted.fully_closed,
+        "something is switched on, so 全部关闭 is no longer an honest badge",
+    );
+    assert!(
+        granted
+            .open_capabilities
+            .contains(&"collect_enabled".to_owned()),
+        "the open capability has to be nameable: {:?}",
+        granted.open_capabilities,
+    );
+
+    session.revoke_collect_consent().expect("revoking works");
+
+    let revoked = session.snapshot();
+    assert!(!revoked.collect_enabled);
+    assert!(
+        revoked.fully_closed,
+        "nothing else was opened in this session: {:?}",
+        revoked.open_capabilities,
+    );
+    assert!(revoked.open_capabilities.is_empty());
+    drop(keep);
+}
+
+/// Consent given on a machine with nothing to watch still opens the capability.
+///
+/// The grant is the capability. A build that only flipped the flag when a
+/// collector actually started would show 全部能力默认关闭 on every Linux
+/// machine whose user had said yes, which is the same lie in a smaller room.
+#[test]
+#[cfg(not(windows))]
+fn a_grant_with_no_foreground_source_still_opens_the_capability() {
+    let (keep, directory) = scratch();
+    let mut session = Session::open(&directory);
+
+    let status = session
+        .grant_collect_consent()
+        .expect("the store opened, so consent can be recorded");
+    assert!(status.consent_granted);
+    assert!(!status.collector_running);
+
+    let snapshot = session.snapshot();
+    assert!(snapshot.collect_enabled);
+    assert!(!snapshot.fully_closed);
+    assert!(snapshot
+        .open_capabilities
+        .contains(&"collect_enabled".to_owned()));
+    drop(keep);
+}
+
 /// AC-02 for collection: a restart cannot reopen it, because there is no field
 /// in the file it could have been written to.
 #[test]
@@ -226,6 +310,10 @@ fn a_restart_reopens_a_closed_collection() {
             )
             .expect("consent is recorded");
         assert!(session.collect_status().consent_granted);
+        assert!(
+            session.snapshot().collect_enabled,
+            "the launch that granted has the capability open",
+        );
     }
 
     let next_launch = Session::open(&directory);
@@ -237,6 +325,14 @@ fn a_restart_reopens_a_closed_collection() {
     assert!(!status.collector_running);
     assert!(!status.survives_restart);
 
+    // And the snapshot the next launch renders is closed with it. The flag is
+    // in-memory and the file has nowhere to keep it, so this comes back to
+    // `Config::default` without anything having to remember to clear it.
+    let snapshot = next_launch.snapshot();
+    assert!(!snapshot.collect_enabled, "AC-02: {snapshot:?}");
+    assert!(snapshot.fully_closed);
+    assert!(snapshot.open_capabilities.is_empty());
+
     let stored = read_stored_config(&directory).expect("the file still parses as a StoredConfig");
     assert_eq!(
         stored,
@@ -245,6 +341,16 @@ fn a_restart_reopens_a_closed_collection() {
             authorized_roots: Vec::new(),
         },
     );
+
+    // The in-memory flag must not have found its way to disk on the way out.
+    let text =
+        String::from_utf8(config_bytes(&directory)).expect("the configuration file is utf-8");
+    for word in ["collect", "consent"] {
+        assert!(
+            !text.contains(word),
+            "`{word}` reached config.json across the restart:\n{text}",
+        );
+    }
     drop(keep);
 }
 

@@ -1012,6 +1012,10 @@ fn collection_can_be_granted_and_taken_back_over_the_ipc() {
     assert_eq!(off["collector_running"], json!(false));
     assert_eq!(off["survives_restart"], json!(false));
 
+    let closed = shell.invoke("config_snapshot", json!({})).expect("a snapshot");
+    assert_eq!(closed["collect_enabled"], json!(false));
+    assert_eq!(closed["fully_closed"], json!(true));
+
     let granted = shell
         .invoke("grant_collect_consent", json!({}))
         .expect("the store opened, so consent can be recorded");
@@ -1022,11 +1026,31 @@ fn collection_can_be_granted_and_taken_back_over_the_ipc() {
         "only a machine with a foreground source may report a running collector",
     );
 
+    // The other half of the same fact, over the same IPC. 概览 renders the
+    // snapshot rather than the ledger, and it used to go on saying
+    // 全部能力默认关闭 while /collect had a thread running. The grant now
+    // reaches the in-memory `Config` the way an endpoint does, so the two
+    // screens can no longer contradict each other.
+    let open = shell.invoke("config_snapshot", json!({})).expect("a snapshot");
+    assert_eq!(
+        open["collect_enabled"],
+        json!(true),
+        "consent was recorded and the snapshot the overview draws still says 关",
+    );
+    assert_eq!(open["fully_closed"], json!(false));
+    assert_eq!(open["open_capabilities"], json!(["collect_enabled"]));
+
     let revoked = shell
         .invoke("revoke_collect_consent", json!({}))
         .expect("taking it back always works");
     assert_eq!(revoked["consent_granted"], json!(false));
     assert_eq!(revoked["collector_running"], json!(false));
+
+    // Nothing else in this test opened anything, so 全部关闭 comes back whole.
+    let shut = shell.invoke("config_snapshot", json!({})).expect("a snapshot");
+    assert_eq!(shut["collect_enabled"], json!(false));
+    assert_eq!(shut["fully_closed"], json!(true));
+    assert_eq!(shut["open_capabilities"], json!([]));
 
     let _ = std::fs::remove_dir_all(&shell.directory);
 }
@@ -1051,6 +1075,14 @@ fn a_restart_finds_collection_off_again() {
         json!(false),
         "a granted consent came back across a restart",
     );
+
+    // AC-02 as the overview draws it: the in-memory flag the grant set is gone
+    // with the process that held it.
+    let snapshot = next_launch
+        .invoke("config_snapshot", json!({}))
+        .expect("a snapshot");
+    assert_eq!(snapshot["collect_enabled"], json!(false));
+    assert_eq!(snapshot["fully_closed"], json!(true));
 
     let config = std::fs::read_to_string(
         next_launch

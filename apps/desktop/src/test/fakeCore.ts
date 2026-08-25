@@ -746,6 +746,16 @@ export const CLOSED_SNAPSHOT: ConfigSnapshot = {
   open_capabilities: [],
 };
 
+/**
+ * The snapshot that belongs beside [`COLLECT_RUNNING`].
+ *
+ * `Session::grant_collection` writes the in-memory `Config` the way
+ * `set_user_endpoint` does, so a core that reports a collector running and a
+ * snapshot saying 全部关闭 is a state no real IPC can produce. A test that
+ * wants the ledger open hands both.
+ */
+export const COLLECTING_SNAPSHOT: ConfigSnapshot = withCollect(CLOSED_SNAPSHOT, true);
+
 export interface RecordedCall {
   readonly cmd: string;
   readonly payload: unknown;
@@ -859,6 +869,37 @@ function revokedFrom(current: CollectStatus): CollectStatus {
 }
 
 /**
+ * The same move for collection, because on the core side it is the same
+ * in-memory field: `Session::grant_collection` sets `Config.collect_enabled`
+ * once the ledger has recorded the grant, and revoking clears it. Consent is
+ * what moves it rather than the collector thread — a machine with no
+ * foreground source has still had the capability opened on it — which is why
+ * this is driven off `consent_granted` and not off `collector_running`.
+ */
+function withCollect(current: ConfigSnapshot, enabled: boolean): ConfigSnapshot {
+  const others = current.open_capabilities.filter((name) => name !== "collect_enabled");
+  const open = enabled ? [...others, "collect_enabled"] : others;
+  return {
+    ...current,
+    collect_enabled: enabled,
+    open_capabilities: open,
+    fully_closed: open.length === 0,
+  };
+}
+
+/** And once directories have been authorized, which is a count as well. */
+function withRoots(current: ConfigSnapshot, count: number): ConfigSnapshot {
+  const others = current.open_capabilities.filter((name) => name !== "authorized_roots");
+  const open = count > 0 ? [...others, "authorized_roots"] : others;
+  return {
+    ...current,
+    authorized_root_count: count,
+    open_capabilities: open,
+    fully_closed: open.length === 0,
+  };
+}
+
+/**
  * The snapshot the core answers with once an endpoint is there, or once it is
  * not: a boolean, the capability list it belongs on, and 全部关闭 following
  * from that list being empty. The address is in none of them.
@@ -940,8 +981,18 @@ export function installFakeCore(
         return snapshot.cloud;
       case "files_view":
         return files;
-      case "authorize_directory":
-        return (options.authorizing ?? (() => files))((payload as { path?: string }).path ?? "");
+      case "authorize_directory": {
+        const authorized = (options.authorizing ?? (() => files))(
+          (payload as { path?: string }).path ?? "",
+        );
+        // `Session::authorize` pushes the canonical root onto the session's
+        // `Config`, so the snapshot a later `config_snapshot` answers with has
+        // grown a directory. The double does the same, or the overview's count
+        // would look correct here while being a launch-time number in a
+        // shipped build.
+        configuration = withRoots(configuration, authorized.roots.length);
+        return authorized;
+      }
       case "preview_plan":
         return (options.planning ?? (() => aPlanPreview()))(
           (payload as { path?: string }).path ?? "",
@@ -1091,9 +1142,15 @@ export function installFakeCore(
         return collect;
       case "grant_collect_consent":
         collect = (options.granting ?? grantedFrom)(collect);
+        // The real handler writes the session's `Config` on the way through,
+        // so the next `config_snapshot` says the capability is open. A double
+        // that left the snapshot behind would let the overview keep claiming
+        // 全部关闭 in a test while no shipped build could.
+        configuration = withCollect(configuration, collect.consent_granted);
         return collect;
       case "revoke_collect_consent":
         collect = (options.revoking ?? revokedFrom)(collect);
+        configuration = withCollect(configuration, collect.consent_granted);
         return collect;
       default:
         throw `the shell called a command the core does not have: ${cmd}`;
