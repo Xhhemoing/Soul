@@ -23,7 +23,7 @@
 | 现在到哪一步了、谁没合入 | `STATUS.md` |
 | 数据长什么样 | `schemas/`（十份正文 = 九份存储契约 + 一份导入契约，另有 `_defs` 与 `schemas.lock.json`）。`tie_strength` 收紧见 D58/D59 |
 | 接手时该不该重开 Goal 1 / 重派 planner | 不该。`FORMAL_WORK_PROMPT.md`「开工第一动作」；理由见 D49/D61（唯一实现主干）与 `STATUS.md`。同文件「历史段」写于 Goal 1 开工之前，照做即重开第二条线 |
-| 判档阈值到底是多少 | 只有两处：`algorithms/DECISION.md` 第 3 节常量表（语义）与 `crates/soul-algo-tie` 常量模块（取值）。产品锁 / 拍板 / FORMAL / STATUS / README / PLAN_INDEX / SECURITY 只写常量名。`algorithms/COPY_ZH.md` 与 `REJECTED.md` 允许引用常量表已钉的数字（D60） |
+| 判档阈值到底是多少 | 只有两处：`algorithms/DECISION.md` 第 3 节常量表（语义）与 `crates/soul-algo-tie` 常量模块（取值）。产品锁 / 拍板 / FORMAL / STATUS / README / PLAN_INDEX / SECURITY 只写常量名。`docs/algorithms/` 三份冻结文档（`DECISION.md`、`COPY_ZH.md`、`REJECTED.md`）是裁决记录本身，允许出现常量表已钉的数字；COPY_ZH 的比较符写法以 D60 为准 |
 | 加密、密钥、遗忘、审计的规范 | `SECURITY.md` |
 | 关系强度为什么是这个档 | `algorithms/DECISION.md` 第 3 节；中文话术在 `algorithms/COPY_ZH.md`；被否决的候选在 `algorithms/REJECTED.md` |
 | Goal 1 的 DAG 与实现细节 | [`GOAL1_PLAN.md`](GOAL1_PLAN.md)（本树已有；历史对照仍可看 `origin/cursor/soul-goal1-7b1c`，那不是合入路径） |
