@@ -19,9 +19,13 @@ import {
   type InventoryEntry,
   type Pattern,
   type PersistedState,
+  type ProgressCursor,
   type Project,
   type ProjectStatus,
 } from "./types.ts";
+
+/** `updatedAt` is stamped by the action, never by the caller. */
+export type ProgressCursorInput = Omit<ProgressCursor, "updatedAt">;
 
 interface StoreState extends PersistedState {
   hydrated: boolean;
@@ -38,7 +42,8 @@ type Action =
   | { kind: "setProjectStatus"; id: ProjectId; status: ProjectStatus }
   | { kind: "setBackdrop"; id: ProjectId; backdrop: BackdropKind; color?: string }
   | { kind: "toggleFavorite"; id: PatternId }
-  | { kind: "setInventory"; entries: InventoryEntry[] };
+  | { kind: "setInventory"; entries: InventoryEntry[] }
+  | { kind: "upsertProgress"; cursor: ProgressCursor };
 
 function reduce(state: StoreState, action: Action): StoreState {
   switch (action.kind) {
@@ -75,6 +80,12 @@ function reduce(state: StoreState, action: Action): StoreState {
       };
     case "setInventory":
       return { ...state, inventory: action.entries };
+    case "upsertProgress": {
+      const others = state.progress.filter(
+        (cursor) => cursor.projectId !== action.cursor.projectId,
+      );
+      return { ...state, progress: [...others, action.cursor] };
+    }
   }
 }
 
@@ -85,6 +96,8 @@ export interface StoreActions {
   setProjectBackdrop(id: ProjectId, backdrop: BackdropKind, color?: string): void;
   toggleFavorite(id: PatternId): void;
   setInventory(entries: InventoryEntry[]): void;
+  /** BD19: one cursor per project, overwritten in place. Never called per timer tick. */
+  upsertProgress(cursor: ProgressCursorInput): void;
 }
 
 export type StoreValue = StoreState & PersistenceView & StoreActions;
@@ -109,14 +122,15 @@ export function StoreProvider({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const [projects, favorites, inventory] = await Promise.all([
+      const [projects, favorites, inventory, progress] = await Promise.all([
         repo.loadProjects(),
         repo.loadFavorites(),
         repo.loadInventory(),
+        repo.loadProgress(),
       ]);
       if (cancelled) return;
       hydratedRef.current = true;
-      dispatch({ kind: "hydrated", state: { projects, favorites, inventory } });
+      dispatch({ kind: "hydrated", state: { projects, favorites, inventory, progress } });
     })();
     return () => {
       cancelled = true;
@@ -139,6 +153,11 @@ export function StoreProvider({
     if (!state.hydrated) return;
     void repo.saveInventory(state.inventory);
   }, [repo, state.hydrated, state.inventory]);
+
+  useEffect(() => {
+    if (!state.hydrated) return;
+    void repo.saveProgress(state.progress);
+  }, [repo, state.hydrated, state.progress]);
 
   const instantiatePattern = useCallback<StoreActions["instantiatePattern"]>((pattern, status) => {
     const project = createProjectFromPattern(pattern, status);
@@ -165,6 +184,10 @@ export function StoreProvider({
     dispatch({ kind: "setInventory", entries });
   }, []);
 
+  const upsertProgress = useCallback<StoreActions["upsertProgress"]>((cursor) => {
+    dispatch({ kind: "upsertProgress", cursor: { ...cursor, updatedAt: Date.now() } });
+  }, []);
+
   const value = useMemo<StoreValue>(
     () => ({
       ...state,
@@ -174,6 +197,7 @@ export function StoreProvider({
       setProjectBackdrop,
       toggleFavorite,
       setInventory,
+      upsertProgress,
     }),
     [
       state,
@@ -183,6 +207,7 @@ export function StoreProvider({
       setProjectBackdrop,
       toggleFavorite,
       setInventory,
+      upsertProgress,
     ],
   );
 

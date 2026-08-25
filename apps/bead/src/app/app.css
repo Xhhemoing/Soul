@@ -307,18 +307,173 @@ a {
   flex-wrap: wrap;
 }
 
-.assemble__canvas {
-  flex: 1;
-  display: grid;
-  grid-template-columns: repeat(14, 16px);
-  grid-auto-rows: 16px;
-  gap: 2px;
-  align-content: start;
-  justify-content: center;
-  padding: 16px 0;
+.assemble__backdrop-controls,
+.assemble__modes {
+  border: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.assemble__cell {
-  border: 1px solid rgba(128, 128, 128, 0.45);
-  border-radius: 3px;
+.assemble__note {
+  margin: 0;
+  opacity: 0.85;
+}
+
+.assemble__session {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+.assemble__hud {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assemble__readout {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.assemble__readout dt {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.assemble__readout dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.assemble__clock {
+  font-variant-numeric: tabular-nums;
+}
+
+.assemble__hint {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.8;
+  flex-basis: 100%;
+}
+
+.assemble__status {
+  margin: 0;
+  min-height: 1.55em;
+  font-weight: 600;
+}
+
+/* ---- canvas (D-ASM-5 / D-ASM-6) -------------------------------------- */
+
+.assemble__grid {
+  --assemble-cell: 12px;
+  display: grid;
+  grid-template-columns: repeat(var(--assemble-columns, 28), var(--assemble-cell));
+  grid-auto-rows: var(--assemble-cell);
+  gap: 1px;
+  align-content: start;
+  justify-content: center;
+  overflow: auto;
+  padding: 8px 0;
+}
+
+/* D-ASM-10: 5mm is the physical pitch of a generic 5mm bead, gap folded away so
+   the pitch is the cell. Browsers convert mm at a nominal 96dpi — the standing
+   disclaimer next to the switch is the whole of the v0 answer to that. */
+.assemble__grid[data-scale="physical"] {
+  --assemble-cell: 5mm;
+  gap: 0;
+  justify-content: start;
+}
+
+.assemble__bead {
+  border-radius: 2px;
+}
+
+.assemble__bead--empty {
+  background: transparent;
+}
+
+/* Three states, and none of them is colour alone: the current step also carries
+   an outline, and the HUD spells out what it is in words. */
+.assemble__bead[data-cell-state="pending"] {
+  opacity: 0.15;
+}
+
+.assemble__bead[data-cell-state="done"] {
+  opacity: 1;
+}
+
+.assemble__bead[data-cell-state="current"] {
+  opacity: 1;
+  box-shadow: inset 0 0 0 2px var(--assemble-outline, #ffffff);
+  animation: assemble-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes assemble-pulse {
+  50% {
+    box-shadow: inset 0 0 0 1px var(--assemble-outline, #ffffff);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assemble__bead[data-cell-state="current"] {
+    animation: none;
+  }
+}
+
+/* ---- control orb (D-ASM-7) ------------------------------------------- */
+
+.assemble__orb {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 2;
+}
+
+.assemble__orb-button {
+  min-height: 44px;
+  min-width: 88px;
+  padding: 0 14px;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.assemble__orb-button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.assemble__orb-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.assemble__complete {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  align-self: start;
+}
+
+.assemble__complete h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
 }

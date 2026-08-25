@@ -3,9 +3,11 @@ import {
   type BackdropKind,
   type InventoryEntry,
   type PersistedState,
+  type ProgressCursor,
   type Project,
 } from "./types.ts";
-import { isPatternId, isProjectId, type PatternId } from "./ids.ts";
+import { isPatternId, isProjectId, type PatternId, type ProjectId } from "./ids.ts";
+import { SPLIT_MODES, type SplitMode } from "../algo/steps.ts";
 
 // D-UI-5: every signature here is async even though B02 stores to
 // localStorage. B09 swaps in IndexedDB behind the same interface, so no page
@@ -16,6 +18,8 @@ export interface ProjectRepository {
   saveProjects(projects: Project[]): Promise<void>;
   loadFavorites(): Promise<PatternId[]>;
   saveFavorites(favorites: PatternId[]): Promise<void>;
+  loadProgress(): Promise<ProgressCursor[]>;
+  saveProgress(cursors: ProgressCursor[]): Promise<void>;
 }
 
 export interface InventoryRepository {
@@ -63,6 +67,52 @@ function isInventoryEntry(value: unknown): value is InventoryEntry {
   return typeof candidate["code"] === "string" && typeof candidate["beads"] === "number";
 }
 
+function isCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+/**
+ * Rebuilds the cursor from scratch instead of passing the parsed object
+ * through: whatever extra keys a hand-edited blob (or an older build that got
+ * ahead of BD19) carried are dropped here rather than round-tripped back to
+ * disk.
+ */
+export function toProgressCursor(value: unknown): ProgressCursor | null {
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as Record<string, unknown>;
+  const projectId = candidate["projectId"];
+  const mode = candidate["mode"];
+  if (typeof projectId !== "string" || !isProjectId(projectId)) return null;
+  if (typeof mode !== "string" || !SPLIT_MODES.includes(mode as SplitMode)) return null;
+  const { stepIndex, elapsedMs, updatedAt } = candidate;
+  if (!isCount(stepIndex) || !isCount(elapsedMs)) return null;
+  if (typeof updatedAt !== "number" || !Number.isFinite(updatedAt)) return null;
+  return { projectId, mode: mode as SplitMode, stepIndex, elapsedMs, updatedAt };
+}
+
+/**
+ * Two convergences on top of the shape check, both there to keep the array
+ * bounded: one cursor per project (the freshest `updatedAt` wins, DATA-5's
+ * last-writer-wins carried down to the entry level), and cursors whose project
+ * is gone are pruned instead of accumulating forever.
+ */
+export function sanitizeProgress(
+  values: readonly unknown[],
+  projects: readonly Project[],
+): ProgressCursor[] {
+  const known = new Set<string>(projects.map((project) => project.id));
+  const latest = new Map<ProjectId, ProgressCursor>();
+  for (const value of values) {
+    const cursor = toProgressCursor(value);
+    if (cursor === null || !known.has(cursor.projectId)) continue;
+    const previous = latest.get(cursor.projectId);
+    if (previous === undefined || cursor.updatedAt >= previous.updatedAt) {
+      latest.set(cursor.projectId, cursor);
+    }
+  }
+  return [...latest.values()];
+}
+
 /** Anything that fails the shape check is dropped rather than crashing the app. */
 export function parsePersistedState(raw: string | null): PersistedState {
   if (raw === null) return EMPTY_STATE;
@@ -81,7 +131,10 @@ export function parsePersistedState(raw: string | null): PersistedState {
   const inventory = Array.isArray(record["inventory"])
     ? record["inventory"].filter(isInventoryEntry)
     : [];
-  return { projects, favorites, inventory };
+  const progress = Array.isArray(record["progress"])
+    ? sanitizeProgress(record["progress"], projects)
+    : [];
+  return { projects, favorites, inventory, progress };
 }
 
 class MemoryBacking {
@@ -186,6 +239,13 @@ export function createRepository(storage?: Storage): Repository {
     async saveInventory(inventory) {
       write({ ...read(), inventory });
     },
+    async loadProgress() {
+      return read().progress;
+    },
+    async saveProgress(cursors) {
+      const current = read();
+      write({ ...current, progress: sanitizeProgress(cursors, current.projects) });
+    },
   };
 }
 
@@ -216,6 +276,12 @@ export function createInMemoryRepository(seed: Partial<PersistedState> = {}): Re
     },
     async saveInventory(inventory) {
       state = { ...state, inventory };
+    },
+    async loadProgress() {
+      return state.progress;
+    },
+    async saveProgress(progress) {
+      state = { ...state, progress };
     },
   };
 }

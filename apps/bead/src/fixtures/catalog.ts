@@ -4,6 +4,11 @@ import type { Creator, Pattern } from "../stores/types.ts";
 // Small on purpose (R3): localStorage is the B02 backing, so the fixture keeps
 // palettes short. WP-B08 grows this set; nothing else here should change.
 //
+// D-ASM-2: where a pattern has a grid in `grids.ts`, that grid is the authority
+// for `beads` / `beadCount` — the numbers here are derived from it and
+// `grids.test.ts` fails if the two drift. Patterns without a grid keep their
+// hand-set estimates.
+//
 // Every board here is square: map §3 defers hex and round past v0, and these
 // patterns are instantiable, so a non-square one would reach WP-B04's assembler
 // as a shape it cannot lay out.
@@ -32,14 +37,14 @@ export const PATTERNS: Pattern[] = [
     creatorId: asCreatorId("cr-mira"),
     tags: ["像素游戏", "二次元"],
     difficulty: 1,
-    beadCount: 412,
+    beadCount: 300,
     estimatedMinutes: 35,
     board: "square-28",
     palette: [
-      { code: "H02", name: "薄荷绿", hex: "#7fd6a2", beads: 168 },
-      { code: "H10", name: "深松绿", hex: "#2f7d55", beads: 96 },
-      { code: "C01", name: "纯白", hex: "#ffffff", beads: 84 },
-      { code: "B05", name: "墨黑", hex: "#1b1b1f", beads: 64 },
+      { code: "H02", name: "薄荷绿", hex: "#7fd6a2", beads: 126 },
+      { code: "H10", name: "深松绿", hex: "#2f7d55", beads: 48 },
+      { code: "C01", name: "纯白", hex: "#ffffff", beads: 18 },
+      { code: "B05", name: "墨黑", hex: "#1b1b1f", beads: 108 },
     ],
   },
   {
@@ -80,13 +85,13 @@ export const PATTERNS: Pattern[] = [
     creatorId: asCreatorId("cr-mira"),
     tags: ["节日限定"],
     difficulty: 2,
-    beadCount: 760,
+    beadCount: 340,
     estimatedMinutes: 70,
     board: "square-28",
     palette: [
-      { code: "R04", name: "朱红", hex: "#d8412f", beads: 320 },
-      { code: "Y01", name: "明黄", hex: "#f5d13b", beads: 250 },
-      { code: "B05", name: "墨黑", hex: "#1b1b1f", beads: 190 },
+      { code: "R04", name: "朱红", hex: "#d8412f", beads: 112 },
+      { code: "Y01", name: "明黄", hex: "#f5d13b", beads: 76 },
+      { code: "B05", name: "墨黑", hex: "#1b1b1f", beads: 152 },
     ],
   },
   {
@@ -95,13 +100,13 @@ export const PATTERNS: Pattern[] = [
     creatorId: asCreatorId("cr-mira"),
     tags: ["像素游戏"],
     difficulty: 2,
-    beadCount: 980,
+    beadCount: 1_238,
     estimatedMinutes: 90,
     board: "square-56",
     palette: [
-      { code: "N06", name: "浅灰", hex: "#c9ccd4", beads: 420 },
-      { code: "B05", name: "墨黑", hex: "#1b1b1f", beads: 330 },
-      { code: "R04", name: "朱红", hex: "#d8412f", beads: 230 },
+      { code: "N06", name: "浅灰", hex: "#c9ccd4", beads: 684 },
+      { code: "B05", name: "墨黑", hex: "#1b1b1f", beads: 471 },
+      { code: "R04", name: "朱红", hex: "#d8412f", beads: 83 },
     ],
   },
 ];

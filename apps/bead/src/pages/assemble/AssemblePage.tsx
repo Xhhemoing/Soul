@@ -1,30 +1,36 @@
 import { useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
+import { occupiedCount } from "../../algo/grid.ts";
 import { EmptyState } from "../../components/EmptyState.tsx";
 import { PersistenceBanner } from "../../components/PersistenceBanner.tsx";
+import { fixtureGridFor } from "../../fixtures/grids.ts";
 import { useDocumentTitle } from "../../app/useDocumentTitle.ts";
 import { asProjectId, isProjectId } from "../../stores/ids.ts";
 import { selectProject } from "../../stores/projects.ts";
 import { useStore } from "../../stores/store.tsx";
-import type { BackdropKind } from "../../stores/types.ts";
-import { BACKDROP_LABEL, backdropColorOf, readableTextColor } from "./backdrop.ts";
+import { AssembleBackdrop, BackdropControls } from "./AssembleBackdrop.tsx";
+import { AssembleSession } from "./AssembleSession.tsx";
+import { backdropColorOf, readableTextColor } from "./backdrop.ts";
 
-const BACKDROP_OPTIONS: BackdropKind[] = ["black", "white", "custom"];
-const PLACEHOLDER_CELLS = 14 * 10;
+export const NO_GRID_NOTE =
+  "这个项目还没有豆图网格——上传转图归 WP-B03，立体拼豆的多板拼接不在 v0。";
+export const EMPTY_GRID_NOTE = "这张图纸的网格是空的，没有可拼的格子。";
 
 /**
  * D-UI-2, half two: this route renders outside AppShell — no bottom nav, no app
  * header. It is a page and not a modal, so there is no focus trap; the exit
  * control is always visible and Escape does the same thing.
  *
- * The four step modes, the floating control ball and the timer are WP-B04. All
- * that lives here is the backdrop, a static grid and the way out.
+ * D-ASM-12 is the frame invariant: every project that can be found renders the
+ * title, the way out, the backdrop controls and the persistence banner. Only
+ * the session — canvas, HUD, control orb, timer — waits on there being a
+ * fixture grid to assemble.
  */
 export function AssemblePage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
-  const { projects, hydrated, setProjectBackdrop } = useStore();
+  const { projects, progress, hydrated, setProjectBackdrop } = useStore();
   const project = isProjectId(id) ? selectProject(projects, id) : undefined;
   useDocumentTitle(project ? `拼装 ${project.title}` : "拼装");
 
@@ -58,15 +64,12 @@ export function AssemblePage() {
   const backdropColor = backdropColorOf(project);
   const textColor = readableTextColor(backdropColor);
   const projectId = asProjectId(project.id);
+  const fixture = project.sourcePatternId === null ? null : fixtureGridFor(project.sourcePatternId);
+  const cursor = progress.find((entry) => entry.projectId === projectId);
 
   return (
     <div className="assemble" style={{ color: textColor }}>
-      <div
-        className="assemble__backdrop"
-        data-testid="assemble-backdrop"
-        data-backdrop={project.backdrop}
-        style={{ background: backdropColor }}
-      />
+      <AssembleBackdrop color={backdropColor} kind={project.backdrop} />
       <div className="assemble__content">
         <PersistenceBanner />
         <div className="assemble__bar">
@@ -76,41 +79,25 @@ export function AssemblePage() {
           </Link>
         </div>
 
-        <fieldset style={{ border: "none", padding: 0 }}>
-          <legend>拼装背景（跟随项目，与应用主题无关）</legend>
-          {BACKDROP_OPTIONS.map((kind) => (
-            <label key={kind} style={{ marginRight: 12 }}>
-              <input
-                type="radio"
-                name="backdrop"
-                value={kind}
-                checked={project.backdrop === kind}
-                onChange={() => setProjectBackdrop(projectId, kind)}
-              />
-              {BACKDROP_LABEL[kind]}
-            </label>
-          ))}
-          {project.backdrop === "custom" && (
-            <label>
-              背景色
-              <input
-                type="color"
-                value={project.backdropColor}
-                onChange={(event) => setProjectBackdrop(projectId, "custom", event.target.value)}
-              />
-            </label>
-          )}
-        </fieldset>
+        <BackdropControls
+          kind={project.backdrop}
+          color={project.backdropColor}
+          onSelect={(kind) => setProjectBackdrop(projectId, kind)}
+          onCustomColor={(color) => setProjectBackdrop(projectId, "custom", color)}
+        />
 
-        <div className="assemble__canvas" role="img" aria-label="拼装网格占位">
-          {Array.from({ length: PLACEHOLDER_CELLS }, (_, index) => (
-            <span key={index} className="assemble__cell" />
-          ))}
-        </div>
-
-        <p className="stub-note" style={{ color: textColor }}>
-          四种步骤模式、悬浮控制球、计时与里程碑归 WP-B04；这里只有静态网格占位。
-        </p>
+        {fixture === null || occupiedCount(fixture.grid) === 0 ? (
+          <p className="assemble__note">
+            {fixture === null ? NO_GRID_NOTE : EMPTY_GRID_NOTE}
+          </p>
+        ) : (
+          <AssembleSession
+            project={project}
+            fixture={fixture}
+            cursor={cursor}
+            outlineColor={textColor}
+          />
+        )}
       </div>
     </div>
   );
