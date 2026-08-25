@@ -14,7 +14,7 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core + TS + DATA-1 + AL + B04 + B05 + B10 workflow |
-| 当前任务 | ROUND 3：B06 HIGH-1 已修并浏览器核通过（一笔画 14 颗）；B07 实现下一刀 |
+| 当前任务 | ROUND 3：B07 导入导出已吸收（#51）；测试/复审/浏览器核在途 |
 | PR | #16 专属线；#20–#46（#45 B03 实现；#46 B07 IA） |
 | Merge | B04 `15ad3b3`；B05 `8526c5c`；B10 本提交；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读；hosted Bead CI 空 runner（非产品失败） |
@@ -23,7 +23,7 @@
 
 | 面 | 现状 | 下一动作 |
 |---|---|---|
-| 前端 | B03 上传 + B06 `/edit/:id` 已吸收 | B06 本机测试/浏览器核；B07 实现后置 |
+| 前端 | B03 上传 + B06 编辑 + B07 导入导出已吸收 | B07 本机测试/浏览器核/复审 |
 | 后端 | 无 bead 服务 | v0 本机，不造第二灵魂核 |
 | API | 无 bead API | 本地 store 契约 |
 | 数据库 | Soul 加密 SQLite，与 bead 无关 | `bead-v1` IDB 已随 B03 吸收（BD19） |
@@ -107,6 +107,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] B06 实现吸收 #48（`/edit/:id` + blank mint）
 - [x] B06 复审 #49 REJECT（HIGH-1 拖拽 capture）；修复吸收 #50
 - [x] B07 导入导出 IA 合入（#46，`round3-import-export.md` D-IE-1..20）
+- [x] B07 实现吸收 #51（`.beadproj` v1；实现席报 36/566）
 - [x] B05 复审合入（#40，ACCEPT；MED-1 blob URL 后置）
 - [x] B10 独立 `bead.yml` 合入（#41）；Soul `ci.yml` 零 diff
 - [x] B10 复审合入（#42，ACCEPT，0 HIGH/MED）
@@ -121,7 +122,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 
 ## 下一轮重点（ROUND 3）
 
-B06 HIGH-1 已修并浏览器核通过（单次拖拽 14 颗，刷新后仍在）。下一刀：**B07 导入导出实现**。AL-4、B04/B05 MED-1 后置。
+B07 已吸收（#51）。下一刀：本机测试 + 浏览器核导入导出 + Fable 复审。AL-4、MED-1 后置。
 
 ```text
 ROUND 2（进行中）
@@ -133,6 +134,7 @@ Commit        15ad3b3 absorb B04；本提交记进度
 PR            #16 #32–#37
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B05 实现；B10 workflow；MED-1 后置
+已收          [R3 Opus B07 implement](https://cursor.com/agents/bc-b5066476-920e-5f1d-a9ee-abfcf125aba1) → #51
 已核          B06：blank mint → /edit/proj-* → 单次拖拽 14 颗 → 刷新仍在 → 去拼装同图
 已收          [R3 Opus B06 drag fix](https://cursor.com/agents/bc-44e29081-a035-5f8d-adeb-b9f2cc10e5ba) → #50
 已收          [R3 Fable review B06](https://cursor.com/agents/bc-fba90d95-70d3-509f-b0cf-ed9d5c19f18f) → #49 REJECT HIGH-1

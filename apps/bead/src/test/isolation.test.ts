@@ -59,13 +59,15 @@ describe("不出网（NE-1）", () => {
     expect(offenders).toEqual([]);
   });
 
-  // T-ED-20: the scan is recursive, so a new page directory joins it simply by
-  // existing. This case is here so that stays true — an exclusion that quietly
-  // dropped `pages/edit/**` would take the pixel editor out of NE-1's net
-  // without failing anything else in the suite.
+  // T-ED-20 / T-IE-19: the scan is recursive, so a new page directory joins it
+  // simply by existing. This case is here so that stays true — an exclusion
+  // that quietly dropped `pages/edit/**` would take the pixel editor out of
+  // NE-1's net without failing anything else in the suite, and the same goes
+  // for `schema/**`, where a format definition is the likeliest place for a
+  // `$schema` URL to appear.
   it("扫描面覆盖每个页面目录，新增的也在内", () => {
     const scanned = scannedFiles().map((path) => path.slice(SRC.length + 1));
-    for (const directory of ["pages/edit", "pages/create", "pages/assemble", "stores"]) {
+    for (const directory of ["pages/edit", "pages/create", "pages/assemble", "schema", "stores"]) {
       expect(scanned.filter((path) => path.startsWith(directory)).length).toBeGreaterThan(0);
     }
   });
