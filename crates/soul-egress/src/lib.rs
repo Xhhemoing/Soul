@@ -49,14 +49,14 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The most of a response body that will be brought into memory.
 ///
-/// [`REQUEST_TIMEOUT`] bounds how long the endpoint may take, and until this
-/// constant existed nothing bounded how much it could say. The endpoint is
-/// whatever address the user typed into the settings page — a machine on the
-/// same LAN, not a service with a contract — so a misconfigured or hostile one
-/// answering with a body that keeps arriving is a shape the client has to
-/// survive, and `send` is called with Soul's own state locked. A chat
-/// completion is kilobytes; four mebibytes is generous for one and small
-/// enough to be an allocation rather than an outage.
+/// [`REQUEST_TIMEOUT`] bounds how long the endpoint may take; this bounds how
+/// much it may say, which is the other half of the same question. The endpoint
+/// is whatever address the user typed into the settings page — a machine on
+/// the same LAN, not a service with a contract — so a misconfigured or hostile
+/// one answering with a body that keeps arriving is a shape the client has to
+/// survive, and [`send`] runs with Soul's own state locked. A chat completion
+/// is kilobytes; four mebibytes is generous for one and small enough to be an
+/// allocation rather than an outage.
 pub const MAX_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
