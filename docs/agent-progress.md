@@ -86,7 +86,8 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] F5 CI 清单合入（#20）
 - [ ] F4/S1/S2
 - [x] 壳 Fable Review 合入（#22）；SH-1..4 合入（#25），220 绿
-- [x] O3 转图管线合入（#24），本机 217 绿
+- [x] O3 转图管线合入（#24）
+- [x] AT-2 + rust parity 对齐合入（#28），本机 246 + 153 绿
 - [ ] TS 管线 Fable Review 在跑；core Review 仍等 VM
 - [ ] `/create` 上传接线（独立变更，勿打坏 B02 文案测试）
 - [x] 可导航的应用壳（转图仍 stub，O3 在换）
