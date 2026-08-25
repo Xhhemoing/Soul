@@ -3,18 +3,24 @@
 //! Four modes, one shape of answer: an ordered list of [`StepGroup`]s, each an
 //! ordered list of cells. A group is what the guidance screen highlights at
 //! once — a colour, a board, a region's outline, a row — and every mode
-//! partitions the placeable cells exactly, so "how far along am I" is a count
+//! partitions the *filled* cells exactly, so "how far along am I" is a count
 //! and never an estimate.
 //!
-//! Cells whose colour is listed in [`StepOptions::skip`] produce no step. That
-//! is how transparency and a deliberate background hole are expressed without
-//! giving the grid a second cell type.
+//! Empty cells (G1) produce no step in any mode, and a group that would contain
+//! nothing but empty cells is dropped rather than shown as a board with no work
+//! in it.
+//!
+//! Every ordering is total. Where two things could reasonably come first, the
+//! tie breaks on the palette colour index, or on a region's topmost-then-
+//! leftmost cell (G6) — never on hash iteration order, because the browser port
+//! has to produce the same sequence.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::fit::BoardSpec;
-use crate::grid::{Cell, Grid};
+use crate::grid::Cell;
 use crate::palette::{ColorId, Palette};
+use crate::quantize::PatternGrid;
 
 /// Which colour to start with when working colour by colour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -34,9 +40,10 @@ pub enum StepMode {
     ColorByColor { order: ColorOrder },
     /// One board at a time, left to right and top to bottom.
     Tile { board: BoardSpec },
-    /// Per same-colour region: outer edge, then the ring inside it, then the
-    /// middle. Building the edge first gives the infill something to sit
-    /// against, which is what stops a large field from drifting.
+    /// Per connected region of filled cells: the edge that touches the outside,
+    /// then the edge that touches a hole, then the middle. Building the edges
+    /// first gives the infill something to sit against, which is what stops a
+    /// large field from drifting.
     OutlineInfill,
     /// Top to bottom, left to right.
     RowByRow,
@@ -55,11 +62,18 @@ impl StepMode {
 }
 
 /// Where a cell sits within its region, for [`StepMode::OutlineInfill`].
+///
+/// G4 defines these on the filled mask, not per colour: a region is a
+/// four-connected run of filled cells whatever their colours, because what
+/// holds a fuse-bead panel together is the beads touching, not the beads
+/// matching. A cell belongs to exactly one phase and [`Phase::Outline`] wins,
+/// so a one-cell-wide ring is all outline rather than counted twice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
-    /// Touches something that is not this region, or the edge of the pattern.
+    /// Touches the outside — the background connected to the edge of the
+    /// pattern, or the edge itself — diagonally or otherwise.
     Outline,
-    /// Touches the outline from inside.
+    /// Touches a hole: background enclosed by the region.
     InnerEdge,
     /// Everything else.
     Fill,
@@ -75,29 +89,11 @@ impl Phase {
     }
 }
 
-/// Colours that are not placed at all.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct StepOptions {
-    pub skip: BTreeSet<ColorId>,
-}
-
-impl StepOptions {
-    pub fn skipping(skip: impl IntoIterator<Item = ColorId>) -> Self {
-        Self {
-            skip: skip.into_iter().collect(),
-        }
-    }
-
-    fn is_skipped(&self, id: ColorId) -> bool {
-        self.skip.contains(&id)
-    }
-}
-
 /// One highlighted stretch of work.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StepGroup {
     pub label: String,
-    /// The single colour of the group, when it has one.
+    /// The group's colour, when every cell in it is the same one.
     pub color: Option<ColorId>,
     /// Only set by [`StepMode::OutlineInfill`].
     pub phase: Option<Phase>,
@@ -138,17 +134,12 @@ impl StepPlan {
 }
 
 /// Build the plan for one mode.
-pub fn plan_steps(
-    grid: &Grid<ColorId>,
-    palette: &Palette,
-    mode: &StepMode,
-    options: &StepOptions,
-) -> StepPlan {
+pub fn plan_steps(grid: &PatternGrid, palette: &Palette, mode: &StepMode) -> StepPlan {
     let groups = match mode {
-        StepMode::ColorByColor { order } => color_by_color(grid, palette, *order, options),
-        StepMode::Tile { board } => tile(grid, board, options),
-        StepMode::OutlineInfill => outline_infill(grid, palette, options),
-        StepMode::RowByRow => row_by_row(grid, options),
+        StepMode::ColorByColor { order } => color_by_color(grid, palette, *order),
+        StepMode::Tile { board } => tile(grid, board),
+        StepMode::OutlineInfill => outline_infill(grid),
+        StepMode::RowByRow => row_by_row(grid),
     };
     StepPlan {
         mode: mode.slug(),
@@ -164,36 +155,24 @@ fn describe(palette: &Palette, id: ColorId) -> String {
     }
 }
 
-fn sort_key(palette: &Palette, id: ColorId) -> String {
-    palette
-        .get(id)
-        .map(|c| c.code.clone())
-        .unwrap_or_else(|| id.to_string())
-}
-
-fn color_by_color(
-    grid: &Grid<ColorId>,
-    palette: &Palette,
-    order: ColorOrder,
-    options: &StepOptions,
-) -> Vec<StepGroup> {
+fn color_by_color(grid: &PatternGrid, palette: &Palette, order: ColorOrder) -> Vec<StepGroup> {
     let mut by_color: BTreeMap<ColorId, Vec<Cell>> = BTreeMap::new();
-    for (cell, id) in grid.iter() {
-        if options.is_skipped(*id) {
-            continue;
+    for (cell, slot) in grid.iter() {
+        if let Some(id) = slot {
+            by_color.entry(*id).or_default().push(cell);
         }
-        by_color.entry(*id).or_default().push(cell);
     }
 
     let mut colors: Vec<(ColorId, Vec<Cell>)> = by_color.into_iter().collect();
-    // Ties break on the palette code so two colours with the same count always
-    // come out in the same order, whichever direction was asked for.
+    // Ties break on the colour index in both directions, so two colours with
+    // the same count keep the same relative order whichever way round the
+    // primary key points.
     colors.sort_by(|(a_id, a_cells), (b_id, b_cells)| {
         let primary = match order {
             ColorOrder::AccentFirst => a_cells.len().cmp(&b_cells.len()),
             ColorOrder::BulkFirst => b_cells.len().cmp(&a_cells.len()),
         };
-        primary.then_with(|| sort_key(palette, *a_id).cmp(&sort_key(palette, *b_id)))
+        primary.then_with(|| a_id.cmp(b_id))
     });
 
     colors
@@ -207,7 +186,7 @@ fn color_by_color(
         .collect()
 }
 
-fn tile(grid: &Grid<ColorId>, board: &BoardSpec, options: &StepOptions) -> Vec<StepGroup> {
+fn tile(grid: &PatternGrid, board: &BoardSpec) -> Vec<StepGroup> {
     let board_w = board.width.max(1);
     let board_h = board.height.max(1);
     let cols = grid.width().div_ceil(board_w);
@@ -222,15 +201,15 @@ fn tile(grid: &Grid<ColorId>, board: &BoardSpec, options: &StepOptions) -> Vec<S
             for y in y0..(y0 + board_h).min(grid.height()) {
                 for x in x0..(x0 + board_w).min(grid.width()) {
                     let cell = Cell::new(x, y);
-                    match grid.get(cell) {
-                        Some(id) if !options.is_skipped(*id) => cells.push(cell),
-                        _ => {}
+                    if matches!(grid.get(cell), Some(Some(_))) {
+                        cells.push(cell);
                     }
                 }
             }
+            let color = single_color(grid, &cells);
             groups.push(StepGroup {
                 label: format!("Board {} r{}c{}", board.name, row + 1, col + 1),
-                color: None,
+                color,
                 phase: None,
                 cells,
             });
@@ -239,16 +218,17 @@ fn tile(grid: &Grid<ColorId>, board: &BoardSpec, options: &StepOptions) -> Vec<S
     groups
 }
 
-fn row_by_row(grid: &Grid<ColorId>, options: &StepOptions) -> Vec<StepGroup> {
+fn row_by_row(grid: &PatternGrid) -> Vec<StepGroup> {
     (0..grid.height())
         .map(|y| {
-            let cells = (0..grid.width())
+            let cells: Vec<Cell> = (0..grid.width())
                 .map(|x| Cell::new(x, y))
-                .filter(|cell| grid.get(*cell).is_some_and(|id| !options.is_skipped(*id)))
+                .filter(|cell| matches!(grid.get(*cell), Some(Some(_))))
                 .collect();
+            let color = single_color(grid, &cells);
             StepGroup {
                 label: format!("Row {}", y + 1),
-                color: None,
+                color,
                 phase: None,
                 cells,
             }
@@ -256,53 +236,48 @@ fn row_by_row(grid: &Grid<ColorId>, options: &StepOptions) -> Vec<StepGroup> {
         .collect()
 }
 
-fn outline_infill(
-    grid: &Grid<ColorId>,
-    palette: &Palette,
-    options: &StepOptions,
-) -> Vec<StepGroup> {
+fn outline_infill(grid: &PatternGrid) -> Vec<StepGroup> {
+    let holes = enclosed_background(grid);
+
     let mut visited: Vec<bool> = vec![false; grid.len()];
     let index = |cell: Cell| cell.y as usize * grid.width() as usize + cell.x as usize;
 
     let mut groups = Vec::new();
     let mut region_number = 0usize;
 
-    for (start, id) in grid.iter() {
-        if visited[index(start)] || options.is_skipped(*id) {
+    for (start, slot) in grid.iter() {
+        if slot.is_none() || visited[index(start)] {
             continue;
         }
-        let region = flood(grid, start, *id, &mut visited, index);
+        let region = flood_filled(grid, start, &mut visited, index);
         region_number += 1;
 
         let members: BTreeSet<Cell> = region.iter().copied().collect();
         let mut outline = Vec::new();
-        let mut interior = Vec::new();
-        for cell in &region {
-            let touches_outside = grid.neighbours4(*cell).len() < 4
-                || grid.neighbours4(*cell).iter().any(|n| !members.contains(n));
-            if touches_outside {
-                outline.push(*cell);
-            } else {
-                interior.push(*cell);
-            }
-        }
-
-        let outline_set: BTreeSet<Cell> = outline.iter().copied().collect();
         let mut inner_edge = Vec::new();
         let mut fill = Vec::new();
-        for cell in interior {
-            if grid
-                .neighbours4(cell)
-                .iter()
-                .any(|n| outline_set.contains(n))
-            {
-                inner_edge.push(cell);
-            } else {
-                fill.push(cell);
+
+        for cell in &region {
+            // The pattern's own edge counts as outside: a bead on the border of
+            // the board has nothing holding it on that side either.
+            let on_border = grid.neighbours8(*cell).len() < 8;
+            let neighbours = grid.neighbours8(*cell);
+            let touches_exterior = on_border
+                || neighbours
+                    .iter()
+                    .any(|n| is_empty(grid, *n) && !holes.contains(n));
+            if touches_exterior {
+                outline.push(*cell);
+                continue;
             }
+            if neighbours.iter().any(|n| holes.contains(n)) {
+                inner_edge.push(*cell);
+                continue;
+            }
+            debug_assert!(members.contains(cell));
+            fill.push(*cell);
         }
 
-        let name = describe(palette, *id);
         for (phase, cells) in [
             (Phase::Outline, outline),
             (Phase::InnerEdge, inner_edge),
@@ -312,8 +287,8 @@ fn outline_infill(
                 continue;
             }
             groups.push(StepGroup {
-                label: format!("{name} region {region_number} {}", phase.slug()),
-                color: Some(*id),
+                label: format!("Region {region_number} {}", phase.slug()),
+                color: single_color(grid, &cells),
                 phase: Some(phase),
                 cells,
             });
@@ -322,12 +297,57 @@ fn outline_infill(
     groups
 }
 
-/// Breadth-first over edge-sharing cells of the same colour, collected in
-/// reading order so the caller never sees the traversal order.
-fn flood(
-    grid: &Grid<ColorId>,
+fn is_empty(grid: &PatternGrid, cell: Cell) -> bool {
+    matches!(grid.get(cell), Some(None))
+}
+
+/// The empty cells a region encloses: everything empty that a four-connected
+/// flood from the pattern's edge cannot reach.
+fn enclosed_background(grid: &PatternGrid) -> BTreeSet<Cell> {
+    let mut reachable: BTreeSet<Cell> = BTreeSet::new();
+    let mut queue: VecDeque<Cell> = VecDeque::new();
+
+    let seed = |cell: Cell, reachable: &mut BTreeSet<Cell>, queue: &mut VecDeque<Cell>| {
+        if is_empty(grid, cell) && reachable.insert(cell) {
+            queue.push_back(cell);
+        }
+    };
+    for x in 0..grid.width() {
+        seed(Cell::new(x, 0), &mut reachable, &mut queue);
+        seed(
+            Cell::new(x, grid.height().saturating_sub(1)),
+            &mut reachable,
+            &mut queue,
+        );
+    }
+    for y in 0..grid.height() {
+        seed(Cell::new(0, y), &mut reachable, &mut queue);
+        seed(
+            Cell::new(grid.width().saturating_sub(1), y),
+            &mut reachable,
+            &mut queue,
+        );
+    }
+
+    while let Some(cell) = queue.pop_front() {
+        for neighbour in grid.neighbours4(cell) {
+            if is_empty(grid, neighbour) && reachable.insert(neighbour) {
+                queue.push_back(neighbour);
+            }
+        }
+    }
+
+    grid.iter()
+        .filter(|(cell, slot)| slot.is_none() && !reachable.contains(cell))
+        .map(|(cell, _)| cell)
+        .collect()
+}
+
+/// Breadth-first over edge-sharing filled cells, collected in reading order so
+/// the caller never sees the traversal order.
+fn flood_filled(
+    grid: &PatternGrid,
     start: Cell,
-    id: ColorId,
     visited: &mut [bool],
     index: impl Fn(Cell) -> usize,
 ) -> Vec<Cell> {
@@ -338,10 +358,7 @@ fn flood(
     while let Some(cell) = queue.pop_front() {
         found.push(cell);
         for neighbour in grid.neighbours4(cell) {
-            if visited[index(neighbour)] {
-                continue;
-            }
-            if grid.get(neighbour) != Some(&id) {
+            if visited[index(neighbour)] || is_empty(grid, neighbour) {
                 continue;
             }
             visited[index(neighbour)] = true;
@@ -352,9 +369,23 @@ fn flood(
     found
 }
 
+/// The one colour every listed cell shares, if there is one.
+fn single_color(grid: &PatternGrid, cells: &[Cell]) -> Option<ColorId> {
+    let mut found: Option<ColorId> = None;
+    for cell in cells {
+        let id = (*grid.get(*cell)?)?;
+        match found {
+            Some(current) if current != id => return None,
+            _ => found = Some(id),
+        }
+    }
+    found
+}
+
 #[cfg(test)]
 mod unit {
     use super::*;
+    use crate::grid::Grid;
 
     #[test]
     fn every_mode_has_a_stable_slug() {
@@ -374,5 +405,19 @@ mod unit {
         );
         assert_eq!(StepMode::OutlineInfill.slug(), "outline-infill");
         assert_eq!(StepMode::RowByRow.slug(), "row-by-row");
+    }
+
+    #[test]
+    fn a_hole_is_background_the_edge_cannot_reach() {
+        // A 3×3 ring: the centre is enclosed, everything outside it is not.
+        let mut grid: PatternGrid = Grid::filled(3, 3, Some(ColorId(0)));
+        grid.set(Cell::new(1, 1), None);
+        let holes = enclosed_background(&grid);
+        assert_eq!(holes.len(), 1);
+        assert!(holes.contains(&Cell::new(1, 1)));
+
+        // Break the ring and the same cell is reachable from outside.
+        grid.set(Cell::new(1, 0), None);
+        assert!(enclosed_background(&grid).is_empty());
     }
 }

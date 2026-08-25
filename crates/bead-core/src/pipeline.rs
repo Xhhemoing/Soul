@@ -2,16 +2,15 @@
 //!
 //! Detect, frame, sample, map, count. Each step is public on its own; this only
 //! wires them together and picks the defaults that follow from the detection —
-//! pixel art is read at its own block size with nearest sampling and no
-//! dithering, a photograph is box-averaged.
+//! pixel art is read with nearest sampling and no dithering, a photograph is
+//! box-averaged and dithered.
 
 use crate::bom::Bom;
 use crate::detect::{analyze, ImageAnalysis, ImageKind};
-use crate::fit::{plan, render, FitMode, FitPlan, Sampling};
-use crate::grid::Grid;
+use crate::fit::{plan, render, FitError, FitMode, FitPlan, Sampling};
 use crate::image::Image;
-use crate::palette::{ColorId, Palette};
-use crate::quantize::{map_image, Dither, MapOptions};
+use crate::palette::Palette;
+use crate::quantize::{map_image, Dither, MapOptions, PatternGrid};
 
 /// How to convert one image.
 #[derive(Debug, Clone, PartialEq)]
@@ -52,7 +51,7 @@ pub struct Pattern {
     pub plan: FitPlan,
     pub sampling: Sampling,
     pub dither: Dither,
-    pub grid: Grid<ColorId>,
+    pub grid: PatternGrid,
     pub bom: Bom,
 }
 
@@ -61,7 +60,7 @@ pub fn to_pattern(
     image: &Image,
     palette: &Palette,
     options: &PatternOptions,
-) -> Result<Pattern, crate::fit::FitError> {
+) -> Result<Pattern, FitError> {
     let analysis = analyze(image);
     let fit_plan = plan(image.width(), image.height(), &options.fit)?;
 

@@ -32,8 +32,6 @@ pub struct Grid<T> {
 /// The grid could not be built from the pieces offered.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GridError {
-    /// A zero-sized grid is never what the caller meant.
-    Empty { width: u32, height: u32 },
     /// `cells.len()` did not equal `width * height`.
     LengthMismatch { width: u32, height: u32, got: usize },
 }
@@ -41,9 +39,6 @@ pub enum GridError {
 impl fmt::Display for GridError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            GridError::Empty { width, height } => {
-                write!(f, "a {width}x{height} grid has no cells")
-            }
             GridError::LengthMismatch { width, height, got } => write!(
                 f,
                 "a {width}x{height} grid needs {} cells, got {got}",
@@ -56,10 +51,10 @@ impl fmt::Display for GridError {
 impl std::error::Error for GridError {}
 
 impl<T> Grid<T> {
+    /// A zero-sized grid is legal. G8 asks for one: an empty pattern has to
+    /// produce an empty bill and zero steps rather than an error, so the
+    /// emptiness has to be representable.
     pub fn from_vec(width: u32, height: u32, cells: Vec<T>) -> Result<Self, GridError> {
-        if width == 0 || height == 0 {
-            return Err(GridError::Empty { width, height });
-        }
         let expected = usize::try_from(u64::from(width) * u64::from(height)).unwrap_or(usize::MAX);
         if cells.len() != expected {
             return Err(GridError::LengthMismatch {
@@ -87,7 +82,6 @@ impl<T> Grid<T> {
         self.cells.len()
     }
 
-    /// Always false: [`Grid::from_vec`] rejects zero-sized grids.
     pub fn is_empty(&self) -> bool {
         self.cells.is_empty()
     }
@@ -162,6 +156,27 @@ impl<T> Grid<T> {
         out
     }
 
+    /// The eight surrounding cells that are inside the grid, in reading order.
+    /// Diagonals matter for the outline rules in [`crate::steps`] even though
+    /// region membership itself is four-connected.
+    pub fn neighbours8(&self, cell: Cell) -> Vec<Cell> {
+        let mut out = Vec::with_capacity(8);
+        for dy in -1i64..=1 {
+            for dx in -1i64..=1 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                let nx = i64::from(cell.x) + dx;
+                let ny = i64::from(cell.y) + dy;
+                if nx < 0 || ny < 0 || nx >= i64::from(self.width) || ny >= i64::from(self.height) {
+                    continue;
+                }
+                out.push(Cell::new(nx as u32, ny as u32));
+            }
+        }
+        out
+    }
+
     pub fn map<U>(&self, mut f: impl FnMut(Cell, &T) -> U) -> Grid<U> {
         let cells = self.iter().map(|(cell, value)| f(cell, value)).collect();
         Grid {
@@ -173,16 +188,13 @@ impl<T> Grid<T> {
 }
 
 impl<T: Clone> Grid<T> {
-    pub fn filled(width: u32, height: u32, value: T) -> Result<Self, GridError> {
-        if width == 0 || height == 0 {
-            return Err(GridError::Empty { width, height });
-        }
+    pub fn filled(width: u32, height: u32, value: T) -> Self {
         let count = usize::try_from(u64::from(width) * u64::from(height)).unwrap_or(usize::MAX);
-        Ok(Self {
+        Self {
             width,
             height,
             cells: vec![value; count],
-        })
+        }
     }
 }
 
@@ -215,9 +227,22 @@ mod unit {
 
     #[test]
     fn neighbours_stop_at_the_edge() {
-        let grid = Grid::filled(3, 3, 0u8).expect("3x3");
+        let grid: Grid<u8> = Grid::filled(3, 3, 0);
         assert_eq!(grid.neighbours4(Cell::new(0, 0)).len(), 2);
         assert_eq!(grid.neighbours4(Cell::new(1, 1)).len(), 4);
         assert_eq!(grid.neighbours4(Cell::new(2, 2)).len(), 2);
+        assert_eq!(grid.neighbours8(Cell::new(0, 0)).len(), 3);
+        assert_eq!(grid.neighbours8(Cell::new(1, 1)).len(), 8);
+        assert_eq!(grid.neighbours8(Cell::new(2, 2)).len(), 3);
+    }
+
+    #[test]
+    fn a_zero_sized_grid_is_legal_and_empty() {
+        let grid: Grid<u8> = Grid::filled(0, 0, 0);
+        assert!(grid.is_empty());
+        assert_eq!(grid.len(), 0);
+        assert_eq!(grid.cells().count(), 0);
+        assert!(!grid.contains(Cell::new(0, 0)));
+        assert_eq!(grid.get(Cell::new(0, 0)), None);
     }
 }

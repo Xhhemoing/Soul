@@ -1,23 +1,37 @@
 //! Turning a raster into a grid of bead colours, with optional dithering.
 //!
+//! The output is a [`PatternGrid`]: one optional colour per cell, `None` where
+//! the source pixel was transparent (G1). Empty cells are not beads, so nothing
+//! downstream counts them, orders them or places them.
+//!
 //! Two paths, one nearest-colour rule. Without dithering each pixel is mapped
 //! independently. With Floyd–Steinberg the quantisation error is pushed into
 //! the neighbours that have not been decided yet, at 7/16 right, 3/16 down and
-//! left, 5/16 down, 1/16 down and right. Diffusion happens in gamma-encoded
-//! sRGB because that is what every dither the user has seen — and every
-//! `<canvas>` port of this code — operates on; the nearest-colour decision
-//! itself still goes through Lab and CIEDE2000.
+//! left, 5/16 down, 1/16 down and right.
 //!
-//! Error accumulation can push a working value outside `0..=255`. It is clamped
-//! before the lookup, so a colour outside the palette's gamut still quantises to
-//! the nearest available bead rather than to nothing.
+//! G7 pins the details that would otherwise differ between this and the browser
+//! port:
+//!
+//! * classic raster order — left to right, top to bottom, no serpentine;
+//! * error accumulates in gamma-encoded sRGB code values as `f64`, and is *not*
+//!   clamped as it accumulates;
+//! * the working value is clamped to `0..=255` only for the palette lookup, so
+//!   an out-of-gamut accumulation still quantises to the nearest bead rather
+//!   than wrapping;
+//! * error is not diffused outside the grid, and it is neither given to nor
+//!   relayed through an empty cell.
+//!
+//! The nearest-colour decision itself still goes through Lab and CIEDE2000.
 
 use std::collections::HashMap;
 
-use crate::color::Rgb;
+use crate::color::{Rgb, Rgba};
 use crate::grid::Grid;
 use crate::image::Image;
 use crate::palette::{ColorId, Palette};
+
+/// A bead pattern: one colour per cell, `None` where there is no bead.
+pub type PatternGrid = Grid<Option<ColorId>>;
 
 /// Whether to diffuse quantisation error into neighbouring pixels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -25,16 +39,13 @@ pub enum Dither {
     /// Map each pixel on its own.
     #[default]
     None,
-    /// Floyd–Steinberg, left to right and top to bottom.
+    /// Floyd–Steinberg in classic raster order.
     FloydSteinberg,
-    /// Floyd–Steinberg with alternating row direction, which hides the
-    /// diagonal worming the one-directional variant leaves in flat areas.
-    FloydSteinbergSerpentine,
 }
 
 impl Dither {
     pub fn is_enabled(self) -> bool {
-        !matches!(self, Dither::None)
+        matches!(self, Dither::FloydSteinberg)
     }
 }
 
@@ -50,7 +61,7 @@ impl MapOptions {
     }
 }
 
-/// The Floyd–Steinberg kernel: `(dx, dy, numerator)` over a denominator of 16.
+/// The Floyd–Steinberg kernel: `(dx, dy, weight)`, in scan order.
 pub const FLOYD_STEINBERG_KERNEL: [(i64, i64, f64); 4] = [
     (1, 0, 7.0 / 16.0),
     (-1, 1, 3.0 / 16.0),
@@ -58,28 +69,58 @@ pub const FLOYD_STEINBERG_KERNEL: [(i64, i64, f64); 4] = [
     (1, 1, 1.0 / 16.0),
 ];
 
+/// A mapping, plus how close each decision was.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MapTrace {
+    pub grid: PatternGrid,
+    /// How much closer the chosen bead was than the runner-up, per cell in
+    /// reading order. `None` for empty cells, infinite for a one-colour
+    /// palette. T-PAR-3 uses this to reject a fixture whose answer could flip
+    /// on a last-place floating-point difference between Rust and JavaScript.
+    pub margins: Vec<Option<f64>>,
+}
+
 /// Map every pixel of `image` to its nearest palette entry.
-pub fn map_image(image: &Image, palette: &Palette, options: MapOptions) -> Grid<ColorId> {
+pub fn map_image(image: &Image, palette: &Palette, options: MapOptions) -> PatternGrid {
+    map_image_traced(image, palette, options).grid
+}
+
+/// As [`map_image`], also reporting how close each decision was.
+pub fn map_image_traced(image: &Image, palette: &Palette, options: MapOptions) -> MapTrace {
     match options.dither {
         Dither::None => map_direct(image, palette),
-        Dither::FloydSteinberg => map_dithered(image, palette, false),
-        Dither::FloydSteinbergSerpentine => map_dithered(image, palette, true),
+        Dither::FloydSteinberg => map_dithered(image, palette),
     }
 }
 
-/// Map a single already-known colour, without any error state.
-pub fn map_pixel(rgb: Rgb, palette: &Palette) -> ColorId {
-    palette.nearest(rgb).id
+/// Map one pixel, without any error state. `None` when it is not a bead.
+pub fn map_pixel(pixel: Rgba, palette: &Palette) -> Option<ColorId> {
+    palette.nearest_rgba(pixel).map(|m| m.id)
 }
 
-fn map_direct(image: &Image, palette: &Palette) -> Grid<ColorId> {
-    let mut memo: HashMap<Rgb, ColorId> = HashMap::new();
-    image
-        .grid()
-        .map(|_, rgb| *memo.entry(*rgb).or_insert_with(|| palette.nearest(*rgb).id))
+fn map_direct(image: &Image, palette: &Palette) -> MapTrace {
+    let mut memo: HashMap<Rgb, (ColorId, f64)> = HashMap::new();
+    let mut margins = Vec::with_capacity(image.as_slice().len());
+    let grid = image.grid().map(|_, pixel| match pixel.rgb() {
+        Some(rgb) => {
+            let (id, margin) = *memo.entry(rgb).or_insert_with(|| {
+                (
+                    palette.nearest(rgb).id,
+                    palette.decision_margin(rgb.to_lab()),
+                )
+            });
+            margins.push(Some(margin));
+            Some(id)
+        }
+        None => {
+            margins.push(None);
+            None
+        }
+    });
+    MapTrace { grid, margins }
 }
 
-fn map_dithered(image: &Image, palette: &Palette, serpentine: bool) -> Grid<ColorId> {
+fn map_dithered(image: &Image, palette: &Palette) -> MapTrace {
     let width = image.width() as usize;
     let height = image.height() as usize;
 
@@ -90,14 +131,18 @@ fn map_dithered(image: &Image, palette: &Palette, serpentine: bool) -> Grid<Colo
         .iter()
         .map(|p| [f64::from(p.r), f64::from(p.g), f64::from(p.b)])
         .collect();
-    let mut out: Vec<ColorId> = Vec::with_capacity(width * height);
-    out.resize(width * height, ColorId(0));
+    let opaque: Vec<bool> = image.as_slice().iter().map(|p| p.is_opaque()).collect();
+    let mut out: Vec<Option<ColorId>> = vec![None; width * height];
+    let mut margins: Vec<Option<f64>> = vec![None; width * height];
 
     for y in 0..height {
-        let rightwards = !serpentine || y % 2 == 0;
-        for step in 0..width {
-            let x = if rightwards { step } else { width - 1 - step };
+        for x in 0..width {
             let here = y * width + x;
+            if !opaque[here] {
+                // An empty cell places nothing and, having quantised nothing,
+                // has no error to pass on. Whatever landed on it stops there.
+                continue;
+            }
             let current = work[here];
             let clamped = Rgb::new(
                 clamp_channel(current[0]),
@@ -105,7 +150,8 @@ fn map_dithered(image: &Image, palette: &Palette, serpentine: bool) -> Grid<Colo
                 clamp_channel(current[2]),
             );
             let chosen = palette.nearest(clamped).id;
-            out[here] = chosen;
+            out[here] = Some(chosen);
+            margins[here] = Some(palette.decision_margin(clamped.to_lab()));
 
             let placed = palette.color(chosen).rgb;
             let error = [
@@ -115,13 +161,15 @@ fn map_dithered(image: &Image, palette: &Palette, serpentine: bool) -> Grid<Colo
             ];
 
             for (dx, dy, weight) in FLOYD_STEINBERG_KERNEL {
-                let dx = if rightwards { dx } else { -dx };
                 let nx = x as i64 + dx;
                 let ny = y as i64 + dy;
                 if nx < 0 || ny < 0 || nx >= width as i64 || ny >= height as i64 {
                     continue;
                 }
                 let target = ny as usize * width + nx as usize;
+                if !opaque[target] {
+                    continue;
+                }
                 for (channel, residual) in error.iter().enumerate() {
                     work[target][channel] += residual * weight;
                 }
@@ -129,15 +177,15 @@ fn map_dithered(image: &Image, palette: &Palette, serpentine: bool) -> Grid<Colo
         }
     }
 
-    Grid::from_vec(image.width(), image.height(), out)
-        .expect("the output has exactly one id per pixel")
+    MapTrace {
+        grid: Grid::from_vec(image.width(), image.height(), out)
+            .expect("the output has exactly one cell per pixel"),
+        margins,
+    }
 }
 
 fn clamp_channel(value: f64) -> u8 {
-    if value.is_nan() {
-        return 0;
-    }
-    value.round().clamp(0.0, 255.0) as u8
+    crate::color::to_channel(value)
 }
 
 #[cfg(test)]

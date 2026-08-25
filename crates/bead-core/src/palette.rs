@@ -14,7 +14,7 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
-use crate::color::{ciede2000, Lab, Rgb};
+use crate::color::{ciede2000, within_delta_e, Lab, Rgb, Rgba};
 
 /// An index into a [`Palette`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -183,16 +183,63 @@ impl Palette {
         self.nearest_lab(rgb.to_lab())
     }
 
-    /// Every entry within `max_delta_e` of `lab`, nearest first. Ties break on
-    /// id so the order is total.
+    /// The nearest entry and the runner-up.
+    ///
+    /// The gap between them is what T-PAR-3 guards: `powf`, `cbrt` and `atan2`
+    /// can differ in the last place between Rust's libm and JavaScript's
+    /// `Math`, so a pixel whose best and second-best beads are a hair apart can
+    /// flip between the two implementations. A parity fixture containing one is
+    /// not a fixture, it is a coin toss, and this is how the generator finds
+    /// them.
+    pub fn nearest_two(&self, lab: Lab) -> (PaletteMatch, Option<PaletteMatch>) {
+        let mut best: Option<PaletteMatch> = None;
+        let mut second: Option<PaletteMatch> = None;
+        for (id, color) in self.iter() {
+            let candidate = PaletteMatch {
+                id,
+                delta_e: ciede2000(lab, color.lab),
+            };
+            match best {
+                Some(current) if candidate.delta_e < current.delta_e => {
+                    second = Some(current);
+                    best = Some(candidate);
+                }
+                Some(_) => {
+                    if second.is_none_or(|s| candidate.delta_e < s.delta_e) {
+                        second = Some(candidate);
+                    }
+                }
+                None => best = Some(candidate),
+            }
+        }
+        (
+            best.unwrap_or(PaletteMatch {
+                id: ColorId(0),
+                delta_e: f64::INFINITY,
+            }),
+            second,
+        )
+    }
+
+    /// How much closer the nearest entry is than the runner-up. Infinite for a
+    /// one-colour palette, where there is nothing to flip to.
+    pub fn decision_margin(&self, lab: Lab) -> f64 {
+        match self.nearest_two(lab) {
+            (best, Some(second)) => second.delta_e - best.delta_e,
+            (_, None) => f64::INFINITY,
+        }
+    }
+
+    /// Every entry strictly within `max_delta_e` of `lab`, nearest first. Ties
+    /// break on the colour index, so the order is total (G6).
     pub fn within(&self, lab: Lab, max_delta_e: f64) -> Vec<PaletteMatch> {
         let mut found: Vec<PaletteMatch> = self
             .iter()
+            .filter(|(_, color)| within_delta_e(lab, color.lab, max_delta_e))
             .map(|(id, color)| PaletteMatch {
                 id,
                 delta_e: ciede2000(lab, color.lab),
             })
-            .filter(|m| m.delta_e < max_delta_e)
             .collect();
         found.sort_by(|a, b| {
             a.delta_e
@@ -201,6 +248,11 @@ impl Palette {
                 .then(a.id.cmp(&b.id))
         });
         found
+    }
+
+    /// The nearest entry to a pixel, or `None` when the pixel is not a bead.
+    pub fn nearest_rgba(&self, rgba: Rgba) -> Option<PaletteMatch> {
+        rgba.rgb().map(|rgb| self.nearest(rgb))
     }
 }
 

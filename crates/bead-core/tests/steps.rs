@@ -1,11 +1,17 @@
 //! The four assembly orders.
+//!
+//! Covers T-SPL-0 to T-SPL-2, T-CBC-1/2, T-TIL-1/2, T-OUT-1 to T-OUT-4 and
+//! T-ROW-1 from `docs/bead/reviews/round1-algorithms.md`.
+
+mod support;
 
 use std::collections::BTreeSet;
 
 use bead_core::fit::BoardSpec;
 use bead_core::grid::{Cell, Grid};
 use bead_core::palette::{ColorId, Palette};
-use bead_core::steps::{plan_steps, ColorOrder, Phase, StepMode, StepOptions, StepPlan};
+use bead_core::quantize::PatternGrid;
+use bead_core::steps::{plan_steps, ColorOrder, Phase, StepMode, StepPlan};
 
 /// 6×6: a background field, a 4×4 block inset by one, and a single accent bead
 /// in the top-left corner.
@@ -20,26 +26,26 @@ use bead_core::steps::{plan_steps, ColorOrder, Phase, StepMode, StepOptions, Ste
 /// ```
 ///
 /// Counts: A 19, B 16, C 1.
-fn fixture(palette: &Palette) -> (Grid<ColorId>, ColorId, ColorId, ColorId) {
+fn fixture(palette: &Palette) -> (PatternGrid, ColorId, ColorId, ColorId) {
     let a = palette.find_code("G01").expect("G01");
     let b = palette.find_code("G33").expect("G33");
     let c = palette.find_code("G15").expect("G15");
 
-    let mut grid = Grid::filled(6, 6, a).expect("6x6");
+    let mut grid: PatternGrid = Grid::filled(6, 6, Some(a));
     for y in 1..5u32 {
         for x in 1..5u32 {
-            grid.set(Cell::new(x, y), b);
+            grid.set(Cell::new(x, y), Some(b));
         }
     }
-    grid.set(Cell::new(0, 0), c);
+    grid.set(Cell::new(0, 0), Some(c));
     (grid, a, b, c)
 }
 
-/// Every mode has to partition the placeable cells: each one exactly once, none
-/// invented. Checked for every mode rather than asserted once, because a
-/// partition is the property the progress bar depends on.
+/// Every mode has to partition the filled cells: each one exactly once, none
+/// invented, no empty cell placed. Checked for every mode rather than asserted
+/// once, because a partition is the property the progress bar depends on.
 fn assert_partitions(plan: &StepPlan, expected: &BTreeSet<Cell>) {
-    let mut seen: Vec<Cell> = plan.placements().map(|(_, cell)| cell).collect();
+    let seen: Vec<Cell> = plan.placements().map(|(_, cell)| cell).collect();
     assert_eq!(
         seen.len(),
         expected.len(),
@@ -48,7 +54,6 @@ fn assert_partitions(plan: &StepPlan, expected: &BTreeSet<Cell>) {
         seen.len(),
         expected.len()
     );
-    seen.sort_by_key(|c| (c.y, c.x));
     let unique: BTreeSet<Cell> = seen.iter().copied().collect();
     assert_eq!(unique.len(), seen.len(), "{} repeated a cell", plan.mode);
     assert_eq!(&unique, expected, "{} placed the wrong cells", plan.mode);
@@ -60,8 +65,11 @@ fn assert_partitions(plan: &StepPlan, expected: &BTreeSet<Cell>) {
     );
 }
 
-fn all_cells(grid: &Grid<ColorId>) -> BTreeSet<Cell> {
-    grid.cells().collect()
+fn filled_cells(grid: &PatternGrid) -> BTreeSet<Cell> {
+    grid.iter()
+        .filter(|(_, slot)| slot.is_some())
+        .map(|(cell, _)| cell)
+        .collect()
 }
 
 fn every_mode() -> Vec<StepMode> {
@@ -84,10 +92,81 @@ fn every_mode() -> Vec<StepMode> {
 fn every_mode_partitions_the_pattern() {
     let palette = Palette::generic_5mm();
     let (grid, ..) = fixture(&palette);
-    let expected = all_cells(&grid);
+    let expected = filled_cells(&grid);
     for mode in every_mode() {
-        let plan = plan_steps(&grid, &palette, &mode, &StepOptions::default());
+        let plan = plan_steps(&grid, &palette, &mode);
         assert_partitions(&plan, &expected);
+    }
+}
+
+/// T-SPL-0: the partition property, on a hundred pseudo-random grids that all
+/// contain empty cells. The seed is fixed, so a failure here is reproducible
+/// rather than a story about a build that went red once.
+#[test]
+fn the_partition_holds_on_random_grids() {
+    let palette = Palette::generic_5mm();
+    let mut rng = support::Lcg::new(0x5EED_1234);
+
+    for case in 0..100u32 {
+        let width = 1 + rng.below(9);
+        let height = 1 + rng.below(9);
+        let cells: Vec<Option<ColorId>> = (0..width * height)
+            .map(|_| {
+                // A third empty on average: enough that most grids have holes,
+                // few enough that most grids still have regions.
+                if rng.below(3) == 0 {
+                    None
+                } else {
+                    Some(ColorId(rng.below(48) as u16))
+                }
+            })
+            .collect();
+        let grid: PatternGrid = Grid::from_vec(width, height, cells).expect("rectangular");
+        let expected = filled_cells(&grid);
+
+        for mode in every_mode() {
+            let plan = plan_steps(&grid, &palette, &mode);
+            assert_partitions(&plan, &expected);
+            assert!(
+                plan.placements()
+                    .all(|(_, cell)| matches!(grid.get(cell), Some(Some(_)))),
+                "case {case}: {} placed a bead on an empty cell",
+                plan.mode
+            );
+        }
+    }
+}
+
+/// T-SPL-1: nothing to do is not an error.
+#[test]
+fn an_empty_pattern_produces_no_steps() {
+    let palette = Palette::generic_5mm();
+    let nothing: PatternGrid = Grid::filled(0, 0, None);
+    let all_empty: PatternGrid = Grid::filled(7, 5, None);
+
+    for grid in [nothing, all_empty] {
+        for mode in every_mode() {
+            let plan = plan_steps(&grid, &palette, &mode);
+            assert!(
+                plan.groups.is_empty(),
+                "{} produced groups for an empty pattern",
+                plan.mode
+            );
+            assert_eq!(plan.total_cells(), 0);
+        }
+    }
+}
+
+/// T-SPL-2: two runs, byte-identical plans. The plan derives from `BTreeMap`
+/// and explicit sorts rather than hash iteration, and this is what says so.
+#[test]
+fn planning_twice_gives_the_same_plan() {
+    let palette = Palette::generic_5mm();
+    let (grid, ..) = fixture(&palette);
+    for mode in every_mode() {
+        let first = plan_steps(&grid, &palette, &mode);
+        let second = plan_steps(&grid, &palette, &mode);
+        assert_eq!(first, second, "{} is not deterministic", first.mode);
     }
 }
 
@@ -101,7 +180,6 @@ fn colour_by_colour_starts_with_the_rarest_colour() {
         &StepMode::ColorByColor {
             order: ColorOrder::AccentFirst,
         },
-        &StepOptions::default(),
     );
 
     assert_eq!(plan.mode, "color-by-color");
@@ -117,186 +195,192 @@ fn colour_by_colour_starts_with_the_rarest_colour() {
     assert_eq!(plan.groups[0].label, "G15 Red ×1");
 }
 
+/// T-CBC-1: counts {A: 1, B: 5, C: 5} with B's palette index below C's. The
+/// primary key flips with the order; the tie between B and C does not.
 #[test]
-fn bulk_first_is_the_same_groups_reversed() {
+fn equal_counts_always_break_on_the_palette_index() {
     let palette = Palette::generic_5mm();
-    let (grid, a, b, c) = fixture(&palette);
-    let plan = plan_steps(
+    let a = palette.find_code("G22").expect("G22");
+    let b = palette.find_code("G06").expect("G06");
+    let c = palette.find_code("G15").expect("G15");
+    assert!(b < c, "the fixture needs B to sort before C");
+
+    let mut cells = vec![Some(a)];
+    cells.extend(std::iter::repeat_n(Some(b), 5));
+    cells.extend(std::iter::repeat_n(Some(c), 5));
+    let grid: PatternGrid = Grid::from_vec(11, 1, cells).expect("11x1");
+
+    let accent = plan_steps(
+        &grid,
+        &palette,
+        &StepMode::ColorByColor {
+            order: ColorOrder::AccentFirst,
+        },
+    );
+    assert_eq!(
+        accent.groups.iter().map(|g| g.color).collect::<Vec<_>>(),
+        vec![Some(a), Some(b), Some(c)]
+    );
+
+    let bulk = plan_steps(
         &grid,
         &palette,
         &StepMode::ColorByColor {
             order: ColorOrder::BulkFirst,
         },
-        &StepOptions::default(),
     );
     assert_eq!(
-        plan.groups.iter().map(|g| g.color).collect::<Vec<_>>(),
-        vec![Some(a), Some(b), Some(c)]
+        bulk.groups.iter().map(|g| g.color).collect::<Vec<_>>(),
+        vec![Some(b), Some(c), Some(a)]
     );
 }
 
-/// Two colours with the same count must not swap places between runs, so the
-/// tie breaks on the palette code.
+/// T-CBC-2: one colour, one step, cells in reading order.
 #[test]
-fn equal_counts_break_the_tie_on_code() {
+fn a_single_colour_pattern_is_one_step_in_reading_order() {
     let palette = Palette::generic_5mm();
-    let left = palette.find_code("G22").expect("G22");
-    let right = palette.find_code("G06").expect("G06");
-    let mut grid = Grid::filled(2, 1, left).expect("2x1");
-    grid.set(Cell::new(1, 0), right);
-
-    for order in [ColorOrder::AccentFirst, ColorOrder::BulkFirst] {
-        let plan = plan_steps(
-            &grid,
-            &palette,
-            &StepMode::ColorByColor { order },
-            &StepOptions::default(),
-        );
-        assert_eq!(
-            plan.groups.iter().map(|g| g.color).collect::<Vec<_>>(),
-            vec![Some(right), Some(left)],
-            "G06 sorts before G22 whichever direction was asked for"
-        );
-    }
-}
-
-#[test]
-fn tiles_are_boards_left_to_right_then_top_to_bottom() {
-    let palette = Palette::generic_5mm();
-    let (grid, ..) = fixture(&palette);
+    let only = palette.find_code("G26").expect("G26");
+    let grid: PatternGrid = Grid::filled(3, 2, Some(only));
     let plan = plan_steps(
         &grid,
         &palette,
-        &StepMode::Tile {
-            board: BoardSpec::new("2x2", 2, 2),
+        &StepMode::ColorByColor {
+            order: ColorOrder::AccentFirst,
         },
-        &StepOptions::default(),
     );
-
-    assert_eq!(plan.mode, "tile");
-    assert_eq!(plan.groups.len(), 9);
-    assert!(plan.groups.iter().all(|g| g.len() == 4));
-    assert_eq!(plan.groups[0].label, "Board 2x2 r1c1");
-    assert_eq!(plan.groups[0].cells[0], Cell::new(0, 0));
+    assert_eq!(plan.groups.len(), 1);
     assert_eq!(
-        plan.groups[1].cells[0],
-        Cell::new(2, 0),
-        "next board across"
+        plan.groups[0].cells,
+        vec![
+            Cell::new(0, 0),
+            Cell::new(1, 0),
+            Cell::new(2, 0),
+            Cell::new(0, 1),
+            Cell::new(1, 1),
+            Cell::new(2, 1),
+        ]
     );
-    assert_eq!(plan.groups[3].cells[0], Cell::new(0, 2), "then down a row");
 }
 
-/// A pattern wider than the board leaves a partial column, and a partial board
-/// is still a board.
+/// T-TIL-1: four 28×28 boards out of a full 56×56 pattern, in the order they
+/// sit on the table.
 #[test]
-fn a_partial_board_keeps_only_the_cells_that_exist() {
+fn a_56_square_pattern_is_four_28_boards() {
     let palette = Palette::generic_5mm();
-    let grid = Grid::filled(5, 3, palette.find_code("G01").expect("G01")).expect("5x3");
-    let plan = plan_steps(
-        &grid,
-        &palette,
-        &StepMode::Tile {
-            board: BoardSpec::new("4x4", 4, 4),
-        },
-        &StepOptions::default(),
-    );
-    assert_eq!(plan.groups.len(), 2);
-    assert_eq!(plan.groups[0].len(), 12, "the full 4×3 slice");
-    assert_eq!(plan.groups[1].len(), 3, "the leftover column");
-    assert_eq!(plan.total_cells(), 15);
-}
-
-#[test]
-fn a_28_board_tiling_matches_the_standard_preset() {
-    let palette = Palette::generic_5mm();
-    let grid = Grid::filled(56, 56, palette.find_code("G01").expect("G01")).expect("56x56");
+    let grid: PatternGrid = Grid::filled(56, 56, Some(palette.find_code("G01").expect("G01")));
     let plan = plan_steps(
         &grid,
         &palette,
         &StepMode::Tile {
             board: BoardSpec::square_28(),
         },
-        &StepOptions::default(),
     );
+
+    assert_eq!(plan.mode, "tile");
     assert_eq!(plan.groups.len(), 4);
     assert!(plan.groups.iter().all(|g| g.len() == 784));
-    assert_eq!(plan.groups[3].label, "Board 28x28 r2c2");
-}
-
-#[test]
-fn rows_run_top_to_bottom_and_left_to_right() {
-    let palette = Palette::generic_5mm();
-    let (grid, ..) = fixture(&palette);
-    let plan = plan_steps(
-        &grid,
-        &palette,
-        &StepMode::RowByRow,
-        &StepOptions::default(),
-    );
-
-    assert_eq!(plan.mode, "row-by-row");
-    assert_eq!(plan.groups.len(), 6);
-    assert_eq!(plan.groups[0].label, "Row 1");
-    for (y, group) in plan.groups.iter().enumerate() {
-        assert_eq!(group.len(), 6);
-        for (x, cell) in group.cells.iter().enumerate() {
-            assert_eq!(*cell, Cell::new(x as u32, y as u32));
-        }
-    }
-}
-
-#[test]
-fn outline_then_inner_edge_then_fill_per_region() {
-    let palette = Palette::generic_5mm();
-    let (grid, a, b, c) = fixture(&palette);
-    let plan = plan_steps(
-        &grid,
-        &palette,
-        &StepMode::OutlineInfill,
-        &StepOptions::default(),
-    );
-
-    assert_eq!(plan.mode, "outline-infill");
-    // Regions are found in reading order: the corner accent, the background
-    // field, then the inset block.
-    let shape: Vec<(Option<ColorId>, Option<Phase>, usize)> = plan
-        .groups
-        .iter()
-        .map(|g| (g.color, g.phase, g.len()))
-        .collect();
     assert_eq!(
-        shape,
+        plan.groups.iter().map(|g| g.cells[0]).collect::<Vec<_>>(),
         vec![
-            (Some(c), Some(Phase::Outline), 1),
-            (Some(a), Some(Phase::Outline), 19),
-            (Some(b), Some(Phase::Outline), 12),
-            (Some(b), Some(Phase::InnerEdge), 4),
+            Cell::new(0, 0),
+            Cell::new(28, 0),
+            Cell::new(0, 28),
+            Cell::new(28, 28)
         ]
     );
-    assert_eq!(plan.groups[2].label, "G33 Blue region 3 outline");
+    assert_eq!(plan.groups[0].label, "Board 28x28 r1c1");
+    assert_eq!(plan.groups[3].label, "Board 28x28 r2c2");
+    // Reading order within a board, not across the whole pattern.
+    assert_eq!(plan.groups[1].cells[1], Cell::new(29, 0));
+    assert_eq!(plan.groups[1].cells[28], Cell::new(28, 1));
 }
 
-/// A region big enough to have a middle produces all three phases, and the
-/// counts are the concentric rings you would draw by hand.
+/// T-TIL-2: a pattern that does not divide evenly leaves partial boards, and
+/// they stay partial. Padding them out would tell someone to place beads that
+/// are not in the picture.
 #[test]
-fn a_large_region_reaches_the_fill_phase() {
+fn partial_boards_are_not_padded() {
     let palette = Palette::generic_5mm();
-    let grid = Grid::filled(6, 6, palette.find_code("G01").expect("G01")).expect("6x6");
-    let plan = plan_steps(
-        &grid,
-        &palette,
-        &StepMode::OutlineInfill,
-        &StepOptions::default(),
+    let colour = palette.find_code("G01").expect("G01");
+    let mut grid: PatternGrid = Grid::filled(30, 29, Some(colour));
+    let mode = StepMode::Tile {
+        board: BoardSpec::square_28(),
+    };
+
+    let plan = plan_steps(&grid, &palette, &mode);
+    assert_eq!(
+        plan.groups.iter().map(|g| g.len()).collect::<Vec<_>>(),
+        vec![28 * 28, 2 * 28, 28, 2],
+        "the four boards are 28×28, 2×28, 28×1 and 2×1"
     );
+
+    // Empty the bottom-right board and it stops being a step at all.
+    grid.set(Cell::new(28, 28), None);
+    grid.set(Cell::new(29, 28), None);
+    let plan = plan_steps(&grid, &palette, &mode);
+    assert_eq!(
+        plan.groups.iter().map(|g| g.len()).collect::<Vec<_>>(),
+        vec![28 * 28, 2 * 28, 28],
+        "a board with nothing on it is skipped rather than shown empty"
+    );
+}
+
+/// T-ROW-1: one row per non-empty row, top to bottom, left to right.
+#[test]
+fn rows_run_top_to_bottom_and_skip_the_empty_ones() {
+    let palette = Palette::generic_5mm();
+    let colour = palette.find_code("G01").expect("G01");
+    let mut grid: PatternGrid = Grid::filled(4, 3, Some(colour));
+    for x in 0..4u32 {
+        grid.set(Cell::new(x, 1), None);
+    }
+    grid.set(Cell::new(0, 2), None);
+
+    let plan = plan_steps(&grid, &palette, &StepMode::RowByRow);
+    assert_eq!(plan.mode, "row-by-row");
+    assert_eq!(plan.groups.len(), 2, "the blank row produces no step");
+    assert_eq!(plan.groups[0].label, "Row 1");
+    assert_eq!(
+        plan.groups[0].cells,
+        vec![
+            Cell::new(0, 0),
+            Cell::new(1, 0),
+            Cell::new(2, 0),
+            Cell::new(3, 0)
+        ]
+    );
+    assert_eq!(plan.groups[1].label, "Row 3");
+    assert_eq!(
+        plan.groups[1].cells,
+        vec![Cell::new(1, 2), Cell::new(2, 2), Cell::new(3, 2)]
+    );
+}
+
+/// T-OUT-1: a solid 4×4 — the twelve cells that touch the outside, then the
+/// four in the middle. There is no hole, so nothing is an inner edge.
+#[test]
+fn a_solid_block_is_its_border_then_its_middle() {
+    let palette = Palette::generic_5mm();
+    let grid: PatternGrid = Grid::filled(4, 4, Some(palette.find_code("G01").expect("G01")));
+    let plan = plan_steps(&grid, &palette, &StepMode::OutlineInfill);
+
+    assert_eq!(plan.mode, "outline-infill");
     assert_eq!(
         plan.groups
             .iter()
             .map(|g| (g.phase, g.len()))
             .collect::<Vec<_>>(),
+        vec![(Some(Phase::Outline), 12), (Some(Phase::Fill), 4)]
+    );
+    assert_eq!(plan.groups[0].label, "Region 1 outline");
+    assert_eq!(plan.groups[0].cells[0], Cell::new(0, 0));
+    assert_eq!(
+        plan.groups[1].cells,
         vec![
-            (Some(Phase::Outline), 20),
-            (Some(Phase::InnerEdge), 12),
-            (Some(Phase::Fill), 4),
+            Cell::new(1, 1),
+            Cell::new(2, 1),
+            Cell::new(1, 2),
+            Cell::new(2, 2)
         ]
     );
     assert_eq!(Phase::Outline.slug(), "outline");
@@ -304,108 +388,149 @@ fn a_large_region_reaches_the_fill_phase() {
     assert_eq!(Phase::Fill.slug(), "fill");
 }
 
-/// Same colour, two separate blobs: two regions, not one, or the guidance would
-/// tell someone to jump across the board mid-outline.
+/// T-OUT-2: a ring two beads thick. The outer circuit is the outline, the ring
+/// facing the hole is the inner edge, and there is no middle left over.
 #[test]
-fn disconnected_areas_of_one_colour_are_separate_regions() {
+fn a_ring_has_an_outer_and_an_inner_edge() {
     let palette = Palette::generic_5mm();
-    let background = palette.find_code("G01").expect("G01");
-    let spot = palette.find_code("G15").expect("G15");
-    let mut grid = Grid::filled(5, 1, background).expect("5x1");
-    grid.set(Cell::new(0, 0), spot);
-    grid.set(Cell::new(4, 0), spot);
+    let colour = palette.find_code("G33").expect("G33");
+    let mut grid: PatternGrid = Grid::filled(7, 7, Some(colour));
+    for y in 2..5u32 {
+        for x in 2..5u32 {
+            grid.set(Cell::new(x, y), None);
+        }
+    }
 
-    let plan = plan_steps(
-        &grid,
-        &palette,
-        &StepMode::OutlineInfill,
-        &StepOptions::default(),
-    );
-    let spot_groups: Vec<&str> = plan
-        .groups
-        .iter()
-        .filter(|g| g.color == Some(spot))
-        .map(|g| g.label.as_str())
-        .collect();
+    let plan = plan_steps(&grid, &palette, &StepMode::OutlineInfill);
     assert_eq!(
-        spot_groups,
-        vec!["G15 Red region 1 outline", "G15 Red region 3 outline"]
+        plan.groups
+            .iter()
+            .map(|g| (g.phase, g.len()))
+            .collect::<Vec<_>>(),
+        vec![(Some(Phase::Outline), 24), (Some(Phase::InnerEdge), 16)]
     );
 }
 
-/// Diagonal touching is not connection: fuse beads sit in a square lattice and
-/// a diagonal neighbour is not holding anything up.
+/// The same shape one bead thick: outline and inner edge coincide, and G4 says
+/// outline wins, so every cell is placed exactly once.
+#[test]
+fn a_one_bead_ring_is_all_outline() {
+    let palette = Palette::generic_5mm();
+    let colour = palette.find_code("G33").expect("G33");
+    let mut grid: PatternGrid = Grid::filled(5, 5, Some(colour));
+    for y in 1..4u32 {
+        for x in 1..4u32 {
+            grid.set(Cell::new(x, y), None);
+        }
+    }
+
+    let plan = plan_steps(&grid, &palette, &StepMode::OutlineInfill);
+    assert_eq!(
+        plan.groups
+            .iter()
+            .map(|g| (g.phase, g.len()))
+            .collect::<Vec<_>>(),
+        vec![(Some(Phase::Outline), 16)]
+    );
+    assert_partitions(&plan, &filled_cells(&grid));
+}
+
+/// T-OUT-3: diagonal touching is not connection. Fuse beads sit in a square
+/// lattice, and a bead resting on a corner is not holding anything up.
 #[test]
 fn regions_are_four_connected() {
     let palette = Palette::generic_5mm();
-    let background = palette.find_code("G01").expect("G01");
-    let spot = palette.find_code("G15").expect("G15");
-    let mut grid = Grid::filled(2, 2, background).expect("2x2");
-    grid.set(Cell::new(0, 0), spot);
-    grid.set(Cell::new(1, 1), spot);
+    let colour = palette.find_code("G15").expect("G15");
+    let mut grid: PatternGrid = Grid::filled(2, 2, None);
+    grid.set(Cell::new(0, 0), Some(colour));
+    grid.set(Cell::new(1, 1), Some(colour));
 
-    let plan = plan_steps(
-        &grid,
+    let plan = plan_steps(&grid, &palette, &StepMode::OutlineInfill);
+    assert_eq!(plan.groups.len(), 2, "two regions, not one");
+    assert_eq!(plan.groups[0].cells, vec![Cell::new(0, 0)]);
+    assert_eq!(plan.groups[1].cells, vec![Cell::new(1, 1)]);
+}
+
+/// T-OUT-4: regions come in the order of their topmost-then-leftmost cell.
+#[test]
+fn regions_are_ordered_by_their_first_cell() {
+    let palette = Palette::generic_5mm();
+    let left = palette.find_code("G15").expect("G15");
+    let right = palette.find_code("G26").expect("G26");
+    // Two 2×2 blobs, the right one a row higher than the left one.
+    let grid = support::grid_from_codes(
         &palette,
-        &StepMode::OutlineInfill,
-        &StepOptions::default(),
+        6,
+        &[
+            ".  .  .  .  G26 G26",
+            ".  .  .  .  G26 G26",
+            "G15 G15 .  .  .   .",
+            "G15 G15 .  .  .   .",
+        ],
     );
+
+    let plan = plan_steps(&grid, &palette, &StepMode::OutlineInfill);
+    assert_eq!(plan.groups.len(), 2);
     assert_eq!(
-        plan.groups.iter().filter(|g| g.color == Some(spot)).count(),
-        2
+        plan.groups[0].color,
+        Some(right),
+        "the higher blob is first"
     );
+    assert_eq!(plan.groups[0].cells[0], Cell::new(4, 0));
+    assert_eq!(plan.groups[1].color, Some(left));
+    assert_eq!(plan.groups[1].cells[0], Cell::new(0, 2));
 }
 
+/// A region is a run of touching beads whatever their colours: what holds a
+/// fused panel together is the beads meeting, not the beads matching. So the
+/// fixture's three colours form one region, and its groups have no single
+/// colour to name.
 #[test]
-fn a_skipped_colour_produces_no_steps_in_any_mode() {
+fn a_region_spans_the_colours_that_touch() {
     let palette = Palette::generic_5mm();
-    let (grid, a, ..) = fixture(&palette);
-    let options = StepOptions::skipping([a]);
-    let expected: BTreeSet<Cell> = grid
-        .iter()
-        .filter(|(_, id)| **id != a)
-        .map(|(cell, _)| cell)
-        .collect();
-    assert_eq!(expected.len(), 17);
-
-    for mode in every_mode() {
-        let plan = plan_steps(&grid, &palette, &mode, &options);
-        assert_partitions(&plan, &expected);
-        assert!(
-            plan.groups.iter().all(|g| g.color != Some(a)),
-            "{} still placed the skipped colour",
-            plan.mode
-        );
-    }
-}
-
-/// Skipping everything is legal and produces nothing, rather than an empty
-/// group per row or per board.
-#[test]
-fn skipping_every_colour_leaves_an_empty_plan() {
-    let palette = Palette::generic_5mm();
-    let (grid, a, b, c) = fixture(&palette);
-    let options = StepOptions::skipping([a, b, c]);
-    for mode in every_mode() {
-        let plan = plan_steps(&grid, &palette, &mode, &options);
-        assert!(plan.groups.is_empty(), "{} produced groups", plan.mode);
-        assert_eq!(plan.total_cells(), 0);
-    }
+    let (grid, ..) = fixture(&palette);
+    let plan = plan_steps(&grid, &palette, &StepMode::OutlineInfill);
+    assert_eq!(
+        plan.groups
+            .iter()
+            .map(|g| (g.phase, g.len(), g.color.is_some()))
+            .collect::<Vec<_>>(),
+        vec![
+            (Some(Phase::Outline), 20, false),
+            (Some(Phase::Fill), 16, true),
+        ]
+    );
+    assert_partitions(&plan, &filled_cells(&grid));
 }
 
 #[test]
 fn placements_are_numbered_by_group() {
     let palette = Palette::generic_5mm();
     let (grid, ..) = fixture(&palette);
-    let plan = plan_steps(
-        &grid,
-        &palette,
-        &StepMode::RowByRow,
-        &StepOptions::default(),
-    );
+    let plan = plan_steps(&grid, &palette, &StepMode::RowByRow);
     let placements: Vec<(usize, Cell)> = plan.placements().collect();
     assert_eq!(placements.len(), 36);
     assert_eq!(placements[0], (0, Cell::new(0, 0)));
     assert_eq!(placements[6], (1, Cell::new(0, 1)));
     assert_eq!(placements[35], (5, Cell::new(5, 5)));
+}
+
+#[test]
+fn every_mode_has_a_stable_slug() {
+    let palette = Palette::generic_5mm();
+    let (grid, ..) = fixture(&palette);
+    let slugs: Vec<&str> = every_mode()
+        .iter()
+        .map(|mode| plan_steps(&grid, &palette, mode).mode)
+        .collect();
+    assert_eq!(
+        slugs,
+        vec![
+            "color-by-color",
+            "color-by-color",
+            "tile",
+            "outline-infill",
+            "row-by-row"
+        ]
+    );
 }

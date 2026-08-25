@@ -1,7 +1,10 @@
-//! The `generic-5mm` fixture and nearest-colour lookup.
+//! T-PAL-1, T-PAL-2, T-PAL-3: the `generic-5mm` fixture and nearest-colour
+//! lookup.
 
 use bead_core::color::{ciede2000, Lab, Rgb};
 use bead_core::palette::{BeadColor, ColorId, Palette, PaletteError};
+
+mod support;
 
 #[test]
 fn the_fixture_is_forty_eight_uniquely_coded_colours() {
@@ -71,6 +74,7 @@ fn no_two_fixture_colours_are_within_the_substitute_threshold() {
     assert!((closest - 5.3575).abs() < 0.001, "closest was {closest:.4}");
 }
 
+/// T-PAL-1.
 #[test]
 fn every_swatch_finds_itself_at_zero() {
     let palette = Palette::generic_5mm();
@@ -115,19 +119,55 @@ fn known_pixels_map_to_known_beads() {
     }
 }
 
+/// T-PAL-2. An exact tie must be decided by palette order, not by whichever
+/// entry the loop happened to see last. The contract puts indices 3 and 7 on
+/// the same swatch and demands index 3.
 #[test]
-fn ties_go_to_the_lower_id() {
-    // Two entries with the same swatch: the lookup must be decided by order,
-    // not by whichever the loop happened to see last.
-    let palette = Palette::new(
-        "twins",
-        vec![
-            BeadColor::new("T01", "first", Rgb::new(10, 20, 30)),
-            BeadColor::new("T02", "second", Rgb::new(10, 20, 30)),
-        ],
-    )
-    .expect("valid palette");
-    assert_eq!(palette.nearest(Rgb::new(10, 20, 30)).id, ColorId(0));
+fn an_exact_tie_goes_to_the_lower_index() {
+    let twin = Rgb::new(0x40, 0x80, 0xC0);
+    let mut colors: Vec<BeadColor> = (0..10)
+        .map(|i| {
+            BeadColor::new(
+                format!("T{i:02}"),
+                format!("filler {i}"),
+                Rgb::new(i * 9, 0, 0),
+            )
+        })
+        .collect();
+    colors[3] = BeadColor::new("T03", "twin one", twin);
+    colors[7] = BeadColor::new("T07", "twin two", twin);
+    let palette = Palette::new("twins", colors).expect("valid palette");
+
+    assert_eq!(palette.nearest(twin).id, ColorId(3));
+    // And the runner-up really is the other twin, at the same distance.
+    let (best, second) = palette.nearest_two(twin.to_lab());
+    assert_eq!(best.id, ColorId(3));
+    let second = second.expect("a runner-up");
+    assert_eq!(second.id, ColorId(7));
+    assert_eq!(second.delta_e, best.delta_e);
+    assert_eq!(palette.decision_margin(twin.to_lab()), 0.0);
+}
+
+/// T-PAL-3. A fixed-seed sweep: whatever comes in, the answer is a real index
+/// and nothing panics.
+#[test]
+fn any_pixel_maps_to_a_real_palette_index() {
+    let palette = Palette::generic_5mm();
+    let mut random = support::Lcg::new(0xBEAD_5EED);
+    for _ in 0..2_000 {
+        let rgb = Rgb::new(random.byte(), random.byte(), random.byte());
+        let found = palette.nearest(rgb);
+        assert!(
+            palette.get(found.id).is_some(),
+            "{rgb:?} produced {} which is not in the palette",
+            found.id
+        );
+        assert!(
+            found.delta_e.is_finite() && found.delta_e >= 0.0,
+            "{rgb:?} produced ΔE00 {}",
+            found.delta_e
+        );
+    }
 }
 
 #[test]
