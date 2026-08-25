@@ -74,6 +74,7 @@ pub fn walk(root: &Path) -> Vec<Observed> {
 pub struct Tree {
     directory: tempfile::TempDir,
     base: PathBuf,
+    case_variant_is_separate: bool,
 }
 
 impl Tree {
@@ -101,17 +102,18 @@ impl Tree {
         write(&base.join("Bravo"), "secret.txt", "第三人的私事");
         write(&base.join("Bravo/nested"), "deep.txt", "更深的私事");
 
-        // NTFS cannot hold `Alpha` and `alpha` as two directories. On Windows
-        // the write below would land `decoy.txt` inside the authorized root
-        // and the authorized-scan tests would start counting a file nobody
-        // put there. The third directory is therefore a Unix fixture; Windows
-        // case tests recase `Alpha` itself.
-        #[cfg(unix)]
-        write(
-            &base.join("alpha"),
-            "decoy.txt",
-            "同名不同大小写的第三个目录",
-        );
+        // Whether two differently cased names are separate is a property of
+        // the filesystem, not the operating system. Create the variant first
+        // so both paths can be canonicalized, then compare the places they
+        // actually name.
+        let lower_alpha = base.join("alpha");
+        std::fs::create_dir_all(&lower_alpha).expect("create the case-variant directory");
+        let case_variant_is_separate = std::fs::canonicalize(&lower_alpha)
+            .expect("canonical case variant")
+            != std::fs::canonicalize(base.join("Alpha")).expect("canonical Alpha");
+        if case_variant_is_separate {
+            write(&lower_alpha, "decoy.txt", "同名不同大小写的第三个目录");
+        }
 
         #[cfg(unix)]
         {
@@ -121,7 +123,11 @@ impl Tree {
                 .expect("a link that stays inside the authorized root");
         }
 
-        Tree { directory, base }
+        Tree {
+            directory,
+            base,
+            case_variant_is_separate,
+        }
     }
 
     pub fn base(&self) -> &Path {
@@ -154,6 +160,10 @@ impl Tree {
     /// Same letters as [`Tree::alpha`], other case.
     pub fn lower_alpha(&self) -> String {
         self.path_of("alpha")
+    }
+
+    pub fn case_variant_is_separate(&self) -> bool {
+        self.case_variant_is_separate
     }
 }
 

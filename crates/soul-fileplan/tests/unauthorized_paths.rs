@@ -97,13 +97,16 @@ fn refusable(tree: &Tree) -> Vec<(&'static str, String)> {
         ),
     ];
 
-    #[cfg(unix)]
-    {
+    if tree.case_variant_is_separate() {
         corpus.push(("a sibling that was never named", tree.lower_alpha()));
         corpus.push((
             "a file in that sibling",
             format!("{}/decoy.txt", tree.lower_alpha()),
         ));
+    }
+
+    #[cfg(unix)]
+    {
         corpus.push((
             "a link out of the authorized root",
             format!("{alpha}/escape/secret.txt"),
@@ -124,10 +127,16 @@ fn every_way_of_naming_the_unauthorized_directory_is_refused() {
     let authorization = authorized(&tree);
     let corpus = refusable(&tree);
 
-    assert!(
-        corpus.len() >= 25,
-        "the corpus shrank to {} entries",
+    let case_variant_entries = if tree.case_variant_is_separate() {
+        2
+    } else {
+        0
+    };
+    let symlink_entries = if cfg!(unix) { 3 } else { 0 };
+    assert_eq!(
         corpus.len(),
+        25 + case_variant_entries + symlink_entries,
+        "the corpus has an unexpected number of entries",
     );
 
     let mut accepted = Vec::new();
