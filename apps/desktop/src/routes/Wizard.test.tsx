@@ -78,6 +78,22 @@ describe("首次向导", () => {
   });
 
   /**
+   * The 已授权目录 note must not read as "点头之后 Soul 就能写文件了". Both halves
+   * have to hold on their own: nothing is read without authorization, and this
+   * version writes nothing even after it — the same read-only promise
+   * `READ_ONLY_NOTICE` makes on 文件整理.
+   */
+  it("授权目录那一行不会暗示点头之后就能写文件", () => {
+    renderWizard();
+
+    const note = screen.getByTestId("wizard-note-已授权目录");
+    expect(note).toHaveTextContent("不看任何目录");
+    expect(note).toHaveTextContent("只做只读扫描与计划预览");
+    expect(note).toHaveTextContent("不会写任何文件");
+    expect(note.textContent).not.toContain("没有你点头，Soul 不看任何目录，也不会写任何文件。");
+  });
+
+  /**
    * "不弹一堆权限" is checkable: the only tick box on the screen is the one
    * that says the user read the page. A permission checkbox added later fails
    * here before anyone has to notice it in review.

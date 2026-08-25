@@ -76,9 +76,13 @@ function defaultLines(snapshot: ConfigSnapshot): readonly DefaultLine[] {
       note: "要用生成能力，得你自己填一个兼容 OpenAI 的地址；不填也能用档案、人脉图与记忆。",
     },
     {
+      // Two independent sentences on purpose: authorizing a directory is what
+      // lets Soul read it, and it is not what lets Soul write. This version has
+      // no write path at all, so a note that reads as "点头之后就能写" would be
+      // false the moment the user authorizes anything.
       name: "已授权目录",
       state: `${snapshot.authorized_root_count} 个`,
-      note: "没有你点头，Soul 不看任何目录，也不会写任何文件。",
+      note: "没有你点头，Soul 不看任何目录。这一版即使授权了也只做只读扫描与计划预览，不会写任何文件。",
     },
   ];
 }
@@ -171,7 +175,9 @@ export function Wizard({ snapshot, onComplete }: WizardProps): React.JSX.Element
               <tr key={line.name}>
                 <th scope="row">{line.name}</th>
                 <td data-testid={`wizard-state-${line.name}`}>{line.state}</td>
-                <td className="muted">{line.note}</td>
+                <td className="muted" data-testid={`wizard-note-${line.name}`}>
+                  {line.note}
+                </td>
               </tr>
             ))}
           </tbody>
