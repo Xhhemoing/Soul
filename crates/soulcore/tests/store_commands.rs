@@ -12,10 +12,12 @@ use soul_schema::common::{
 };
 use soul_schema::event::{EventKind, EventSource, SoulEvent};
 use soul_schema::memory::{ForgetState, MemoryType, SoulMemory};
+use soul_store::{KeyProvider, TestKeyProvider};
 use soul_store_api::forget::ForgetUnit;
 use soul_store_api::research::ResearchPreviewRequest;
 use soul_store_api::types::{SealRequest, StoreError};
 use soul_store_api::{BlobStore, EventStore, MemoryStore, SoulStore};
+use soulcore::commands::session::Session;
 use soulcore::commands::store as store_commands;
 use uuid::Uuid;
 
@@ -92,6 +94,58 @@ fn open_preview_forget_and_preview_research_all_work_headless() {
         "the forget must still hold after the process that did it is gone",
     );
     store.verify_audit_chain().expect("chain");
+}
+
+/// D62 seen from the product side: a database written by a newer Soul is a
+/// session with no store, not a session with a store it has quietly downgraded.
+///
+/// `soul-store` proves the refusal and proves that the file is untouched. What
+/// is left to show is that the refusal survives the trip to
+/// [`Session::status`], where the shell reads it — no new field, no new command:
+/// `store_opened` is already false whenever the open failed, and the reason it
+/// failed is already inside `store_notice`. The only thing this pins is that the
+/// reason still names the version, because "the store did not open" without it
+/// is indistinguishable from a lost key file.
+#[test]
+fn a_database_from_a_newer_build_leaves_the_session_without_a_store_and_says_why() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let directory = std::fs::canonicalize(dir.path()).expect("canonical temp dir");
+
+    let first = Session::open(&directory);
+    assert!(
+        first.status().store_opened,
+        "{}",
+        first.status().store_notice
+    );
+    drop(first);
+
+    // The stamp a Soul several schemas ahead would have left behind, written
+    // under the key material this machine's session uses.
+    let dek = TestKeyProvider::in_dir(&directory)
+        .database_key()
+        .expect("the developer key file the session just created")
+        .to_hex();
+    let conn = rusqlite::Connection::open(store_commands::database_path(&directory))
+        .expect("open the database file directly");
+    conn.execute_batch(&format!("PRAGMA key = \"x'{dek}'\";"))
+        .expect("key the connection");
+    conn.execute(
+        "UPDATE meta SET value = '99' WHERE key = 'schema_version'",
+        [],
+    )
+    .expect("plant a newer schema version");
+    conn.close().expect("close");
+
+    let status = Session::open(&directory).status();
+    assert!(
+        !status.store_opened,
+        "the session opened a database written by a build that knew more than it does",
+    );
+    assert!(
+        status.store_notice.contains("schema_version") && status.store_notice.contains("99"),
+        "the notice has to say the database is from another version: {}",
+        status.store_notice,
+    );
 }
 
 /// A collected hour, written the way `soul-collect` writes one.

@@ -1715,6 +1715,7 @@ name = "soulcore"
 version = "0.1.0"
 dependencies = [
  "fail",
+ "rusqlite",
  "serde",
  "serde_json",
  "soul-collect",

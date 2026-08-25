@@ -39,6 +39,11 @@ tempfile = { workspace = true }
 # shipped `soulcore` enables no failpoints, and `cargo test -p soulcore`
 # unifies the feature into `soul-store` the same way `soul-policy` does.
 fail = { workspace = true, features = ["failpoints"] }
+# Planting a `meta.schema_version` a future build would have written, so D62's
+# refusal can be watched arriving at `Session::status`. The feature has to match
+# the one `soul-store` uses: a plain-SQLite rusqlite cannot open the keyed file
+# at all, so the test would be planting nothing.
+rusqlite = { workspace = true, features = ["bundled-sqlcipher-vendored-openssl"] }
 
 [[bin]]
 name = "soul-headless"
