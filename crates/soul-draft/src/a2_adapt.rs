@@ -147,7 +147,11 @@ fn count(tally: u64) -> u32 {
 /// `None` rather than a sentinel for anything else: an unparseable instant
 /// means the recency sentence does not appear, which is the honest outcome for
 /// a row whose time nobody can read.
-fn parse_rfc3339(timestamp: &str) -> Option<i64> {
+///
+/// Crate-visible because [`crate::analysis`] reads the same instants off the
+/// same edge for the demotion-clock projection. One parser, so the two cannot
+/// disagree about what a row says.
+pub(crate) fn parse_rfc3339(timestamp: &str) -> Option<i64> {
     let bytes = timestamp.as_bytes();
     if bytes.len() < 20
         || bytes.get(4) != Some(&b'-')

@@ -13,6 +13,7 @@
 //! | One exemption covers one turn, once | The exemption is consumed by value and nothing holds state about it (AC-13) |
 //! | External content is never instruction | The instruction slot is a constant in `soul-policy`; everything runtime lands in the material slot (AC-25) |
 //! | Every summary point cites evidence | [`analysis::SummaryPoint::new`] refuses an empty list (AC-16) |
+//! | A forecast is the tie rule's own clock, not a second rule | [`projection::project`] imports both day constants and is handed `as_of` (AD-13) |
 //! | Soul makes no medical claims | Every readable string goes through `soul_policy::assert_non_clinical` |
 //!
 //! ## What is not here
@@ -35,6 +36,7 @@ pub mod analysis;
 pub mod brief;
 pub mod draft;
 pub mod error;
+pub mod projection;
 pub mod reply;
 pub mod template;
 
@@ -48,5 +50,8 @@ pub use draft::{
     DEGRADED_NOTICE, ENDPOINT_NOTICE, NOT_SENT_NOTICE, TEMPLATE_NOTICE,
 };
 pub use error::{DraftError, DraftResult, GenerationRefused};
+pub use projection::{
+    project as project_demotion_clock, ClockReading, ProjectedBullet, PROJECTION_STATEMENT_KEYS,
+};
 pub use reply::{ModelReply, ReplyDefect};
 pub use template::{render as render_template, TemplateContext, BODY_SLOT};
