@@ -388,9 +388,22 @@ fn a_second_confirmation_crosses_the_ipc_and_the_paste_does_not_follow_it() {
 /// The preparation is real and the approval echoes the wrong hash, which is the
 /// shape a replayed or tampered-with confirmation arrives in. `discard_draft`
 /// is the other half of the same promise: the user read the plan and said no.
+///
+/// The endpoint is configured before any of it, which is what makes the
+/// refusal mean something. On a shell with nothing configured this call is
+/// refused either way, and `E1_NOT_CONFIGURED` would pass a build whose hash
+/// comparison had been deleted; here the guard is open and there is a real
+/// loopback server behind it, so `PLAN_HASH_MISMATCH` and a request count of
+/// zero are together the statement that the hash gate is the thing that
+/// stopped it.
 #[test]
 fn an_approval_that_does_not_echo_the_plan_generates_nothing() {
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
     let shell = Shell::on(scratch());
+    shell
+        .invoke("set_user_endpoint", json!({ "url": endpoint.base_url() }))
+        .expect("a loopback address is an address");
+
     let plan = shell
         .invoke("prepare_draft", json!({ "pasted": "一句话" }))
         .expect("a plan");
@@ -406,13 +419,25 @@ fn an_approval_that_does_not_echo_the_plan_generates_nothing() {
             }),
         )
         .expect_err("a mismatched approval is refused");
+    assert_eq!(
+        refusal["reason_code"],
+        json!("PLAN_HASH_MISMATCH"),
+        "the refusal is not the hash gate: {refusal}",
+    );
     assert!(refusal["explanation"].is_string(), "unexpected: {refusal}");
+    assert_eq!(
+        endpoint.request_count(),
+        0,
+        "an approval nobody gave reached the address the user typed",
+    );
 
     // And there is nothing left to approve a second time.
     assert_eq!(
         shell.invoke("discard_draft", json!({})).expect("an answer"),
         json!(false),
     );
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
 }
 
 /// An approval nobody prepared is the same refusal, arriving on a session that
@@ -605,6 +630,9 @@ const THIRD_PARTY_PLACEHOLDER: &str = "[第三人正文已占位]";
 /// reason.
 const ACCOUNT_PLACEHOLDER: &str = "[账号已占位]";
 
+/// `soul_policy::redactor::NAME_PLACEHOLDER`, spelled out for the same reason.
+const NAME_PLACEHOLDER: &str = "[姓名已占位]";
+
 /// What the mock endpoint answers with.
 ///
 /// A reply has to be non-empty and non-clinical or `soul-draft` throws it away
@@ -744,6 +772,100 @@ fn an_approved_generation_crosses_the_ipc_and_reaches_the_address_the_user_typed
         assert!(
             !played.contains(prose),
             "the chain carried `{prose}` across the IPC: {chain}",
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
+/// AC-19's replay cell, over the real handler.
+///
+/// `an_approval_that_does_not_echo_the_plan_generates_nothing` sends an
+/// approval that never matched anything, and `soulcore`'s
+/// `session_e1.rs::the_same_approval_twice_opens_one_socket_and_the_replay_is_recorded_as_a_denial`
+/// replays a spent one against a `Session` it holds. Neither is the shape a
+/// compromised WebView is in: it holds the exact `approval` record the core
+/// handed back, it has already watched one generation succeed, and it can call
+/// `generate_draft` again with those same two strings. A shell that rebuilt
+/// the request body per invoke, or a core that kept the prepared body around
+/// after spending it, would answer that second call with a second request to
+/// the user's endpoint — and the only place that is visible is a socket.
+#[test]
+fn the_same_approval_replayed_over_the_ipc_opens_one_socket_and_is_refused() {
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    endpoint.set_reply(ENDPOINT_REPLY);
+    let shell = Shell::on(scratch());
+    let pasted = "周五的场地我已经订好了，你直接过来就行";
+
+    shell
+        .invoke("set_user_endpoint", json!({ "url": endpoint.base_url() }))
+        .expect("a loopback address is an address");
+    let plan = shell
+        .invoke("prepare_draft", json!({ "pasted": pasted }))
+        .expect("a paste can always be described");
+
+    // The record the confirmation screen holds, kept so the second call is
+    // byte-for-byte the first one rather than a new approval that looks alike.
+    let approval = json!({
+        "approval": {
+            "preparation_id": plan["preparation_id"],
+            "plan_hash": plan["plan_hash"],
+        }
+    });
+
+    let draft = shell
+        .invoke("generate_draft", approval.clone())
+        .expect("the endpoint the user configured answers");
+    assert_eq!(
+        draft["source"],
+        json!("user_endpoint"),
+        "the draft came from the template, so nothing was generated: {draft}",
+    );
+    assert_eq!(endpoint.request_count(), 1, "one approval, one request");
+
+    let refusal = shell
+        .invoke("generate_draft", approval)
+        .expect_err("the first approval spent the preparation");
+    assert_eq!(
+        refusal["reason_code"],
+        json!("PLAN_HASH_MISMATCH"),
+        "unexpected: {refusal}",
+    );
+    assert!(
+        refusal["explanation"]
+            .as_str()
+            .is_some_and(|explanation| !explanation.is_empty()),
+        "the drafting panel is shown a blank refusal: {refusal}",
+    );
+    assert_eq!(
+        endpoint.request_count(),
+        1,
+        "a replayed approval opened a second socket",
+    );
+
+    // AC-23: the replay is a stop the product made on the user's behalf, and
+    // the 审计 page reads it back over the same IPC as counts and a code.
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the chain reads back");
+    assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
+    let denied = chain["entries"]
+        .as_array()
+        .expect("a chain is a list of entries")
+        .iter()
+        .find(|entry| entry["action"] == json!("hitl.deny"))
+        .unwrap_or_else(|| {
+            panic!("an approval was replayed and the IPC chain never heard about it: {chain}")
+        });
+    assert_eq!(denied["decision"], json!("denied"));
+    assert_eq!(denied["reason_code"], json!("PLAN_HASH_MISMATCH"));
+    assert_eq!(denied["follows_previous"], json!(true));
+
+    let played = format!("{refusal}{chain}");
+    for prose in [pasted, "场地", "订好了", ENDPOINT_REPLY] {
+        assert!(
+            !played.contains(prose),
+            "the IPC answered with `{prose}`: {played}",
         );
     }
 
@@ -903,6 +1025,138 @@ fn a_second_confirmation_crosses_the_ipc_and_this_ones_words_travel_once() {
         !answered.contains("场地"),
         "the IPC answered with the third party's words: {answered}",
     );
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
+/// The display name `fixtures/import/telegram/result_basic.json` seals.
+///
+/// Spelled with the space, because that is how the export writes it. The
+/// spelling is checked against the store rather than against the fixture by
+/// `soulcore`'s `session_e1.rs::the_label_this_export_sealed_is_the_one_the_paste_uses`;
+/// what is repeated here is the string, so this crate does not have to open a
+/// seal to know what to look for.
+const IMPORTED_NAME: &str = "李 雷";
+
+/// A paste that names the person it came from, the way one does.
+///
+/// Nothing in it has an identifier's *shape*: no digits, no `@`, no address.
+/// Two Chinese characters and a space are what the shape scrub cannot see and
+/// the contact graph can.
+const PASTE_NAMING_A_CONTACT: &str = "李 雷 说周五的场地他已经订好了，你直接过来就行";
+
+/// AC-12 and AC-13 together, over the real handler: an imported name never
+/// travels, not even inside a body the user confirmed twice.
+///
+/// `soulcore`'s
+/// `session_e1.rs::a_name_this_soul_imported_is_placeheld_even_in_a_body_the_user_confirmed`
+/// makes this claim about a `Session` it holds. Three things sit between that
+/// and an installed Soul, and each of them could break it on its own: the
+/// import has to land in the same session the drafting commands run against,
+/// `includeOriginal` has to survive Tauri's conversion into `include_original`
+/// so the exemption is real, and the identifier set has to be re-read after
+/// the commit rather than at launch. A shell that got any of those wrong would
+/// send a contact's display name to the user's endpoint while every
+/// `soulcore` test stayed green.
+///
+/// The exemption is deliberately the hardest case. The whole turn travels
+/// verbatim because the user confirmed twice, so a placeholder in the bytes a
+/// real loopback server received can only have come from the contact rows.
+#[test]
+fn an_imported_name_is_placeheld_over_the_ipc_even_in_a_body_the_user_confirmed() {
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    endpoint.set_reply(ENDPOINT_REPLY);
+    let shell = Shell::on(scratch());
+    let text = fixture("import/telegram/result_basic.json");
+
+    let receipt = match shell.invoke("commit_telegram", json!({ "text": text })) {
+        Ok(receipt) => receipt,
+        // No key, no store, no import — and the screen has to be told which.
+        Err(refusal) => {
+            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+            return;
+        }
+    };
+    assert_eq!(receipt["contacts_created"], json!(3));
+    assert!(
+        PASTE_NAMING_A_CONTACT.contains(IMPORTED_NAME),
+        "the paste has to carry the name for this test to mean anything",
+    );
+
+    shell
+        .invoke("set_user_endpoint", json!({ "url": endpoint.base_url() }))
+        .expect("a loopback address is an address");
+
+    // The user read a placeheld plan and pressed 「这一条按原文带上」.
+    let plan = shell
+        .invoke(
+            "prepare_draft",
+            json!({ "pasted": PASTE_NAMING_A_CONTACT, "includeOriginal": true }),
+        )
+        .expect("the user confirmed twice");
+    assert_eq!(plan["carries_exempted_original"], json!(true));
+    assert_eq!(
+        plan["placeheld_turns"],
+        json!(0),
+        "the turn is exempted, so the placeholder below is one name: {plan}",
+    );
+    assert_eq!(
+        endpoint.request_count(),
+        0,
+        "an exemption is not a generation",
+    );
+
+    let draft = shell
+        .invoke(
+            "generate_draft",
+            json!({
+                "approval": {
+                    "preparation_id": plan["preparation_id"],
+                    "plan_hash": plan["plan_hash"],
+                }
+            }),
+        )
+        .expect("the endpoint the user configured answers");
+    assert_eq!(
+        draft["source"],
+        json!("user_endpoint"),
+        "the draft came from the template, so nothing was generated: {draft}",
+    );
+
+    let sent = endpoint.requests();
+    assert_eq!(sent.len(), 1, "one approval, one request");
+    assert!(
+        !sent[0].body.contains(IMPORTED_NAME),
+        "the contact's name reached the endpoint: {}",
+        sent[0].body,
+    );
+    assert!(
+        sent[0].body.contains(NAME_PLACEHOLDER),
+        "the name was dropped rather than placeheld: {}",
+        sent[0].body,
+    );
+    // And the confirmation still bought what it was for: the message itself
+    // travelled, so what was replaced is one name rather than the turn.
+    assert!(
+        sent[0].body.contains("场地"),
+        "the confirmed message did not travel: {}",
+        sent[0].body,
+    );
+    assert!(!sent[0].body.contains(THIRD_PARTY_PLACEHOLDER));
+
+    // Names are read out of the store into a redactor and go nowhere else.
+    // None of the three documents the WebView is holding carries this one.
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the chain reads back");
+    assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
+    let answered = format!("{plan}{draft}{chain}");
+    for prose in [IMPORTED_NAME, "李", "雷", "场地"] {
+        assert!(
+            !answered.contains(prose),
+            "the IPC answered with `{prose}`: {answered}",
+        );
+    }
 
     let _ = std::fs::remove_dir_all(&shell.directory);
 }
@@ -1404,6 +1658,37 @@ fn fixture(relative: &str) -> String {
     std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
 }
 
+/// AC-08's second half, read off the JSON the 人脉 page receives.
+///
+/// A tie is an inference about two people, and the contract's answer to "why
+/// does Soul think that" is the evidence rows behind it. `soul-graph`'s own
+/// tests resolve them; what only this side can see is whether they survive
+/// `TieEdgeView` and the IPC — an edge that crossed with an empty array would
+/// leave the screen asserting a relationship it cannot show a reason for.
+fn assert_evidence_backed(graph: &Value) {
+    let ties = graph["ties"]
+        .as_array()
+        .unwrap_or_else(|| panic!("a graph is a list of ties: {graph}"));
+    assert!(!ties.is_empty(), "the graph has no ties on it: {graph}");
+    for tie in ties {
+        let evidence = tie["evidence"]
+            .as_array()
+            .unwrap_or_else(|| panic!("a tie cites its rows: {tie}"));
+        assert!(
+            !evidence.is_empty(),
+            "an edge nobody observed reached the screen: {tie}",
+        );
+        for row in evidence {
+            for field in ["evidence_id", "kind", "method", "strength"] {
+                assert!(
+                    row[field].as_str().is_some_and(|word| !word.is_empty()),
+                    "the evidence row has no `{field}` the screen could show: {row}",
+                );
+            }
+        }
+    }
+}
+
 /// The whole import path over the real IPC: counts out, then people.
 ///
 /// This is the one thing neither side's own tests can see. `soulcore` proves
@@ -1438,6 +1723,17 @@ fn an_export_crosses_the_ipc_as_counts_and_becomes_people() {
 
     let graph = shell.invoke("people_graph", json!({})).expect("a graph");
     assert_eq!(graph["people"].as_array().map(Vec::len), Some(5));
+    // AC-08 over the IPC, and the half that would otherwise be vacuous: the
+    // receipt's count of rebuilt ties is the number of edges the 人脉 page
+    // actually draws, and every one of them cites rows that were resolved out
+    // of the store. An edge with an empty `evidence` array is a claim about
+    // somebody with nothing behind it.
+    assert_eq!(
+        graph["ties"].as_array().map(Vec::len),
+        receipt["ties_rebuilt"].as_u64().map(|count| count as usize),
+        "the graph draws a different number of ties than the receipt counted: {graph}",
+    );
+    assert_evidence_backed(&graph);
 
     let someone = graph["people"]
         .as_array()
@@ -1558,6 +1854,15 @@ fn a_telegram_export_crosses_the_ipc_as_counts_and_becomes_people() {
     let graph = shell.invoke("people_graph", json!({})).expect("a graph");
     assert_eq!(graph["people"].as_array().map(Vec::len), Some(3));
     assert_eq!(graph["third_party_data_is_local_only"], json!(true));
+    // AC-08 on the other format: the same two claims, so a Telegram import
+    // that produced people and no defensible edges would be caught here
+    // rather than left to the count above.
+    assert_eq!(
+        graph["ties"].as_array().map(Vec::len),
+        receipt["ties_rebuilt"].as_u64().map(|count| count as usize),
+        "the graph draws a different number of ties than the receipt counted: {graph}",
+    );
+    assert_evidence_backed(&graph);
 
     let someone = graph["people"]
         .as_array()
@@ -2491,6 +2796,33 @@ fn the_research_preview_crosses_the_ipc_as_counts_and_no_third_party_row() {
     assert_eq!(research["third_party_rows"], json!(0));
     assert_eq!(research["export_kind"], json!("research_preview"));
     assert_eq!(research["third_party_body"], json!("excluded"));
+
+    // AC-20 is only a claim if the zero is an exclusion that ran. A store
+    // nobody imported into would report the same zero, and so would a query
+    // that found nothing at all — so the preview has to say how many
+    // candidates it dropped, and it has to still have rows of its own to show.
+    assert!(
+        research["third_party_rows_excluded"]
+            .as_u64()
+            .unwrap_or_default()
+            > 0,
+        "nothing was excluded, so the zero above is an empty query rather than \
+         a query that left somebody out: {research}",
+    );
+    assert!(
+        research["rows"]
+            .as_array()
+            .is_some_and(|rows| !rows.is_empty()),
+        "the 研究 page is handed no rows, so `third_party_rows: 0` is the whole \
+         answer rather than the part of it that was excluded: {research}",
+    );
+    assert!(
+        research["candidate_rows_total"]
+            .as_u64()
+            .unwrap_or_default()
+            > 0,
+        "the query produced no candidates at all: {research}",
+    );
 
     let after: Vec<PathBuf> = std::fs::read_dir(&shell.directory)
         .expect("read the data directory")

@@ -158,6 +158,83 @@ fn an_approved_generation_goes_to_the_address_the_user_typed() {
     drop(keep);
 }
 
+// -------------------------------------- AC-19, 令牌重放 on the E1 path ---
+
+/// The matrix's replay cell, from the product: the same approval twice.
+///
+/// `session_commands.rs::a_generation_that_is_refused_is_recorded_as_a_denial`
+/// replays an approval on a session with nothing configured, so the second
+/// refusal happens in a build where the first one never reached a socket
+/// either. That is the easy half. The case a compromised WebView is actually
+/// in — and the case a user who double-clicks 生成 is in — is a preparation
+/// that *did* go out: the token has been spent, the body has been moved out of
+/// the session by value, and the question is whether echoing the same
+/// `preparation_id` and `plan_hash` a second time buys a second request.
+///
+/// The endpoint is a real loopback server, so `request_count()` staying at one
+/// is a statement about sockets rather than about intent.
+#[test]
+fn the_same_approval_twice_opens_one_socket_and_the_replay_is_recorded_as_a_denial() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let plan = session
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
+        .expect("a paste can always be described");
+    let approval = plan.approval();
+
+    session
+        .generate_draft(&approval)
+        .expect("the endpoint answers");
+    assert_eq!(endpoint.request_count(), 1, "one approval, one request");
+    let before = session.audit().expect("the store opened").entries.len();
+
+    // The same bytes the confirmation screen already sent once. `generate`
+    // takes the prepared body by value, so what is left to approve is nothing
+    // — and `NothingPrepared` is the variant that says so.
+    let refusal = session
+        .generate_draft(&approval)
+        .expect_err("the first approval spent the preparation");
+    assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+    assert!(
+        !refusal.explanation.is_empty(),
+        "the drafting panel is shown a blank refusal",
+    );
+    assert_eq!(
+        endpoint.request_count(),
+        1,
+        "a replayed approval opened a second socket",
+    );
+
+    // AC-23 for the replay: being told no is a thing that happened to the
+    // user, and it lands under the action the contract already has for it.
+    let chain = session.audit().expect("the store opened");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    assert_eq!(chain.entries.len(), before + 1, "one replay, one entry");
+    let denied = chain.entries.last().expect("the entry just written");
+    assert_eq!(denied.action, "hitl.deny");
+    assert_eq!(denied.decision, "denied");
+    assert_eq!(denied.reason_code.as_deref(), Some("PLAN_HASH_MISMATCH"));
+    assert!(denied.follows_previous);
+    assert!(
+        chain.entries.iter().all(|entry| entry.follows_previous),
+        "{:?}",
+        chain.entries,
+    );
+
+    // The paste is the third party's words, and a refusal is not a licence to
+    // write them down beside the request that already carried them placeheld.
+    let played = serde_json::to_string(&chain).expect("serialize the chain");
+    for prose in ["周五的场地", "订好了", "直接过来"] {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
+    }
+    drop(keep);
+}
+
 /// AC-11's redirect half, from the product.
 ///
 /// `soul-egress`'s `e1_origin.rs` proves `send` refuses a `302` off the
