@@ -7,29 +7,44 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 ## Current round
 
-**ROUND 11** — review the grouped-phone landing and remaining identifier/honesty leftovers. Do not re-open closed R4–R10 items (D55, D61–D63, P2 E1 mutex, fileplan, config.json, COMMANDS=38, the contiguous+grouped phone shape itself, tray mutex, NSIS data-dir hook, keys.dpapi create_new, cloud toggle inert, import-tx wrap).
+**ROUND 12** — review the intake-transaction landing and remaining identifier/honesty leftovers. Do not re-open closed R4–R11 items (D55, D61–D63, P2 E1 mutex, fileplan, config.json, COMMANDS=38, contiguous+grouped phone shape, tray mutex, NSIS data-dir hook, keys.dpapi create_new, cloud toggle inert, import-tx wrap, questionnaire `transact` wrap).
 
 | Field | Value |
 |---|---|
-| Current task | Round 10 closed. Landed grouped-phone placeholder. Round 11 Fable: landing review; remaining +86/paren shapes; denylist frozen-ten note; questionnaire intake crash; endpoint digit-reuse; NSIS comment; SECURITY DPAPI tense; fakeCore truncation; PendingForget; landable vs author-machine. |
+| Current task | Round 11 closed. Landed questionnaire intake `transact`. Round 12 Fable: landing review; remaining en-dash/fullwidth hyphen/fullwidth digits; denylist frozen-ten; fakeCore truncation; NSIS comment; intake refusal-notice pin; SECURITY DPAPI tense; PendingForget; Graph source-label digit-reuse; landable vs 20-round floor. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
-| Exclusive tip | `a311598`; PR #15 |
+| Exclusive tip | `28601cc` (+ this docs closeout); PR #15 |
 
-### Round 11 Fable dispatch
+### Round 12 Fable dispatch
 
 | # | Direction |
 |---|---|
-| 1 | Review the grouped-phone landing (`911e6d0` / merge `a311598`) for regressions |
-| 2 | Remaining account shapes after grouped phones: `+86`, parentheses, leading country code |
-| 3 | Denylist frozen-ten vs runtime `diagnostic_terms.txt` honesty (R10 below-bar) |
-| 4 | Questionnaire mid-intake crash leftover (unwrapped per-answer writes) |
-| 5 | Endpoint narrative digit-reuse residual (`reply.rs` known limit) |
-| 6 | NSIS PREUNINSTALL comment vs pre-hook uninstallers |
+| 1 | Review the intake-transact landing (`4d827ac` / merge `28601cc`) for regressions |
+| 2 | Remaining account shapes after grouped phones: U+2013, U+FF0D, fullwidth digits |
+| 3 | Denylist frozen-ten vs runtime `diagnostic_terms.txt` honesty |
+| 4 | `fakeCore.ts` forget-mismatch truncation vs `FORGET_NOT_PREVIEWED_NOTICE` |
+| 5 | NSIS PREUNINSTALL comment vs pre-hook uninstallers |
+| 6 | Live (non-crash) pin that a questionnaire refusal carries `INTAKE_ROLLED_BACK_NOTICE` |
 | 7 | SECURITY.md DPAPI present tense vs last windows-latest run on `2e72ddf` |
-| 8 | `fakeCore.ts` forget-mismatch truncation vs `FORGET_NOT_PREVIEWED_NOTICE` |
-| 9 | `ForgetState::PendingForget` unreachable vs Graph/Memory `== Forgotten` checks |
-| 10 | Synthesis: remaining landable v0.1 slices vs author-machine-only |
+| 8 | `ForgetState::PendingForget` unreachable vs Graph/Memory `== Forgotten` checks |
+| 9 | Graph source-label / endpoint narrative digit-reuse residual |
+| 10 | Synthesis: remaining landable v0.1 slices vs 20-round floor vs author-machine-only |
+
+## ROUND 11 record
+
+| Field | Value |
+|---|---|
+| ROUND | 11 |
+| 子代理任务 | 10× Fable + Opus: grouped-phone landing review; remaining +86/paren shapes; denylist frozen-ten; questionnaire intake crash; Graph source-label copy; NSIS comment; SECURITY DPAPI tense; fakeCore truncation; PendingForget; landable vs author-machine |
+| 发现问题 | `Session::answer_questionnaire` wrote one savepoint per answer. A crash mid-batch left orphan `ui.questionnaire` events and Questionnaire evidence (STATUS WP06 leftover 8; AC-24 strict reading) |
+| 修复问题 | Wrap `profile_commands::intake_from` in `SqlCipherStore::transact`. `rolled_back` takes a caller notice so the wizard is not shown the import-file sentence; intake uses `INTAKE_ROLLED_BACK_NOTICE`. Failpoint reuses `STORE_EVENT_COMMIT_MID` |
+| 测试结果 | Parent re-run on merge `28601cc`: `session_crash` 9; `session_screens` 11. Opus: soulcore whole suite; desktop `ipc_roundtrip` 56 / `command_surface` 6; soul-profile 26; soul-import 63; soul-store 57. Fable mutation: wrap removed → leftover `(2, 2)` |
+| Commit | `4d827ac` on `cursor/intake-transact-4a8e`; merge `28601cc` |
+| PR | #15 |
+| Merge状态 | Exclusive has the merge. → `main` still `BLOCKED`. PR #7 still not merged |
+| 下一轮重点 | Intake landing review; remaining en-dash/fullwidth hyphen/fullwidth digits; denylist frozen-ten; fakeCore truncation; NSIS comment; intake refusal-notice pin; SECURITY tense; PendingForget; Graph source-label; synthesis toward 20-round floor |
+| NO_HIGH_VALUE | Grouped-phone landing (already merged); remaining +86/paren (below bar); denylist frozen-ten; intake crash as P2 until synthesis #10; Graph source-label copy; NSIS comment; SECURITY DPAPI tense; fakeCore truncation; PendingForget |
 
 ## ROUND 10 record
 
