@@ -13,7 +13,8 @@ import type { ColorIndex } from "./palette.ts";
 
 export type SplitMode = "color-by-color" | "tile" | "outline-infill" | "row-by-row";
 
-export type StepPart = "all" | "outline" | "inner-border" | "fill";
+/** Slugs are the oracle's (`bead_core::steps::Phase::slug`), BD18. */
+export type StepPart = "all" | "outline" | "inner-edge" | "fill";
 
 export interface Step {
   readonly mode: SplitMode;
@@ -157,7 +158,7 @@ function exteriorBackground(grid: Grid): Uint8Array {
 /**
  * Connected components on the non-empty mask, 4-adjacency (G4). Within a
  * component: outer outline first (touching the exterior, 8-adjacency), then the
- * inner border (touching a hole), then the fill. A cell is classified once and
+ * inner edge (touching a hole), then the fill. A cell is classified once and
  * outline wins.
  */
 export function outlineInfill(grid: Grid): Step[] {
@@ -198,7 +199,7 @@ export function outlineInfill(grid: Grid): Step[] {
   const steps: Step[] = [];
   components.forEach((members, group) => {
     const outline: CellRef[] = [];
-    const innerBorder: CellRef[] = [];
+    const innerEdge: CellRef[] = [];
     const fill: CellRef[] = [];
 
     for (const cell of members) {
@@ -219,7 +220,7 @@ export function outlineInfill(grid: Grid): Step[] {
         touchesHole = true;
       }
       if (touchesExterior) outline.push(cell);
-      else if (touchesHole) innerBorder.push(cell);
+      else if (touchesHole) innerEdge.push(cell);
       else fill.push(cell);
     }
 
@@ -228,7 +229,7 @@ export function outlineInfill(grid: Grid): Step[] {
       steps.push({ mode: "outline-infill", color: null, part, group, cells });
     };
     emit("outline", outline);
-    emit("inner-border", innerBorder);
+    emit("inner-edge", innerEdge);
     emit("fill", fill);
   });
 

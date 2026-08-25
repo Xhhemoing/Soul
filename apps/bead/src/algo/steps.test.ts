@@ -172,7 +172,7 @@ describe("T-OUT-2 环形与洞", () => {
     );
     expect(steps.map((it) => [it.part, it.cells.length])).toEqual([
       ["outline", 24],
-      ["inner-border", 16],
+      ["inner-edge", 16],
     ]);
   });
 

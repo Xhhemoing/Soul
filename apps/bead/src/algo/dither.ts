@@ -3,9 +3,10 @@
  *
  * Contract gap G7 is pinned as:
  * - classic raster scan (left→right, top→bottom); no serpentine;
- * - error accumulates in sRGB *code value* space as f64 and is never clamped
- *   early — the clamp to [0,255] happens only just before the nearest-colour
- *   lookup;
+ * - error accumulates in sRGB *code value* space as f64 and is never rounded or
+ *   clamped early — the value is taken to a whole code value in [0,255] only
+ *   just before the nearest-colour lookup, the way the oracle's
+ *   `color::to_channel` does it;
  * - error that would land outside the image is dropped;
  * - empty cells (alpha < 128, G1) neither receive nor forward error.
  *
@@ -13,7 +14,7 @@
  * exactly what T-FS-1 asserts.
  */
 
-import { clamp } from "./color.ts";
+import { clamp, roundHalfUp } from "./color.ts";
 import { createGrid, type Cell, type Grid } from "./grid.ts";
 import { isOpaque, type RgbaImage } from "./image.ts";
 import { nearestEntry, preparePalette, type Palette } from "./palette.ts";
@@ -31,6 +32,15 @@ export interface QuantizeResult {
    * nothing was quantised. The near-tie sentinel (T-PAR-3) reads this.
    */
   readonly minRunnerUpMargin: number;
+}
+
+/**
+ * The oracle's `color::to_channel`: round to a whole code value, then clamp to
+ * `u8`. Rust rounds half away from zero and this rounds half up, which are the
+ * same map once the result is clamped into [0,255].
+ */
+function toChannel(value: number): number {
+  return clamp(roundHalfUp(value), 0, 255);
 }
 
 const WEIGHT_RIGHT = 7 / 16;
@@ -71,9 +81,9 @@ export function quantize(image: RgbaImage, options: QuantizeOptions): QuantizeRe
       const rawB = data[o + 2]! + (errB[i] ?? 0);
 
       const lookup = {
-        r: clamp(rawR, 0, 255),
-        g: clamp(rawG, 0, 255),
-        b: clamp(rawB, 0, 255),
+        r: toChannel(rawR),
+        g: toChannel(rawG),
+        b: toChannel(rawB),
       };
       const match = nearestEntry(rgbToLab(lookup), prepared);
       cells[i] = match.index;
