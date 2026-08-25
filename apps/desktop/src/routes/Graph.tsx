@@ -267,6 +267,15 @@ interface PersonProps {
   readonly onSummarize: (contactId: string) => void;
 }
 
+/**
+ * One person in the list, and the one button that can reach an endpoint.
+ *
+ * The button is grey on a tombstone. The core refuses that summary anyway —
+ * `soul-draft` reads the node's forget state before it builds a single point,
+ * so nothing is derived and nothing is offered to the endpoint — and this is
+ * the same fact said where the user is looking: a row that reads 已被遗忘 with
+ * a live button beside it invites a press whose only outcome is a refusal.
+ */
 function Person({ person, onSummarize }: PersonProps): React.JSX.Element {
   return (
     <li>
@@ -277,7 +286,11 @@ function Person({ person, onSummarize }: PersonProps): React.JSX.Element {
         {person.last_contact_utc === null ? "" : `，最近一次 ${person.last_contact_utc}`}
         {person.forgotten ? "（已被遗忘，只剩下墓碑）" : ""}
       </span>
-      <button type="button" onClick={() => onSummarize(person.contact_id)}>
+      <button
+        type="button"
+        disabled={person.forgotten}
+        onClick={() => onSummarize(person.contact_id)}
+      >
         看这个人的摘要
       </button>
     </li>
