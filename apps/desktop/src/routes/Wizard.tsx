@@ -73,7 +73,13 @@ function defaultLines(snapshot: ConfigSnapshot): readonly DefaultLine[] {
     {
       name: "语言模型端点",
       state: snapshot.llm_endpoint_configured ? "已填写" : "未填写",
-      note: "要用生成能力，得你自己填一个兼容 OpenAI 的地址；不填也能用档案、人脉图与记忆。",
+      // 「要用生成能力，得填一个地址」 is false in this build: 起草 writes a
+      // draft with no endpoint at all, off a local deterministic tone template
+      // (`soul_draft::draft`), and 设置 already says so. What the endpoint buys
+      // is the model-written version — and the two buttons that reach it are
+      // the ones worth naming here, because they are the only two places
+      // anything leaves this machine.
+      note: "不填也能起草：草稿由本机的确定性语气模板写，什么都不出网，档案、人脉图与记忆也照常用。填一个兼容 OpenAI 的地址，才有模型写的那一版——起草页的「用你自己的模型端点写」和人脉图的「看这个人的摘要」会把这一次的内容发到那个地址。",
     },
     {
       // Two independent sentences on purpose: authorizing a directory is what
@@ -163,9 +169,24 @@ export function Wizard({ snapshot, onComplete }: WizardProps): React.JSX.Element
   return (
     <main className="wizard" aria-labelledby="wizard-heading">
       <h1 id="wizard-heading">欢迎使用 Soul</h1>
+      {/*
+        The second half is about the one thing on this screen that can ever
+        leave, and it has to survive a hostile reading. 「发出去的内容会先占位」
+        was the third-party default said of everything: it is not. Your own
+        profile brief travels as written, the graph statistics behind
+        「看这个人的摘要」 travel as written, and a turn you confirm twice
+        travels as written for that one turn. What is placeheld is other
+        people's prose by default, and names and accounts in every case —
+        `E1_PLAN_NOTICE` on 起草 and the 只留在本机 line on 人脉图 say the same
+        thing at the moment it matters. A first-run user who reads this page
+        once must not walk away believing anything stronger than that.
+      */}
       <p data-testid="wizard-locality">
-        Soul 在这台电脑上给你建一个电子版的你：人格、记忆、心理工作模型和人脉图。
-        它只处理你交给它的东西。处理过程留在本机；只有你以后自己填写的模型端点例外，发出去的内容会先占位。
+        Soul 在这台电脑上给你建一个电子版的你：人格、记忆、心理工作模型和人脉图。它只处理你交给它的东西。
+        处理过程留在本机；只有你以后自己填写的模型端点例外，而且发到那个地址的并不全是占位符：
+        你自己的档案摘要、本机从人脉图上算出的那组统计，都是按原样发出去的。
+        默认占位的是别人说过的话——除非你对某一条二次确认「这一条按原文带上」，那一条就按原文发，而且只这一次；姓名与账号两种情况下都占位。
+        草稿写完要不要发给对方，仍然是你自己按，Soul 不会替你发出去。
       </p>
 
       <section className="panel" aria-labelledby="defaults-heading">
