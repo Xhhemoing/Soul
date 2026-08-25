@@ -17,7 +17,7 @@
 //! returning an error: an error unwinds, runs destructors and lets SQLite
 //! tidy up, which is exactly what a power loss does not do.
 //!
-//! Two scenarios:
+//! Three scenarios:
 //!
 //! * `STORE_EVENT_COMMIT_MID` fires inside the third event an import commit
 //!   writes. `Session::commit_import` runs the whole file — the events, the
@@ -27,6 +27,10 @@
 //!   审计 page can still verify, and the same file importable again with no
 //!   duplicate events, which is the thing a half-written import could not
 //!   offer.
+//! * The same fail point, inside the third answer a questionnaire records.
+//!   `Session::answer_questionnaire` is the other way a profile gets made and
+//!   it is wrapped the same way, so reopening must show a profile as blank as
+//!   a fresh install's and no answer rows underneath it.
 //! * `FORGET_CK_DELETE_MID` fires between destroying one content key and the
 //!   next. Reopening must show a memory that is all of one thing — readable
 //!   and active, or forgotten and unopenable — and never half of each.
@@ -42,16 +46,20 @@
 
 use std::path::Path;
 
+use soul_schema::event::EventSource;
+use soul_schema::evidence::EvidenceKind;
 use soul_store_api::types::EventFilter;
-use soul_store_api::EventStore;
+use soul_store_api::{EventStore, ProfileStore};
 use soul_testkit::crash::{self, run_crashing_subprocess, CrashScenario};
 use soulcore::commands::memory::{ForgetConfirmation, NewMemory};
+use soulcore::commands::profile::GivenAnswer;
 use soulcore::commands::session::Session;
 
 /// How the parent tells the child which directory to be a Soul in.
 const DATA_DIR_ENV: &str = "SOUL_SESSION_CRASH_DIR";
 
 const IMPORT_CHILD: &str = "child_commits_an_import_through_a_session_and_may_die_mid_event";
+const INTAKE_CHILD: &str = "child_answers_a_questionnaire_through_a_session_and_may_die_mid_answer";
 const FORGET_CHILD: &str = "child_forgets_a_memory_through_a_session_and_may_die_mid_destruction";
 
 /// Three messages, so a fail point armed to let two through has a third to
@@ -82,6 +90,29 @@ const SPOKEN: &[&str] = &[
 const MEMORY_TITLE: &str = "退租那天";
 const MEMORY_SUMMARY: &str = "下午三点把钥匙交给房东。";
 
+/// Three answers, one of each kind the recorder knows: an axis, a voice field
+/// and a prose one. Three so a fail point armed to let two through has a third
+/// to interrupt, and one of each because the intake writes them in the same
+/// loop — if only the last kind rolled back, a run of three identical answers
+/// could not tell.
+///
+/// The two blanks are the questions the wizard leaves alone. They record
+/// nothing, so they do not move the count the fail point is armed against.
+const ANSWERS: &[(&str, &str)] = &[
+    ("q.axis.curiosity", "leans_high"),
+    ("q.voice.register", "formal"),
+    ("q.boundary.topics", "下班以后不谈工作"),
+    ("q.axis.orderliness", ""),
+    ("q.value.what_matters", ""),
+];
+
+/// How many of them the store hears about.
+const RECORDED: usize = 3;
+
+/// The one answer the user typed rather than tapped. Neither the chain nor a
+/// rolled-back store may be holding it.
+const TYPED: &[&str] = &["下班以后不谈工作"];
+
 fn child_directory() -> String {
     std::env::var(DATA_DIR_ENV).expect("the parent passes the data directory")
 }
@@ -100,6 +131,41 @@ fn events_in(session: &Session) -> usize {
         .list_events(&EventFilter::all())
         .expect("the events read back")
         .len()
+}
+
+/// The questionnaire answers this file hands in, as the session takes them.
+fn answers() -> Vec<GivenAnswer> {
+    ANSWERS
+        .iter()
+        .map(|(question_id, given)| GivenAnswer {
+            question_id: (*question_id).to_owned(),
+            given: (*given).to_owned(),
+        })
+        .collect()
+}
+
+/// The answers the store is holding: one sealed event and one evidence row per
+/// answer, which is the pair `soul-import`'s recorder writes.
+///
+/// Counted by what they are rather than by the total, because a session that
+/// has done anything else has events and evidence of its own. Nothing else in
+/// this file writes either, so the two numbers are the questionnaire's.
+fn questionnaire_rows_in(session: &Session) -> (usize, usize) {
+    let store = session
+        .store()
+        .expect("the session opened the database the child left behind");
+    let store = store.lock().expect("nobody panicked holding the store");
+    let events = store
+        .list_events(&EventFilter::with_source(EventSource::UiQuestionnaire))
+        .expect("the events read back")
+        .len();
+    let evidence = store
+        .list_evidence()
+        .expect("the evidence reads back")
+        .iter()
+        .filter(|row| row.kind == EvidenceKind::Questionnaire)
+        .count();
+    (events, evidence)
 }
 
 fn scratch(name: &str) -> (tempfile::TempDir, String) {
@@ -148,6 +214,20 @@ fn child_commits_an_import_through_a_session_and_may_die_mid_event() {
     session
         .commit_soul_import_v1(EXPORT)
         .expect("the export commits");
+}
+
+#[test]
+fn child_answers_a_questionnaire_through_a_session_and_may_die_mid_answer() {
+    if !crash::is_child() {
+        return;
+    }
+    crash::abort_if_child();
+    let _scenario = fail::FailScenario::setup();
+
+    let mut session = Session::open(child_directory());
+    session
+        .answer_questionnaire(&answers())
+        .expect("the questionnaire is recorded");
 }
 
 #[test]
@@ -313,6 +393,134 @@ fn without_an_armed_fail_point_the_same_session_commits_the_whole_import() {
         "an uninterrupted commit records itself: {:?}",
         chain.entries,
     );
+    drop(keep);
+}
+
+/// AC-24 on the other way a profile gets made: a launch that died partway
+/// through recording a questionnaire reopens with no questionnaire.
+///
+/// The unit being written is the questionnaire, for the same reason the import
+/// above is one write. `soul-profile`'s intake records every answer as a sealed
+/// event and a `user_stated` evidence row, then writes the profile those rows
+/// support, then appends the entry the 审计 page reads; an answer whose event
+/// and evidence landed while the profile never did is a row nothing cites and
+/// no screen shows. Until this was wrapped that is exactly what a crash left —
+/// STATUS's WP06 leftover 8, the last of the pair SOUL-7C opened — and the
+/// leftovers were not even wrong: each one is self-consistent and points back
+/// at its question. They were just permanent. Nothing in the product deletes
+/// them, 遗忘 works on memories, and re-answering writes a second set beside
+/// the first because the axes replace their citations rather than reusing the
+/// rows.
+///
+/// So the assertions are all "zero", and the last one is what the zero is for:
+/// the same answers, handed in again, land in full.
+#[test]
+fn a_session_that_died_mid_questionnaire_reopens_with_the_whole_intake_rolled_back() {
+    let (keep, directory) = scratch("intake-crash");
+
+    let outcome = run_crashing_subprocess(
+        &CrashScenario::new(
+            INTAKE_CHILD,
+            format!(
+                "{}=2*off->panic",
+                soul_testkit::crash::failpoints::STORE_EVENT_COMMIT_MID,
+            ),
+        )
+        .with_env(DATA_DIR_ENV, &directory),
+    )
+    .expect("re-execute the test binary");
+    outcome.assert_died("the answering child");
+
+    let session = Session::open(&directory);
+    let status = session.status();
+    assert!(
+        status.store_opened,
+        "a crash left a database the next launch could not open: {}",
+        status.store_notice,
+    );
+
+    assert_eq!(
+        questionnaire_rows_in(&session),
+        (0, 0),
+        "a questionnaire is one write: a crash inside it must leave neither \
+         the answers it had sealed nor the evidence rows they support, and \
+         two of each would be rows no profile claims and no screen shows",
+    );
+    assert_eq!(events_in(&session), 0, "the answers outlived the intake");
+
+    // And the screen the user would see is the one they saw before they
+    // started. Compared against a directory nothing has ever happened in
+    // rather than against a list of fields, so a crash that left a placed
+    // axis, a pinned voice field or a stated entry fails here whichever of
+    // them it left.
+    let (fresh_keep, fresh_directory) = scratch("intake-fresh");
+    let fresh = Session::open(&fresh_directory)
+        .profile()
+        .expect("a blank profile is still one");
+    assert_eq!(
+        session.profile().expect("the profile reads back"),
+        fresh,
+        "the crash left a profile a fresh install would not have",
+    );
+    drop(fresh_keep);
+
+    assert_chain_holds_no_prose(&session, TYPED);
+
+    // The retry the rollback is for. Nothing was left behind to sit beside, so
+    // the same answers count once.
+    let mut session = session;
+    let receipt = session
+        .answer_questionnaire(&answers())
+        .expect("the questionnaire the crash interrupted is answered again");
+    assert_eq!(receipt.answered, RECORDED);
+    assert!(!receipt.profile_is_empty, "AC-03");
+    assert_eq!(receipt.axes_known, 1);
+    assert_eq!(receipt.voice_fields_user_set, 1);
+    assert_eq!(receipt.stated_entries, 1);
+    assert_eq!(
+        questionnaire_rows_in(&session),
+        (RECORDED, RECORDED),
+        "re-answering after a crash wrote the surviving answers a second time",
+    );
+
+    let after = session.profile().expect("the profile reads back");
+    assert_ne!(after, fresh, "the retry left the profile blank");
+    assert_eq!(after.stated.len(), 1);
+    assert_chain_holds_no_prose(&session, TYPED);
+    drop(keep);
+}
+
+/// The control: with nothing armed, the same child records the whole
+/// questionnaire.
+#[test]
+fn without_an_armed_fail_point_the_same_session_records_the_whole_questionnaire() {
+    let (keep, directory) = scratch("intake-control");
+
+    let outcome = run_crashing_subprocess(
+        &CrashScenario::new(INTAKE_CHILD, "").with_env(DATA_DIR_ENV, &directory),
+    )
+    .expect("re-execute the test binary");
+    assert!(
+        !outcome.died(),
+        "the control run measures the injection, not a broken child\n--- stderr ---\n{}",
+        outcome.stderr,
+    );
+
+    let session = Session::open(&directory);
+    assert_eq!(questionnaire_rows_in(&session), (RECORDED, RECORDED));
+    assert_eq!(session.profile().expect("a profile").stated.len(), 1);
+
+    let chain = session.audit().expect("the chain");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    assert!(
+        chain
+            .entries
+            .iter()
+            .any(|entry| entry.action == "import.commit"),
+        "an uninterrupted intake records itself: {:?}",
+        chain.entries,
+    );
+    assert_chain_holds_no_prose(&session, TYPED);
     drop(keep);
 }
 
