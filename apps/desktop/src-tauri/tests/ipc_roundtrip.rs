@@ -207,16 +207,34 @@ fn a_finished_wizard_is_still_finished_after_a_restart() {
 }
 
 /// The refusal reaches the WebView as an error rather than as a configuration
-/// that quietly claims to be finished.
+/// that quietly claims to be finished — and in the shape every other refusal
+/// on this surface has.
+///
+/// The wizard used to answer `{"reason": "not_acknowledged"}`, which is not
+/// what `src/refusal.tsx` reads: `asRefusal` wants a code and a sentence, and
+/// anything else becomes the code `unavailable` with the stringified object
+/// for a sentence. The first screen a new user sees was the one screen whose
+/// refusal the shared renderer could not read.
 #[test]
-fn an_unacknowledged_wizard_comes_back_as_an_error() {
+fn an_unacknowledged_wizard_comes_back_as_a_code_and_a_sentence() {
     let refusal = invoke(
         "complete_wizard",
         json!({ "answers": { "acknowledged_defaults_are_off": false } }),
     )
     .expect_err("the wizard refuses");
 
-    assert_eq!(refusal["reason"], json!("not_acknowledged"));
+    assert_eq!(refusal["reason_code"], json!("ROUTINE"));
+    assert!(
+        refusal["explanation"]
+            .as_str()
+            .is_some_and(|explanation| !explanation.is_empty()),
+        "the wizard is shown a blank refusal: {refusal}",
+    );
+    assert_eq!(
+        refusal.as_object().map(|fields| fields.len()),
+        Some(2),
+        "the shell reads exactly two fields off a refusal: {refusal}",
+    );
 }
 
 /// AC-22, end to end: asking for the cloud gets the same notice back.

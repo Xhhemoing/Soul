@@ -5,9 +5,12 @@
 //! AC-02 (a finished wizard leaves everything off) and AC-22 (the cloud switch
 //! answers with a sentence and changes nothing).
 
+use soul_policy::ReasonCode;
+use soulcore::commands::session::SessionRefusal;
 use soulcore::commands::shell::{
     cloud_toggle, complete_wizard, config_snapshot, CloudNotice, ConfigSnapshot, WizardAnswers,
     WizardRefused, CLOUD_NOT_YET_AVAILABLE_LABEL, DESKTOP_BINARY_NAME,
+    WIZARD_NOT_ACKNOWLEDGED_NOTICE,
 };
 use soulcore::{CloudState, Config};
 
@@ -50,15 +53,10 @@ fn the_wizard_would_refuse_a_configuration_with_a_switch_on() {
     };
     assert!(!opened.is_fully_closed());
 
-    let refusal = WizardRefused::CapabilityLeftOpen {
-        open: opened
-            .open_capabilities()
-            .into_iter()
-            .map(str::to_owned)
-            .collect(),
-    };
+    let refusal = WizardRefused::capability_left_open(&opened.open_capabilities());
+    assert_eq!(refusal.reason_code, ReasonCode::ConsentMissing.as_str());
     assert!(
-        refusal.to_string().contains("collect_enabled"),
+        refusal.explanation.contains("collect_enabled"),
         "a refusal has to name what was left on: {refusal}",
     );
 }
@@ -69,8 +67,57 @@ fn an_unacknowledged_wizard_does_not_finish() {
     assert!(!answers.acknowledged_defaults_are_off);
     assert_eq!(
         complete_wizard(&answers),
-        Err(WizardRefused::NotAcknowledged),
+        Err(WizardRefused::not_acknowledged())
     );
+}
+
+/// The wizard refuses in the same shape as every other command, because the
+/// shell has one renderer for a refusal and it reads two fields off it.
+///
+/// Deserializing into [`SessionRefusal`] is what makes this a shape assertion
+/// rather than two spellings: that type is `deny_unknown_fields`, so a third
+/// field here — or a tag, which is what this refusal used to cross the IPC as
+/// — fails rather than arriving at a screen that renders `unavailable` and the
+/// word `[object Object]`.
+#[test]
+fn a_refused_wizard_crosses_the_ipc_as_a_code_and_a_sentence() {
+    let refusal = complete_wizard(&WizardAnswers::default()).expect_err("the wizard refuses");
+    let value = serde_json::to_value(&refusal).expect("serialize");
+
+    assert_eq!(
+        value.as_object().map(|fields| fields.len()),
+        Some(2),
+        "the shell reads exactly two fields: {value}",
+    );
+    assert_eq!(value["reason_code"], serde_json::json!("ROUTINE"));
+    assert_eq!(
+        value["explanation"],
+        serde_json::json!(WIZARD_NOT_ACKNOWLEDGED_NOTICE),
+    );
+
+    let read_as_any_refusal: SessionRefusal =
+        serde_json::from_value(value).expect("the shared refusal shape reads it");
+    assert_eq!(read_as_any_refusal.reason_code, refusal.reason_code);
+    assert_eq!(read_as_any_refusal.explanation, refusal.explanation);
+}
+
+/// The sentence is Soul's own, and it is in the language the rest of the
+/// wizard is written in.
+#[test]
+fn the_wizard_refuses_in_the_words_the_screen_speaks() {
+    for refusal in [
+        WizardRefused::not_acknowledged(),
+        WizardRefused::capability_left_open(&["collect_enabled"]),
+    ] {
+        assert!(
+            refusal
+                .explanation
+                .chars()
+                .any(|point| ('\u{4e00}'..='\u{9fff}').contains(&point)),
+            "the user reads this sentence: {refusal}",
+        );
+        assert_eq!(refusal.to_string(), refusal.explanation);
+    }
 }
 
 /// AC-22. Pressing the switch returns the same notice either way.

@@ -32,6 +32,7 @@ import {
   READ_ONLY_NOTICE,
   RESEARCH_PREVIEW_NOTICE,
   TEMPLATE_NOTICE,
+  WIZARD_NOT_ACKNOWLEDGED_NOTICE,
   WORKING_HYPOTHESIS_NOTICE,
 } from "./test/fakeCore";
 
@@ -206,6 +207,19 @@ describe("壳与核心的边界", () => {
     expect(
       rustConstant(readFileSync(CORE_SESSION_RS, "utf8"), "ENDPOINT_UNPARSABLE_NOTICE"),
     ).toBe(ENDPOINT_UNPARSABLE_NOTICE);
+  });
+
+  /**
+   * The wizard's refusal is the first one a user can meet, and for a while it
+   * was the one the shared renderer could not read: the core answered a tagged
+   * enum rather than a code and a sentence, so `asRefusal` fell through to
+   * `unavailable`. The double refused with a bare string, which was the same
+   * fall-through, so no test here could see it.
+   */
+  it("向导拒绝那句话和核心里的常量一模一样", () => {
+    expect(rustConstant(readFileSync(SHELL_RS, "utf8"), "WIZARD_NOT_ACKNOWLEDGED_NOTICE")).toBe(
+      WIZARD_NOT_ACKNOWLEDGED_NOTICE,
+    );
   });
 
   it("导入那句话和核心里的常量一模一样", () => {
