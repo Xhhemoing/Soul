@@ -44,6 +44,23 @@ describe("自传记忆页", () => {
     expect(screen.getByTestId("forget-notice")).toHaveTextContent("SSD");
   });
 
+  /**
+   * The other limit, which is not the SSD one: a forget writes. It deletes the
+   * content-key and sealed-blob rows, lays a tombstone, orphans the inferences
+   * and appends an audit record, all inside Soul's own encrypted database — so
+   * the notice may promise the scope of what it touches and may not promise
+   * that no file changes.
+   */
+  it("遗忘说明不声称零写入，而是写清楚动的是 Soul 自己的库", async () => {
+    await open();
+
+    const notice = screen.getByTestId("forget-notice");
+    expect(notice).toHaveTextContent("数据目录以外的任何文件");
+    expect(notice).toHaveTextContent("Soul 自己的加密库要写");
+    expect(notice).toHaveTextContent("审计记录");
+    expect(notice.textContent).not.toContain("也不写任何文件");
+  });
+
   it("写一条会把用户填的原样交给核心", async () => {
     const core = await open();
     const user = userEvent.setup();
