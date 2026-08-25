@@ -108,10 +108,15 @@ const READ_TIMEOUT: Duration = Duration::from_secs(30);
 /// and [`netwatch::SAMPLE_INTERVAL`] is five: a run that reported zero
 /// non-loopback peers would be reporting zero peers of any kind, which is the
 /// reading an observer that could not see sockets at all also produces. Held
-/// open for [`HOLD_OPEN`] the connection spans a dozen samples, so
+/// open for [`HOLD_OPEN`] the connection spans a couple of dozen samples, so
 /// [`SocketFindings::loopback_peers`] carries the endpoint's own port and the
 /// zero beside it is a measurement rather than a silence.
-const HOLD_OPEN: Duration = Duration::from_millis(80);
+///
+/// Twenty-odd rather than two: missing the connection has to stay impossible
+/// on a loaded runner, where the sampling thread can be descheduled for
+/// longer than one interval, and a quarter of a second is not a price anybody
+/// pays twice.
+const HOLD_OPEN: Duration = Duration::from_millis(120);
 
 /// How often the accept loop looks, so that a shutdown is noticed promptly
 /// without a second socket to wake it up with.
