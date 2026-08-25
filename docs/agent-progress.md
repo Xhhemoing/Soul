@@ -88,6 +88,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [ ] O1 空闲后 resume：round1-algorithms.md + BD15
 - [ ] O3 转图管线；壳 Fable Review
 - [x] 可导航的应用壳（转图仍 stub，O3 在换）
+- [x] 本机复核：`@bead/app` 9 文件 43 绿；`@soul/desktop` 14 文件 172 绿；lockfile frozen 一致
 
 ## 已知问题 / 禁令
 
