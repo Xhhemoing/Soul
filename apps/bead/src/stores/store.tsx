@@ -6,6 +6,7 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -24,6 +25,11 @@ import {
 
 interface StoreState extends PersistedState {
   hydrated: boolean;
+}
+
+interface PersistenceView {
+  /** DATA-1: true once the repository has stopped persisting. Not reducer state. */
+  persistenceFailed: boolean;
 }
 
 type Action =
@@ -81,7 +87,7 @@ export interface StoreActions {
   setInventory(entries: InventoryEntry[]): void;
 }
 
-export type StoreValue = StoreState & StoreActions;
+export type StoreValue = StoreState & PersistenceView & StoreActions;
 
 const StoreContext = createContext<StoreValue | null>(null);
 
@@ -95,6 +101,10 @@ export function StoreProvider({
   const repo = useMemo(() => repository ?? createRepository(), [repository]);
   const [state, dispatch] = useReducer(reduce, { ...EMPTY_STATE, hydrated: false });
   const hydratedRef = useRef(false);
+  const persistenceFailed = useSyncExternalStore(
+    repo.subscribeToPersistence,
+    repo.isPersistenceFailed,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -158,13 +168,22 @@ export function StoreProvider({
   const value = useMemo<StoreValue>(
     () => ({
       ...state,
+      persistenceFailed,
       instantiatePattern,
       setProjectStatus,
       setProjectBackdrop,
       toggleFavorite,
       setInventory,
     }),
-    [state, instantiatePattern, setProjectStatus, setProjectBackdrop, toggleFavorite, setInventory],
+    [
+      state,
+      persistenceFailed,
+      instantiatePattern,
+      setProjectStatus,
+      setProjectBackdrop,
+      toggleFavorite,
+      setInventory,
+    ],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

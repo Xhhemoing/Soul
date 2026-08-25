@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { STORAGE_KEY, createRepository, parsePersistedState } from "./repository.ts";
 import { asPatternId, mintProjectId } from "./ids.ts";
+import { FlakyStorage } from "../test/flaky-storage.ts";
 import type { Project } from "./types.ts";
 
-function project(): Project {
+function project(title = "元宵提灯"): Project {
   return {
     id: mintProjectId(),
-    title: "元宵提灯",
+    title,
     sourcePatternId: asPatternId("gal-lantern-04"),
     status: "todo",
     createdAt: 7,
@@ -15,6 +16,7 @@ function project(): Project {
     backdropColor: "#101014",
   };
 }
+
 
 describe("Repository（D-UI-5：接口全 async）", () => {
   it("项目、收藏、库存分别往返 localStorage", async () => {
@@ -54,3 +56,74 @@ describe("Repository（D-UI-5：接口全 async）", () => {
     expect(parsePersistedState(JSON.stringify({ projects: [project()] })).projects).toHaveLength(1);
   });
 });
+
+describe("DATA-1：写失败不得静默降级", () => {
+  it("写失败后读跟着走内存副本，不再回旧 localStorage", async () => {
+    const storage = new FlakyStorage();
+    const repo = createRepository(storage);
+    const first = project("落地的那张");
+    const second = project("配额满之后的那张");
+
+    await repo.saveProjects([first]);
+    storage.full = true;
+    await repo.saveProjects([first, second]);
+
+    // 旧行为：这里回 [first]——写进内存的那张凭空消失，且毫无提示。
+    expect(await repo.loadProjects()).toEqual([first, second]);
+  });
+
+  it("失败后的 read-modify-write 不会把丢掉的写重新覆盖回去", async () => {
+    const storage = new FlakyStorage();
+    const repo = createRepository(storage);
+    const kept = project("失败后新增");
+
+    await repo.saveProjects([]);
+    storage.full = true;
+    await repo.saveProjects([kept]);
+    await repo.saveFavorites([asPatternId("gal-slime-01")]);
+
+    expect(await repo.loadProjects()).toEqual([kept]);
+    expect(await repo.loadFavorites()).toEqual(["gal-slime-01"]);
+    expect(storage.getItem(STORAGE_KEY)).not.toContain("失败后新增");
+  });
+
+  it("失败作为信号暴露出来，且只通知一次", async () => {
+    const storage = new FlakyStorage();
+    const repo = createRepository(storage);
+    const notifications: number[] = [];
+    const unsubscribe = repo.subscribeToPersistence(() => notifications.push(1));
+
+    expect(repo.isPersistenceFailed()).toBe(false);
+
+    storage.full = true;
+    await repo.saveProjects([project()]);
+    await repo.saveInventory([{ code: "H02", name: "薄荷绿", hex: "#7fd6a2", beads: 200 }]);
+
+    expect(repo.isPersistenceFailed()).toBe(true);
+    expect(notifications).toHaveLength(1);
+
+    unsubscribe();
+    expect(repo.isPersistenceFailed()).toBe(true);
+  });
+
+  it("完全没有 localStorage 的嵌入环境一开始就报告失败", async () => {
+    expect(createRepository().isPersistenceFailed()).toBe(false); // jsdom 有 localStorage
+
+    const repo = createRepositoryWithoutLocalStorage();
+    expect(repo.isPersistenceFailed()).toBe(true);
+    await repo.saveProjects([project()]);
+    expect(await repo.loadProjects()).toHaveLength(1); // 会话内可用，只是不落盘
+  });
+});
+
+/** `globalThis.localStorage` 缺席的嵌入环境。 */
+function createRepositoryWithoutLocalStorage() {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: undefined });
+  try {
+    return createRepository();
+  } finally {
+    if (original) Object.defineProperty(globalThis, "localStorage", original);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+  }
+}

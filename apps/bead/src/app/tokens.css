@@ -19,6 +19,9 @@
   --border: #d3d7e0;
   --focus-ring: #1550bd;
   --swatch-outline: #9aa0b0;
+  --warn-bg: #fdf1dc;
+  --warn-border: #b06d00;
+  --warn-text: #5a3400;
 }
 
 [data-theme="dark"] {
@@ -32,4 +35,7 @@
   --border: #31343f;
   --focus-ring: #86adff;
   --swatch-outline: #6d7385;
+  --warn-bg: #33260f;
+  --warn-border: #d09b45;
+  --warn-text: #ffd9a0;
 }

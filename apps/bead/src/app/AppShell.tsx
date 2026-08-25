@@ -1,5 +1,6 @@
 import { Outlet } from "react-router";
 
+import { PersistenceBanner } from "../components/PersistenceBanner.tsx";
 import { BottomNav } from "./BottomNav.tsx";
 import { ThemeToggle } from "./ThemeToggle.tsx";
 
@@ -16,6 +17,7 @@ export function AppShell() {
         <ThemeToggle />
       </header>
       <main className="shell__main">
+        <PersistenceBanner />
         <Outlet />
       </main>
       <BottomNav />
