@@ -14,10 +14,10 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core + TS + DATA-1 + AL + B04 + B05 + B10 workflow |
-| 当前任务 | B10 `bead.yml` 已合（#41）；复审在途 |
-| PR | #16 专属线；#20–#41（#41 B10） |
+| 当前任务 | ROUND 2 收口：B04/B05/B10 均 ACCEPT；下一刀 B03 上传+IDB IA |
+| PR | #16 专属线；#20–#42（#42 B10 复审） |
 | Merge | B04 `15ad3b3`；B05 `8526c5c`；B10 本提交；不合 unique trunk |
-| Blocked | 子代理 `gh` 只读（BLOCKED_PR）；云端异步 VM ≈3 |
+| Blocked | 子代理 `gh` 只读；hosted Bead CI 空 runner（非产品失败） |
 
 ## 已检查模块（11.5）
 
@@ -102,6 +102,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [ ] `/create` 上传接线（独立变更；若持久化 Grid 必须同时上 IDB，BD19）
 - [x] B05 复审合入（#40，ACCEPT；MED-1 blob URL 后置）
 - [x] B10 独立 `bead.yml` 合入（#41）；Soul `ci.yml` 零 diff
+- [x] B10 复审合入（#42，ACCEPT，0 HIGH/MED）
 - [x] 本机复核：`@bead/app` 22 文件 258 绿（2026-08-25，AL 吸收后）
 
 ## 已知问题 / 禁令
@@ -109,7 +110,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - 不要合 PR #4 / #7 / #10 / `main` 进 unique trunk。
 - 不要做 AC-27。
 - 不要把 bead 加进根 Cargo workspace。
-- hosted Soul CI 空 runner（Billing）与本线无关，不要 empty-commit 去「修」。
+- hosted Actions 空 runner（Billing）：Soul 与 Bead `9b2d65a` 同症（作业 3s、无 step、无 runner_name）。不要 empty-commit 去「修」。本机命令仍是门。
 
 ## 下一轮重点（ROUND 2）
 
@@ -125,7 +126,8 @@ Commit        15ad3b3 absorb B04；本提交记进度
 PR            #16 #32–#37
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B05 实现；B10 workflow；MED-1 后置
-在途          [R2 Fable review B10](https://cursor.com/agents/bc-f2043eb1-5f82-5964-99a9-ff585747319c)
+在途          [R3 Fable B03 upload IA](https://cursor.com/agents/bc-pending-b03)
+已收          [R2 Fable review B10](https://cursor.com/agents/bc-f2043eb1-5f82-5964-99a9-ff585747319c) → #42
 已收          [R2 Opus B10 workflow](https://cursor.com/agents/bc-08c28463-3949-5d72-b729-c048eaf21aa2) → #41
 已收          [R2 Fable review B05](https://cursor.com/agents/bc-f8cb512c-e819-5100-8d2c-7fc3d03bb1b0) → #40
 已收          [R2 Opus B05 implement](https://cursor.com/agents/bc-07588339-9d46-582e-9230-b027218aa67b) → #39 `8526c5c`
