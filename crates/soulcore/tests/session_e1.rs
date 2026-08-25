@@ -158,6 +158,74 @@ fn an_approved_generation_goes_to_the_address_the_user_typed() {
     drop(keep);
 }
 
+/// AC-11's redirect half, from the product.
+///
+/// `soul-egress`'s `e1_origin.rs` proves `send` refuses a `302` off the
+/// configured origin. What it cannot show is that the refusal survives the
+/// layers above it: the session builds the plan, mints the permit, and turns
+/// whatever comes back into something the drafting panel can display, and any
+/// one of those could have swallowed the error into a retry or into a draft the
+/// user would have believed. A hostile endpoint is exactly the case where that
+/// matters — an installed Soul whose stack followed the pointer would be
+/// forwarding a redacted conversation to an address the user never typed.
+///
+/// The redirect target is a second real loopback server, so `request_count()`
+/// on it is a statement about sockets.
+#[test]
+fn an_endpoint_that_redirects_elsewhere_is_refused_and_the_target_is_never_contacted() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let elsewhere = MockLlm::start().expect("somewhere the user did not configure");
+    endpoint.set_redirect(elsewhere.chat_completions_url());
+
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let refusal = draft_through_the_endpoint(&mut session)
+        .expect_err("the configured endpoint pointed somewhere else");
+    assert_eq!(refusal.reason_code, "E1_CROSS_ORIGIN_REDIRECT");
+    assert!(
+        !refusal.explanation.is_empty(),
+        "the drafting panel is shown a blank refusal",
+    );
+
+    assert_eq!(
+        endpoint.request_count(),
+        1,
+        "the first hop is the one the user authorized, and it happens once",
+    );
+    assert_eq!(
+        elsewhere.request_count(),
+        0,
+        "the redirect was followed to an address nobody configured",
+    );
+    assert_eq!(endpoint.requests()[0].path, "/v1/chat/completions");
+
+    // Nothing was retried into a draft the user would have believed, and the
+    // session is still pointed where it was.
+    assert!(session.snapshot().llm_endpoint_configured);
+
+    // AC-23: if the chain heard about this at all it heard counts and a code.
+    // The paste is the third party's words and a refusal is not a licence to
+    // keep them, so the denial is inspected rather than merely allowed.
+    let chain = session.audit().expect("the store opened");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    for entry in chain
+        .entries
+        .iter()
+        .filter(|entry| entry.decision == "denied")
+    {
+        assert!(entry.follows_previous);
+    }
+    let played = serde_json::to_string(&chain).expect("serialize the chain");
+    for prose in ["周五的场地", "直接过来", &elsewhere.port().to_string()] {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
+    }
+    drop(keep);
+}
+
 /// AC-02 for the endpoint: the next launch is back to reaching nothing.
 ///
 /// Free, and that is the point of not persisting: `Session::open` builds its

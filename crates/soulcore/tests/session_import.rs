@@ -162,6 +162,76 @@ fn a_soul_import_v1_file_committed_through_the_session_lands_sealed_and_shows_up
     drop(keep);
 }
 
+/// AC-23 for the import screen: the commit and the rebuild it triggers are both
+/// in the chain, and neither of them repeats a sentence out of the export.
+///
+/// `import_and_graph_commands.rs` already checks both actions land, but it
+/// checks them on the command layer's own store. What is only checkable here is
+/// that the object the WebView holds carries the same two entries to the same
+/// database the 审计 page reads back — a session that dropped the graph build's
+/// audit on the floor would leave sixteen sealed events and no record that the
+/// inferences on `/graph` were ever derived.
+#[test]
+fn a_commit_leaves_the_import_and_the_rebuild_in_the_chain_and_none_of_the_words() {
+    let (keep, directory) = scratch();
+    let text = fixtures::read_text("import/soul-import-v1/three_partners.jsonl").expect("fixture");
+
+    let mut session = Session::open(&directory);
+    let receipt = session
+        .commit_soul_import_v1(&text)
+        .expect("the corpus commits");
+    assert!(
+        receipt.ties_rebuilt > 0,
+        "the rebuild has to have done work"
+    );
+
+    let chain = session.audit().expect("the store opened");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+
+    let committed = chain
+        .entries
+        .iter()
+        .find(|entry| entry.action == "import.commit")
+        .unwrap_or_else(|| {
+            panic!(
+                "sixteen events were sealed and the chain never heard about it: {:?}",
+                chain.entries,
+            )
+        });
+    assert_eq!(committed.decision, "allowed");
+    assert_eq!(
+        committed.items,
+        Some(receipt.events_written as u64),
+        "the entry counts something other than what the receipt told the screen",
+    );
+
+    // The graph is derived, not imported, and AC-23 lists derivation separately
+    // for that reason: the ties on `/graph` came from somewhere and the chain
+    // has to name the moment.
+    let inferred = chain
+        .entries
+        .iter()
+        .find(|entry| entry.action == "inference.write")
+        .unwrap_or_else(|| {
+            panic!(
+                "the graph was rebuilt and the chain never heard about it: {:?}",
+                chain.entries,
+            )
+        });
+    assert_eq!(inferred.decision, "allowed");
+    assert!(chain.entries.iter().all(|entry| entry.follows_previous));
+
+    // Counts and identifiers. Not one word of what the four of them said.
+    let played = serde_json::to_string(&chain).expect("serialize the chain");
+    for sentence in SPOKEN {
+        assert!(
+            !played.contains(sentence),
+            "{sentence:?} was imported and then written into the chain: {played}",
+        );
+    }
+    drop(keep);
+}
+
 /// Importing the same export twice recognizes the people instead of cloning
 /// them. v0.1 has no external-id index, so the events do arrive twice, and the
 /// receipt says so rather than pretending the second run was free.

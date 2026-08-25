@@ -231,6 +231,52 @@ fn correcting_an_axis_locks_it_and_setting_a_voice_field_locks_that() {
     session
         .set_voice("warmth", "sparing")
         .expect_err("that is not a value this field takes");
+
+    // AC-23 for the profile page: the disagreement between the machine and the
+    // person is a thing that happened, so the chain holds it. `soul-profile`'s
+    // own tests prove the entry is built; what is only checkable here is that
+    // the session carries it to the store the 审计 page reads back — a
+    // correction the chain never heard about would make the pinned axis
+    // unaccountable, which is the whole point of pinning it.
+    let chain = session.audit().expect("the chain");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    let corrected = chain
+        .entries
+        .iter()
+        .find(|entry| entry.action == "profile.correct")
+        .unwrap_or_else(|| {
+            panic!(
+                "the user overruled the machine and the chain never heard about it: {:?}",
+                chain.entries,
+            )
+        });
+    assert_eq!(corrected.decision, "allowed");
+    assert!(corrected.follows_previous);
+    assert!(
+        corrected
+            .subject_refs
+            .iter()
+            .any(|held| *held == axis.axis_id),
+        "the entry does not say which axis was overruled: {corrected:?}",
+    );
+    assert_eq!(
+        chain
+            .entries
+            .iter()
+            .filter(|entry| entry.action == "profile.correct")
+            .count(),
+        2,
+        "one axis and one voice field were pinned, and each is its own entry: {:?}",
+        chain.entries,
+    );
+
+    // And the questionnaire that got the profile here typed a boundary in
+    // prose; the chain is entitled to the axis identifier and to none of that.
+    let played = serde_json::to_string(&chain).expect("serialize the chain");
+    assert!(
+        !played.contains("工作以外的事"),
+        "the chain carries what the user typed: {played}",
+    );
     drop(keep);
 }
 
@@ -436,6 +482,37 @@ fn a_forget_only_runs_on_the_preview_the_user_read() {
         listed.memories[0].forget_state, "forgotten",
         "the row stays as a tombstone",
     );
+
+    // AC-23's hardest case: the record of a destruction has to outlive the
+    // thing destroyed, and it has to do that without keeping a copy. The two
+    // denials above are already in the chain; this is the one that went
+    // through, and after it there is nothing left to read the title from — so
+    // if the title were in the chain, the chain would be the last copy of it.
+    let chain = session.audit().expect("the chain");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    let executed = chain
+        .entries
+        .iter()
+        .find(|entry| entry.action == "forget.execute")
+        .unwrap_or_else(|| {
+            panic!(
+                "a memory was destroyed and the chain never heard about it: {:?}",
+                chain.entries,
+            )
+        });
+    assert_eq!(executed.decision, "allowed");
+    assert!(executed.follows_previous);
+    assert!(
+        executed.subject_refs.iter().any(|held| *held == memory_id),
+        "the entry does not say which memory went: {executed:?}",
+    );
+
+    let played = serde_json::to_string(&chain).expect("serialize the chain");
+    let debugged = format!("{chain:?}");
+    for prose in ["搬家那天", "交钥匙那天", "下午三点交的钥匙。"] {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
+        assert!(!debugged.contains(prose), "the chain carries `{prose}`");
+    }
     drop(keep);
 }
 
