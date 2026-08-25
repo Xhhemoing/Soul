@@ -14,7 +14,7 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core + TS + DATA-1 + AL + B04 + B05 + B10 workflow |
-| 当前任务 | ROUND 3：B07 ACCEPT-WITH-NITS（#52）；本机 36/566 绿；导入导出浏览器核通过 |
+| 当前任务 | ROUND 3 产品闭环已合（B03/B06/B07）；B08 画廊 IA 已合（#53） |
 | PR | #16 专属线；#20–#46（#45 B03 实现；#46 B07 IA） |
 | Merge | B04 `15ad3b3`；B05 `8526c5c`；B10 本提交；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读；hosted Bead CI 空 runner（非产品失败） |
@@ -124,7 +124,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 
 ## 下一轮重点（ROUND 3）
 
-B07 复审 ACCEPT-WITH-NITS，浏览器核通过。下一刀：**B08 画廊 IA** 或 AL-4 / MED-1。不合 unique trunk。
+B07 复审 ACCEPT-WITH-NITS。B08 画廊 IA 已合（#53）。下一刀：**B08 Fork 改色实现**。AL-4、MED-1 后置。
 
 ```text
 ROUND 2（进行中）
@@ -136,6 +136,7 @@ Commit        15ad3b3 absorb B04；本提交记进度
 PR            #16 #32–#37
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B05 实现；B10 workflow；MED-1 后置
+已收          [R3 Fable B08 gallery IA](https://cursor.com/agents/bc-3a79073c-59fb-5767-b915-fb66bf14f55e) → #53
 已收          [R3 Fable review B07](https://cursor.com/agents/bc-1b7ae4a2-9407-5270-b668-66e03e95f421) → #52
 已核          B07：假 .pat 拒绝；png 导向上传；坏 beadproj 拒绝；Workspace 导出下载
 已收          [R3 Opus B07 implement](https://cursor.com/agents/bc-b5066476-920e-5f1d-a9ee-abfcf125aba1) → #51
