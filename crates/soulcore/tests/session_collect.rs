@@ -144,6 +144,90 @@ fn granting_collects_and_revoking_stops_within_the_second() {
     drop(keep);
 }
 
+/// AC-09 crossing AC-20: what the collector wrote is what the research
+/// preview has to be able to show.
+///
+/// Collected hours are the feed the rollup in `soul-store` was built for, and
+/// `collected_privacy` says so twice — `Purpose::Research` and
+/// `research_export: bucket`. The second one is the one that is read. A
+/// collector that let the disposition fall back to
+/// `EgressPolicy::default()` would still name research in `purposes`, still
+/// write every event, and still produce a preview with nothing in it; no test
+/// on either side of the seam would notice, because `soul-collect` never asks
+/// what the preview shows and `soul-store`'s own fixtures write their own
+/// events.
+#[test]
+fn the_hours_the_collector_wrote_are_the_rows_the_research_preview_shows() {
+    let (keep, directory) = scratch();
+    let mut session = Session::open(&directory);
+    let source = FakeForegroundSource::showing(APPS[0]).expect("a valid application name");
+
+    let empty = session.research().expect("a preview before anything ran");
+    assert!(
+        empty
+            .rows
+            .iter()
+            .all(|row| row.event_kind.as_deref() != Some("app.foreground")),
+        "nothing has been collected yet: {:?}",
+        empty.rows,
+    );
+
+    session
+        .grant_collect_consent_with_source(
+            source.clone(),
+            CollectorConfig::every(TEST_POLL_INTERVAL),
+        )
+        .expect("the store opened, so consent can be recorded");
+    let mut index = 0usize;
+    let recorded = wait_until(FIRST_EVENT_DEADLINE, || {
+        source
+            .switch_to(APPS[index % APPS.len()])
+            .expect("a valid application name");
+        index += 1;
+        collected(&session) > 0
+    });
+    assert!(recorded, "nothing was collected, so there is nothing to see");
+    session.revoke_collect_consent().expect("revoking works");
+
+    let research = session.research().expect("a preview");
+    let hours: Vec<_> = research
+        .rows
+        .iter()
+        .filter(|row| row.event_kind.as_deref() == Some("app.foreground"))
+        .collect();
+    assert!(
+        !hours.is_empty(),
+        "an hour was collected and the research preview cannot see it: {:?}",
+        research,
+    );
+    assert!(
+        hours
+            .iter()
+            .all(|row| row.aggregate_count.unwrap_or_default() > 0),
+        "a published row with nothing counted in it: {hours:?}",
+    );
+    assert!(
+        hours.iter().all(|row| row.time_bucket_utc.is_some()),
+        "the row is an hour bucket, and there is no hour on it: {hours:?}",
+    );
+
+    // The row is a count and an hour. It is not what was on screen.
+    let rendered = format!("{research:?}");
+    for app in APPS {
+        assert!(
+            !rendered.contains(app),
+            "`{app}` was collected and then published: {rendered}",
+        );
+    }
+    assert!(
+        !rendered.contains(".exe"),
+        "an executable name reached the preview: {rendered}",
+    );
+    assert!(!research.written_to_disk);
+    assert_eq!(research.third_party_rows, 0);
+    drop(keep);
+}
+
 /// AC-23 for collection: both halves of the switch are things the chain heard
 /// about, and neither of them says what was on screen.
 ///

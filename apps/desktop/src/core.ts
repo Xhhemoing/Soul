@@ -533,6 +533,12 @@ export interface ResearchPreview {
   readonly third_party_rows: 0;
   readonly candidate_rows_total: number;
   readonly third_party_rows_excluded: number;
+  /**
+   * Candidates that are the owner's own and were still dropped, because what
+   * is stored on them says research may not count them by the hour. Imported
+   * messages and questionnaire answers are the ones this covers.
+   */
+  readonly deny_rows_excluded: number;
   readonly fields: readonly string[];
   readonly rows: readonly ResearchRow[];
   readonly third_party_body: string;

@@ -7,8 +7,8 @@
 //! `soul.db` in that directory rather than somewhere else.
 
 use soul_schema::common::{
-    ActorSubject, Derivation, EgressPolicy, Privacy, Purpose, Retention, SchemaVersion,
-    SealedSubject, Subject, Timestamp,
+    ActorSubject, Derivation, E0Deny, E1Disposition, EgressPolicy, Privacy, Purpose,
+    ResearchDisposition, Retention, SchemaVersion, SealedSubject, Subject, Timestamp,
 };
 use soul_schema::event::{EventKind, EventSource, SoulEvent};
 use soul_schema::memory::{ForgetState, MemoryType, SoulMemory};
@@ -94,6 +94,12 @@ fn open_preview_forget_and_preview_research_all_work_headless() {
     store.verify_audit_chain().expect("chain");
 }
 
+/// A collected hour, written the way `soul-collect` writes one.
+///
+/// `research_export: bucket` rather than the default `deny`, because the
+/// rollup reads that field: naming `Purpose::Research` and then storing the
+/// row as denied is exactly the combination that produced an always-empty
+/// preview.
 fn owner_event(ts: &str) -> SoulEvent {
     SoulEvent {
         schema_version: SchemaVersion,
@@ -108,7 +114,11 @@ fn owner_event(ts: &str) -> SoulEvent {
             derivation: Derivation::Raw,
             purposes: vec![Purpose::Research],
             retention: Retention::until_forgotten(),
-            egress: EgressPolicy::default(),
+            egress: EgressPolicy {
+                e0: E0Deny,
+                e1: E1Disposition::Deny,
+                research_export: ResearchDisposition::Bucket,
+            },
         },
         body_ref: None,
     }

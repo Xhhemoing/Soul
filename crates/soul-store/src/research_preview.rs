@@ -12,6 +12,17 @@
 //! tagged set, and the number published as `third_party_rows` is counted from
 //! the rows that survived. A fixture with third-party events in it makes
 //! `third_party_rows_excluded` non-zero, which is what shows the filter ran.
+//!
+//! Being the owner's is necessary and not sufficient. Every event also carries
+//! `privacy.egress.research_export`, and until this module read it the field
+//! was written on every row and consulted by nobody: imported messages and
+//! questionnaire answers are stored `deny`, are the owner's own, and were
+//! published anyway. So the grouping query carries the disposition alongside
+//! the subject and only `bucket` — the hourly rollup this module produces — is
+//! published. `hash` and `allow` describe shapes v0.1 does not build, so they
+//! are excluded with `deny` rather than guessed at, and what that costs is
+//! reported as `deny_rows_excluded` rather than left looking like an empty
+//! query.
 
 use serde_json::Value;
 
@@ -47,17 +58,48 @@ impl SubjectClass {
     }
 }
 
+/// What the row's own `privacy.egress.research_export` says research may do
+/// with it.
+///
+/// `_defs.schema.json` admits four values and v0.1 builds exactly one of the
+/// shapes they name, so anything that is not `bucket` is excluded. An
+/// unreadable or absent disposition lands on [`Disposition::Deny`], because a
+/// row whose policy cannot be read is not a row whose policy is permissive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Disposition {
+    /// Countable in an hour bucket. The only shape this module publishes.
+    Bucket,
+    /// `deny`, `hash`, `allow`, or nothing legible.
+    Withheld,
+}
+
+impl Disposition {
+    fn parse(raw: Option<&str>) -> Disposition {
+        match raw {
+            Some("bucket") => Disposition::Bucket,
+            _ => Disposition::Withheld,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Candidate {
     subject: SubjectClass,
+    disposition: Disposition,
     row: ExportRow,
 }
 
-/// Events grouped into hour buckets, with the privacy subject kept alongside.
+/// Events grouped into hour buckets, with the privacy subject and the
+/// row's research disposition kept alongside.
 ///
 /// The bucket is the hour of an RFC 3339 instant recorded in UTC. A timestamp
 /// carrying an offset instead degrades to a date-level bucket rather than being
 /// relabelled as UTC it is not.
+///
+/// The disposition is read out of the stored document rather than off a column
+/// of its own: `events` has no column for it, and adding one would make the
+/// filter depend on a value written beside the event instead of the value
+/// written on it.
 const EVENT_ROLLUP_SQL: &str = "
     SELECT kind,
            CASE WHEN ts LIKE '%Z'
@@ -65,10 +107,11 @@ const EVENT_ROLLUP_SQL: &str = "
                 ELSE substr(ts, 1, 10)
            END AS time_bucket,
            privacy_subject,
+           json_extract(doc, '$.privacy.egress.research_export') AS research_export,
            count(*) AS aggregate_count
     FROM events
-    GROUP BY kind, time_bucket, privacy_subject
-    ORDER BY time_bucket, kind, privacy_subject
+    GROUP BY kind, time_bucket, privacy_subject, research_export
+    ORDER BY time_bucket, kind, privacy_subject, research_export
 ";
 
 impl SqlCipherStore {
@@ -80,16 +123,18 @@ impl SqlCipherStore {
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
-                    row.get::<_, i64>(3)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, i64>(4)?,
                 ))
             })
             .map_err(backend)?;
 
         let mut candidates = Vec::new();
         for row in rows {
-            let (kind, bucket, subject, count) = row.map_err(backend)?;
+            let (kind, bucket, subject, disposition, count) = row.map_err(backend)?;
             candidates.push(Candidate {
                 subject: SubjectClass::parse(&subject),
+                disposition: Disposition::parse(disposition.as_deref()),
                 row: ExportRow {
                     event_kind: Some(kind),
                     time_bucket_utc: Some(bucket),
@@ -138,6 +183,10 @@ impl SqlCipherStore {
                 };
                 candidates.push(Candidate {
                     subject: SubjectClass::Owner,
+                    // An axis is already a bucket: a band, not the evidence
+                    // that produced it. There is nothing finer here to
+                    // withhold.
+                    disposition: Disposition::Bucket,
                     row: ExportRow {
                         self_trait_axis: Some(axis_id.to_owned()),
                         self_trait_band: Some(band),
@@ -159,14 +208,28 @@ impl ResearchPreview for SqlCipherStore {
         candidates.extend(self.trait_axis_candidates()?);
 
         let candidate_rows_total = candidates.len() as u64;
+        // Counted over every candidate, before the disposition is looked at,
+        // so that "somebody else's rows were found and dropped" stays a
+        // statement about the whole query rather than about whatever survived
+        // the second filter.
         let third_party_rows_excluded = candidates
             .iter()
             .filter(|candidate| candidate.subject == SubjectClass::ThirdParty)
             .count() as u64;
+        let deny_rows_excluded = candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.subject == SubjectClass::Owner
+                    && candidate.disposition != Disposition::Bucket
+            })
+            .count() as u64;
 
         let kept: Vec<&Candidate> = candidates
             .iter()
-            .filter(|candidate| candidate.subject == SubjectClass::Owner)
+            .filter(|candidate| {
+                candidate.subject == SubjectClass::Owner
+                    && candidate.disposition == Disposition::Bucket
+            })
             .take(request.max_rows)
             .collect();
 
@@ -194,6 +257,7 @@ impl ResearchPreview for SqlCipherStore {
             manifest,
             candidate_rows_total,
             third_party_rows_excluded,
+            deny_rows_excluded,
         })
     }
 }

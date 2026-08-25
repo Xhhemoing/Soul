@@ -6,6 +6,13 @@
 //! rather than a filter, that bucket would show up in the rows and the count of
 //! excluded candidates would be zero; both are asserted against.
 //!
+//! The fixture also holds owner rows of both dispositions: `app.foreground`
+//! marked `research_export: bucket` the way the collector writes it, and
+//! `import.item` marked `deny` the way `soul-import` writes it. Being the
+//! owner's is not enough — the row has to say research may count it — and a
+//! filter that only looked at `privacy_subject` would publish the imported
+//! ones.
+//!
 //! Three separate things are checked, because passing any one of them alone
 //! would still leave the promise broken:
 //!
@@ -43,7 +50,8 @@ const THEIR_HANDLE: &str = "@lilei_1990";
 const THIRD_PARTY_ONLY_BUCKET: &str = "2026-08-25T22:00Z";
 
 fn seed(store: &mut SqlCipherStore) {
-    // Owner events: two share one bucket and kind, one sits on its own.
+    // Owner events the collector wrote, marked `bucket`: two share one bucket
+    // and kind, one sits on its own.
     for (index, ts) in [
         "2026-08-24T09:10:00Z",
         "2026-08-24T09:40:00Z",
@@ -53,13 +61,31 @@ fn seed(store: &mut SqlCipherStore) {
     .enumerate()
     {
         store
-            .append_event(event(
+            .append_event(bucketed_event(
                 id(&format!("1{index:02}")),
                 ts,
                 EventKind::AppForeground,
                 Subject::Owner,
             ))
             .expect("owner event");
+    }
+
+    // Owner events an import wrote, marked `deny`. They are the owner's own
+    // messages and hours, and `soul-import` stores them with research egress
+    // denied; a preview that published them would be reading the subject and
+    // ignoring the policy written beside it.
+    for (index, ts) in ["2026-08-24T09:20:00Z", "2026-08-24T18:00:00Z"]
+        .iter()
+        .enumerate()
+    {
+        store
+            .append_event(event(
+                id(&format!("1{:02}", index + 10)),
+                ts,
+                EventKind::ImportItem,
+                Subject::Owner,
+            ))
+            .expect("owner import event");
     }
 
     // Third-party events, one of them carrying sealed prose.
@@ -147,10 +173,23 @@ fn the_preview_reports_real_rows_and_excludes_the_third_party_ones() {
         "the fixture has third-party events in it; a zero here means nothing was excluded \
          because nothing was looked at",
     );
+    assert!(
+        report.deny_rows_excluded > 0,
+        "the fixture has owner rows stored `research_export: deny` in it; a zero here means \
+         the disposition was never read",
+    );
     assert_eq!(
         report.candidate_rows_total,
-        report.third_party_rows_excluded + manifest.rows.len() as u64,
-        "every candidate row is either published or excluded",
+        report.third_party_rows_excluded + report.deny_rows_excluded + manifest.rows.len() as u64,
+        "every candidate row is either published or excluded, and it is one of the two",
+    );
+    assert!(
+        manifest
+            .rows
+            .iter()
+            .all(|row| row.event_kind.as_deref() != Some("import.item")),
+        "the imported rows are the owner's own and are stored `deny`; being about the owner \
+         is not what decides this",
     );
 
     // The two owner events in the same hour and of the same kind are one row
@@ -192,6 +231,57 @@ fn the_preview_reports_real_rows_and_excludes_the_third_party_ones() {
     assert!(
         !manifest.written_to_disk,
         "a research preview may not claim to have been written",
+    );
+}
+
+/// Two rows that differ in nothing but the disposition written on them.
+///
+/// Same owner, same kind, same hour. The one marked `bucket` is published and
+/// the one marked `deny` is not, which is only possible if the disposition is
+/// read per row rather than inferred from the subject or from the kind.
+#[test]
+fn two_owner_rows_of_one_kind_and_hour_part_on_the_disposition_alone() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = SqlCipherStore::open(
+        dir.path().join("split.db"),
+        &TestKeyProvider::from_seed(SEED),
+    )
+    .expect("open");
+
+    store
+        .append_event(bucketed_event(
+            id("70"),
+            "2026-08-24T09:10:00Z",
+            EventKind::AppForeground,
+            Subject::Owner,
+        ))
+        .expect("a collected hour");
+    store
+        .append_event(event(
+            id("71"),
+            "2026-08-24T09:40:00Z",
+            EventKind::AppForeground,
+            Subject::Owner,
+        ))
+        .expect("the same hour, stored `deny`");
+
+    let report = store
+        .research_preview(&ResearchPreviewRequest::default().with_manifest_id(id("ac")))
+        .expect("preview");
+
+    assert_eq!(report.candidate_rows_total, 2, "one group per disposition");
+    assert_eq!(report.third_party_rows_excluded, 0, "nobody else is here");
+    assert_eq!(report.deny_rows_excluded, 1);
+    assert_eq!(
+        report.manifest.rows.len(),
+        1,
+        "the denied hour was published too: {:?}",
+        report.manifest.rows,
+    );
+    assert_eq!(
+        report.manifest.rows[0].aggregate_count,
+        Some(1),
+        "a count of two is the two hours added together, which is the bug",
     );
 }
 

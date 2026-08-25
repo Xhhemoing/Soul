@@ -115,7 +115,7 @@ impl ResearchRowView {
     }
 }
 
-/// The whole research screen. AC-20 as three numbers and a list.
+/// The whole research screen. AC-20 as four numbers and a list.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResearchPreviewView {
@@ -133,6 +133,11 @@ pub struct ResearchPreviewView {
     /// Candidates dropped because they were about someone else. Non-zero is
     /// what shows the exclusion actually ran.
     pub third_party_rows_excluded: u64,
+    /// Candidates about the owner that were dropped anyway, because what was
+    /// written on them says research may not count them by the hour. Without
+    /// this number an empty table looks like an empty query, and the screen
+    /// would say the rows it found were all somebody else's when they were not.
+    pub deny_rows_excluded: u64,
     pub fields: Vec<String>,
     pub rows: Vec<ResearchRowView>,
     /// Always `excluded`.
@@ -149,6 +154,7 @@ impl ResearchPreviewView {
             third_party_rows: 0,
             candidate_rows_total: report.candidate_rows_total,
             third_party_rows_excluded: report.third_party_rows_excluded,
+            deny_rows_excluded: report.deny_rows_excluded,
             fields: report.manifest.fields.iter().flatten().map(word).collect(),
             rows: report
                 .manifest
