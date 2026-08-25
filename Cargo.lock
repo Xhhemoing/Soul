@@ -1541,6 +1541,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "soul-algo-tie",
  "soul-policy",
  "soul-schema",
  "soul-store",

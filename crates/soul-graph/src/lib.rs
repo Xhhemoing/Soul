@@ -29,10 +29,12 @@ pub mod build;
 pub mod error;
 pub mod interaction;
 pub mod model;
+pub mod t4d_adapt;
 pub mod view;
 
 pub use build::{rebuild, GraphBuild};
 pub use error::{GraphError, GraphResult};
 pub use interaction::{conversation_ref, Direction, InteractionRef, Venue};
 pub use model::{PersonNode, SoulGraph, TieEdge, TieStrength, TieType};
+pub use t4d_adapt::{AdaptError, InteractionInterner};
 pub use view::{load, resolve_evidence};
