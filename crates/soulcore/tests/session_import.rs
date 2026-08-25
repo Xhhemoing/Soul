@@ -114,7 +114,11 @@ fn a_soul_import_v1_file_committed_through_the_session_lands_sealed_and_shows_up
     assert_eq!(receipt.contacts_created, 5);
     assert_eq!(receipt.contacts_matched, 0);
     assert_eq!(receipt.events_written, 16);
-    assert!(receipt.evidence_written >= 16);
+    assert_eq!(
+        receipt.evidence_written, 15,
+        "one row per message that names somebody, and the one message the user \
+         sent to the group names nobody",
+    );
     assert_eq!(receipt.ties_rebuilt, 4, "AC-08: one tie per partner");
 
     // The counts are not a story the receipt tells about itself: the graph the

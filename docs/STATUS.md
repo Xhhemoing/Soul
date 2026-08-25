@@ -20,7 +20,7 @@
 | WP03 档案 | 完成。见下节。与 WP06 的两套问卷已并成一套（见「WP06 与 WP03 的接缝」） |
 | WP04 自传记忆 | 完成。见下节 |
 | WP05 人脉图 | 完成。见下节 |
-| WP06 导入 | 完成。见下节。问卷回退与 WP03 的入档路径已合并，`soul-profile` 实现 `UserStatedSink` |
+| WP06 导入 | 完成。见下节。问卷回退与 WP03 的入档路径已合并，`soul-profile` 实现 `UserStatedSink`。群消息扇出已拆掉（遗留 9）：主人发到群里的一条消息不再变成「每个曾发言者一条 outgoing」 |
 | WP07 前台采集 | 完成。见下节。壳这一侧由 WP09 第五段接上——在那之前 crate 有门、产品没有开关 |
 | WP09 桌面壳 | 十段都完成。见下节。壳里那一个 store 句柄由 WP13 第二段落地（遗留 8 消除），十一道题与最后四条功能视图是第三段（遗留 9 消除），`/import` 那一屏是第四段——在此之前装出来的 Soul 读不了任何导出文件；`/collect` 那一屏是第五段——在此之前装出来的 Soul 打不开采集；设置页的端点表单是第六段——在此之前那行「语言模型端点」永远是「未填写」；确认屏上的「这一条按原文带上」是第七段——在此之前 AC-13 的二次确认没有地方按；起草读用户钉住的语气、起草 / E1 / 文件计划的审计落链是第八段——在此之前档案页的语气到不了任何写字的地方，`/audit` 上也没有这三种动作；档案页再答十一题是第九段——在此之前向导走完就再也问不到边界与价值观；人事摘要走用户端点、拒绝与文件名注入落链是第十段 |
 | WP10 起草与人事摘要 | 完成。见下节。本机路径与端点路径的确认屏都已接上（遗留 6 消除）。壳的 `KnownIdentifiers` 已从第三人显示名填上（遗留 7 消除）。端点本身要到 WP09 第六段才有地方填，二次确认要到第七段才有地方按，用户钉住的语气要到第八段才真的进 prompt。`analysis::phrase_with` 接到 `Session::person_summary` 是 WP09 第十段 |
@@ -229,7 +229,13 @@ WP06 那八题的去向：`voice.directness` 与 `voice.register` 从文本框�
 6. **同一个文件导入两次会写两遍事件。** v0.1 没有外部 id 索引可以去重，造一个就意味着要有一列存平台的消息 id。联系人是去重的（按标识符摘要），事件不是。要不要去重由调用方决定。
 7. **提交不是一个事务。** `commit` 逐条写联系人、密封、事件、证据；中途失败会留下写了一半的导入。WP02 的遗忘是单事务的，导入不是——`soul-store-api` 上没有可以让调用方开事务的入口，加一个是存储边界的改动，超出本工作单。重跑同一个文件是安全的（联系人会认回来），只是事件会多一份。
 8. **问卷也不是一个事务。** 合并之后 `intake` 是「录制 N 条 → 写档案 → 落审计」，中途失败会留下几条没有档案认领的问卷事件与证据。它们不是坏数据（每条都自洽、都指得回题号），只是没被引用；重跑一遍是安全的，轴上的 `evidence_ids` 是替换语义。要做成原子的，同样得先有一个能让调用方开事务的存储入口。
-9. **`soul-profile` 依赖 `soul-import`，方向是定的。** 合并要有一个 crate 拥有题表，而录制方不能知道档案是什么——反过来接就得让 `soul-import` 认识轴与语气字段。代价是 `soul-profile` 的依赖里多了一个不搞存储也不搞策略的 crate，以及选项那几个 token（`leans_high`、`formal`……）在两边各出现一次：录制方声明它们是为了拒掉没提供过的选项，档案侧解释它们。`one_questionnaire.rs` 把每个 token 拿去 `position_by_key` / `VoiceSetting::from_option` 解一遍，解不开就红。
+9. **群里主人发的那条消息不再摊给任何人。** 原先 `commit.rs` 对 owner 的每条群消息，向该会话**所有曾发言者**各写一条 `Direction::Outgoing` 观察，而 `speakers_by_conversation` 是按整个文件汇总的、没有时间约束——主人发言之前退群、之后才入群的人同样算作「听到了」。算术后果 R1 已经证过：200 人活跃群里发 10 条、跨 3 个 UTC 日，每个发过一句话的人 outgoing=10、incoming≥1，而 `build.rs` 的 band 对 venue 视而不见，于是全员 Strong；WP10 随后会对着一个陌生群友说「你和这个人一共有 137 次往来」，用户在任何客户端里都数不出这个数，硬约束「算法必须可向用户解释」被输出内容本身证伪。现在 `(owner, group)` 那一格写空：主人在群里说的话仍然是一条事件、仍然密封、仍然可解引用，只是不归给任何人，因为导出文件记的是这句话被打出来，不是谁读到了它。另外两格不动——peer 的群消息仍按发信人各记一条 `Incoming`，主人的**一对一**消息仍归给那个会话里另一个发过言的人（至多一个）。
+
+   `PIPELINE_DEBT.md` §1.2 当初评过这个方向（方案 A）并否掉，理由是「群内互惠检测整体失效，group-only 关系退化成 one_sided」。那个后果确实发生了：`build.rs::types()` 用 `outgoing > 0 && incoming > 0` 判互惠，群里没有主人这一侧，所以纯群关系现在是 `group_only + one_sided` 且恒 Weak。这次仍然改了，因为方案 C（保留扇出、靠算法层场合闩封顶）的前提是那道闩真的在库里，而在它落地之前，管道自己不制造数不出来的数字比让判定层去补救便宜。M-A1（`TieScore` 分列）与 M-A3（测试改名换义）随之作废——已经没有群 outgoing 计数可分列了。债 B（重复导入加倍计数）与扇出限窗都没做。
+
+   钉住它的是 `import_to_graph.rs::an_owner_group_message_does_not_write_one_outgoing_row_per_speaker`：一个 6 人发言的群加主人 1 条消息，断言 outgoing 观察 0 条、证据恰好 6 条（每人一条 `Incoming`、`venue = Group`）、事件 7 条（主人那条仍然写下来了）、6 条边全是 `group_only` 且 `outgoing_count = 0`。把那一格改回扇出，这条与 `what_the_user_says_to_a_group_is_attributed_to_nobody` 一起红，实测过。`soulcore/tests/session_import.rs` 里 `three_partners.jsonl` 的 `evidence_written` 从 `>= 16` 收紧成 `== 15`（16 条消息里主人那条群消息不产生行），这是本次唯一动到 `soul-import` 以外的地方，且只是一句测试断言。
+
+10. **`soul-profile` 依赖 `soul-import`，方向是定的。** 合并要有一个 crate 拥有题表，而录制方不能知道档案是什么——反过来接就得让 `soul-import` 认识轴与语气字段。代价是 `soul-profile` 的依赖里多了一个不搞存储也不搞策略的 crate，以及选项那几个 token（`leans_high`、`formal`……）在两边各出现一次：录制方声明它们是为了拒掉没提供过的选项，档案侧解释它们。`one_questionnaire.rs` 把每个 token 拿去 `position_by_key` / `VoiceSetting::from_option` 解一遍，解不开就红。
 
 ## WP07 完成情况
 
