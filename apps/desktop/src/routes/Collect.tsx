@@ -75,7 +75,9 @@ export function Collect(): React.JSX.Element {
   const reread = useCallback((): void => {
     collectStatus().then(
       (value) => {
-        if (onScreen.current) setStatus(value);
+        if (!onScreen.current) return;
+        setStatus(value);
+        setRefusal(null);
       },
       (error: unknown) => {
         if (onScreen.current) setRefusal(asRefusal(error));
