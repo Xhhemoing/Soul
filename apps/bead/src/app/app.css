@@ -501,6 +501,143 @@ a {
   font-size: 13px;
 }
 
+/* ---- pixel editor (WP-B06) ------------------------------------------ */
+
+.editor__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.editor__save {
+  margin: 0;
+  min-width: 5em;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.editor {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+/* D-ED-21: one comfortable cell pitch, no zoom controls. 56×56 lands near
+   700px, which fits a 1280 viewport; anything narrower scrolls in both axes
+   rather than shrinking the beads into a smudge. */
+.editor__grid {
+  --editor-cell: 12px;
+  display: grid;
+  grid-template-columns: repeat(var(--assemble-columns, 28), var(--editor-cell));
+  grid-auto-rows: var(--editor-cell);
+  gap: 1px;
+  align-content: start;
+  justify-content: start;
+  overflow: auto;
+  max-width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.editor__bead {
+  border-radius: 2px;
+  background: var(--bg-elevated, #ffffff);
+}
+
+/* An empty cell has to read as empty rather than as white bead G01, so it is
+   the surface with a hairline, not a colour. */
+.editor__bead--empty {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.editor__tools {
+  display: grid;
+  gap: 12px;
+  flex: 1 1 280px;
+  min-width: 260px;
+}
+
+.editor__history {
+  display: flex;
+  gap: 8px;
+}
+
+.editor__group {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.editor__field {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  justify-items: start;
+}
+
+.editor__palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.editor__swatch {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.editor__swatch[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.editor__panel {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.editor__stats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.editor__stat {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
 /* ---- assemble (outside AppShell) ------------------------------------ */
 
 .assemble {
