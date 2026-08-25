@@ -11,9 +11,27 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 | Field | Value |
 |---|---|
-| Current task | Fable: consent topology, name-harvest variants, collect-vs-egress mutex, AC-31 real-store gap. Opus: projection product-boundary pin; key-blob empty-file reclaim TOCTOU |
+| Current task | 10× Fable in flight (scan only). Opus queued after they return: key-blob empty-file reclaim TOCTOU; `Session::person_summary` COPY_ZH §6 pin; Graph same-band lock if Fable confirms |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
+| Exclusive tip | `d16e4cf` / PR #15 |
+
+### Round 4 Fable dispatch (launched, not yet returned)
+
+| # | Direction | Agent |
+|---|---|---|
+| 1 | Consent topology / unused topics / forget vs HITL | `bc-f14d6bec-e45f-51b9-a48b-a88dfd2ff1a6` |
+| 2 | Name-harvest / KnownIdentifiers spacing variants | `bc-272d9201-1d04-5648-b92f-91295e1b0a28` |
+| 3 | Collect vs E1 mutex / research isolation | `bc-84269338-f1c9-5cf9-b7f8-25bcd2204ad7` |
+| 4 | Tests: AC-31 real-store, AC-28…34 product-path, as_of=None | `bc-1dab607f-d62e-5223-bd46-287ecccb1b20` |
+| 5 | keys.dpapi empty-file reclaim TOCTOU (Opus brief) | `bc-883a0516-bf98-596f-94ce-fddfa4e5b924` |
+| 6 | Session person_summary §6 product pin (Opus brief) | `bc-ad7c4158-16ce-5aa3-8f3e-8b51af8d3df2` |
+| 7 | Independent Review of SOUL-7B | `bc-03c8e0b1-1566-567d-aff7-63ae978d82c7` |
+| 8 | Graph same-band lock UI + other frontend honesty | `bc-7c27a0ed-fe34-5629-90ab-60ad3daeded8` |
+| 9 | Security / reliability remaining (not closed R2–R3 items) | `bc-66db863d-c616-5edd-a465-4dfeca8e97c9` |
+| 10 | Independent synthesis vs four author requirements | `bc-66937bab-d5ee-5d8f-99b3-413d36da3dc6` |
+
+Parent-observed candidate while Fable runs (not landed): `soul-graph::correct_tie` and `Session::correct_tie` accept locking the current band (`graph_correction.rs` comment: correcting to the machine's band still locks), but `Graph.tsx` disables `band === tie.band`, so the installed UI cannot pin the current word. Fable #8 owns the call.
 
 ## ROUND 3 record
 
@@ -59,24 +77,26 @@ Fileplan revoke: defer v0.1.1 (Fable #4). Collect consent persistence: product b
 | Merge状态 | `BLOCKED` to `main` (same contract-tree as #2). Merge of #7/#4 forbidden. Parent cannot merge PRs (no merge tool) |
 | 下一轮重点 | Port T4D onto FF'd line; independent store/policy/IPC fixes; prediction thin slice waits for T4D |
 
-## Coverage map (after Round 1 evidence)
+## Coverage map (after Round 3 landings; Round 4 scanning)
 
-| Area | Evidence | Gap vs this Goal |
+Do not treat the Round 1 findings list below as still-open. T0 / G1+ / G2 / G3 / wizard shape / forget pages / prediction crate path closed in R2–R3.
+
+| Area | Evidence on exclusive tip `d16e4cf` | Remaining honesty vs this Goal |
 |---|---|---|
-| Frontend | 11 routes + wizard cover slices 1–12; copy honesty holds; cross-page state consistent; Graph has band buttons, lock badge and the `machine_band` disagreement line (SOUL-7A) | Graph still T0 words; no prediction surface |
-| Backend | Session is the one stateful module; WP01–WP11/WP13/DPAPI landed; `Session::correct_tie` / `release_tie` (SOUL-7A) | T0 `Tally::band`; G1+ fanout; G2 intake moves locked axes |
-| API | 38 commands, three-way pinned (36 + `correct_tie` / `release_tie`, SOUL-7A) | `complete_wizard` error shape; no directory revoke; no predict command (thin slice needs none) |
-| Database | SQLCipher + CK + forget atomic; no third-party plaintext cache | Forget leaves wrapped CK in free pages; schema `tie_strength` still loose vs main |
+| Frontend | 11 routes + wizard; Graph band buttons + lock + `machine_band` (SOUL-7A); Profile ignored receipt (SOUL-7B); COPY_ZH 弱/中等/强 | Graph may disable same-band pin; projection sentences only via existing points list |
+| Backend | Session is the one stateful module; T4D rebuild; G1+ import; G2 intake lock; `Session::correct_tie` / `release_tie` | Name-harvest spacing variants; unused ConsentTopics |
+| API | 38 commands, three-way pinned (`correct_tie` / `release_tie`) | No predict command (AD-13: none wanted); directory revoke is v0.1.1 (AD-11) |
+| Database | SQLCipher + typed `tie_strength` + CK + forget atomic + destroyed-key ledger | Residual keys.dpapi empty-file reclaim TOCTOU |
 | Login & permissions | Local DPAPI key chain; no cloud login | Expected |
-| Storage | As database | Same forget gap |
+| Storage | `secure_delete` + WAL checkpoint after forget; `create_new` key blob | Same TOCTOU residual; do not touch `forget.rs` in R4 keys work |
 | Cache | None found | — |
-| Third-party | Import + E1 redactor; KnownIdentifiers seam closed on this tree | E1 origin not in plan hash; name-prefix scrub nits |
-| Core business | Soul + agent read-only | **T0 graph is the false-close trap**; no T4D projection sentences |
-| Tests | AC-02–25 product-path on this tree | AC-28…34 absent until T4D port |
+| Third-party | Import + E1 redactor; origin in plan hash (c441); KnownIdentifiers from opened labels | Unspaced variant of imported spaced name; unimported name on exemption path needs PRODUCT_LOCK ruling |
+| Core business | Soul + agent draft-only, file preview not write; T4D + A2 + axis/tie correction | Thin prediction not pinned at `Session::person_summary`; no learned model (by lock) |
+| Tests | AC-02–25 product-path; T4D crate/store/parity; projection 20 crate tests; graph correct 6 | Session-level §6 pin; AC-31-like real SQLCipher if that AC exists; AC-34 only full import→store path |
 | Build | Tauri 2 + pnpm + cargo + just | NSIS author-manual |
-| CI/CD | Auto-push main + unique trunk | Hosted empty runner `BLOCKED` |
-| Performance | Unmeasured | NO_HIGH_VALUE_CHANGE_FOUND |
-| Security | E0 type-absent; HITL for E1 | Forget bypasses capability tokens; four unused ConsentTopics |
+| CI/CD | Auto-push `main` + unique trunk only (AD-10) | Hosted empty runner `BLOCKED` |
+| Performance | Unmeasured | Prefer NO_HIGH_VALUE unless unbounded path proven |
+| Security | E0 type-absent; HITL for E1; wizard `{reason_code,explanation}` | Forget vs capability tokens; unused ConsentTopics — R4 Fable #1/#9 |
 | Reliability | Crash harnesses, one-store, single-instance | Author Win11 checklist open |
 
 ## Findings this round (R1)
@@ -179,4 +199,4 @@ Hosted still billing-blocked.
 
 ## Next round focus
 
-Fable review of the T4D port and of SOUL-7A. Then: intake `ignored` receipt, T4D projection sentences (simple behavior/group prediction), remaining policy nits. Do not start empty Goal 2 polish.
+Round 4 Fable in flight. After they return: Opus on confirmed HIGH_VALUE only (key-blob TOCTOU, Session §6 pin, Graph same-band if confirmed). Do not start empty Goal 2 polish. Do not merge PR #7 / #4 / to `main`.
