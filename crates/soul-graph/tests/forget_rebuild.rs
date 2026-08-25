@@ -19,14 +19,14 @@ use std::collections::BTreeSet;
 use uuid::Uuid;
 
 use soul_graph::interaction::{conversation_ref, interaction_evidence, InteractionRef};
-use soul_graph::{Direction, Venue};
-use soul_schema::common::{SchemaVersion, SealedSubject, Subject, Timestamp};
+use soul_graph::{correct_tie, release_tie, Direction, GraphError, Venue};
+use soul_schema::common::{SchemaVersion, SealedSubject, Subject, SupportedBand, Timestamp};
 use soul_schema::contact::{ContactClass, SoulContact};
 use soul_schema::memory::ForgetState;
 use soul_store::{SqlCipherStore, TestKeyProvider};
 use soul_store_api::forget::{ForgetOps, ForgetUnit};
 use soul_store_api::types::{InferenceState, SealRequest};
-use soul_store_api::{BlobStore, GraphStore, ProfileStore};
+use soul_store_api::{AuditLog, BlobStore, GraphStore, ProfileStore};
 
 const SEED: &str = "p1-3 rebuild after a contact forget";
 
@@ -301,4 +301,91 @@ fn the_forgotten_persons_stale_edge_stays_and_the_graph_still_resolves() {
         ForgetState::Forgotten,
         "the state that says they are gone is on the node, which is where readers look",
     );
+}
+
+/// The other way back in, through the button the graph page draws on that
+/// stale edge.
+///
+/// The rebuild skips the tombstoned peer, so the edge above survives with the
+/// band the last live rebuild gave it. `correct_tie` read that edge and never
+/// the peer's forget state: `set_verdict` finds the tie inference with
+/// `list_inferences`, which does not filter on state, and `put_inference`
+/// files whatever it is handed as live. One press and the forgotten person's
+/// inference was back — with a `UserCorrection` row asserting a band about
+/// them, written after the user asked Soul to drop them.
+///
+/// The release is pressed too, because it is a write on the same edge and
+/// refusing only the correction would leave 按计数重新算 as the way in. The
+/// person nobody forgot is the control: this refusal is about one peer's
+/// state, not about corrections having stopped working.
+#[test]
+fn a_forgotten_persons_band_cannot_be_corrected_or_released() {
+    const NOW: i64 = 1_787_529_600;
+
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = SqlCipherStore::open(
+        dir.path().join("soul.db"),
+        &TestKeyProvider::from_seed(SEED),
+    )
+    .expect("open");
+    seed(&mut store);
+    soul_graph::rebuild(&mut store).expect("the first rebuild");
+
+    let their_edge = edge_to(&store, gone()).relationship_id;
+    let kept_edge = edge_to(&store, kept()).relationship_id;
+    let their_inference = tie_inference(&store, their_edge).inference_id;
+
+    store
+        .execute_forget(ForgetUnit::Contact(gone()))
+        .expect("forget them");
+    soul_graph::rebuild(&mut store).expect("the second rebuild");
+    assert_eq!(
+        store.inference_state(their_inference).expect("state"),
+        InferenceState::Orphaned,
+        "the forget has to have demoted it, or the presses below prove nothing",
+    );
+
+    let before = (
+        store.get_relationship(their_edge).expect("edge"),
+        store.list_evidence().expect("evidence").len(),
+        store.list_audit().expect("audit").len(),
+    );
+
+    let corrected = correct_tie(&mut store, their_edge, SupportedBand::Weak, NOW);
+    assert!(
+        matches!(
+            corrected,
+            Err(GraphError::Forgotten { relationship_id }) if relationship_id == their_edge,
+        ),
+        "expected a refusal naming the edge, got {corrected:?}",
+    );
+    let released = release_tie(&mut store, their_edge, NOW);
+    assert!(
+        matches!(
+            released,
+            Err(GraphError::Forgotten { relationship_id }) if relationship_id == their_edge,
+        ),
+        "a release is a write on the same edge, got {released:?}",
+    );
+
+    assert_eq!(
+        store.inference_state(their_inference).expect("state"),
+        InferenceState::Orphaned,
+        "a refused press filed the forgotten person's tie as live again, which undoes the forget",
+    );
+    let after = (
+        store.get_relationship(their_edge).expect("edge"),
+        store.list_evidence().expect("evidence").len(),
+        store.list_audit().expect("audit").len(),
+    );
+    assert_eq!(
+        before, after,
+        "a refused correction left something behind: a row, a band, or a chain entry",
+    );
+
+    // The control. The person nobody forgot still has a band the user owns,
+    // and a way back out of it.
+    correct_tie(&mut store, kept_edge, SupportedBand::Weak, NOW)
+        .expect("somebody nobody forgot can still be corrected");
+    release_tie(&mut store, kept_edge, NOW).expect("and released again");
 }

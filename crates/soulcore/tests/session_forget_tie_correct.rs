@@ -186,11 +186,17 @@ fn a_forgotten_persons_band_cannot_be_corrected_or_released() {
         "a refused correction wrote a UserCorrection row about somebody who was forgotten",
     );
     assert!(
-        !after.evidence.iter().any(|row| row.kind == "user_correction"),
+        !after
+            .evidence
+            .iter()
+            .any(|row| row.kind == "user_correction"),
         "the edge cites a correction row: {:?}",
         after.evidence,
     );
-    assert!(!after.locked_by_user, "the band was locked by a refused call");
+    assert!(
+        !after.locked_by_user,
+        "the band was locked by a refused call"
+    );
     assert_eq!(after.band, theirs.band, "the band moved under a refusal");
     assert_eq!(after.user_band, None);
 
