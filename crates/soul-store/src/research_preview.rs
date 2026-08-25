@@ -62,9 +62,9 @@ impl SubjectClass {
 /// with it.
 ///
 /// `_defs.schema.json` admits four values and v0.1 builds exactly one of the
-/// shapes they name, so anything that is not `bucket` is excluded. An
-/// unreadable or absent disposition lands on [`Disposition::Deny`], because a
-/// row whose policy cannot be read is not a row whose policy is permissive.
+/// shapes they name, so anything that is not `bucket` is withheld. An
+/// unreadable or absent disposition is withheld too: a row whose policy cannot
+/// be read is not a row whose policy is permissive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Disposition {
     /// Countable in an hour bucket. The only shape this module publishes.
