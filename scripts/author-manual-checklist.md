@@ -1,5 +1,7 @@
 # 作者手动清单
 
+**测哪棵树 / 第一次正式测试：** 从 `cursor/soul-goal1-7b1c` 的 `478f19f` 或之后打包装。方案见 `docs/FIRST_FORMAL_TEST.md`。这是 Goal 1 的作者 + hosted 验收，不是 Goal 2。不要用 `2e72ddf` 的安装包。
+
 CI 到此为止。下面每一条都要在一台 **Windows 11 x64、非管理员账户** 上由作者亲手过一遍，
 过完把结果写回 `docs/STATUS.md` 的对应工作单段落——写「过了」没有用，要写看到了什么。
 

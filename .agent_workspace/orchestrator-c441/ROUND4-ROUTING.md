@@ -28,3 +28,5 @@ AUTO → SCAN/PLAN（本轮）+ 合并处置（只合已证明安全的）+ 第�
 ## 本机已知 remote（派单时点，可能落后 1–2h）
 
 见 `git branch -a`。主干 tip `5309656`。closeout 相对主干多 4 个提交且 `merge-tree` 有 `changed in both`，不得盲合。
+
+Round 1 六路云端均在启动后约 2s 以 `[unauthenticated]` 失败、无分支。本机已写下 `docs/BRANCH_MAP.md` 与 `docs/FIRST_FORMAL_TEST.md`。凭据恢复后再重派云端 Round 2。
