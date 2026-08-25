@@ -12,9 +12,9 @@
 
 use std::collections::BTreeMap;
 
-use crate::color::ciede2000;
-use crate::grid::Grid;
+use crate::color::{ciede2000, within_delta_e};
 use crate::palette::{ColorId, Palette};
+use crate::quantize::PatternGrid;
 
 /// Substitutes must be nearer than this in CIEDE2000.
 pub const SUBSTITUTE_MAX_DELTA_E: f64 = 3.0;
@@ -36,13 +36,19 @@ pub struct Bom {
 }
 
 impl Bom {
-    /// Count the colours in a pattern. Ids that are not in `palette` are
-    /// reported under their numeric id so a mismatch is visible rather than
-    /// silently dropped.
-    pub fn from_grid(grid: &Grid<ColorId>, palette: &Palette) -> Self {
+    /// Count the colours in a pattern.
+    ///
+    /// Empty cells are not beads and are not counted, so `total_beads` equals
+    /// the number of filled cells — the same invariant the step planner's
+    /// partition rests on. Ids that are not in `palette` are reported under
+    /// their numeric id so a mismatch is visible rather than silently dropped.
+    /// Commonest first, ties on the colour index (G6).
+    pub fn from_grid(grid: &PatternGrid, palette: &Palette) -> Self {
         let mut counts: BTreeMap<ColorId, usize> = BTreeMap::new();
-        for (_, id) in grid.iter() {
-            *counts.entry(*id).or_insert(0) += 1;
+        for (_, slot) in grid.iter() {
+            if let Some(id) = slot {
+                *counts.entry(*id).or_insert(0) += 1;
+            }
         }
 
         let mut lines: Vec<BomLine> = counts
@@ -62,7 +68,7 @@ impl Bom {
                 },
             })
             .collect();
-        lines.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.code.cmp(&b.code)));
+        lines.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.id.cmp(&b.id)));
 
         Self {
             palette: palette.namespace().to_owned(),
@@ -218,10 +224,10 @@ pub fn check_stock_within(
                     continue;
                 };
                 let color = palette.color(id);
-                let delta_e = ciede2000(wanted, color.lab);
-                if delta_e >= max_delta_e {
+                if !within_delta_e(wanted, color.lab, max_delta_e) {
                     continue;
                 }
+                let delta_e = ciede2000(wanted, color.lab);
                 substitutes.push(Substitute {
                     id,
                     code: color.code.clone(),
@@ -235,7 +241,7 @@ pub fn check_stock_within(
             a.delta_e
                 .partial_cmp(&b.delta_e)
                 .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.code.cmp(&b.code))
+                .then_with(|| a.id.cmp(&b.id))
         });
 
         shortages.push(Shortage {

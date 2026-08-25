@@ -1,15 +1,26 @@
-//! The sRGB → Lab (D65, 2°) half of the colour pipeline, kept apart from the
-//! CIEDE2000 table in `ciede2000.rs`.
+//! T-SRGB-1: the sRGB → Lab (D65, 2°) half of the colour pipeline, kept apart
+//! from the CIEDE2000 table in `ciede2000.rs`.
 //!
 //! Reference values are the standard sRGB primaries and neutrals under D65 with
-//! the IEC 61966-2-1 transfer function. The tolerance is 1e-3 rather than the
-//! table's 1e-4 because published Lab values for these are themselves rounded
-//! to four decimals and the matrix coefficients are given to seven.
+//! the IEC 61966-2-1 transfer function. The contract allows ±0.01; this pins
+//! ±0.001, because the matrix coefficients are fixed to seven places on both
+//! sides and there is no reason to leave the extra room unclaimed.
+//!
+//! White and mid grey are not exactly neutral. Rounding the matrix is what
+//! leaves them a hundredth of a unit of chroma, and the contract offers a
+//! choice: derive the white point from the matrix row sums and assert exactly
+//! zero, or keep the published D65 white point and allow the residue. This
+//! crate keeps the published white point — it is the one both implementations
+//! can quote from the same standard — so the residue is asserted as a bound
+//! rather than wished away.
 
 use bead_core::color::{srgb_to_lab, Lab, Rgb};
 use bead_core::palette::Palette;
 
 const TOLERANCE: f64 = 1e-3;
+
+/// The chroma the rounded sRGB matrix leaves on a neutral colour.
+const NEUTRAL_RESIDUE: f64 = 0.01;
 
 fn lab_of(hex: &str) -> Lab {
     srgb_to_lab(Rgb::from_hex(hex).expect("valid hex"))
@@ -34,10 +45,8 @@ fn assert_lab_close(got: Lab, want: Lab, what: &str) {
 fn white_is_the_d65_white_point() {
     let got = lab_of("#FFFFFF");
     assert!((got.l - 100.0).abs() <= TOLERANCE, "L* was {}", got.l);
-    // Not exactly neutral: the sRGB matrix is rounded, and rounding it is what
-    // leaves a hundredth of a unit of chroma on the white point.
-    assert!(got.a.abs() < 0.01, "a* was {}", got.a);
-    assert!(got.b.abs() < 0.02, "b* was {}", got.b);
+    assert!(got.a.abs() < NEUTRAL_RESIDUE, "a* was {}", got.a);
+    assert!(got.b.abs() < NEUTRAL_RESIDUE, "b* was {}", got.b);
 }
 
 #[test]
@@ -71,7 +80,7 @@ fn mid_grey_is_neutral_and_darker_than_half() {
     // a naive linear resize of a photograph looks wrong.
     let got = lab_of("#808080");
     assert!((got.l - 53.5850).abs() <= 1e-2, "L* was {}", got.l);
-    assert!(got.a.abs() < 0.01 && got.b.abs() < 0.02);
+    assert!(got.a.abs() < NEUTRAL_RESIDUE && got.b.abs() < NEUTRAL_RESIDUE);
 }
 
 #[test]

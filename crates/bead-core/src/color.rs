@@ -44,6 +44,60 @@ impl Rgb {
     }
 }
 
+/// An 8-bit sRGB colour with an alpha channel.
+///
+/// Alpha is a threshold, not a blend: G1 of the algorithm contract says a pixel
+/// is opaque at `alpha >= 128` and empty below it. Bead patterns have no
+/// partial coverage — a hole in the board is a hole — so carrying fractional
+/// alpha any further would only invent a colour to fill it with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct Rgba {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
+
+/// At or above this alpha a pixel is a bead; below it the cell is empty.
+pub const ALPHA_OPAQUE_THRESHOLD: u8 = 128;
+
+impl Rgba {
+    pub const TRANSPARENT: Rgba = Rgba {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 0,
+    };
+
+    pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+        Self { r, g, b, a }
+    }
+
+    pub const fn opaque(rgb: Rgb) -> Self {
+        Self {
+            r: rgb.r,
+            g: rgb.g,
+            b: rgb.b,
+            a: 255,
+        }
+    }
+
+    pub fn is_opaque(self) -> bool {
+        self.a >= ALPHA_OPAQUE_THRESHOLD
+    }
+
+    /// The colour, if this pixel counts as a bead at all.
+    pub fn rgb(self) -> Option<Rgb> {
+        self.is_opaque().then(|| Rgb::new(self.r, self.g, self.b))
+    }
+}
+
+impl From<Rgb> for Rgba {
+    fn from(value: Rgb) -> Self {
+        Rgba::opaque(value)
+    }
+}
+
 /// `#RRGGBB` was expected and something else arrived.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HexError {
@@ -92,13 +146,32 @@ pub const WHITE_D65: Xyz = Xyz {
     z: 1.088_83,
 };
 
-/// Undo the sRGB transfer function for one channel given as 0.0..=1.0.
-fn srgb_expand(channel: f64) -> f64 {
+/// Undo the sRGB transfer function: encoded 0.0..=1.0 to linear light.
+pub fn srgb_expand(channel: f64) -> f64 {
     if channel <= 0.040_45 {
         channel / 12.92
     } else {
         ((channel + 0.055) / 1.055).powf(2.4)
     }
+}
+
+/// Apply the sRGB transfer function: linear light to encoded 0.0..=1.0.
+pub fn srgb_compress(linear: f64) -> f64 {
+    if linear <= 0.003_130_8 {
+        linear * 12.92
+    } else {
+        1.055 * linear.powf(1.0 / 2.4) - 0.055
+    }
+}
+
+/// The crate's one rounding rule for turning a real number back into an 8-bit
+/// channel: round half away from zero, then saturate. Pinned in one place
+/// because G5 makes it part of the cross-language contract.
+pub fn to_channel(value: f64) -> u8 {
+    if value.is_nan() {
+        return 0;
+    }
+    value.round().clamp(0.0, 255.0) as u8
 }
 
 /// sRGB (IEC 61966-2-1) to CIE XYZ under D65.
@@ -226,6 +299,15 @@ pub fn ciede2000(reference: Lab, sample: Lab) -> f64 {
     (term_l * term_l + term_c * term_c + term_h * term_h + r_t * term_c * term_h).sqrt()
 }
 
+/// Whether two colours are close enough to stand in for each other.
+///
+/// Strictly less than, per G8: the product says ΔE00 below 3, and a candidate
+/// sitting exactly on the threshold is out. One predicate so that the palette
+/// lookup and the substitute search cannot drift apart on the boundary.
+pub fn within_delta_e(a: Lab, b: Lab, max_delta_e: f64) -> bool {
+    ciede2000(a, b) < max_delta_e
+}
+
 /// Hue angle in degrees over `[0, 360)`, defined as zero when both components
 /// are zero rather than left to `atan2`'s sign conventions.
 fn hue_angle(a: f64, b: f64) -> f64 {
@@ -256,6 +338,24 @@ mod unit {
         assert!(Rgb::from_hex("#12345").is_err());
         assert!(Rgb::from_hex("#12345g").is_err());
         assert!(Rgb::from_hex("").is_err());
+    }
+
+    #[test]
+    fn alpha_is_a_threshold_not_a_blend() {
+        assert!(!Rgba::new(1, 2, 3, 127).is_opaque());
+        assert!(Rgba::new(1, 2, 3, 128).is_opaque());
+        assert_eq!(Rgba::new(1, 2, 3, 127).rgb(), None);
+        assert_eq!(Rgba::new(1, 2, 3, 128).rgb(), Some(Rgb::new(1, 2, 3)));
+        assert!(!Rgba::TRANSPARENT.is_opaque());
+    }
+
+    #[test]
+    fn the_transfer_function_round_trips_every_code_value() {
+        for value in 0..=255u8 {
+            let encoded = f64::from(value) / 255.0;
+            let back = to_channel(srgb_compress(srgb_expand(encoded)) * 255.0);
+            assert_eq!(back, value);
+        }
     }
 
     #[test]

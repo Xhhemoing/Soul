@@ -1,17 +1,20 @@
 //! The whole conversion, end to end, and the defaults it picks.
 
+mod support;
+
 use bead_core::bom::{check_stock, Inventory};
-use bead_core::color::Rgb;
+use bead_core::color::{Rgb, Rgba};
 use bead_core::detect::ImageKind;
-use bead_core::fit::{BoardSpec, FitMode, Sampling};
+use bead_core::fit::{BoardSpec, FitError, FitMode, Sampling};
 use bead_core::grid::Cell;
 use bead_core::image::Image;
 use bead_core::palette::Palette;
 use bead_core::pipeline::{to_pattern, PatternOptions};
 use bead_core::quantize::Dither;
-use bead_core::steps::{plan_steps, ColorOrder, StepMode, StepOptions};
+use bead_core::steps::{plan_steps, ColorOrder, StepMode};
 
-/// A 28×28 drawing in four palette-exact colours, exported at 4×.
+/// A 28×28 drawing in four palette-exact colours, and the same drawing exported
+/// at 4×.
 fn exported_sprite() -> (Image, Image) {
     let palette = Palette::generic_5mm();
     let border = palette.color(palette.find_code("G06").expect("G06")).rgb;
@@ -33,17 +36,8 @@ fn exported_sprite() -> (Image, Image) {
             });
         }
     }
-    let original = Image::from_pixels(28, 28, pixels).expect("28x28");
-
-    let factor = 4;
-    let width = 28 * factor;
-    let mut upscaled = Vec::with_capacity((width * width) as usize);
-    for y in 0..width {
-        for x in 0..width {
-            upscaled.push(original.clamped(i64::from(x / factor), i64::from(y / factor)));
-        }
-    }
-    let exported = Image::from_pixels(width, width, upscaled).expect("112x112");
+    let original = support::opaque(28, 28, &pixels);
+    let exported = support::upscale(&original, 4);
     (original, exported)
 }
 
@@ -71,9 +65,9 @@ fn an_exported_sprite_round_trips_to_its_own_colours() {
     for y in 0..28u32 {
         for x in 0..28u32 {
             let cell = Cell::new(x, y);
-            let id = *pattern.grid.get(cell).expect("in bounds");
+            let id = pattern.grid.get(cell).expect("in bounds").expect("a bead");
             assert_eq!(
-                palette.color(id).rgb,
+                Rgba::opaque(palette.color(id).rgb),
                 original.pixel(cell).expect("in bounds"),
                 "cell {cell} changed colour on the way through"
             );
@@ -104,7 +98,7 @@ fn the_bill_matches_the_grid_it_came_from() {
         let counted = pattern
             .grid
             .iter()
-            .filter(|(_, id)| palette.color(**id).code == line.code)
+            .filter(|(_, slot)| slot.is_some_and(|id| palette.color(id).code == line.code))
             .count();
         assert_eq!(counted, line.count, "{} was miscounted", line.code);
     }
@@ -119,7 +113,7 @@ fn a_photograph_gets_averaged_and_dithered_by_default() {
             pixels.push(Rgb::new((x + y) as u8, (y * 5 / 4) as u8, (255 - x) as u8));
         }
     }
-    let photo = Image::from_pixels(200, 200, pixels).expect("200x200");
+    let photo = support::opaque(200, 200, &pixels);
     let pattern = to_pattern(&photo, &palette, &one_board()).expect("a pattern");
 
     assert_eq!(pattern.analysis.kind, ImageKind::Photo);
@@ -138,28 +132,75 @@ fn the_defaults_can_be_overridden() {
     let palette = Palette::generic_5mm();
     let (_, exported) = exported_sprite();
     let options = one_board()
-        .with_dither(Dither::FloydSteinbergSerpentine)
+        .with_dither(Dither::FloydSteinberg)
         .with_sampling(Sampling::BoxAverage);
     let pattern = to_pattern(&exported, &palette, &options).expect("a pattern");
 
     assert_eq!(pattern.analysis.kind, ImageKind::PixelArt { block_size: 4 });
     assert_eq!(pattern.sampling, Sampling::BoxAverage);
-    assert_eq!(pattern.dither, Dither::FloydSteinbergSerpentine);
+    assert_eq!(pattern.dither, Dither::FloydSteinberg);
 }
 
 #[test]
 fn a_bad_framing_is_reported_rather_than_guessed() {
     let palette = Palette::generic_5mm();
-    let image = Image::filled(10, 10, Rgb::new(0, 0, 0)).expect("10x10");
+    let image = Image::filled(10, 10, Rgba::new(0, 0, 0, 255)).expect("10x10");
     let options = PatternOptions::new(FitMode::ScaleCrop {
         board: BoardSpec::square_28(),
         cols: 1,
         rows: 1,
-        scale: 0.0,
-        offset_x: 0.0,
-        offset_y: 0.0,
+        pixels_per_cell: 0.0,
+        crop_x: 0.0,
+        crop_y: 0.0,
     });
-    assert!(to_pattern(&image, &palette, &options).is_err());
+    assert_eq!(
+        to_pattern(&image, &palette, &options).unwrap_err(),
+        FitError::BadScale
+    );
+}
+
+/// A picture with a hole in it keeps the hole: the empty cells are not beads,
+/// so they are neither on the bill nor in any of the four sets of instructions.
+#[test]
+fn transparency_survives_the_whole_pipeline() {
+    let palette = Palette::generic_5mm();
+    let image = support::ring(16, 16, Some((6, 6, 4, 4)), Rgba::new(0x0B, 0x61, 0xA4, 255));
+    let options = PatternOptions::new(FitMode::FixedBoards {
+        board: BoardSpec::new("16x16", 16, 16),
+        cols: 1,
+        rows: 1,
+    })
+    .with_sampling(Sampling::Nearest);
+    let pattern = to_pattern(&image, &palette, &options).expect("a pattern");
+
+    let filled = pattern
+        .grid
+        .iter()
+        .filter(|(_, slot)| slot.is_some())
+        .count();
+    assert_eq!(filled, 16 * 16 - 16);
+    assert_eq!(pattern.bom.total_beads(), filled);
+    assert_eq!(pattern.grid.get(Cell::new(7, 7)), Some(&None));
+
+    for mode in [
+        StepMode::ColorByColor {
+            order: ColorOrder::AccentFirst,
+        },
+        StepMode::Tile {
+            board: BoardSpec::new("8x8", 8, 8),
+        },
+        StepMode::OutlineInfill,
+        StepMode::RowByRow,
+    ] {
+        let plan = plan_steps(&pattern.grid, &palette, &mode);
+        assert_eq!(plan.total_cells(), filled, "{}", plan.mode);
+        assert!(
+            plan.placements()
+                .all(|(_, cell)| matches!(pattern.grid.get(cell), Some(Some(_)))),
+            "{} placed a bead in the hole",
+            plan.mode
+        );
+    }
 }
 
 #[test]
@@ -168,8 +209,7 @@ fn the_conversion_is_reproducible() {
     let (_, exported) = exported_sprite();
     let first = to_pattern(&exported, &palette, &one_board()).expect("a pattern");
     let second = to_pattern(&exported, &palette, &one_board()).expect("a pattern");
-    assert_eq!(first.grid, second.grid);
-    assert_eq!(first.bom, second.bom);
+    assert_eq!(first, second);
 }
 
 /// Picture in, shopping list and four sets of instructions out. This is the v0
@@ -192,7 +232,7 @@ fn the_whole_loop_runs_from_a_picture_to_instructions() {
         StepMode::RowByRow,
     ];
     for mode in modes {
-        let plan = plan_steps(&pattern.grid, &palette, &mode, &StepOptions::default());
+        let plan = plan_steps(&pattern.grid, &palette, &mode);
         assert_eq!(
             plan.total_cells(),
             784,

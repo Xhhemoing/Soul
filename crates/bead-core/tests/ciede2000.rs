@@ -1,8 +1,9 @@
-//! The CIEDE2000 acceptance table from `docs/bead/fixtures-ciede2000.md`.
+//! T-DE-1, T-DE-2, T-DE-3: the CIEDE2000 acceptance table.
 //!
 //! Source: Sharma, Wu and Dalal, *The CIEDE2000 Color-Difference Formula:
 //! Implementation Notes, Supplementary Test Data, and Mathematical
-//! Observations*, Color Research and Application 30(1), 2005, Table I.
+//! Observations*, Color Research and Application 30(1), 2005, Table I, as
+//! transcribed into `docs/bead/fixtures-ciede2000.md`.
 //!
 //! These pairs are stated in Lab and are fed to the formula in Lab. Pushing
 //! them through an sRGB conversion first would add that conversion's error to
@@ -44,6 +45,7 @@ const SHARMA_TABLE: &[(f64, f64, f64, f64, f64, f64, f64)] = &[
     (50.0000, 2.5000, 0.0000, 58.0000, 24.0000, 15.0000, 19.4535),
 ];
 
+/// T-DE-1.
 #[test]
 fn matches_the_published_table() {
     assert_eq!(SHARMA_TABLE.len(), 20, "the fixture file lists 20 pairs");
@@ -56,6 +58,29 @@ fn matches_the_published_table() {
             (got - expected).abs()
         );
     }
+}
+
+/// T-DE-1, the near-black row.
+///
+/// Row 34 of Sharma's Table I is called out by name in
+/// `docs/bead/reviews/round1-algorithms.md` §1 because it exercises the formula
+/// at very low chroma and lightness, where the `S_L` denominator is at its
+/// largest. It is kept in its own test because
+/// `docs/bead/fixtures-ciede2000.md` currently transcribes only rows 1 to 20:
+/// the numbers below are quoted from the review, not derived here.
+///
+/// TODO: fold this row into `docs/bead/fixtures-ciede2000.md` so the fixture
+/// file is once again the single transcription, and delete this test.
+#[test]
+fn matches_the_near_black_row_the_review_adds() {
+    let got = ciede2000(
+        Lab::new(2.0776, 0.0795, -1.1350),
+        Lab::new(0.9033, -0.0636, -0.5514),
+    );
+    assert!(
+        (got - 0.9082).abs() <= TOLERANCE,
+        "expected 0.9082, got {got}"
+    );
 }
 
 /// Pairs 9 to 15 are the paper's discontinuity cases: a hue difference that
@@ -85,9 +110,9 @@ fn handles_the_hue_seam_cases() {
     }
 }
 
-/// With one chroma at zero the hue difference is undefined and the notes fix it
-/// at zero. Pairs 7 and 8 exercise that from both sides, so the formula has to
-/// stay symmetric across it.
+/// T-DE-2. With one chroma at zero the hue difference is undefined and the
+/// notes fix it at zero. Pairs 7 and 8 exercise that from both sides, so the
+/// formula has to stay symmetric across it.
 #[test]
 fn is_symmetric() {
     for (l1, a1, b1, l2, a2, b2, _) in SHARMA_TABLE {
@@ -97,11 +122,20 @@ fn is_symmetric() {
     }
 }
 
+/// T-DE-3, including the grey axis where chroma and hue are both undefined.
 #[test]
 fn a_colour_is_zero_from_itself() {
     for (l1, a1, b1, ..) in SHARMA_TABLE {
         let colour = Lab::new(*l1, *a1, *b1);
         assert_eq!(ciede2000(colour, colour), 0.0);
+    }
+    for lightness in [0.0, 25.0, 50.0, 75.0, 100.0] {
+        let grey = Lab::new(lightness, 0.0, 0.0);
+        assert_eq!(
+            ciede2000(grey, grey),
+            0.0,
+            "L* {lightness} on the grey axis"
+        );
     }
 }
 
