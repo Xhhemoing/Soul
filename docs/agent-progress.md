@@ -14,10 +14,10 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 仓库地图（Soul 桌面 + 无 bead 代码） |
-| 当前任务 | ROUND 1：3 个 Fable 云端在跑；其余 7 席等 VM 空位 |
+| 当前任务 | F2 已合入；F1/F3 仍在跑；空位优先派 O1 bead-core |
 | PR | https://github.com/Xhhemoing/Soul/pull/16 （draft → first-test-candidate） |
-| Merge | 未合；不合 unique trunk（11.11 跳过） |
-| Blocked | 云端 async new-VM limit = 3。F4/F5/O1/O2/O3/S1/S2 排队，不停止 Goal |
+| Merge | IA 审查已合进专属线；不合 unique trunk |
+| Blocked | VM 上限仍在。O2/O3/F4/F5/S1/S2 排队 |
 
 ## 已检查模块（11.5）
 
@@ -47,10 +47,10 @@ ROUND 0
 发现问题      仓库是 Soul；用户确认拼豆规划；无 apps/bead
 修复问题      专属分支 + PLAN / WP / 拍板 / 本进度
 测试结果      文档变更，无产品测试
-Commit        待写入
-PR            待创建 → first-test-candidate
-Merge状态     跳过（11.11：先保存成果）
-下一轮重点    功能地图精化；落地 B01/B02/B03
+Commit        541d0dc docs: start BeadFlow exclusive line and work packages
+PR            https://github.com/Xhhemoing/Soul/pull/16
+Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
+下一轮重点    功能地图精化；落地 B01/B02/B03；补派被 VM 上限挡住的 7 席
 ```
 
 ## ROUND 1 派单
@@ -58,11 +58,11 @@ Merge状态     跳过（11.11：先保存成果）
 | # | 模型 | 方向 | 状态 |
 |---|---|---|---|
 | F1 | claude-fable-5-thinking-xhigh | 全库地图 + WP 精化 | **在跑** [bc-0a27702c](https://cursor.com/agents/bc-0a27702c-9927-5f5d-bb10-ac67dcbe5136) 分支 `cursor/bead-r1-map-c441` |
-| F2 | claude-fable-5-thinking-xhigh | 前端 IA | **在跑** [bc-602028ee](https://cursor.com/agents/bc-602028ee-feb0-5ee1-86a0-f029f714b33d) 分支 `cursor/bead-r1-ui-c441` |
+| F2 | claude-fable-5-thinking-xhigh | 前端 IA | **完成** `7dcc8ad` → 已 merge 进专属线。`docs/bead/reviews/round1-frontend.md`。子代理 GitHub token 只读，PR 由父代理补 |
 | F3 | claude-fable-5-thinking-xhigh | 算法契约 | **在跑** [bc-2ba7b602](https://cursor.com/agents/bc-2ba7b602-beb5-5d6d-a3da-77112eb9fd1e) 分支 `cursor/bead-r1-algo-c441` |
 | F4 | claude-fable-5-thinking-xhigh | 数据 / 存储 / 权限 | **BLOCKED** 等 VM |
 | F5 | claude-fable-5-thinking-xhigh | 测试 / CI 隔离 | **BLOCKED** 等 VM |
-| O1 | claude-opus-5-thinking-high-fast | **唯一实现** WP-B01 `crates/bead-core` | **BLOCKED** 等 VM |
+| O1 | claude-opus-5-thinking-high-fast | **唯一实现** WP-B01 `crates/bead-core` | **在跑** [bc-701ecb28](https://cursor.com/agents/bc-701ecb28-1059-5f1e-84c2-e85f513717ce) 分支 `cursor/bead-r1-core-c441` |
 | O2 | claude-opus-5-thinking-high-fast | **唯一实现** WP-B02 `apps/bead` | **BLOCKED** 等 VM |
 | O3 | claude-opus-5-thinking-high-fast | **唯一实现** `packages/bead-algo` | **BLOCKED** 等 VM |
 | S1 | gpt-5.6-sol-xhigh-fast | 覆盖缺口探针 | **BLOCKED** 等 VM |
@@ -76,7 +76,9 @@ Merge状态     跳过（11.11：先保存成果）
 - [x] 专属分支 `cursor/beadflow-integration-c441` @ `541d0dc`+
 - [x] PR #16 draft
 - [x] ROUND 1 先派 3 个 Fable 云端（上限 3）
-- [ ] 空位后立即派 O1/O2/O3 与 F4/F5/S1/S2
+- [x] F2 前端 IA 合入专属线
+- [ ] O1 bead-core；其后 O2 壳（须遵守 D-UI id 前缀与 /assemble 双壳）
+- [ ] F1/F3 完成后合入审查；再派 F4/F5/S1/S2
 - [ ] 第一份可运行转图 + 壳
 
 ## 已知问题 / 禁令
