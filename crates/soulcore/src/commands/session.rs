@@ -137,6 +137,17 @@ pub const NO_ANSWERS_NOTICE: &str = "这份问卷一道题都没有答，所以�
 pub const FORGET_NOT_PREVIEWED_NOTICE: &str = "这次遗忘对不上你刚才看过的那份影响面预览。\
     什么都没有销毁：先看一遍这条记忆现在的预览，再决定。";
 
+/// What a forget is told when the confirmation named the right preview but the
+/// store moved under it.
+///
+/// A separate sentence from the one above because it is a separate thing to
+/// have done wrong, and only one of them is the user's: the id matched, the
+/// screen was read, and what changed is the memory. Saying 对不上预览 here
+/// would send someone looking for a stale window that does not exist.
+pub const FORGET_IMPACT_CHANGED_NOTICE: &str =
+    "这条记忆在你看过影响面预览之后又动过，那份预览上的数字已经不是这次遗忘会销毁的东西。\
+    什么都没有销毁，那份预览也作废了：重新看一遍现在的预览，再决定。";
+
 /// What collection is, stated once, on the page that offers it.
 ///
 /// PRODUCT_LOCK's sentence for this slice — 仅前台应用使用时长，窗口标题不采 —
