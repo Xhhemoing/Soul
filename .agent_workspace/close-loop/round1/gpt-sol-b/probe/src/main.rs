@@ -38,12 +38,9 @@ fn main() {
         .validate(SchemaId::Relationship, &relationship)
         .expect_err("empty algorithm_id must fail relationship.schema.json");
     assert!(
-        failure
-            .errors
-            .iter()
-            .any(|error| error.contains("T4D")
-                && error.contains("T4")
-                && error.contains("/tie_strength/algorithm_id")),
+        failure.errors.iter().any(|error| error.contains("T4D")
+            && error.contains("T4")
+            && error.contains("/tie_strength/algorithm_id")),
         "expected the algorithm_id enum rejection, got: {failure}"
     );
 
