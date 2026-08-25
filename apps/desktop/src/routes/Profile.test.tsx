@@ -142,6 +142,47 @@ describe("灵魂档案页", () => {
     // than against the user answering the same question again.
     expect(explanation).toHaveTextContent("锁住");
     expect(explanation).toHaveTextContent("不会覆盖你");
+    // Pinning the end an axis already leans is a gesture the page has to name,
+    // or it is a lock only somebody who read the source would find.
+    expect(explanation).toHaveTextContent("按当前那一端把它锁住");
+  });
+
+  /**
+   * Agreeing with an axis is a correction too. `soul_profile::correct_axis`
+   * locks whichever position it is handed and the intake path locks nothing,
+   * so pressing the end an axis already leans is the only way to say
+   * 这一端就对了，别再推它 — and the page used to grey exactly that button, on
+   * the rationale that pressing it would change nothing. It changes the lock.
+   * With it grey the way round was to pin the other end and come back, which
+   * leaves a `UserCorrection` in the store asserting a position the user never
+   * held.
+   */
+  it("按下轴现在这一端也是一次纠正：没锁的时候按得下去，按完就锁住了", async () => {
+    const core = await open();
+    const user = userEvent.setup();
+    const row = () => screen.getByTestId(`axis-${AXIS_ID}`);
+
+    expect(within(row()).queryByTestId(`axis-locked-${AXIS_ID}`)).toBeNull();
+    const held = within(row()).getByRole("button", { name: "偏向尝试新的做法" });
+    expect(held).toBeEnabled();
+    await user.click(held);
+
+    expect(core.callsTo("correct_axis")[0]?.payload).toEqual({
+      axisId: AXIS_ID,
+      position: "leans_high",
+    });
+    expect(await screen.findByTestId(`axis-locked-${AXIS_ID}`)).toHaveTextContent(
+      "推断不再改这条",
+    );
+    expect(screen.getByTestId(`axis-reading-${AXIS_ID}`)).toHaveTextContent(
+      "偏向尝试新的做法",
+    );
+
+    // Now the old rationale is the true one: the verdict is recorded, so
+    // restating it is the one press that would change nothing.
+    expect(within(row()).getByRole("button", { name: "偏向尝试新的做法" })).toBeDisabled();
+    expect(within(row()).getByRole("button", { name: "偏向熟悉稳妥的做法" })).toBeEnabled();
+    expect(within(row()).getByRole("button", { name: "两端都有，看场合" })).toBeEnabled();
   });
 
   /** AC-07: the correction goes to the core, and the whole screen comes back. */

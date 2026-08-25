@@ -10,8 +10,9 @@
 //!
 //! So what is checked here is the product path: the band the screen is handed
 //! after a correction, the machine's own reading kept beside it, the lock
-//! surviving the rebuild a second import runs, the way back out to the counts,
-//! and the two words that are refused before anything reaches the store.
+//! surviving the rebuild a second import runs, the pin a user who agrees with
+//! the band presses, the way back out to the counts, and the two words that are
+//! refused before anything reaches the store.
 
 use std::path::PathBuf;
 
@@ -191,6 +192,77 @@ fn a_rebuild_recounts_the_edge_and_leaves_the_corrected_band_alone() {
         after.machine_band.is_some(),
         "the rebuild dropped what the counts say, so the screen can no longer show it",
     );
+
+    drop(keep);
+}
+
+/// Agreeing with the band is a correction too, and the only one that says
+/// 别再重算这一条 without moving anything.
+///
+/// Every other case in this file corrects to `other_than` the current band,
+/// which leaves the one gesture the interface most needs untested: a user who
+/// reads the tie, agrees, and wants the next import to keep its hands off it.
+/// `correct_tie` locks whatever band it is handed, so this is a single press —
+/// and the alternative, pinning some other band and coming back, would leave a
+/// `UserCorrection` in the store asserting a band the user never held.
+///
+/// What comes back afterwards has to be a lock with nothing to disagree about:
+/// `machine_band` is the same word as the effective band, so
+/// `TieCorrection::overrides_machine` is false and there is no disagreement for
+/// a screen to draw. Then the same rebuild the test above runs, because a pin
+/// that a second import undoes is not a pin.
+#[test]
+fn pinning_the_band_the_edge_already_has_locks_it_without_moving_it() {
+    let (keep, directory) = scratch();
+    let mut session = imported(&directory);
+
+    let before = a_tie(&session);
+    assert!(!before.locked_by_user, "nobody has corrected this edge yet");
+    assert_eq!(before.user_band, None);
+
+    let graph = session
+        .correct_tie(&before.relationship_id, &before.band)
+        .expect("the user read the tie, agreed, and pinned it there");
+
+    let after = graph
+        .ties
+        .iter()
+        .find(|tie| tie.relationship_id == before.relationship_id)
+        .expect("the pinned tie is in the answer");
+    assert_eq!(after.band, before.band, "the pin moved the band");
+    assert!(after.locked_by_user, "the pin did not lock the edge");
+    assert_eq!(after.user_band.as_deref(), Some(before.band.as_str()));
+    assert_eq!(
+        after.machine_band.as_deref(),
+        Some(before.band.as_str()),
+        "the two agree, so there is no disagreement for a screen to draw",
+    );
+    assert!(
+        after
+            .evidence
+            .iter()
+            .any(|row| row.kind == "user_correction"),
+        "the pin is not among the rows this edge cites: {:?}",
+        after.evidence,
+    );
+
+    // The point of the pin: the counts go on accumulating and the word stays.
+    let text = fixtures::read_text(IMPORT).expect("the fixture is on disk");
+    session
+        .commit_soul_import_v1(&text)
+        .expect("the same export imports again, and rebuilds the graph");
+
+    let rebuilt = tie(&session, &before.relationship_id);
+    assert!(
+        rebuilt.interaction_count > before.interaction_count,
+        "the second import wrote no events, so this proves nothing about a rebuild",
+    );
+    assert_eq!(
+        rebuilt.band, before.band,
+        "the rebuild moved the pinned band"
+    );
+    assert!(rebuilt.locked_by_user);
+    assert_eq!(rebuilt.user_band.as_deref(), Some(before.band.as_str()));
 
     drop(keep);
 }

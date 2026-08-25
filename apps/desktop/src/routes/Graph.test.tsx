@@ -145,12 +145,19 @@ describe("人脉图页", () => {
 
   /**
    * Three words and no fourth: COPY_ZH allows 弱 / 中等 / 强 for a 档位 and the
-   * core's `band_named` is a closed set of the same three. The button for the
-   * band already in force is grey, the way the profile page greys the position
-   * an axis already holds — pressing it would write a correction that changes
-   * nothing.
+   * core's `band_named` is a closed set of the same three.
+   *
+   * All three are live while the tie is unlocked, including the one already in
+   * force, because agreeing with the band is a thing the user may want to say
+   * and `soul_graph::correct_tie` writes the lock for whatever band it is
+   * handed. Greying that button used to be justified as 按下去也不改变什么,
+   * which was reading a correction as if the band were all it wrote: the lock
+   * is the other half, and it is what makes the next rebuild leave the word
+   * alone. With the button grey the only way to that lock was 改成别的再改回来,
+   * which puts a `UserCorrection` in the store asserting a band the user never
+   * held.
    */
-  it("只有那三个档位词，当前这一档的按钮是灰的", async () => {
+  it("三个档位词都能按，当前这一档也能按——因为按下去是把它锁住", async () => {
     await open({ graph: aPeopleGraph() });
     const tie = screen.getByTestId(`tie-${TIE_ID}`);
 
@@ -158,9 +165,78 @@ describe("人脉图页", () => {
       .getAllByRole("button")
       .map((button) => button.textContent);
     expect(bands).toEqual(["弱", "中等", "强"]);
-    expect(within(tie).getByRole("button", { name: "中等" })).toBeDisabled();
-    expect(within(tie).getByRole("button", { name: "强" })).toBeEnabled();
-    expect(screen.getByTestId("ties-explanation")).toHaveTextContent("工作假设");
+    for (const band of bands) {
+      expect(within(tie).getByRole("button", { name: band ?? "" })).toBeEnabled();
+    }
+    const explanation = screen.getByTestId("ties-explanation");
+    expect(explanation).toHaveTextContent("工作假设");
+    // The gesture has to be on screen, or it is a lock only somebody who read
+    // the source would find.
+    expect(explanation).toHaveTextContent("按当前那一档把它锁住");
+  });
+
+  /**
+   * Pinning: the user reads the band, agrees with it, and does not want a
+   * later import to move it. `correct_tie` is handed the word already in force
+   * and the lock goes on — the screen has to send that word rather than the
+   * detour a grey button forced.
+   *
+   * Nothing disagrees afterwards, so the 机器按这些计数算的是 line stays away:
+   * `machine_band` and the effective band are the same word, and a line
+   * announcing a disagreement that does not exist would be this page inventing
+   * one. The badge and the way back out are both there, because what happened
+   * is a lock like any other.
+   */
+  it("按下当前这一档就是把它钉住：锁上了，机器那一读没有异议，也留着回头路", async () => {
+    const core = await open({ graph: aPeopleGraph() });
+    const user = userEvent.setup();
+    const tie = () => screen.getByTestId(`tie-${TIE_ID}`);
+
+    expect(tie()).toHaveTextContent("中等：往来 6 次");
+    await user.click(within(tie()).getByRole("button", { name: "中等" }));
+
+    expect(core.callsTo("correct_tie")[0]?.payload).toEqual({
+      relationshipId: TIE_ID,
+      band: "moderate",
+    });
+    expect(await screen.findByTestId(`tie-locked-${TIE_ID}`)).toHaveTextContent(
+      "你改过这一档，重算不再动它",
+    );
+    expect(tie()).toHaveTextContent("中等：往来 6 次");
+    expect(screen.queryByTestId(`tie-machine-${TIE_ID}`)).toBeNull();
+    expect(within(tie()).getByRole("button", { name: "按计数重新算" })).toBeEnabled();
+
+    // Now the old rationale is the true one: the verdict is recorded, so
+    // restating it is the one press that would change nothing.
+    expect(within(tie()).getByRole("button", { name: "中等" })).toBeDisabled();
+    expect(within(tie()).getByRole("button", { name: "强" })).toBeEnabled();
+    expect(within(tie()).getByRole("button", { name: "弱" })).toBeEnabled();
+  });
+
+  /**
+   * A summary is written from the counts as they stood when it was asked for,
+   * and the band is one of the things it states. A correction overrules that
+   * band, so a summary left on screen underneath a fresh lock is the machine's
+   * reading contradicting the user's with nothing on the page saying which one
+   * is current. It goes, and comes back when the user asks for it again.
+   */
+  it("改过档位之后，屏幕上那份旧摘要先撤掉，不留在锁下面顶嘴", async () => {
+    await open({ graph: aPeopleGraph() });
+    const user = userEvent.setup();
+
+    await user.click(screen.getAllByRole("button", { name: "看这个人的摘要" })[0]!);
+    await screen.findByTestId("summary-text");
+
+    await user.click(
+      within(screen.getByTestId(`tie-${TIE_ID}`)).getByRole("button", { name: "强" }),
+    );
+    await screen.findByTestId(`tie-locked-${TIE_ID}`);
+
+    expect(screen.queryByTestId("summary-text")).toBeNull();
+    expect(screen.queryByTestId("summary-source")).toBeNull();
+
+    await user.click(screen.getAllByRole("button", { name: "看这个人的摘要" })[0]!);
+    expect(await screen.findByTestId("summary-text")).toBeVisible();
   });
 
   /**
