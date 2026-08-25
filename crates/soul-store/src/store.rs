@@ -424,10 +424,10 @@ impl SqlCipherStore {
     /// it exists for one shape of caller: a command that writes many rows which
     /// only mean something together. An import is the case that forced it. Each
     /// write below used to commit on its own, so a `synchronous=FULL` commit
-    /// fsync was paid once per message — several seconds for an eight-thousand
-    /// message export, minutes for a hundred thousand — and a crash halfway
-    /// through left an import that could not be re-run without writing every
-    /// surviving event a second time.
+    /// fsync was paid once per message — seconds for an eight-thousand message
+    /// export on an ordinary filesystem, and linear in the export from there —
+    /// and a crash halfway through left an import that could not be re-run
+    /// without writing every surviving event a second time.
     ///
     /// Both problems have the same answer. Inside `work` the per-row writes
     /// nest as savepoints, which are bookkeeping in the same open transaction

@@ -1032,13 +1032,13 @@ impl Session {
     ///
     /// The two of them are one transaction, and that is the whole of what an
     /// import promises about failure. Writing a message used to be its own
-    /// commit, so a hundred thousand of them were a hundred thousand
-    /// `synchronous=FULL` fsyncs on one IPC call, and anything that went wrong
-    /// partway — a graph that will not build, a machine that lost power — left
-    /// an import nobody could re-run: the events already in the store have no
-    /// external id to match against, so a second attempt would write them
-    /// again. Wrapped, a file either landed whole or was never here, which is
-    /// the state the same file can simply be imported into again.
+    /// commit, so an export of a hundred thousand of them was a hundred
+    /// thousand `synchronous=FULL` fsyncs on one IPC call, and anything that
+    /// went wrong partway — a graph that will not build, a machine that lost
+    /// power — left an import nobody could re-run: the events already in the
+    /// store have no external id to match against, so a second attempt would
+    /// write them again. Wrapped, a file either landed whole or was never here,
+    /// which is the state the same file can simply be imported into again.
     ///
     /// The rebuild is inside the wrap rather than after it because a graph that
     /// refuses to build is a reason not to keep the import. Two contacts of

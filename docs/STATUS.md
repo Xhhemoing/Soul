@@ -919,7 +919,7 @@ T4D 端口把 `crates/soul-graph/src/correct.rs` 和 `soulcore::commands::graph:
 
 分支 `cursor/import-tx-wrap-4a8e`，从 `origin/cursor/soul-integration-4a8e`（`826d092`）长出。**没有合 PR、没有合 `main`、没有 rebase 主干。**
 
-两个后果同一个根。`append_event` 每写一条事件开一个自己的事务，`synchronous=FULL` 下每条都要一次提交 fsync：本机（overlay 文件系统，不是 tmpfs）上 8000 条要 **3.57 秒**，十万条的 Telegram 导出会把一次 IPC 调用堵到分钟级。另一头更难看——中途崩了或者中途报错，写进去的那一半就留在库里，而导入的事件没有外部 id 可以对，用户想把这份文件补完就只能整个再导一遍，于是已经落库的每一条都多出一份。D55 的按内容哈希去重还停着，所以「再导一次」在 v0.1 里是有代价的建议。**把一次导入变成一个事务，这两件事一起没了。**
+两个后果同一个根。`append_event` 每写一条事件开一个自己的事务，`synchronous=FULL` 下每条都要一次提交 fsync：本机（overlay 文件系统，不是 tmpfs）上 8000 条要 **3.57 秒**，按这个斜率十万条的 Telegram 导出会把一次 IPC 调用堵住接近一分钟，真机上的机械盘或者慢一些的 SSD 只会更久。另一头更难看——中途崩了或者中途报错，写进去的那一半就留在库里，而导入的事件没有外部 id 可以对，用户想把这份文件补完就只能整个再导一遍，于是已经落库的每一条都多出一份。D55 的按内容哈希去重还停着，所以「再导一次」在 v0.1 里是有代价的建议。**把一次导入变成一个事务，这两件事一起没了。**
 
 落地内容：`SqlCipherStore::transact`——一个跨多次写入的边界，签名是 `FnOnce(&mut SqlCipherStore) -> Result<T, E>`，`BEGIN IMMEDIATE` 起、成功 `COMMIT`、报错或 panic 都 `ROLLBACK`（panic 那条走 `catch_unwind` 再 `resume_unwind`，因为 `soulcore` 的 `hold` 是把中毒的锁恢复回来用的，连接不能留在事务中间）。它**没有加到 `soul-store-api` 的 trait 上**：那一层是 `FakeStore` 也要实现的存储契约，而这是 SQLCipher 这一个后端的事。为了让它能包住别人，`store.rs` 里那五处 `self.conn.transaction()`（事件、推断、记忆、关系、审计）改成 `self.conn.savepoint()`——没人包的时候最外层 savepoint 自己就是那个事务，`RELEASE` 就是提交（AC-24 在裸 store 上的语义因此一个字没变）；被包住的时候它只是同一个事务里的记账。`forget.rs` 一个字节没动，它那条单事务的路本来就不在导入里。`Session::commit_import` 把 `soul_import::commit` 与 `graph_commands::rebuild` 一起放进 `transact`：**重算在事务里面而不是后面**，因为一张建不出来的图（两个 `self` 联系人是那个例子）本来就是不该留下这次导入的理由。
 
