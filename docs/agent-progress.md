@@ -7,31 +7,44 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 ## Current round
 
-**ROUND 4** — close remaining honesty/test gaps; keep covering modules that still have real defects.
+**ROUND 5** — cover under-scanned crossings (forget×summary, import idempotency, audit crash, G1+ edges, bounded perf). Do not re-open closed R4 items.
 
 | Field | Value |
 |---|---|
-| Current task | Landed: as_of=None; Session §6 pin; Graph+Profile same-band; forget-impact; collect count; name-harvest fold; E1 response cap (`4959a68`, soul-egress 11/11). Opus still out: keys.dpapi lock reclaim. E1 mutex stall parked P2. |
+| Current task | 10× Fable Round 5 in flight. E1 mutex stall parked P2. Hosted Windows `LockFileEx` pending billing. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
-| Exclusive tip | `37c1fa0` / PR #15 |
+| Exclusive tip | key-blob reclaim merged; PR #15 |
 
-### Round 4 Fable dispatch (launched, not yet returned)
+### Round 5 Fable dispatch
 
-| # | Direction | Agent |
-|---|---|---|
-| 1 | Consent topology / unused topics / forget vs HITL | `bc-f14d6bec-e45f-51b9-a48b-a88dfd2ff1a6` |
-| 2 | Name-harvest / KnownIdentifiers spacing variants | `bc-272d9201-1d04-5648-b92f-91295e1b0a28` |
-| 3 | Collect vs E1 mutex / research isolation | `bc-84269338-f1c9-5cf9-b7f8-25bcd2204ad7` |
-| 4 | Tests: AC-31 real-store, AC-28…34 product-path, as_of=None | `bc-1dab607f-d62e-5223-bd46-287ecccb1b20` |
-| 5 | keys.dpapi empty-file reclaim TOCTOU (Opus brief) | `bc-883a0516-bf98-596f-94ce-fddfa4e5b924` |
-| 6 | Session person_summary §6 product pin (Opus brief) | `bc-ad7c4158-16ce-5aa3-8f3e-8b51af8d3df2` |
-| 7 | Independent Review of SOUL-7B | `bc-03c8e0b1-1566-567d-aff7-63ae978d82c7` |
-| 8 | Graph same-band lock UI + other frontend honesty | `bc-7c27a0ed-fe34-5629-90ab-60ad3daeded8` |
-| 9 | Security / reliability remaining (not closed R2–R3 items) | `bc-66db863d-c616-5edd-a465-4dfeca8e97c9` |
-| 10 | Independent synthesis vs four author requirements | `bc-66937bab-d5ee-5d8f-99b3-413d36da3dc6` |
+| # | Direction |
+|---|---|
+| 1 | Cross-slice: import → lock → graph → summary+projection → collect → research → audit |
+| 2 | Forget × summary: destroyed evidence must not stay cited |
+| 3 | Import idempotency: same `result.json` twice must not inflate bands |
+| 4 | Independent review of R4 landings (no mechanical re-scan of closed defects) |
+| 5 | Audit-chain crash consistency at `Session::append_audit` |
+| 6 | Hostile E1 remainder (control chars / diagnosis) after the 4 MiB cap |
+| 7 | G1+ post-port: multi-venue same-pair, owner in two groups |
+| 8 | Bounded performance probe (synthetic import→rebuild→summary) or evidenced NO_HIGH_VALUE |
+| 9 | Windows-only / author-checklist desk-check (record BLOCKED if unrunnable) |
+| 10 | Independent synthesis vs four author requirements; Round 6 directions |
 
-Parent-observed candidate while Fable runs (not landed): `soul-graph::correct_tie` and `Session::correct_tie` accept locking the current band (`graph_correction.rs` comment: correcting to the machine's band still locks), but `Graph.tsx` disables `band === tie.band`, so the installed UI cannot pin the current word. Fable #8 owns the call.
+## ROUND 4 record
+
+| Field | Value |
+|---|---|
+| ROUND | 4 |
+| 子代理任务 | 10× Fable + Opus: Session §6 pin, Graph/Profile same-band, name-harvest fold, forget-impact bind, collect `count_events`, as_of=None pin, keys.dpapi lock reclaim, E1 response cap |
+| 发现问题 | keys.dpapi empty-file reclaim TOCTOU (10/20 empirical); Session §6 unpinned; Graph/Profile greyed current band; imported `李 雷` leaked as `李雷` on exemption; forget preview ids matched while impact drifted; collect_status O(n) JSON parse; E1 unbounded body; COPY_ZH §6 `{天数}` collision; as_of=None untested |
+| 修复问题 | In-place fs4 lock reclaim; session_projection.rs; same-band pin UI+session test; spaced-Han fold; re-quote forget impact; SQL count(*); 4 MiB E1 cap; COPY_ZH `{降档天数}`/`{封弱天数}`; as_of=None crate pin |
+| 测试结果 | soul-store 18+integration green incl. racing empty recoverers; session_projection 4; session_graph_correct 7; session_e1 32; redactor_exemption 14; session_screens 11; session_collect 10; soul-egress e1_origin 11; vitest 185; projection_sentences 21 |
+| Commit | merges of predict-session-pin, graph-same-band, forget-impact-bind, collect-event-count, name-harvest-fold, e1-response-cap, key-blob-reclaim |
+| PR | #15 |
+| Merge状态 | Exclusive has the merges. → `main` still `BLOCKED`. PR #7 still not merged |
+| 下一轮重点 | Cross-slice, forget×summary, import idempotency, G1+ edges, bounded perf. Do not re-litigate parked P2 E1 mutex without a P0/P1 upgrade |
+| NO_HIGH_VALUE | Consent unused topics (honest for v0.1); collect-vs-E1 leak (none); SOUL-7B review passed; AC-31-on-this-tree was a misnomer |
 
 ## ROUND 3 record
 
