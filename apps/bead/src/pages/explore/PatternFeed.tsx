@@ -3,8 +3,9 @@ import { Link } from "react-router";
 import type { Pattern } from "../../stores/types.ts";
 
 /**
- * The whole card is one link and holds no second click target; a Fork button
- * arrives with WP-B08 and will sit outside the card.
+ * The whole card is one link and holds no second click target (round1 §6).
+ * 「Fork 改色」is one tap further in, on the pattern detail page, where there is
+ * room to say why a gridless pattern cannot be forked (D-GAL-11).
  */
 export function PatternFeed({ patterns, variant = "feed" }: { patterns: Pattern[]; variant?: "feed" | "grid" }) {
   return (

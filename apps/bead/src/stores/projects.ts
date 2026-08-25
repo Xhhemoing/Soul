@@ -74,6 +74,36 @@ export function createProjectFromBlank(
   };
 }
 
+/**
+ * D-GAL-7 / D-GAL-8: what「Fork 改色」mints. `sourcePatternId` is null, and that
+ * is not a preference — three contracts already decided it. The editor guard
+ * only opens for a null source (D-ED-1); the assembler reads the fixture grid
+ * for a non-null one (D-UP-14) and would lay out the *original* colours; and
+ * the WP-B07 archive's「null ⇔ has a document」bijection (D-IE-9) rejects the
+ * other combination outright. Where the copy came from is said in the title,
+ * for a person to read, and nowhere else — an attribution field with no
+ * attribution backend behind it (BD7) is a second authority for nothing.
+ *
+ * Not `createProjectFromBlank`, whose comment pins「all -1」: a fork lands with a
+ * whole board on it. Like the other two document-backed mints, the id comes
+ * from the caller, because the document is written under it first (D-UP-10).
+ */
+export function createProjectFromFork(
+  id: ProjectId,
+  title: string,
+  now: number = Date.now(),
+): Project {
+  return {
+    id,
+    title,
+    sourcePatternId: null,
+    status: "draft",
+    createdAt: now,
+    backdrop: "black",
+    backdropColor: DEFAULT_BACKDROP_COLOR,
+  };
+}
+
 export function selectProject(projects: readonly Project[], id: string): Project | undefined {
   return projects.find((project) => project.id === (id as ProjectId));
 }
