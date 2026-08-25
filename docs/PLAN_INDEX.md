@@ -29,6 +29,7 @@
 | Goal 1 的 DAG 与实现细节 | `origin/cursor/soul-goal1-7b1c:docs/GOAL1_PLAN.md`（只读对照，尚未合入 `main`） |
 | 已知阻塞 | `origin/cursor/blockers-analysis-a073:docs/BLOCKERS.md`（`BLOCKERS_FROZEN`）。**仍在 PR #6，尚未合入 `main`，本树也没有这份文件**；本计划 PR 不整份拷贝它。按 `STATUS.md` 的合入顺序，PR #6 在本 PR 之后合 |
 | Goal 2 | `GOAL2_POLISH_PROMPT.md`。Goal 1 关闭前不要打开 |
+| 父代理怎么按一句话派子代理、开分支、跑三轮/二十轮/审计 | [`templates/PARENT_ORCHESTRATOR.md`](templates/PARENT_ORCHESTRATOR.md)。管派单与 Git，**不**覆盖产品锁 / 算法冻结 / 验收矩阵。计划扫描仍用 [`templates/THREE_ROUND_DUAL_SCAN.md`](templates/THREE_ROUND_DUAL_SCAN.md) |
 
 ## 三、仓库拓扑（读代码前先看这三行）
 
@@ -41,7 +42,8 @@
 - `.agent_workspace/**`：过程材料（扫描轮次、探针、子代理草稿）。**任何权威结论必须落到 `docs/`**；`.agent_workspace/context/plan/` 已不再是权威面。
 - `scan-rounds/**`：历史仲裁记录。解释「为什么」，不定义「是什么」。
 - [`PLAN_VERIFY_PROMPT.md`](PLAN_VERIFY_PROMPT.md)：**一次性提示词，已执行完毕**（三轮双模型扫描，结论 `PLAN_FROZEN`，落盘在 `scan-rounds/`）。存档以便追溯当时的风险清单，**不要当新工单重跑**。
-- `FORMAL_WORK_PROMPT.md` 的「历史段」：作者开工原话，`CreateGoal：Goal 1` 与派 planner 都已执行过。可执行路径只有同文件的「开工第一动作」。
+- [`FORMAL_WORK_PROMPT.md`](FORMAL_WORK_PROMPT.md) 的「历史段」：作者开工原话，`CreateGoal：Goal 1` 与派 planner 都已执行过。可执行路径只有同文件的「开工第一动作」。
+- [`templates/PARENT_ORCHESTRATOR.md`](templates/PARENT_ORCHESTRATOR.md)：派单、轮次与 Git 模板。冲突时以本页左列为准，不要拿它覆盖产品锁、算法冻结或验收矩阵。
 - 第二份 `PRODUCT.md`：**禁止存在**（D27）。看到就删。
 
 ## 五、改这些文件的规矩
