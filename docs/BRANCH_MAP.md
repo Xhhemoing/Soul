@@ -61,5 +61,5 @@
 ## 本轮实际要做的合并
 
 1. **不要**合 #4 / #7 / `main`。`scripts/branch-disposition.sh` 对这三名 `--merge` 一律 exit 2。
-2. **已在本机快进：** 从 `origin/cursor/soul-goal1-7b1c`（`5309656`）快进到本机 audit。结果枝 `cursor/first-test-candidate-c441` 与 `cursor/goal1-build-audit-c441` 同尖端。`scripts/branch-disposition.sh --merge` 对本仓库实测：`agent/dev-sota` / `main` / closeout 均 exit 2，HEAD 不动。origin audit 仍是 `FF-SAFE +41/-0`；closeout 仍是 `UNSAFE +4/-1 conflicts=1`（`docs/STATUS.md`）。
+2. **已快进并推 origin：** 从 `origin/cursor/soul-goal1-7b1c`（`5309656`）快进到 audit。`cursor/first-test-candidate-c441` 与 `cursor/goal1-build-audit-c441` 同尖端、都在 origin。`--merge` 对 `agent/dev-sota` / `main` / closeout 均 exit 2。closeout 仍是 `UNSAFE`（`docs/STATUS.md` 冲突）。
 3. PR #12 不必再合。`cursor/first-test-candidate-c441` 与 `cursor/goal1-build-audit-c441` 已推 origin。作者决定是否把这一快进合进 PR #2。
