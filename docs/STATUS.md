@@ -865,7 +865,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 3. **E1 计划绑定 origin（`d1b6457`，fmt `9daacc8`）。** `e1_plan` 把目标 origin 打进哈希；换端点后再用旧批准 → `PLAN_HASH_MISMATCH`，A/B 请求数均为 0。哈希以外的地址仍不上屏、不进审计。对 `SECURITY.md`「配置变更会使计划哈希失效」。
 4. fable-b 独立审计完成（`3550bcb`）。dpapi/collect FFI 干净。R2 综合见 `.agent_workspace/orchestrator-c441/R2-SYNTHESIS.md`。
 5. **余下 P1 落笔（核于 2026-08-25，尖端 `71eaaac`）。** 无标签联系人遗忘销毁正文密钥（`e2f7368`）；snapshot/`max_entries`（`8c635b2`）；e0-audit 按 host 锚定（`1a4cc22`）；换端点丢掉 pending E1（`b2d2915`）；遗忘确认先匹配再 take（`7a29ca7`）；向导/导入预览/重复导入警告/遗忘「不写文件」/图摘要 payload 文案（`d32a786`…`71eaaac`）。重复导入仍无去重索引（D55）。 vitest 166。本机绿不是 hosted 绿。
-6. **fable 收口复核（`1e20445`）。** 声称已闭合的代码 P0/P1 共 11 项全部 `闭合`，0 残留、0 误报。代码侧无残留 P0。仍开放：向导欢迎「发出去的内容会先占位」（P1 文案）；FakeStore `keys_of` 与真库无名联系人遗忘不对齐（P2 测试基础设施）；以及已停车的 P2 组。过程稿 `.agent_workspace/orchestrator-c441/round2/fable-closeout.md`。
+6. **fable 收口复核（`1e20445`）。** 声称已闭合的代码 P0/P1 共 11 项全部 `闭合`，0 残留、0 误报。代码侧无残留 P0。跟进：向导欢迎不再声称出网内容全是占位符（`882b814`）；FakeStore `keys_of` 与真库无名联系人遗忘对齐（`99bdd30`）。已停车的 P2 组未动。过程稿 `.agent_workspace/orchestrator-c441/round2/fable-closeout.md`。尖端 `99bdd30`。本机绿不是 hosted 绿。
 
 ## 下一步
 
