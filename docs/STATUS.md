@@ -871,6 +871,10 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 对照图 `.agent_workspace/orchestrator-c441/ARCHITECTURE_LOCK.md`（过程稿）。16 个 crate 对照 `GOAL1_PLAN` 钉死核过，**无 DAG 漂移**。R3 四条 P1 **闭合**。P0 姓名占位：带空格 `李 雷`、无空格 `李雷说…`、拉丁 `Wang Xiao said…` 在空图豁免条已钉死（`f53c3ae`/`92623b1`）；**不在说话动词前的未导入姓名仍会出网**，由测试记账而非假装全称闭合。IPv6 维持停车。LOOP20 仍排队。本机超前 origin 约 18 提交；GitHub 推送仍拒。复核 `round3/fable-r3-review.md`，opus-d `round3/opus-d.md`。
 
+## 第一次正式测试准备（核于 2026-08-25）
+
+方案：`docs/FIRST_FORMAL_TEST.md`。分支图：`docs/BRANCH_MAP.md`。本机已把唯一主干快进到 `cursor/first-test-candidate-c441`（与 `cursor/goal1-build-audit-c441` 同尖端）。`scripts/branch-disposition.sh` 拒绝合 `#4` / `#7` / `main` / closeout。本机 Linux：schema / e0 / denylist 绿，`cargo test --workspace --all-targets` 0 failed。这不是 hosted 绿，也不是 Win11 AC-01。未推送的 tip 不能当作者正式对象。
+
 ## 下一步
 
 批 3–5 与 WP13、DPAPI 都已完成。`2e72ddf` 上 CI 五门全绿。HEAD 本机 `just ci-full` 与桌面壳 `--all-targets` 绿于产品 `478f19f` 的树（vitest 161，`ipc_roundtrip` 50，`shell_is_local_only` 21，`cargo deny` 四项 ok）；`6e358b3` 补了档案页轴说明与 Explorer 引号路径；`88cf931` 补了第二次启动不进第二份库；`928ef5a` 补了遗忘 SSD 诚实、文件页引号提示、WebView2 args；`f0a2363` 补了研究空状态；`17b56e9` 补了向导授权说明不暗示能写；`90c2d25` 补了端点说明点名起草生成与人脉图摘要；`0de3e90` 补了人脉图「只留在本机」那行点名摘要按钮会把往来次数发给已填端点；`478f19f` 补了向导欢迎那段点名后来的模型端点是例外、发出去的内容会先占位。hosted 五门没有 runner。原先写在这里的产品缺口已经做完，剩下的是 hosted 与真机：
