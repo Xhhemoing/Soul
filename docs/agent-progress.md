@@ -23,7 +23,7 @@
 
 | 面 | 现状 | 下一动作 |
 |---|---|---|
-| 前端 | B04 沉浸拼装已合（游标落盘、fixture 网格、控制球） | B04 复审；随后 B05 库存 UI |
+| 前端 | B04 拼装 + B05 库存已合 | B05 复审；B10 workflow |
 | 后端 | 无 bead 服务 | v0 本机，不造第二灵魂核 |
 | API | 无 bead API | 本地 store 契约 |
 | 数据库 | Soul 加密 SQLite，与 bead 无关 | WP-B09 IndexedDB（Grid 落盘才上，BD19） |
@@ -97,7 +97,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] S2 构建探针合入（#35，`docs/bead/reviews/round2-build.md`）
 - [x] S1 覆盖探针合入（#36，`docs/bead/reviews/round2-coverage.md`）
 - [ ] AL-4（MED）rust 侧补跨取整边界的 oracle fixture（不改 TS 语义）
-- [ ] B05 库存/BOM UI（IA 已合，实现可派）
+- [x] B05 实现合入 `8526c5c`（#39）；本机 `@bead/app` **27 文件 / 358** 绿
 - [x] B04 复审合入 `76ae0ef`（#38，ACCEPT；MED-1 行窗口写盘后置）
 - [ ] `/create` 上传接线（独立变更；若持久化 Grid 必须同时上 IDB，BD19）
 - [ ] B10 独立 bead workflow（简报已合，实现等席）
@@ -124,7 +124,8 @@ Commit        15ad3b3 absorb B04；本提交记进度
 PR            #16 #32–#37
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B05 实现；B10 workflow；MED-1 后置
-在途          [R2 Opus B05 implement](https://cursor.com/agents/bc-07588339-9d46-582e-9230-b027218aa67b)
+在途          [R2 Fable review B05](https://cursor.com/agents/bc-f8cb512c-e819-5100-8d2c-7fc3d03bb1b0) · [Verify B05 inventory](https://cursor.com/agents/bc-e243c726-9fc1-5e7f-b775-4a052287eb97)
+已收          [R2 Opus B05 implement](https://cursor.com/agents/bc-07588339-9d46-582e-9230-b027218aa67b) → #39 `8526c5c`
 已核          B04 浏览器：史莱姆转入工作台 → 步进/撤销/切模式/1:1 通过；蛋糕盒无网格由 T-ASM-17 锁（手工第三张误截到 /workspace）
 已收          [R2 Opus B04 implement](https://cursor.com/agents/bc-6a5bc9c6-7bdc-528b-bb4a-b9611abce044) → #37；[R2 Fable review B04](https://cursor.com/agents/bc-9087419b-67fc-5fd9-aa37-9f8bd95154cd) → #38
 Blocked       无（B04 已由本机 worktree 落地）
