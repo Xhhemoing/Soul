@@ -7,33 +7,44 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 ## Current round
 
-**ROUND 5** — cover under-scanned crossings (forget×summary, import idempotency, audit crash, G1+ edges, bounded perf). Do not re-open closed R4 items.
+**ROUND 6** — scan the queued crossings from R5 #10. Do not re-open closed R4/R5 items (D55, P2 E1 mutex, owner-fold, import-tx wrap, forget×summary).
 
 | Field | Value |
 |---|---|
-| Current task | Round 5 landings merged: forget×summary, research disposition, G1+ owner-fold, import transaction wrap, forgotten-peer tie-correct. Close Round 5 after a Fable pass on the last hole. D55 hashed-dedup parked. P2 E1 mutex parked. Hosted CI billing-blocked. |
+| Current task | 10× Fable Round 6 in flight. D55 hashed-dedup parked. P2 E1 mutex parked. Hosted CI billing-blocked. Author Win11 checklist unticked. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
-| Exclusive tip | forget-summary + research-disposition + g1-owner-fold merged; PR #15 |
+| Exclusive tip | R5 landings merged; PR #15 |
 
-### Round 5 Fable dispatch
+### Round 6 Fable dispatch
 
 | # | Direction |
 |---|---|
-| 1 | Cross-slice: import → lock → graph → summary+projection → collect → research → audit |
-| 2 | Forget × summary: destroyed evidence must not stay cited |
-| 3 | Import idempotency: same `result.json` twice must not inflate bands |
-| 4 | Independent review of R4 landings (no mechanical re-scan of closed defects) |
-| 5 | Audit-chain crash consistency at `Session::append_audit` |
-| 6 | Hostile E1 remainder (control chars / diagnosis) after the 4 MiB cap — **BLOCKED** by usage-policy filter; replaced by E1 reply screening #6b |
-| 7 | G1+ post-port: multi-venue same-pair, owner in two groups |
-| 8 | Bounded performance probe (synthetic import→rebuild→summary) or evidenced NO_HIGH_VALUE |
-| 9 | Windows-only / author-checklist desk-check (record BLOCKED if unrunnable) |
-| 10 | Independent synthesis vs four author requirements; Round 6 directions |
+| 1 | Schema-version / upgrade-path honesty: opening a db with a different `meta.schema_version` (no migrator) |
+| 2 | Degraded-mode coherence: `store_opened=false` across all routes + wizard + tray |
+| 3 | AC-21 headless main-flow lag vs COMMANDS=38 (tie-correct, summary+projection, E1 branch) |
+| 4 | 38-command argument sweep: wrong types / nulls / oversized payloads → refusal not panic, no echoed user content |
+| 5 | Long-horizon aging: unpaginated `/audit`, remaining O(n) reads, db growth after collection |
+| 6 | Backup / machine-migration / key-loss surfaces after `store_notice` (uninstall, settings, wizard) |
+| 7 | Telegram Desktop 2026 export-shape vs frozen 4.x assumption |
+| 8 | Gate coverage post-port: e0/denylist on `soul-algo-*`; `.test.tsx` URL exemption; leakage-checker blind spot |
+| 9 | AD-12 consent board draft + `duration_bucket` research path vs constraint 7 |
+| 10 | Session lock-order / reentrancy inventory, excluding parked P2 E1 mutex unless P0/P1 evidence |
 
-### Round 6 directions (queued — do not start until Round 5 close)
+## ROUND 5 record
 
-From R5 #10: schema-version honesty; `store_opened=false` across routes; AC-21 headless lag vs 38 commands; 38-command adversarial IPC; long-horizon aging; backup/key-loss (notice already landed); Telegram 2026 export-shape; gate coverage post-port; AD-12 consent board; Session lock-order inventory excluding parked P2 E1 stall.
+| Field | Value |
+|---|---|
+| ROUND | 5 |
+| 子代理任务 | 10× Fable + Opus: forget×summary, research `research_export`, G1+ owner-fold, import-tx wrap, forgotten-peer tie-correct, E1 multiline provenance, DPAPI `store_notice`, checklist honesty |
+| 发现问题 | Forgotten contact still summarized/E1-sent and resurrected Live on rebuild; research preview ignored `research_export`; two self ids minted two Owner rows; v1 offset timestamps; import fsync-bound ~3 tx/message; tombstone band buttons still live; endpoint line-break provenance; DPAPI unrecoverability unspoken; checklist overstated `install-smoke` |
+| 修复问题 | `DraftError::Forgotten` + Active-only `known`; preview publishes owner+`bucket` only; `alias` merges + commit `AmbiguousOwner`; `to_utc` at v1 parse; `SqlCipherStore::transact` around commit+rebuild; `correct_tie`/`release_tie` refuse non-Active; `read_grounded_in` refuses line breaks; `store_notice` unrecoverability; checklist/STATUS honesty |
+| 测试结果 | session_forget_summary 3; forget_rebuild 3; session_forget_tie_correct 3; session_research 1; research_preview 5; session_collect 11; session_import 13; session_crash 6; import_to_graph 9; soul_import_v1 13; people_summary 20; session_summary 4; session_commands 20 |
+| Commit | merges of forget-summary-cite, research-disposition, g1-owner-fold, import-tx-wrap, forget-tie-correct; E1 multiline; D61 |
+| PR | #15 |
+| Merge状态 | Exclusive has the merges. → `main` still `BLOCKED`. PR #7 still not merged |
+| 下一轮重点 | Schema-version; store_opened=false sweep; AC-21 headless lag; IPC argument sweep; aging; key-loss remaining surfaces; Telegram 2026; gate coverage; AD-12; Session lock-order |
+| NO_HIGH_VALUE | R4 landings review (all eight hold); audit-crash remainder documented; import idempotency parked D55; Windows NSIS/DPAPI/tray BLOCKED as environment; empty-graph name residual is D61 |
 
 ## ROUND 4 record
 
