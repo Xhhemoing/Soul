@@ -25,7 +25,7 @@
 1. 「当前几乎无代码」**只对 `main` 成立**，对 Goal 1 分支不成立。接手 Goal 1 的父代理不是从零开始，先读 `origin/cursor/soul-goal1-7b1c:docs/STATUS.md` 与 `:docs/GOAL1_PLAN.md`，再决定派谁。
 2. **Goal 1 分支是唯一实现主干。** 不要另开第二条实现线，不要把 Goal 1 的树整体拷进计划分支。
 3. 计划冻结（`PLAN_FROZEN`）≠ Goal 1 关闭 ≠ `main` 已有应用。三件事在 `docs/STATUS.md` 里分开写，改其中一件不要顺手改另外两件。
-4. 算法 crate 已在 `main` 上，Goal 1 采纳它是**合并义务**，不是重新选型；采纳方式见 `docs/algorithms/DECISION.md` 第 6 节，本文件只给对应门禁（AC-28…AC-34）。
+4. 算法 crate 已在 `main` 上，Goal 1 采纳它是**合并义务**，不是重新选型；采纳方式见 `docs/algorithms/DECISION.md` 第 6 节（该节沿用冻结文稿里的旧 crate 名与旧文件名，实现一律跟仓库真名，见 D53），本文件只给对应门禁（AC-28…AC-34）。
 5. **Goal 1 完成 = 本文件验收矩阵全部 `v0.1` 行通过，并且 `PRODUCT_LOCK.md` 的 13 条垂直切片同时成立（D54）。** 矩阵没有的行不能否决切片；切片没有的行不能否决矩阵。一个仍走 T0 全场地判档的图谱，即使 AC-01–AC-26 全绿，也不能关闭 Goal 1。
 6. 本文件里只有末尾的「**开工第一动作**」是可执行的开工路径。中段那节标着「历史段」的派单原话是存档，写于 Goal 1 开工之前，**不要照着重派 planner、也不要再 `CreateGoal：Goal 1`**。
 
@@ -71,14 +71,14 @@ v0.1 垂直切片以 `docs/PRODUCT_LOCK.md` 的 13 条为准。代理层在 v0.1
 >
 > 原话里仍然有效的两点已由别处承接，不必从这里读：第 1 条的 `PLAN_FROZEN` 前置 → 「开工第一动作」第 1 步；第 6 条的双门关闭语义 → D54，正文见本文件「计划面与代码面」第 5 条与验收矩阵。第 2–5 条作废。作者原话逐字保留，只为追溯。
 
-接下来使用 Goal：先调用子代理 claude-fable-5-thinking-xhigh，根据项目计划和目的，将项目代码的编写拆分为多个子代理 claude-opus-5-thinking-high-fast 进行编写，最后 review 并打磨到可安装的 v0.1。注意要及时把成果和方案和进度记录文档提交成 PR 并放到新的专门的你专属的分支，并且你产生的多个 PR 在合适的时候需要进行合并
-
-1. 确认 STATUS 为 `PLAN_FROZEN`。
-2. CreateGoal：Goal 1。
-3. 派 fable planner，覆盖下列 WP，只减不增。
-4. 按 DAG 派 opus implementer。权限/数据面与 UI 面分人。
-5. 每批 fable 只读复核。缺陷派 opus。
-6. Goal 1 完成 = 验收矩阵全部 `v0.1` 行 **与** PRODUCT_LOCK 十三片切片同时通过（D54）。T0 图谱不能借 26 行全绿关闭 Goal 1。
+> 接下来使用 Goal：先调用子代理 claude-fable-5-thinking-xhigh，根据项目计划和目的，将项目代码的编写拆分为多个子代理 claude-opus-5-thinking-high-fast 进行编写，最后 review 并打磨到可安装的 v0.1。注意要及时把成果和方案和进度记录文档提交成 PR 并放到新的专门的你专属的分支，并且你产生的多个 PR 在合适的时候需要进行合并
+>
+> 1. 确认 STATUS 为 `PLAN_FROZEN`。
+> 2. CreateGoal：Goal 1。
+> 3. 派 fable planner，覆盖下列 WP，只减不增。
+> 4. 按 DAG 派 opus implementer。权限/数据面与 UI 面分人。
+> 5. 每批 fable 只读复核。缺陷派 opus。
+> 6. Goal 1 完成 = 验收矩阵全部 `v0.1` 行 **与** PRODUCT_LOCK 十三片切片同时通过（D54）。T0 图谱不能借 26 行全绿关闭 Goal 1。
 
 （历史段到此为止。以下各节仍然有效。）
 
@@ -118,7 +118,7 @@ WP12 已删除。并行：WP01 冻结后 WP02–WP06、WP08 可并行。
 
 ### Goal 1 验收矩阵（门禁）
 
-行号是稳定标识，不是执行顺序。`ALGO_FROZEN` 相关行（AC-28…AC-34）排在矩阵表内；AC-27 的 v0.1.1 归属不变，不占用表行。
+行号是稳定标识，不是执行顺序。`ALGO_FROZEN` 相关行（AC-28…AC-33）与喂给它们的导入归因行（AC-34）都排在矩阵表内；AC-27 的 v0.1.1 归属不变，不占用表行。
 
 | ID | Given | When | Then | 谁跑 |
 |---|---|---|---|---|
@@ -153,12 +153,12 @@ WP12 已删除。并行：WP01 冻结后 WP02–WP06、WP08 可并行。
 | AC-30 | 一个库里同时有活跃关系与 2019 年休眠关系 | 跑一次全库 rebuild | 全库只用**一个** as_of（调用方传入，缺省 = 全库 `max(occurred_at)`）；该值与沉寂天数随每条边落库、可复核；休眠边判 weak。把 as_of 改成 per-peer 各取自己的最大时间戳必须让此行变红 | CI |
 | AC-31 | 某特质轴已被本人纠正锁定 | 再跑一次问卷 intake（或导入触发的 intake） | 锁定轴不被移动；被拒绝的答案以「已跳过 + 原因」如实回报，不静默丢弃；答案行照常落库；`apply_intake` 与 replay 结论全等；其余轴不受影响 | CI |
 | AC-32 | 某边机器档=中等；用户纠正为强并锁定 | 新观测进入并重建；打开图与该 peer 的 A2 摘要 | 生效档=强；机器档另存且继续更新；A2 与图只消费生效档；审计记纠正且无正文。COPY_ZH 未加性批准「由你本人指定」变体前，锁定边不得渲染冻结 P5 原句（D35 / D48） | CI |
-| AC-33 | 一条边携带一对一/群聊分列；另一条边分列缺席 | 渲染两份人事摘要 | 前者 P1b 句只渲染携带的两个数；后者 P1b 整句不出现；A2 / `soul-draft` / 图 UI 无从证据重算分列、无第二套阈值字面量 | CI |
+| AC-33 | 一条边携带一对一/群聊分列；另一条边分列缺席 | 渲染两份人事摘要 | 前者 P1b 句只渲染携带的两个数；后者 P1b 整句不出现；A2 / `soul-draft` / 图 UI 无从证据重算分列、无第二套阈值字面量。「分列缺席」只指未声明判档算法的遗留边——声明了 `algorithm_id` 的边分列必填（schema 的 `if(algorithm_id)`），适配器不得援引本行少填 | CI |
 | AC-34 | 一份群聊导出：owner 发 1 条消息，会话里有未出现在该条消息中的历史发言人 A、B | 导入并重建人脉图 | 不产生 owner→A、owner→B 的 Outgoing 行；A/B 的 `last_contact` 不因这条消息刷新（D47 / G1+） | CI |
 
 AC-27 文件执行与撤销标 **v0.1.1**，不是 Goal 1。AC-18 是代理层的**只读**证明，留在 Goal 1（DECISIONS D31）——它证明的是「扫描 + 预览 + 拒绝」，与 AC-27 的写执行不是同一件事，不要因为看着像就把它并掉或删掉。
 
-AC-28…AC-34 测在**产品边界**（导入 → 加密库 → rebuild → 读边/摘要），只调 `soul_algo_tie::score` 不算过。夹具不是新造的：`group_heavy_plus_one_direct_each_way`、`lilei_12`、`group_heavy_plus_three_directs`、`dormant_2019` 已在 `crates/soul-algo-tie/src/testing`，A0 锁定用例已在 `crates/soul-algo-trait/tests/a0_lock.rs`。Goal 1 侧应当**导入**它们并断言产品路径与算法 crate 同判，而不是重新推导阈值——重新推导就违反红线 11。算法相关行全部由 CI 跑。
+AC-28…AC-34 测在**产品边界**（导入 → 加密库 → rebuild → 读边/摘要），只调 `soul_algo_tie::score` 不算过。AC-28…AC-33 的夹具不是新造的：`group_heavy_plus_one_direct_each_way`、`lilei_12`、`group_heavy_plus_three_directs`、`dormant_2019` 已在 `crates/soul-algo-tie/src/testing`，A0 锁定用例已在 `crates/soul-algo-trait/tests/a0_lock.rs`。Goal 1 侧应当**导入**它们并断言产品路径与算法 crate 同判，而不是重新推导阈值——重新推导就违反红线 11。**AC-34 是例外**：它测导入归因（D47 / G1+），算法 crate 里没有对应夹具，那份群聊导出样本要在 Goal 1 侧新造；新造的只是导出样本，不得顺带新造第二套阈值。算法相关行全部由 CI 跑。
 
 `group_heavy_plus_one_direct_each_way` 的**代码夹具**是群聊互惠 30 次 / 10 天 + 每方向各 1 次一对一（以 `soul-algo-tie` 测试源为准）。`docs/algorithms/DECISION.md` §1 曾用「100 条 / 50 天」作叙述，**以代码夹具为准**；冻结结论不变（T4D=Weak，T4=Strong）。
 

@@ -1,0 +1,112 @@
+{
+  "model_slug": "gpt-5.6-sol-xhigh-fast",
+  "binding": "/workspace/.agent_workspace/plan-polish/R2-SYNTHESIS.md",
+  "run_utc": "2026-08-25T03:09:16Z",
+  "overall": "PASS",
+  "gates": [
+    {
+      "id": "schemas_lock_sha256",
+      "status": "PASS",
+      "details": {
+        "algorithm": "sha256",
+        "listed_files": 11,
+        "actual_schema_files": 11,
+        "file_set_matches": true,
+        "hash_mismatches": []
+      }
+    },
+    {
+      "id": "jsonschema_cases",
+      "status": "PASS",
+      "validator": "jsonschema 4.26.0 Draft202012Validator",
+      "cases": [
+        {
+          "id": "no_tie_strength",
+          "expected": "ACCEPT",
+          "actual": "ACCEPT",
+          "status": "PASS"
+        },
+        {
+          "id": "empty_tie_strength",
+          "expected": "ACCEPT",
+          "actual": "ACCEPT",
+          "status": "PASS"
+        },
+        {
+          "id": "score_rejected",
+          "expected": "REJECT",
+          "actual": "REJECT",
+          "keyword": "additionalProperties",
+          "status": "PASS"
+        },
+        {
+          "id": "algorithm_id_half_rejected",
+          "expected": "REJECT",
+          "actual": "REJECT",
+          "keyword": "required",
+          "status": "PASS"
+        },
+        {
+          "id": "t4d_full_machine_band",
+          "expected": "ACCEPT",
+          "actual": "ACCEPT",
+          "status": "PASS"
+        },
+        {
+          "id": "user_band_without_locked_by_user",
+          "expected": "REJECT",
+          "actual": "REJECT",
+          "keyword": "dependentRequired",
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "id": "formal_ac_28_through_ac_34_unique",
+      "status": "PASS",
+      "scope": "Markdown acceptance-matrix row IDs in docs/FORMAL_WORK_PROMPT.md",
+      "counts": {
+        "AC-28": 1,
+        "AC-29": 1,
+        "AC-30": 1,
+        "AC-31": 1,
+        "AC-32": 1,
+        "AC-33": 1,
+        "AC-34": 1
+      }
+    },
+    {
+      "id": "decisions_d32_through_d59_unique",
+      "status": "PASS",
+      "scope": "Markdown decision-table row IDs in docs/DECISIONS.md",
+      "expected_ids": 28,
+      "unique_ids": 28,
+      "missing": [],
+      "duplicates": []
+    },
+    {
+      "id": "core_plan_no_standalone_180_or_360",
+      "status": "PASS",
+      "pattern": "(?<!\\d)(?:180|360)(?!\\d)",
+      "files_checked": [
+        "docs/PRODUCT_LOCK.md",
+        "docs/DECISIONS.md",
+        "docs/FORMAL_WORK_PROMPT.md",
+        "docs/STATUS.md",
+        "README.md",
+        "docs/PLAN_INDEX.md",
+        "docs/SECURITY.md"
+      ],
+      "matches": []
+    },
+    {
+      "id": "cargo_test_workspace_offline",
+      "status": "PASS",
+      "command": "cargo test --workspace --offline",
+      "exit_code": 0,
+      "passed": 249,
+      "failed": 0,
+      "ignored": 0
+    }
+  ]
+}
