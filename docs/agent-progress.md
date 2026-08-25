@@ -11,7 +11,7 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 | Field | Value |
 |---|---|
-| Current task | 10× Fable in flight (scan only). Opus queued after they return: key-blob empty-file reclaim TOCTOU; `Session::person_summary` COPY_ZH §6 pin; Graph same-band lock if Fable confirms |
+| Current task | Fable still running: consent, name-harvest, collect/E1, AC-31, key-blob TOCTOU, Graph same-band, security. Done: 7B NO_HIGH_VALUE; synthesis dispatch table; §6 Session pin brief. Opus: session_projection.rs in flight. COPY_ZH §6 `{天数}` collision fixed in the frozen file (doc-only) |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
 | Exclusive tip | `d16e4cf` / PR #15 |
