@@ -232,7 +232,7 @@ export function aTemplateDraft(overrides: Partial<Draft> = {}): Draft {
 
 /** `soulcore::commands::memory::FORGET_NOTICE`, checked by `contract.test.ts`. */
 export const FORGET_NOTICE =
-  "遗忘销毁的是这条记忆的内容密钥：正文从此打不开，行会留成一块墓碑，引用过它的推断会被标成失去依据。这一步不可撤销，也不写任何文件。";
+  "遗忘销毁的是这条记忆的内容密钥：正文从此打不开，行会留成一块墓碑，引用过它的推断会被标成失去依据。这一步不可撤销，也不写任何文件。这不是把磁盘块擦干净：SSD 上可能还留着旧密文，只是没有密钥再也打不开。";
 
 /** `soulcore::commands::store::RESEARCH_PREVIEW_NOTICE`. */
 export const RESEARCH_PREVIEW_NOTICE =

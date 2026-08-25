@@ -440,6 +440,37 @@ fn the_webview_can_only_load_what_shipped_with_it() {
     assert_eq!(value["app"]["withGlobalTauri"], Value::Bool(false));
 }
 
+/// The WebView also talks to Microsoft on its own account, below the content
+/// security policy: SmartScreen reputation lookups and Chromium's background
+/// fetches are the runtime's traffic, not the page's.
+///
+/// Setting `additionalBrowserArgs` replaces wry's default switch wholesale, so
+/// the three components wry already turns off have to be named again here or
+/// SmartScreen comes back on the way in.
+#[test]
+fn the_webview_runtime_makes_no_calls_of_its_own() {
+    let value = config();
+    let args = value["app"]["windows"][0]["additionalBrowserArgs"]
+        .as_str()
+        .expect("windows[0].additionalBrowserArgs must be set");
+
+    for component in ["msWebOOUI", "msPdfOOUI", "msSmartScreenProtection"] {
+        assert!(
+            args.contains(component),
+            "overriding the browser arguments drops wry's default, so {component} is back on: {args}",
+        );
+    }
+    assert!(args.contains("--disable-features="));
+    assert!(
+        args.contains("--disable-background-networking"),
+        "the runtime is left free to fetch in the background: {args}",
+    );
+    assert!(
+        !args.contains("://"),
+        "the browser arguments name a remote origin: {args}",
+    );
+}
+
 /// A per-user install needs no administrator, and skipping the WebView2
 /// bootstrapper means the installer downloads nothing. Windows 11 ships the
 /// runtime; Windows 10 without it is a documented gap, not a silent download.

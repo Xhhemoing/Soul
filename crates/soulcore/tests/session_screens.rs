@@ -595,6 +595,14 @@ fn a_forget_only_runs_on_the_preview_the_user_read() {
     assert_eq!(listed.memories[0].forget_state, "active");
     assert!(listed.memory_types.contains(&"commitment".to_owned()));
     assert!(listed.forget_notice.contains("不可撤销"));
+    // D15's other half: the notice may not let "forgotten" read as "the bits
+    // are gone", so it names the disk it does not scrub. The preview carries
+    // the same constant, so saying it once here covers both screens.
+    assert!(
+        listed.forget_notice.contains("磁盘块") && listed.forget_notice.contains("SSD"),
+        "the notice does not say that the disk itself is not wiped: {}",
+        listed.forget_notice,
+    );
 
     // A forget nobody previewed is refused, and nothing is destroyed by the
     // refusal — the memory is still readable afterwards.

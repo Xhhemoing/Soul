@@ -86,9 +86,15 @@ pub const MEMORY_TYPES: [MemoryType; 5] = [
 /// It says destruction rather than deletion because that is what happens: the
 /// content key goes, the row stays as a tombstone, and nothing on disk is
 /// rewritten. Held on this side so the screen cannot soften it.
+///
+/// The last sentence is the second half of D15. PRODUCT_LOCK refuses to
+/// promise an SSD physical erase *and* requires the UI to write that honestly,
+/// so the limit travels with the notice instead of waiting for a screen to
+/// remember it: without it, "forgotten" reads as "the bits are gone".
 pub const FORGET_NOTICE: &str =
     "遗忘销毁的是这条记忆的内容密钥：正文从此打不开，行会留成一块墓碑，\
-    引用过它的推断会被标成失去依据。这一步不可撤销，也不写任何文件。";
+    引用过它的推断会被标成失去依据。这一步不可撤销，也不写任何文件。\
+    这不是把磁盘块擦干净：SSD 上可能还留着旧密文，只是没有密钥再也打不开。";
 
 /// One memory in a list, with the prose left sealed.
 ///

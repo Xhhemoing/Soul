@@ -45,6 +45,19 @@ describe("文件计划页", () => {
     expect(screen.getByTestId("read-only-notice")).toHaveTextContent(READ_ONLY_NOTICE);
   });
 
+  /**
+   * `soul-fileplan`'s screen takes one matching pair of quotes off a pasted
+   * path, which is what Explorer's 「复制为路径」 hands over. Nothing said so on
+   * screen, so the box looked like it wanted the quotes stripped by hand.
+   */
+  it("授权表单上写着资源管理器复制来的带引号路径也能用", async () => {
+    await open();
+
+    const hint = screen.getByTestId("paste-path-hint");
+    expect(hint).toHaveTextContent("复制为路径");
+    expect(hint).toHaveTextContent("引号");
+  });
+
   it("授权一个目录之后，目录出现在列表里", async () => {
     const core = await open({ authorizing: () => aFilesView() });
     const user = userEvent.setup();

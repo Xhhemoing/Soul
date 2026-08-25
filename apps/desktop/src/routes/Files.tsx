@@ -89,6 +89,9 @@ export function Files(): React.JSX.Element {
         <label className="field" htmlFor="root-path">
           目录完整路径
         </label>
+        <p className="muted" data-testid="paste-path-hint">
+          从资源管理器「复制为路径」贴进来也可以，外面那对引号会去掉。
+        </p>
         <div className="switch-row">
           <input
             id="root-path"

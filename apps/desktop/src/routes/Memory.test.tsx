@@ -38,6 +38,10 @@ describe("自传记忆页", () => {
 
     expect(screen.getByTestId("no-memories")).toHaveTextContent("还没有写过记忆");
     expect(screen.getByTestId("forget-notice")).toHaveTextContent("不可撤销");
+    // PRODUCT_LOCK promises no SSD physical erase and that the UI says so, so
+    // the sentence on screen has to name the disk it does not scrub.
+    expect(screen.getByTestId("forget-notice")).toHaveTextContent("磁盘块");
+    expect(screen.getByTestId("forget-notice")).toHaveTextContent("SSD");
   });
 
   it("写一条会把用户填的原样交给核心", async () => {
