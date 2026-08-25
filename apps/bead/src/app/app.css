@@ -397,6 +397,110 @@ a {
   resize: vertical;
 }
 
+.swatch__namespace {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* ---- upload workbench (WP-B03) -------------------------------------- */
+
+.upload {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.upload__field {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  justify-items: start;
+}
+
+.upload__panel {
+  display: grid;
+  gap: 12px;
+}
+
+.upload__group {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.upload__group legend {
+  padding: 0 4px;
+}
+
+.upload__viewport {
+  position: relative;
+  display: inline-block;
+  max-width: 280px;
+}
+
+.upload__viewport img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* The framing box is an outline over the source, never a colour wash: the
+   picture underneath has to stay readable while it is being positioned. */
+.upload__crop {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 35%);
+  cursor: move;
+}
+
+.upload__badges {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.upload__grid {
+  --assemble-cell: 8px;
+  display: grid;
+  grid-template-columns: repeat(var(--assemble-columns, 28), var(--assemble-cell));
+  grid-auto-rows: var(--assemble-cell);
+  gap: 1px;
+  align-content: start;
+  justify-content: start;
+  overflow: auto;
+  padding: 8px 0;
+}
+
+.upload__bom {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.upload__empty {
+  margin: 0;
+  color: var(--danger, #c8342a);
+  font-size: 13px;
+}
+
 /* ---- assemble (outside AppShell) ------------------------------------ */
 
 .assemble {

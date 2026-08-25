@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { useNavigate } from "react-router";
 
 import type { SplitMode } from "../../algo/steps.ts";
-import type { FixtureGrid } from "../../fixtures/grids.ts";
+import type { BoardSource } from "../../stores/patterns.ts";
 import { asProjectId } from "../../stores/ids.ts";
 import { useStore } from "../../stores/store.tsx";
 import type { ProgressCursor, Project } from "../../stores/types.ts";
@@ -37,13 +37,14 @@ function ownsArrowKeys(target: EventTarget | null): boolean {
 
 export interface AssembleSessionProps {
   readonly project: Project;
-  readonly fixture: FixtureGrid;
+  /** A gallery fixture or a converted `PatternDoc` — same shape either way (D-UP-14). */
+  readonly board: BoardSource;
   readonly cursor: ProgressCursor | undefined;
   readonly outlineColor: string;
 }
 
-export function AssembleSession({ project, fixture, cursor, outlineColor }: AssembleSessionProps) {
-  const { grid, palette } = fixture;
+export function AssembleSession({ project, board, cursor, outlineColor }: AssembleSessionProps) {
+  const { grid, palette } = board;
   const navigate = useNavigate();
   const { setProjectStatus, upsertProgress } = useStore();
   const projectId = asProjectId(project.id);

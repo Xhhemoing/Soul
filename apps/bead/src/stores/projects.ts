@@ -4,6 +4,8 @@ import type { Pattern, Project, ProjectStatus } from "./types.ts";
 // Derived numbers (counts, section splits) are computed here on every read.
 // Section 5 of the IA review forbids persisting derived data.
 
+export const DEFAULT_BACKDROP_COLOR = "#101014";
+
 export function createProjectFromPattern(
   pattern: Pattern,
   status: Extract<ProjectStatus, "todo" | "active">,
@@ -16,7 +18,34 @@ export function createProjectFromPattern(
     status,
     createdAt: now,
     backdrop: "black",
-    backdropColor: "#101014",
+    backdropColor: DEFAULT_BACKDROP_COLOR,
+  };
+}
+
+/**
+ * D-UP-11: a converted upload has no gallery pattern behind it, so
+ * `sourcePatternId` is null and the `PatternDoc` in the `patterns` store is the
+ * whole source of its grid. No `kind` field joins the record to say so — null
+ * source plus a document that loads is already the discriminator, and a second
+ * authority for the same fact is a second thing to keep true.
+ *
+ * The id is minted by the caller because the document has to be written under
+ * it *before* the project exists (D-UP-10).
+ */
+export function createProjectFromConversion(
+  id: ProjectId,
+  title: string,
+  status: Extract<ProjectStatus, "todo" | "active">,
+  now: number = Date.now(),
+): Project {
+  return {
+    id,
+    title,
+    sourcePatternId: null,
+    status,
+    createdAt: now,
+    backdrop: "black",
+    backdropColor: DEFAULT_BACKDROP_COLOR,
   };
 }
 

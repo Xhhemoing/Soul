@@ -7,15 +7,18 @@ import { PersistenceBanner } from "../../components/PersistenceBanner.tsx";
 import { fixtureGridFor } from "../../fixtures/grids.ts";
 import { useDocumentTitle } from "../../app/useDocumentTitle.ts";
 import { asProjectId, isProjectId } from "../../stores/ids.ts";
+import { boardSourceOf, type BoardSource } from "../../stores/patterns.ts";
 import { selectProject } from "../../stores/projects.ts";
 import { useStore } from "../../stores/store.tsx";
+import { usePatternDoc } from "../../stores/usePatternDoc.ts";
 import { AssembleBackdrop, BackdropControls } from "./AssembleBackdrop.tsx";
 import { AssembleSession } from "./AssembleSession.tsx";
 import { backdropColorOf, readableTextColor } from "./backdrop.ts";
 
 export const NO_GRID_NOTE =
-  "这个项目还没有豆图网格——上传转图归 WP-B03，立体拼豆的多板拼接不在 v0。";
+  "这个项目还没有豆图网格——空白项目的编辑器归 WP-B06，立体拼豆的多板拼接不在 v0。";
 export const EMPTY_GRID_NOTE = "这张图纸的网格是空的，没有可拼的格子。";
+export const LOADING_GRID_NOTE = "正在读取豆图……";
 
 /**
  * D-UI-2, half two: this route renders outside AppShell — no bottom nav, no app
@@ -33,6 +36,15 @@ export function AssemblePage() {
   const { projects, progress, hydrated, setProjectBackdrop } = useStore();
   const project = isProjectId(id) ? selectProject(projects, id) : undefined;
   useDocumentTitle(project ? `拼装 ${project.title}` : "拼装");
+
+  // D-UP-14: two ways a grid gets here. A gallery project resolves its fixture
+  // synchronously, exactly as before; a converted upload (`sourcePatternId`
+  // null) reads its `PatternDoc` out of the `patterns` store. The hook runs for
+  // both so the call order stays fixed, and asks for nothing when there is no
+  // conversion to load.
+  const conversionId =
+    project !== undefined && project.sourcePatternId === null ? asProjectId(project.id) : null;
+  const patternDoc = usePatternDoc(conversionId);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -64,8 +76,20 @@ export function AssemblePage() {
   const backdropColor = backdropColorOf(project);
   const textColor = readableTextColor(backdropColor);
   const projectId = asProjectId(project.id);
-  const fixture = project.sourcePatternId === null ? null : fixtureGridFor(project.sourcePatternId);
   const cursor = progress.find((entry) => entry.projectId === projectId);
+
+  const loadingBoard = conversionId !== null && patternDoc.status === "loading";
+  let board: BoardSource | null = null;
+  if (project.sourcePatternId !== null) board = fixtureGridFor(project.sourcePatternId);
+  else if (patternDoc.status === "ready") board = boardSourceOf(patternDoc.doc);
+
+  const note = loadingBoard
+    ? LOADING_GRID_NOTE
+    : board === null
+      ? NO_GRID_NOTE
+      : occupiedCount(board.grid) === 0
+        ? EMPTY_GRID_NOTE
+        : null;
 
   return (
     <div className="assemble" style={{ color: textColor }}>
@@ -86,14 +110,14 @@ export function AssemblePage() {
           onCustomColor={(color) => setProjectBackdrop(projectId, "custom", color)}
         />
 
-        {fixture === null || occupiedCount(fixture.grid) === 0 ? (
-          <p className="assemble__note">
-            {fixture === null ? NO_GRID_NOTE : EMPTY_GRID_NOTE}
+        {note !== null || board === null ? (
+          <p className="assemble__note" aria-busy={loadingBoard || undefined}>
+            {note}
           </p>
         ) : (
           <AssembleSession
             project={project}
-            fixture={fixture}
+            board={board}
             cursor={cursor}
             outlineColor={textColor}
           />

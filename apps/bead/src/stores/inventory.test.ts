@@ -1,19 +1,33 @@
 import { describe, expect, it } from "vitest";
 
+import { createGrid } from "../algo/grid.ts";
 import { PATTERNS } from "../fixtures/catalog.ts";
 import { asCreatorId, asPatternId, mintProjectId } from "./ids.ts";
 import {
   buildPurchaseText,
   clampBeads,
+  conversionRequirements,
+  mergeRequirements,
   normalizeCode,
   normalizeHex,
   parseHexColor,
   selectRequirements,
   selectShortages,
+  selectStock,
   selectSubstituteGroups,
   type RequirementRow,
 } from "./inventory.ts";
-import type { InventoryEntry, Pattern, Project, ProjectStatus } from "./types.ts";
+import { createPatternDoc } from "./patterns.ts";
+import {
+  GALLERY_PALETTE,
+  GENERIC_5MM_PALETTE,
+  type InventoryEntry,
+  type PaletteNamespaceId,
+  type Pattern,
+  type PatternDoc,
+  type Project,
+  type ProjectStatus,
+} from "./types.ts";
 
 // Section 8 of `docs/bead/reviews/round2-inventory.md` is a test list; the pure
 // half of that list is this file.
@@ -48,12 +62,20 @@ function lookupOf(...patterns: Pattern[]): (id: string) => Pattern | undefined {
   return (id) => patterns.find((candidate) => candidate.id === id);
 }
 
+// BD20: every row now travels with the palette it came from. These two helpers
+// default to 画廊 because that is what every pre-BD20 case in this file meant.
 function requirement(code: string, required: number, hex = "#123456"): RequirementRow {
-  return { code, name: `名-${code}`, hex, required };
+  return { paletteId: GALLERY_PALETTE, code, name: `名-${code}`, hex, required };
 }
 
-function stock(code: string, hex: string, beads: number, name = `名-${code}`): InventoryEntry {
-  return { code, name, hex, beads };
+function stock(
+  code: string,
+  hex: string,
+  beads: number,
+  name = `名-${code}`,
+  paletteId: PaletteNamespaceId = GALLERY_PALETTE,
+): InventoryEntry {
+  return { paletteId, code, name, hex, beads };
 }
 
 describe("T-INV-1 录入边界的两个归一函数", () => {
@@ -249,14 +271,16 @@ describe("T-INV-5 采购文本（D-INV-11 / BD15）", () => {
     return buildPurchaseText(shortages, selectSubstituteGroups(shortages, requirements, inventory));
   }
 
-  it("整串确定：码 / 名 / hex / 颗数四要素齐全，末行给合计", () => {
+  // §4.5: the code text is no longer globally unique, so every line names its
+  // palette. Without the tag「G07」would be ambiguous on a shopping list.
+  it("整串确定：命名空间 / 码 / 名 / hex / 颗数五要素齐全，末行给合计", () => {
     expect(text()).toBe(
       [
         "拼豆采购清单（正在拼 / 待拼项目 vs 当前库存）",
         "",
-        "R04 朱红 #d8412f 缺 250 颗",
-        "  可替代：G12 Rose #da4331（ΔE00 0.66，库存余 96 颗）",
-        "Y01 明黄 #f5d13b 缺 230 颗",
+        "【画廊】R04 朱红 #d8412f 缺 250 颗",
+        "  可替代：【画廊】G12 Rose #da4331（ΔE00 0.66，库存余 96 颗）",
+        "【画廊】Y01 明黄 #f5d13b 缺 230 颗",
         "",
         "合计缺 480 颗，共 2 个色号",
       ].join("\n"),
@@ -269,6 +293,87 @@ describe("T-INV-5 采购文本（D-INV-11 / BD15）", () => {
 
   it("没有缺口时是空串（页面据此不渲染导出控件）", () => {
     expect(buildPurchaseText([], [])).toBe("");
+  });
+});
+
+describe("T-UP-18 G07 命名空间对撞（BD20 / §4.6）", () => {
+  // 画廊 G07 是苔绿 #4c7a44，generic-5mm 的 G07 是 Silver #b7bfc6（色板第 7 条，
+  // 下标 6）。BD20 记的就是这一撞：扁平码空间下它们会互相抵扣。
+  const GALLERY_G07 = "#4c7a44";
+  const GENERIC_G07 = "#b7bfc6";
+
+  const galleryPattern = pattern("gal-moss-07", [
+    { code: "G07", name: "苔绿", hex: GALLERY_G07, beads: 100 },
+  ]);
+
+  function convertedG07(cells: number): PatternDoc {
+    const grid = createGrid(cells, 1, new Array<number>(cells).fill(6));
+    return createPatternDoc(mintProjectId(), grid);
+  }
+
+  function rows(inventory: InventoryEntry[]) {
+    const requirements = mergeRequirements(
+      selectRequirements([project(galleryPattern.id)], lookupOf(galleryPattern)),
+      conversionRequirements([convertedG07(96)]),
+    );
+    const shortages = selectShortages(requirements, inventory);
+    return { requirements, shortages, groups: selectSubstituteGroups(shortages, requirements, inventory) };
+  }
+
+  it("转换需求就是 buildBom 的输出，码 / 名 / hex 全来自 generic-5mm", () => {
+    expect(conversionRequirements([convertedG07(96)])).toEqual([
+      {
+        paletteId: GENERIC_5MM_PALETTE,
+        code: "G07",
+        name: "Silver",
+        hex: GENERIC_G07,
+        required: 96,
+      },
+    ]);
+  });
+
+  it("两个 G07 各算各的：画廊库存不抵扣 generic-5mm 的缺口", () => {
+    const { requirements, shortages } = rows([stock("G07", GALLERY_G07, 100, "苔绿")]);
+    expect(requirements).toHaveLength(2);
+    // 画廊那行被自己的库存填满，所以不出缺口；generic 那行一颗都没有。
+    expect(shortages).toEqual([
+      expect.objectContaining({
+        paletteId: GENERIC_5MM_PALETTE,
+        code: "G07",
+        required: 96,
+        inStock: 0,
+        shortage: 96,
+      }),
+    ]);
+  });
+
+  it("库存不足时两行同时出，互不合并", () => {
+    const { shortages } = rows([stock("G07", GALLERY_G07, 40, "苔绿")]);
+    expect(shortages.map((row) => [row.paletteId, row.shortage])).toEqual([
+      [GENERIC_5MM_PALETTE, 96],
+      [GALLERY_PALETTE, 60],
+    ]);
+  });
+
+  it("替代池不跨命名空间：颜色够近的画廊豆也不入 generic-5mm 的池", () => {
+    // #b8c0c7 与 generic-5mm G07 只差一点点，扁平码空间下必然入池。
+    const { groups } = rows([stock("N01", "#b8c0c7", 500, "银灰", GALLERY_PALETTE)]);
+    const generic = groups.find((group) => group.wanted.paletteId === GENERIC_5MM_PALETTE);
+    expect(generic?.wanted.shortage).toBe(96);
+    expect(generic?.candidates).toEqual([]);
+  });
+
+  it("selectStock 先按命名空间再按码排序", () => {
+    const sorted = selectStock([
+      stock("G07", GENERIC_G07, 1, "Silver", GENERIC_5MM_PALETTE),
+      stock("Z99", "#000000", 1, "尾巴"),
+      stock("G07", GALLERY_G07, 1, "苔绿"),
+    ]);
+    expect(sorted.map((entry) => [entry.paletteId, entry.code])).toEqual([
+      [GALLERY_PALETTE, "G07"],
+      [GALLERY_PALETTE, "Z99"],
+      [GENERIC_5MM_PALETTE, "G07"],
+    ]);
   });
 });
 
