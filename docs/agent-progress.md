@@ -14,8 +14,8 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core + TS + DATA-1 + AL + B04 + B05 实现 + S1/S2 |
-| 当前任务 | B05 已合（#39，358 绿）；复审与浏览器核对在途 |
-| PR | #16 专属线；#20–#39（#39 B05 实现） |
+| 当前任务 | B04/B05 均 ACCEPT 并已浏览器核对；下一刀 B10 workflow |
+| PR | #16 专属线；#20–#40（#40 B05 复审） |
 | Merge | B04 `15ad3b3`；B05 `8526c5c`；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读（BLOCKED_PR）；云端异步 VM ≈3 |
 
@@ -23,7 +23,7 @@
 
 | 面 | 现状 | 下一动作 |
 |---|---|---|
-| 前端 | B04 拼装 + B05 库存已合 | B05 复审；B10 workflow |
+| 前端 | B04 拼装 + B05 库存已合（复审 ACCEPT，浏览器通过） | `/create` 上传（须带 IDB，BD19） |
 | 后端 | 无 bead 服务 | v0 本机，不造第二灵魂核 |
 | API | 无 bead API | 本地 store 契约 |
 | 数据库 | Soul 加密 SQLite，与 bead 无关 | WP-B09 IndexedDB（Grid 落盘才上，BD19） |
@@ -100,7 +100,8 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] B05 实现合入 `8526c5c`（#39）；本机 `@bead/app` **27 文件 / 358** 绿
 - [x] B04 复审合入 `76ae0ef`（#38，ACCEPT；MED-1 行窗口写盘后置）
 - [ ] `/create` 上传接线（独立变更；若持久化 Grid 必须同时上 IDB，BD19）
-- [ ] B10 独立 bead workflow（简报已合，实现等席）
+- [x] B05 复审合入（#40，ACCEPT；MED-1 blob URL 后置）
+- [ ] B10 独立 bead workflow（简报已合，实现在途）
 - [x] 本机复核：`@bead/app` 22 文件 258 绿（2026-08-25，AL 吸收后）
 
 ## 已知问题 / 禁令
@@ -124,9 +125,10 @@ Commit        15ad3b3 absorb B04；本提交记进度
 PR            #16 #32–#37
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B05 实现；B10 workflow；MED-1 后置
-在途          [R2 Fable review B05](https://cursor.com/agents/bc-f8cb512c-e819-5100-8d2c-7fc3d03bb1b0) · [Verify B05 inventory](https://cursor.com/agents/bc-e243c726-9fc1-5e7f-b775-4a052287eb97)
+在途          [R2 Opus B10 workflow](https://cursor.com/agents/bc-pending-b10)
+已收          [R2 Fable review B05](https://cursor.com/agents/bc-f8cb512c-e819-5100-8d2c-7fc3d03bb1b0) → #40
 已收          [R2 Opus B05 implement](https://cursor.com/agents/bc-07588339-9d46-582e-9230-b027218aa67b) → #39 `8526c5c`
-已核          B04 浏览器：史莱姆转入工作台 → 步进/撤销/切模式/1:1 通过；蛋糕盒无网格由 T-ASM-17 锁（手工第三张误截到 /workspace）
+已核          B04 拼装流通过；B05 资产：空库存全量缺口、加 C01 后缺口下降、采购文本无 URL
 已收          [R2 Opus B04 implement](https://cursor.com/agents/bc-6a5bc9c6-7bdc-528b-bb4a-b9611abce044) → #37；[R2 Fable review B04](https://cursor.com/agents/bc-9087419b-67fc-5fd9-aa37-9f8bd95154cd) → #38
 Blocked       无（B04 已由本机 worktree 落地）
 ```
