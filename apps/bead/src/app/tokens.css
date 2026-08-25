@@ -1,0 +1,35 @@
+/*
+ * Theme tokens hang off [data-theme] on <html> (see stores/theme.tsx).
+ * Both themes are held to AA (4.5:1) for text on their own surfaces; light
+ * swatches need --swatch-outline so a near-white bead stays visible on white.
+ *
+ * Nothing here describes the assemble backdrop. That colour is a per-project
+ * field (D-UI-6) and is applied inline by AssembleBackdrop.
+ */
+
+:root,
+[data-theme="light"] {
+  --bg-canvas: #f4f5f8;
+  --bg-surface: #ffffff;
+  --bg-raised: #eceef4;
+  --text-primary: #16171c;
+  --text-secondary: #52586a;
+  --accent: #1550bd;
+  --accent-contrast: #ffffff;
+  --border: #d3d7e0;
+  --focus-ring: #1550bd;
+  --swatch-outline: #9aa0b0;
+}
+
+[data-theme="dark"] {
+  --bg-canvas: #0e0f13;
+  --bg-surface: #191a20;
+  --bg-raised: #23252e;
+  --text-primary: #f1f2f6;
+  --text-secondary: #a9aec0;
+  --accent: #86adff;
+  --accent-contrast: #0e0f13;
+  --border: #31343f;
+  --focus-ring: #86adff;
+  --swatch-outline: #6d7385;
+}

@@ -1,0 +1,313 @@
+@import "./tokens.css";
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* ---- AppShell -------------------------------------------------------- */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.shell__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.shell__brand {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.shell__main {
+  flex: 1;
+  padding: 16px;
+  padding-bottom: 88px;
+}
+
+/* Bottom nav keeps its shape at desktop widths on purpose (R4). */
+.bottom-nav {
+  position: fixed;
+  inset: auto 0 0 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border);
+}
+
+.bottom-nav__link {
+  min-height: 56px;
+  min-width: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.bottom-nav__link[aria-current="page"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- primitives ------------------------------------------------------ */
+
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.empty-state {
+  background: var(--bg-raised);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+}
+
+.empty-state__message {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+}
+
+.empty-state__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.button,
+.button:visited {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button--primary,
+.button--primary:visited {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.progress-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+
+.progress-bar__fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.swatch__chip {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid var(--swatch-outline);
+  flex: none;
+}
+
+/* ---- page bits ------------------------------------------------------- */
+
+.section {
+  margin-bottom: 24px;
+}
+
+.section__title {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+
+.personal-strip {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.chip-link {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  color: inherit;
+}
+
+.chip-link__count {
+  display: block;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.tag-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.pattern-feed {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pattern-card {
+  display: block;
+  height: 100%;
+  text-decoration: none;
+  color: inherit;
+}
+
+.pattern-card__preview {
+  height: 88px;
+  border-radius: 8px;
+  background: var(--bg-raised);
+  margin-bottom: 8px;
+}
+
+.meta-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.meta-list dt {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.meta-list dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.palette-list,
+.stock-list,
+.project-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stub-note {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+/* ---- assemble (outside AppShell) ------------------------------------ */
+
+.assemble {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.assemble__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.assemble__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  flex: 1;
+}
+
+.assemble__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.assemble__canvas {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(14, 16px);
+  grid-auto-rows: 16px;
+  gap: 2px;
+  align-content: start;
+  justify-content: center;
+  padding: 16px 0;
+}
+
+.assemble__cell {
+  border: 1px solid rgba(128, 128, 128, 0.45);
+  border-radius: 3px;
+}
