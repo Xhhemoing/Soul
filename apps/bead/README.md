@@ -6,7 +6,7 @@ store 骨架与空状态。转图、拼装指引、库存、导入导出都还�
 ## 命令
 
 ```bash
-pnpm --filter @bead/app dev     # 本地开发，127.0.0.1:1430
+pnpm --filter @bead/app dev     # 本地开发，127.0.0.1:1520（E0-8；Soul 桌面钉 1420）
 pnpm --filter @bead/app test    # vitest（导航 + 空状态 + id 前缀 + 实例化）
 pnpm --filter @bead/app lint    # tsc --noEmit && eslint
 pnpm --filter @bead/app build   # 类型检查 + 产物
