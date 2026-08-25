@@ -182,4 +182,31 @@ fn event_filters_are_answered_by_the_database() {
             .len(),
         1,
     );
+
+    // The count is its own SQL statement now, so nothing but a test keeps it
+    // answering the same question the listing does. `limit` is where the two
+    // would part company first: a bare count(*) ignores it.
+    for filter in [
+        EventFilter::all(),
+        EventFilter::with_kind(EventKind::AppForeground),
+        EventFilter::with_source(EventSource::CollectorForegroundApp),
+        EventFilter {
+            since: Some("2026-08-24T10:00:00Z".into()),
+            ..EventFilter::all()
+        },
+        EventFilter {
+            limit: Some(1),
+            ..EventFilter::all()
+        },
+        EventFilter {
+            limit: Some(9),
+            ..EventFilter::all()
+        },
+    ] {
+        assert_eq!(
+            store.count_events(&filter).expect("count") as usize,
+            store.list_events(&filter).expect("list").len(),
+            "count and list disagree about {filter:?}",
+        );
+    }
 }
