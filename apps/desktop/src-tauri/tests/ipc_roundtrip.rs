@@ -9,8 +9,18 @@
 //!
 //! The registration under test is `soul_desktop::configure`, which is the same
 //! function the shipped binary calls. A second list here would test itself.
+//!
+//! Every acceptance test below requires the command it is about to assert on
+//! to succeed. It used to accept a coded refusal as an alternative and stop
+//! there, on the theory that a machine whose key provider cannot produce a key
+//! has nothing to import into — but that made a command stubbed to refuse
+//! everything a passing build: the import, forget, redaction, audit and
+//! research assertions were all downstream of an early return. A store that
+//! will not open is a real answer and it gets its own tests, at the bottom of
+//! this file, where the claim is about the shape of the refusal rather than
+//! about the acceptance criterion behind it.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use serde_json::{json, Value};
@@ -1183,14 +1193,9 @@ fn an_imported_name_is_placeheld_over_the_ipc_even_in_a_body_the_user_confirmed(
     let shell = Shell::on(scratch());
     let text = fixture("import/telegram/result_basic.json");
 
-    let receipt = match shell.invoke("commit_telegram", json!({ "text": text })) {
-        Ok(receipt) => receipt,
-        // No key, no store, no import — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let receipt = shell
+        .invoke("commit_telegram", json!({ "text": text }))
+        .expect("a real export commits");
     assert_eq!(receipt["contacts_created"], json!(3));
     assert!(
         PASTE_NAMING_A_CONTACT.contains(IMPORTED_NAME),
@@ -1418,14 +1423,9 @@ fn a_person_summary_is_rephrased_over_the_ipc_by_the_endpoint_the_user_configure
     let shell = Shell::on(scratch());
     let text = fixture("import/telegram/result_basic.json");
 
-    let receipt = match shell.invoke("commit_telegram", json!({ "text": text })) {
-        Ok(receipt) => receipt,
-        // No key, no store, no import — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let receipt = shell
+        .invoke("commit_telegram", json!({ "text": text }))
+        .expect("a real export commits");
     assert_eq!(receipt["events_written"], json!(6));
     shell
         .invoke("set_user_endpoint", json!({ "url": endpoint.base_url() }))
@@ -1487,14 +1487,9 @@ fn a_rephrasing_that_reads_like_a_diagnosis_leaves_the_counts_standing_over_the_
     let shell = Shell::on(scratch());
     let text = fixture("import/telegram/result_basic.json");
 
-    let receipt = match shell.invoke("commit_telegram", json!({ "text": text })) {
-        Ok(receipt) => receipt,
-        // No key, no store, no import — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let receipt = shell
+        .invoke("commit_telegram", json!({ "text": text }))
+        .expect("a real export commits");
     assert_eq!(receipt["events_written"], json!(6));
 
     let graph = shell.invoke("people_graph", json!({})).expect("a graph");
@@ -1776,15 +1771,9 @@ fn a_hostile_file_name_crosses_the_ipc_on_the_plan_and_not_on_the_chain() {
         "the user cannot see the name in the plan they are asked to read: {plan}",
     );
 
-    let chain = match shell.invoke("audit_chain", json!({})) {
-        Ok(chain) => chain,
-        // No key, no store, no chain — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            let _ = std::fs::remove_dir_all(root.parent().unwrap_or(&root));
-            return;
-        }
-    };
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the scan read the store, so the chain reads back too");
     assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
 
     let blocked = chain["entries"]
@@ -1825,17 +1814,11 @@ fn a_hostile_file_name_crosses_the_ipc_on_the_plan_and_not_on_the_chain() {
 /// and the notice on it is `soul-policy`'s, not a sentence written here.
 #[test]
 fn the_people_screen_reads_an_empty_store_as_an_empty_graph() {
-    let graph = match invoke("people_graph", json!({})) {
-        Ok(graph) => graph,
-        // On a machine whose key provider could not produce a key the store
-        // does not open, and a refusal is the honest answer. It must still be
-        // a refusal with a code on it rather than an empty graph, because the
-        // two must not look the same on screen.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    // A store that would not open is a refusal rather than an empty graph, and
+    // `a_store_that_will_not_open_is_a_coded_refusal_rather_than_an_empty_answer`
+    // is where that is pinned. Here the store opens, so an empty graph is the
+    // answer being asserted rather than one of two acceptable outcomes.
+    let graph = invoke("people_graph", json!({})).expect("an empty store is an empty graph");
 
     assert_eq!(graph["people"], json!([]));
     assert_eq!(graph["ties"], json!([]));
@@ -1916,14 +1899,9 @@ fn an_export_crosses_the_ipc_as_counts_and_becomes_people() {
     let text = fixture("import/soul-import-v1/three_partners.jsonl");
     let shell = Shell::on(scratch());
 
-    let preview = match shell.invoke("preview_soul_import_v1", json!({ "text": text })) {
-        Ok(preview) => preview,
-        // No key, no store, no import — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let preview = shell
+        .invoke("preview_soul_import_v1", json!({ "text": text }))
+        .expect("a real export previews");
     assert_eq!(preview["source"], json!("soul-import-v1"));
     assert_eq!(preview["participants"], json!(5));
     assert_eq!(preview["messages"], json!(16));
@@ -2043,14 +2021,9 @@ fn a_telegram_export_crosses_the_ipc_as_counts_and_becomes_people() {
     let text = fixture("import/telegram/result_basic.json");
     let shell = Shell::on(scratch());
 
-    let preview = match shell.invoke("preview_telegram", json!({ "text": text })) {
-        Ok(preview) => preview,
-        // No key, no store, no import — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let preview = shell
+        .invoke("preview_telegram", json!({ "text": text }))
+        .expect("a real export previews");
     assert_eq!(preview["source"], json!("telegram-desktop"));
     assert_eq!(preview["participants"], json!(3));
     assert_eq!(preview["messages"], json!(6));
@@ -2248,14 +2221,9 @@ fn a_hostile_paste_the_user_abandoned_is_counted_into_the_chain_over_the_ipc() {
         "there was a preparation to throw away",
     );
 
-    let chain = match shell.invoke("audit_chain", json!({})) {
-        Ok(chain) => chain,
-        // No key, no store, no chain — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the preparation read the store, so the chain reads back too");
     assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
 
     let blocked = chain["entries"]
@@ -2299,14 +2267,9 @@ fn a_hostile_export_preview_is_counted_into_the_chain_over_the_ipc_without_commi
     let text = fixture("import/soul-import-v1/injection_lines.jsonl");
     let shell = Shell::on(scratch());
 
-    let preview = match shell.invoke("preview_soul_import_v1", json!({ "text": text })) {
-        Ok(preview) => preview,
-        // No key, no store, no preview — same refusal, same early return.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let preview = shell
+        .invoke("preview_soul_import_v1", json!({ "text": text }))
+        .expect("a hostile export is still an export that can be described");
     assert_eq!(preview["writes_anything"], json!(false));
     let attempts = preview["messages_with_injection_markers"]
         .as_u64()
@@ -2376,14 +2339,9 @@ fn a_hostile_telegram_preview_is_counted_into_the_chain_over_the_ipc_without_com
     let text = fixture("import/telegram/result_injection.json");
     let shell = Shell::on(scratch());
 
-    let preview = match shell.invoke("preview_telegram", json!({ "text": text })) {
-        Ok(preview) => preview,
-        // No key, no store, no preview — same refusal, same early return.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let preview = shell
+        .invoke("preview_telegram", json!({ "text": text }))
+        .expect("a hostile export is still an export that can be described");
     assert_eq!(preview["source"], json!("telegram-desktop"));
     assert_eq!(
         preview["messages_with_injection_markers"],
@@ -2620,24 +2578,18 @@ fn the_questionnaire_answers_and_leaves_a_profile_the_screen_can_correct() {
         "the wizard is handed a different number of questions than it draws: {questions}",
     );
 
-    let receipt = match shell.invoke(
-        "answer_questionnaire",
-        json!({
-            "answers": [
-                { "question_id": "q.axis.curiosity", "given": "leans_high" },
-                { "question_id": "q.voice.register", "given": "formal" },
-                { "question_id": "q.boundary.topics", "given": WRITTEN_BOUNDARY },
-            ]
-        }),
-    ) {
-        Ok(receipt) => receipt,
-        // No key, no store, nowhere to record an intake — and the screen has
-        // to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let receipt = shell
+        .invoke(
+            "answer_questionnaire",
+            json!({
+                "answers": [
+                    { "question_id": "q.axis.curiosity", "given": "leans_high" },
+                    { "question_id": "q.voice.register", "given": "formal" },
+                    { "question_id": "q.boundary.topics", "given": WRITTEN_BOUNDARY },
+                ]
+            }),
+        )
+        .expect("three answers are an intake");
     // AC-03 over the IPC: a questionnaire and no import file leaves a profile
     // behind, and the axes nobody answered for stay unknown.
     assert_eq!(receipt["answered"], json!(3));
@@ -2796,24 +2748,18 @@ const MEMORY_RETITLED: &str = "交钥匙那天";
 fn a_memory_is_written_read_edited_and_forgotten_over_the_ipc() {
     let shell = Shell::on(scratch());
 
-    let written = match shell.invoke(
-        "create_memory",
-        json!({
-            "memory": {
-                "memory_type": "episodic",
-                "title": MEMORY_TITLE,
-                "summary": MEMORY_SUMMARY,
-            }
-        }),
-    ) {
-        Ok(written) => written,
-        // No key, no store, nowhere to put a memory — and the screen has to
-        // be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let written = shell
+        .invoke(
+            "create_memory",
+            json!({
+                "memory": {
+                    "memory_type": "episodic",
+                    "title": MEMORY_TITLE,
+                    "summary": MEMORY_SUMMARY,
+                }
+            }),
+        )
+        .expect("a memory the user wrote lands");
     let memory_id = written["memory_id"].as_str().expect("a memory id").to_owned();
     assert_eq!(written["title"], json!(MEMORY_TITLE));
     assert_eq!(written["memory_type"], json!("episodic"));
@@ -2880,11 +2826,10 @@ fn a_memory_is_written_read_edited_and_forgotten_over_the_ipc() {
         "a refused forget destroyed something",
     );
 
-    // The refusal spent the held preview, so the user reads the price again
-    // before the one that runs.
-    let preview = shell
-        .invoke("preview_forget", json!({ "memoryId": memory_id }))
-        .expect("the price again");
+    // The refusal did not spend the held preview. The match is made before
+    // anything is taken, so the price the user is still looking at is the one
+    // the core is still holding — the confirmation they meant to send goes
+    // through without a second walk through the irreversible screen.
     let receipt = shell
         .invoke(
             "forget_memory",
@@ -2895,13 +2840,31 @@ fn a_memory_is_written_read_edited_and_forgotten_over_the_ipc() {
                 }
             }),
         )
-        .expect("the user read it and said yes");
+        .expect("the preview the refusal did not consume");
     assert_eq!(receipt["content_keys_destroyed"], json!(1));
     assert_eq!(
         receipt["matched_preview"],
         json!(true),
         "the receipt charged something other than what the preview quoted: {receipt}",
     );
+
+    // Spent, though. A WebView holding the confirmation it just watched
+    // succeed can press the button again, and the second one has no preview
+    // behind it — the same shape `the_same_approval_replayed_over_the_ipc...`
+    // pins for drafting, on the one command in the product that destroys
+    // something.
+    let replayed = shell
+        .invoke(
+            "forget_memory",
+            json!({
+                "confirmation": {
+                    "preview_id": preview["preview_id"],
+                    "memory_id": memory_id,
+                }
+            }),
+        )
+        .expect_err("the forget that ran took the preview with it");
+    assert_eq!(replayed["reason_code"], json!("PLAN_HASH_MISMATCH"));
 
     assert!(
         shell
@@ -2943,6 +2906,149 @@ fn a_memory_is_written_read_edited_and_forgotten_over_the_ipc() {
     let _ = std::fs::remove_dir_all(&next_launch.directory);
 }
 
+/// AC-15's retry cell over the real handler: a wrong confirmation costs the
+/// click, not the preview.
+///
+/// `soulcore`'s
+/// `session_screens.rs::a_forget_refused_for_the_wrong_id_leaves_the_preview_the_user_read_standing`
+/// makes this claim about a `Session` it holds. What only this side can show
+/// is that the held preview is one session's state rather than one call's: the
+/// three invokes below go through `invoke_handler` and the `SessionState` lock
+/// the shipped shell uses, so a build that opened a session per command, or
+/// that took the pending preview before matching it, would answer the
+/// confirmation the user meant to send with `PLAN_HASH_MISMATCH` — and walk
+/// them through the irreversible screen a second time for a mistyped id.
+///
+/// Two memories, because the other half of the match needs a second one to
+/// name. Both halves are checked, so a confirmation that gets one of them
+/// wrong is not a licence to spend the other.
+#[test]
+fn a_forget_refused_over_the_ipc_leaves_the_preview_the_user_read_standing() {
+    let shell = Shell::on(scratch());
+
+    let mut ids: Vec<String> = Vec::new();
+    for (memory_type, title, summary) in THREE_MEMORIES.iter().take(2) {
+        let written = shell
+            .invoke(
+                "create_memory",
+                json!({
+                    "memory": {
+                        "memory_type": memory_type,
+                        "title": title,
+                        "summary": summary,
+                    }
+                }),
+            )
+            .expect("a memory the user wrote lands");
+        ids.push(written["memory_id"].as_str().expect("an id").to_owned());
+    }
+    let (forgetting, other) = (&ids[0], &ids[1]);
+
+    let preview = shell
+        .invoke("preview_forget", json!({ "memoryId": forgetting }))
+        .expect("the price");
+
+    // Wrong preview id, right memory: the shape a stale window is in.
+    let refusal = shell
+        .invoke(
+            "forget_memory",
+            json!({
+                "confirmation": {
+                    "preview_id": "0192f000-0000-7000-8000-0000000000f1",
+                    "memory_id": forgetting,
+                }
+            }),
+        )
+        .expect_err("that is not the preview that was issued");
+    assert_eq!(refusal["reason_code"], json!("PLAN_HASH_MISMATCH"));
+
+    // Right preview id, wrong memory: the shape a second screen answering for
+    // the wrong row is in.
+    let refusal = shell
+        .invoke(
+            "forget_memory",
+            json!({
+                "confirmation": {
+                    "preview_id": preview["preview_id"],
+                    "memory_id": other,
+                }
+            }),
+        )
+        .expect_err("the preview was read for another memory");
+    assert_eq!(refusal["reason_code"], json!("PLAN_HASH_MISMATCH"));
+
+    for id in [forgetting, other] {
+        assert!(
+            shell
+                .invoke("memory_detail", json!({ "memoryId": id }))
+                .is_ok(),
+            "a refused forget destroyed something",
+        );
+    }
+
+    // The preview two refusals did not consume is still the one this session
+    // holds, and it is still the one on screen.
+    let receipt = shell
+        .invoke(
+            "forget_memory",
+            json!({
+                "confirmation": {
+                    "preview_id": preview["preview_id"],
+                    "memory_id": forgetting,
+                }
+            }),
+        )
+        .expect("the confirmation the user meant to send");
+    assert_eq!(receipt["matched_preview"], json!(true));
+    assert_eq!(receipt["content_keys_destroyed"], json!(1));
+    assert!(
+        shell
+            .invoke("memory_detail", json!({ "memoryId": forgetting }))
+            .is_err(),
+        "the content key is gone and the prose came back anyway",
+    );
+    assert!(
+        shell
+            .invoke("memory_detail", json!({ "memoryId": other }))
+            .is_ok(),
+        "the memory a refused confirmation named was forgotten too",
+    );
+
+    // AC-23: three denials and one destruction, and not a word of any title.
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the chain reads back");
+    assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
+    let entries = chain["entries"].as_array().expect("entries");
+    assert_eq!(
+        entries
+            .iter()
+            .filter(|entry| entry["action"] == json!("hitl.deny"))
+            .count(),
+        2,
+        "the refusals are not all in the chain the 审计 page reads: {chain}",
+    );
+    assert_eq!(
+        entries
+            .iter()
+            .filter(|entry| entry["action"] == json!("forget.execute"))
+            .count(),
+        1,
+        "one preview, one destruction: {chain}",
+    );
+    let played = chain.to_string();
+    for (_, title, summary) in THREE_MEMORIES.iter().take(2) {
+        for prose in [title, summary] {
+            assert!(
+                !played.contains(prose),
+                "the chain carried `{prose}` across the IPC: {chain}",
+            );
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
 /// What three memories say. AC-14's Given is a store with several in it, so
 /// the leakage checks below have three titles and three summaries to look for
 /// on the JSON the 记忆 page receives.
@@ -2975,24 +3081,18 @@ fn three_memories_cross_the_ipc_as_themselves_and_the_chain_holds_none_of_them()
 
     let mut written: Vec<Value> = Vec::new();
     for (memory_type, title, summary) in THREE_MEMORIES {
-        let created = match shell.invoke(
-            "create_memory",
-            json!({
-                "memory": {
-                    "memory_type": memory_type,
-                    "title": title,
-                    "summary": summary,
-                }
-            }),
-        ) {
-            Ok(created) => created,
-            // No key, no store, nowhere to put a memory — and the screen has
-            // to be told which.
-            Err(refusal) => {
-                assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-                return;
-            }
-        };
+        let created = shell
+            .invoke(
+                "create_memory",
+                json!({
+                    "memory": {
+                        "memory_type": memory_type,
+                        "title": title,
+                        "summary": summary,
+                    }
+                }),
+            )
+            .expect("a memory the user wrote lands");
         assert_eq!(created["memory_type"], json!(memory_type));
         assert_eq!(created["title"], json!(title));
         assert_eq!(created["summary"], json!(summary));
@@ -3127,24 +3227,21 @@ fn the_research_preview_crosses_the_ipc_as_counts_and_no_third_party_row() {
     let text = fixture("import/soul-import-v1/three_partners.jsonl");
     let shell = Shell::on(scratch());
 
-    let receipt = match shell.invoke("commit_soul_import_v1", json!({ "text": text })) {
-        Ok(receipt) => receipt,
-        // No key, no store, no import — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let receipt = shell
+        .invoke("commit_soul_import_v1", json!({ "text": text }))
+        .expect("a real export commits");
     assert_eq!(
         receipt["events_written"],
         json!(16),
         "the store has to hold third-party rows for this test to mean anything",
     );
 
-    let before: Vec<PathBuf> = std::fs::read_dir(&shell.directory)
-        .expect("read the data directory")
-        .map(|entry| entry.expect("an entry").path())
-        .collect();
+    let before = footprint(&shell.directory);
+    assert!(
+        !before.is_empty(),
+        "the data directory is empty, so the comparison below would hold for a \
+         product that wrote nothing because there was nothing there",
+    );
 
     let research = shell
         .invoke("research_preview", json!({}))
@@ -3181,11 +3278,14 @@ fn the_research_preview_crosses_the_ipc_as_counts_and_no_third_party_row() {
         "the query produced no candidates at all: {research}",
     );
 
-    let after: Vec<PathBuf> = std::fs::read_dir(&shell.directory)
-        .expect("read the data directory")
-        .map(|entry| entry.expect("an entry").path())
-        .collect();
-    assert_eq!(before, after, "a preview-only export left a file behind");
+    // Not a list of names: an appended audit row, a grown write-ahead log or a
+    // file rewritten in place all leave the same paths behind, and any of them
+    // would be a research preview that wrote.
+    let after = footprint(&shell.directory);
+    assert_eq!(
+        before, after,
+        "a preview-only export changed what is on disk",
+    );
 
     let chain = shell
         .invoke("audit_chain", json!({}))
@@ -3208,6 +3308,84 @@ fn the_research_preview_crosses_the_ipc_as_counts_and_no_third_party_row() {
     }
 
     let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
+/// --------------------------------------------- a store that will not open ---
+///
+/// The state every acceptance test above used to accept as an alternative to
+/// its own subject, made into a test of its own.
+///
+/// `Session::open` never fails, because a shell with no session has nothing to
+/// draw. What the screens get on a machine where the data directory cannot
+/// exist — no key, no database — is a refusal per command, and it has to be a
+/// refusal: an empty graph, an empty memory list and an empty chain would look
+/// on screen exactly like a Soul nobody has used yet. The directory here is
+/// unopenable for a reason that has nothing to do with the platform's key
+/// provider, so this runs the same way on every host.
+#[test]
+fn a_store_that_will_not_open_is_a_coded_refusal_rather_than_an_empty_answer() {
+    let occupied = scratch();
+    std::fs::write(&occupied, b"a file where a directory would have to be")
+        .expect("a file nobody can descend into");
+    let shell = Shell::on(occupied.join("data"));
+
+    let status = shell.invoke("session_status", json!({})).expect("a status");
+    assert_eq!(
+        status["store_opened"],
+        json!(false),
+        "the directory opened after all, so nothing below is about a closed store: {status}",
+    );
+
+    // The commands whose success is what the acceptance tests above assert on.
+    // Every one of them has to say no, and say it the same way.
+    let text = fixture("import/soul-import-v1/three_partners.jsonl");
+    for (command, body) in [
+        ("people_graph", json!({})),
+        ("memory_list", json!({})),
+        ("audit_chain", json!({})),
+        ("research_preview", json!({})),
+        ("commit_soul_import_v1", json!({ "text": &text })),
+        ("preview_soul_import_v1", json!({ "text": &text })),
+        (
+            "create_memory",
+            json!({
+                "memory": {
+                    "memory_type": "episodic",
+                    "title": MEMORY_TITLE,
+                    "summary": MEMORY_SUMMARY,
+                }
+            }),
+        ),
+    ] {
+        let refusal = match shell.invoke(command, body) {
+            Err(refusal) => refusal,
+            Ok(answered) => {
+                panic!("`{command}` answered with {answered} instead of refusing")
+            }
+        };
+
+        // A code the screen can branch on and a sentence it can render, rather
+        // than an operating system message the shell would have to show raw.
+        assert_eq!(
+            refusal["reason_code"],
+            json!("ROUTINE"),
+            "`{command}` refused with a code the 界面 does not know: {refusal}",
+        );
+        let explanation = refusal["explanation"]
+            .as_str()
+            .expect("the screen is handed something to render");
+        assert!(
+            explanation.contains(soulcore::commands::session::STORE_UNAVAILABLE_NOTICE),
+            "`{command}` refused without saying the store is what is missing: {explanation}",
+        );
+        assert_eq!(
+            refusal.as_object().map(|fields| fields.len()),
+            Some(2),
+            "a refusal is a code and a sentence, and this one grew a field: {refusal}",
+        );
+    }
+
+    let _ = std::fs::remove_file(&occupied);
 }
 
 /// The screen's empty state is the core's sentence, and its answer about
@@ -3244,6 +3422,154 @@ fn there_is_no_command_that_sends_a_draft_to_anybody() {
             "`{name}` resolved to something",
         );
     }
+}
+
+/// ----------------------------------------------------------- footprint ---
+///
+/// Everything under a directory, as sorted `(relative path, length, digest)`.
+///
+/// AC-20 says a research preview writes nothing, and a list of paths cannot
+/// tell that apart from a preview that appended an audit row, grew the
+/// write-ahead log, or rewrote a file in place — all of which leave exactly
+/// the same names behind. The digest can.
+///
+/// SQLite's `-shm` is left out on purpose. It is the write-ahead index, it is
+/// rebuilt from the log, it holds none of Soul's data, and it is stamped by
+/// the act of taking a read lock — including it would make every read look
+/// like a write. The `-wal` itself is included, which is where an appended
+/// row would land.
+fn footprint(root: &Path) -> Vec<(String, u64, String)> {
+    fn walk(root: &Path, at: &Path, into: &mut Vec<(String, u64, String)>) {
+        let listing =
+            std::fs::read_dir(at).unwrap_or_else(|error| panic!("read {}: {error}", at.display()));
+        for entry in listing {
+            let path = entry.expect("an entry").path();
+            if path.is_dir() {
+                walk(root, &path, into);
+                continue;
+            }
+            let relative = path
+                .strip_prefix(root)
+                .expect("every entry is under the root")
+                .to_string_lossy()
+                .replace('\\', "/");
+            if relative.ends_with("-shm") {
+                continue;
+            }
+            let bytes = std::fs::read(&path)
+                .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+            into.push((relative, bytes.len() as u64, sha256_hex(&bytes)));
+        }
+    }
+
+    let mut found = Vec::new();
+    walk(root, root, &mut found);
+    found.sort();
+    found
+}
+
+/// FIPS 180-4 SHA-256, spelled out.
+///
+/// This crate is its own workspace and depends on `soulcore` alone, and a
+/// digest used by one assertion in one test is not worth an edge on the
+/// dependency graph `xtask e0-audit` and `tests/no_egress_path.rs` walk.
+/// `the_digest_agrees_with_the_published_vectors` is what keeps it honest —
+/// a hash that answered a constant would make every footprint comparison
+/// above pass.
+fn sha256_hex(bytes: &[u8]) -> String {
+    const K: [u32; 64] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
+    ];
+
+    let mut state: [u32; 8] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
+    ];
+
+    let mut padded = bytes.to_vec();
+    let bits = (bytes.len() as u64) * 8;
+    padded.push(0x80);
+    while padded.len() % 64 != 56 {
+        padded.push(0);
+    }
+    padded.extend_from_slice(&bits.to_be_bytes());
+
+    for block in padded.chunks_exact(64) {
+        let mut schedule = [0u32; 64];
+        for (slot, word) in schedule.iter_mut().zip(block.chunks_exact(4)) {
+            *slot = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
+        }
+        for index in 16..64 {
+            let fifteen = schedule[index - 15];
+            let two = schedule[index - 2];
+            let s0 = fifteen.rotate_right(7) ^ fifteen.rotate_right(18) ^ (fifteen >> 3);
+            let s1 = two.rotate_right(17) ^ two.rotate_right(19) ^ (two >> 10);
+            schedule[index] = schedule[index - 16]
+                .wrapping_add(s0)
+                .wrapping_add(schedule[index - 7])
+                .wrapping_add(s1);
+        }
+
+        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = state;
+        for index in 0..64 {
+            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let choose = (e & f) ^ ((!e) & g);
+            let first = h
+                .wrapping_add(s1)
+                .wrapping_add(choose)
+                .wrapping_add(K[index])
+                .wrapping_add(schedule[index]);
+            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let majority = (a & b) ^ (a & c) ^ (b & c);
+            let second = s0.wrapping_add(majority);
+
+            h = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(first);
+            d = c;
+            c = b;
+            b = a;
+            a = first.wrapping_add(second);
+        }
+
+        for (slot, value) in state.iter_mut().zip([a, b, c, d, e, f, g, h]) {
+            *slot = slot.wrapping_add(value);
+        }
+    }
+
+    let mut hex = String::with_capacity(64);
+    for byte in state.iter().flat_map(|word| word.to_be_bytes()) {
+        hex.push(char::from_digit(u32::from(byte >> 4), 16).expect("a nibble is a hex digit"));
+        hex.push(char::from_digit(u32::from(byte & 0x0f), 16).expect("a nibble is a hex digit"));
+    }
+    hex
+}
+
+/// The two vectors FIPS 180-4 publishes, plus one that needs a second block.
+#[test]
+fn the_digest_agrees_with_the_published_vectors() {
+    assert_eq!(
+        sha256_hex(b""),
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    );
+    assert_eq!(
+        sha256_hex(b"abc"),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    );
+    assert_eq!(
+        sha256_hex(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
+        "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
+    );
 }
 
 /// Nothing but the application's own page may reach the commands. The WebView
