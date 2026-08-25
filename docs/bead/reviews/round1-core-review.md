@@ -6,6 +6,8 @@
 - 对照物：`docs/bead/reviews/round1-algorithms.md`（G1–G8 / T-*）、`docs/bead/fixtures-ciede2000.md`、`docs/bead/reviews/round1-cicd.md`（WS/E0/DL）、BD15/BD17、`apps/bead/src/algo/contract.md`（O3 已合入的 G1–G8 钉死文）
 - 日期：2026-08-25
 
+父代理注：本审查基线是 `a388cd7`。其后 `1880487` 已给 rust 补上 RGBA、线性光 188 与 `fixtures/parity`。CR-1 里「Rust 无 alpha / 锁 128 / cargo 不读 parity」对**当前**专属线不再成立。仍以 BD8/BD18 为准：TS 对齐 rust，不反写 core。
+
 ## 0. 结论
 
 **实现是真的，隔离是对的，门禁全绿；但专属线现在同时载着两份互相矛盾的 G1–G8 契约。**
