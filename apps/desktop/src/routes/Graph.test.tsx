@@ -297,6 +297,37 @@ describe("人脉图页", () => {
   });
 
   /**
+   * A tombstone has nothing citable left. Forgetting a contact destroys the
+   * keys their words were sealed under and leaves the derived rows standing,
+   * so the row still shows counts and the core still refuses the summary —
+   * `soul-draft` reads the node's forget state before it builds a point. This
+   * screen says the same thing where the user is looking, and that matters
+   * beyond tidiness: with an endpoint configured, this button is one click and
+   * one POST with no confirmation screen in between.
+   */
+  it("已被遗忘的那个人，摘要按钮按不下去，也没有请求出去", async () => {
+    const graph = aPeopleGraph();
+    const core = await open({
+      graph: {
+        ...graph,
+        people: graph.people.map((person) =>
+          person.is_you ? person : { ...person, forgotten: true },
+        ),
+      },
+    });
+    const user = userEvent.setup();
+
+    const people = screen.getByTestId("people-list");
+    expect(people).toHaveTextContent("已被遗忘，只剩下墓碑");
+    const button = within(people).getByRole("button", { name: "看这个人的摘要" });
+    expect(button).toBeDisabled();
+
+    await user.click(button);
+    expect(core.callsTo("person_summary")).toEqual([]);
+    expect(screen.queryByTestId("summary-text")).toBeNull();
+  });
+
+  /**
    * AC-16's other half: when a line came from the endpoint, the screen has to
    * say so. Draft already renders `source_notice` for the same reason — a
    * degradation the user cannot see is not a degradation, it is the only path

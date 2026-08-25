@@ -42,6 +42,7 @@ use soul_policy::clinical::{assert_non_clinical, WORKING_HYPOTHESIS_NOTICE};
 use soul_policy::redactor::{RedactedBody, Redactor, Turn};
 use soul_schema::common::{NotAClinicalClaim, SealedSubject, SupportedBand};
 use soul_schema::evidence::SoulEvidence;
+use soul_schema::memory::ForgetState;
 
 use crate::a2_adapt;
 use crate::draft::ReplyGenerator;
@@ -146,11 +147,31 @@ impl PersonSummary {
 /// than returning a short list. This checks that what arrived is what the edge
 /// cites, so a caller cannot hand over three rows for a five-row edge and get
 /// a summary that quietly claims more support than it has.
+///
+/// A forgotten person is refused before any of that. Forgetting destroys the
+/// content keys and leaves the derived rows standing — the edge, its counts and
+/// the evidence ids it cites all survive, because deleting them would leave the
+/// graph unable to resolve what it points at. So the state that says the person
+/// is gone lives on their node and nowhere else, and this is the one place that
+/// reads it: without the check the counts, the demotion projection built from
+/// the same call, and the rephrasing an endpoint is offered afterwards all go
+/// on describing somebody the user asked Soul to drop.
 pub fn summarize_person(
     graph: &SoulGraph,
     contact_id: Uuid,
     resolved: &[SoulEvidence],
 ) -> DraftResult<PersonSummary> {
+    // A node that is not there is not a person this graph knows, which is the
+    // same answer as having no tie to them; a node that is there and is not
+    // `Active` is a tombstone, and a tombstone is not citable.
+    match graph.node(contact_id) {
+        None => return Err(DraftError::NoSuchTie { contact_id }),
+        Some(node) if node.forget_state != ForgetState::Active => {
+            return Err(DraftError::Forgotten { contact_id })
+        }
+        Some(_) => {}
+    }
+
     let edge = graph
         .edges_for(contact_id)
         .into_iter()

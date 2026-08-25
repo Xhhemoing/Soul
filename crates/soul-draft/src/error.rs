@@ -24,6 +24,15 @@ pub enum DraftError {
     #[error("the graph has no edge to contact {contact_id}, so there is nothing to summarize")]
     NoSuchTie { contact_id: Uuid },
 
+    /// The contact is a tombstone. A forget destroys the keys their words were
+    /// sealed under and leaves the derived rows where they are, so the edge and
+    /// the evidence ids behind it survive and a summary built from them would
+    /// go on citing a person the user asked Soul to drop. The refusal is the
+    /// whole answer: no points, no projection, and nothing offered to an
+    /// endpoint.
+    #[error("这个人已经被遗忘了，本机没有还能引用的东西可以说（联系人 {contact_id}）")]
+    Forgotten { contact_id: Uuid },
+
     /// Something on its way to the screen carried vocabulary this product must
     /// not use. A bug in the generator, not something to filter and ship.
     #[error(transparent)]

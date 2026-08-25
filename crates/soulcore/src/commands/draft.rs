@@ -610,8 +610,17 @@ pub struct Summarized {
 /// Everything Soul will say about one person, and what each line rests on.
 ///
 /// AC-16. The evidence is resolved out of the store before the summary is
-/// built, so a point cannot cite a row that has been forgotten; `soul-draft`
-/// refuses the whole summary rather than returning a shorter one.
+/// built, so a point cannot cite a row the edge does not; `soul-draft` refuses
+/// the whole summary rather than returning a shorter one.
+///
+/// Resolving is not what keeps a forgotten person out of it. Forgetting a
+/// contact destroys their content keys and tombstones their row; the evidence
+/// rows and the edge stay, because an edge whose ids no longer resolve is one
+/// [`soul_graph::resolve_evidence`] refuses and the whole graph view goes with
+/// it. So the rows behind a forgotten person still resolve, and what stops the
+/// summary is [`analysis::summarize_person`] reading their node's forget state
+/// — which is also what stops the rephrasing below, since nothing reaches the
+/// endpoint until the counts exist.
 ///
 /// With an endpoint configured the counts are then offered to it for
 /// rephrasing, which is the half PRODUCT_LOCK's 无 key 时统计降级 needs in

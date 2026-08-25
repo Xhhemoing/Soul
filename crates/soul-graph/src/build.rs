@@ -25,6 +25,7 @@ use soul_schema::audit::{AuditAction, AuditCounts};
 use soul_schema::common::{NotAClinicalClaim, SchemaVersion, SupportedBand, Timestamp};
 use soul_schema::contact::ContactClass;
 use soul_schema::inference::{InferenceMethod, SoulInference, UserVerdict};
+use soul_schema::memory::ForgetState;
 use soul_schema::relationship::{EgressScope, SoulRelationship};
 use soul_store_api::{GraphStore, ProfileStore};
 
@@ -43,8 +44,9 @@ pub struct GraphBuild {
     pub interactions_read: u64,
     pub edges_written: Vec<Uuid>,
     pub inferences_written: Vec<Uuid>,
-    /// Peers whose evidence was skipped because their contact row is gone —
-    /// forgotten, most likely. Reported rather than silently dropped.
+    /// Peers whose evidence was skipped because their contact row is not one
+    /// this build may derive from: gone, or a tombstone a forget left behind.
+    /// Reported rather than silently dropped.
     pub peers_unresolved: u64,
     /// The entry the caller owes the chain. Built here, appended by whoever
     /// holds the open store, exactly as `soul-policy` does it.
@@ -201,7 +203,18 @@ where
         // of the graph and nothing to derive.
         return Ok(GraphBuild::default());
     };
-    let known: BTreeSet<Uuid> = contacts.iter().map(|contact| contact.contact_id).collect();
+    // Active contacts only. A forget tombstones the contact row and orphans
+    // the inferences that rested on their evidence, but the observations
+    // themselves stay — an edge cannot cite rows that are gone. Counting a
+    // tombstoned peer here would rebuild their edge and write a fresh tie
+    // inference for them, and `put_inference` files every inference it is
+    // handed as live, so the next import would quietly undo the forget. Their
+    // rows go to `peers_unresolved` instead, which is what that field is for.
+    let known: BTreeSet<Uuid> = contacts
+        .iter()
+        .filter(|contact| contact.forget_state == ForgetState::Active)
+        .map(|contact| contact.contact_id)
+        .collect();
 
     let mut interner = InteractionInterner::default();
     let mut peers: BTreeMap<Uuid, PeerEvidence> = BTreeMap::new();
