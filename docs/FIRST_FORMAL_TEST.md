@@ -17,8 +17,8 @@
 
 | 段 | 谁 | 做什么 | 算不算过 |
 |---|---|---|---|
-| A | 本机 Linux / 本云端 VM | `just ci-full`（或等价：lint / schema / e0 / denylist / workspace test / ui-lint / ui-test） | **本机绿不是 hosted 绿。** 只能证明这台机器。 |
-| B | GitHub Actions | Billing & plans 恢复后，对候选 SHA `workflow_dispatch`。workflow 只自动 `push` `main` 与 `cursor/soul-goal1-7b1c`。 | AC-26。空 runner（0 step、空 `runner_name`）**不是**产品回归，是 N4。不要 empty-commit。 |
+| A | 本机 Linux / 本云端 VM | `just ci-full`（= `ci` + `deny`：lint / schema / e0 / denylist / fixtures-verify / test / smoke-lint / sbom / ui-lint / ui-test / cargo-deny） | **本机绿不是 hosted 绿。** 只能证明这台机器。 |
+| B | GitHub Actions | Billing & plans 恢复后，对候选 SHA `workflow_dispatch`（dispatch 可从任意 ref 跑）。workflow 只自动跑 `main` 与 `cursor/soul-goal1-7b1c` 的 `push`，且 `docs/**` / `*.md` 推送不触发——docs-only 推不出 run 不是新故障。 | AC-26。空 runner（0 step、空 `runner_name`）**不是**产品回归，是 N4。不要 empty-commit。 |
 | C | 作者，Win11 x64 非管理员 | 清机 → 清单第 1–7 节（安装 smoke、托盘、关窗再开、采集、WebView2 观感）。 | AC-01 与 AC-09/10 的真机一半；过不去就**记缺口**，不要让安装器去下载东西。 |
 | D | 作者，可选 | 清单第 8–10 节：界面导入、本机端点、人脉图摘要、语气与审计。 | 不是 AC-26 门禁。人脉图**不应**再看到「根据本机统计改写」。 |
 
@@ -30,7 +30,7 @@
 | AC-02..AC-08、AC-11..AC-20、AC-23..AC-25 | CI / 本机 `just ci` | 段 A 先跑；段 B 才是 hosted。 |
 | AC-09、AC-10 | CI 有一半；真机采集在清单 | 段 C 补切窗口。 |
 | AC-21、AC-22 | CI 有源码/套接字一半；OS 流量在清单 | 段 C。 |
-| AC-26 | hosted 五门 | 段 B。N4 未解之前不得称正式 CI 绿。 |
+| AC-26 | hosted 五门（`lint` / `test-linux` / `test-windows` / `sbom` / `package`） | 段 B。N4 未解之前不得称正式 CI 绿。 |
 | AC-27 | 不在本次 | `/files` 没有执行按钮是正确的。 |
 
 ## 已知诚实边界（测的时候不要当意外）
