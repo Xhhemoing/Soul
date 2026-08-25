@@ -4,8 +4,14 @@ import { Card } from "../../components/Card.tsx";
 import { EmptyState } from "../../components/EmptyState.tsx";
 import { ProgressBar } from "../../components/ProgressBar.tsx";
 import { useDocumentTitle } from "../../app/useDocumentTitle.ts";
+import {
+  beadprojFileName,
+  serializeBeadproj,
+} from "../../schema/beadproj.ts";
+import { buildSingleProjectFile, downloadBeadproj } from "../create/export.ts";
 import { selectDrafts, selectFinished, selectInProgress } from "../../stores/projects.ts";
 import { useStore } from "../../stores/store.tsx";
+import { usePatternDoc } from "../../stores/usePatternDoc.ts";
 import type { Project } from "../../stores/types.ts";
 
 /**
@@ -23,6 +29,36 @@ function EditLink({ project }: { project: Project }) {
   );
 }
 
+/**
+ * DEV-IE-2: WP-B07's only change to this page, on the same discriminator the
+ * edit link uses — no gallery pattern behind it and a document that loads.
+ * A gallery project is two clicks from being rebuilt out of the catalog, so it
+ * does not get a card rule of its own; the archive export in
+ * `/create?entry=import-project` still carries it.
+ */
+function ExportLink({ project }: { project: Project }) {
+  const { progress } = useStore();
+  const state = usePatternDoc(project.sourcePatternId === null ? project.id : null);
+  if (state.status !== "ready") return null;
+
+  function exportProject(): void {
+    if (state.status !== "ready") return;
+    const cursor = progress.find((entry) => entry.projectId === project.id) ?? null;
+    // D-IE-16 / MED-1: the object URL is minted here, in the click, not in a
+    // memo that runs on every render.
+    downloadBeadproj(
+      beadprojFileName(project.title),
+      serializeBeadproj(buildSingleProjectFile(project, state.doc, cursor)),
+    );
+  }
+
+  return (
+    <button className="button" type="button" onClick={exportProject}>
+      导出 .beadproj
+    </button>
+  );
+}
+
 function ProjectCard({ project }: { project: Project }) {
   return (
     <Card>
@@ -32,6 +68,7 @@ function ProjectCard({ project }: { project: Project }) {
         继续拼豆
       </Link>
       <EditLink project={project} />
+      <ExportLink project={project} />
     </Card>
   );
 }
@@ -77,6 +114,7 @@ export function WorkspacePage() {
                 <Card>
                   <strong>{project.title}</strong>
                   <EditLink project={project} />
+                  <ExportLink project={project} />
                 </Card>
               </li>
             ))}
@@ -98,6 +136,7 @@ export function WorkspacePage() {
                 <Card>
                   <strong>{project.title}</strong>
                   <EditLink project={project} />
+                  <ExportLink project={project} />
                 </Card>
               </li>
             ))}
