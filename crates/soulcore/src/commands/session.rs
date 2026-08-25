@@ -835,13 +835,20 @@ impl Session {
     /// Nothing is contacted. `Origin::parse` reads a string and `NetGuard`
     /// holds the answer; the first packet still waits for the plan on the
     /// drafting screen and the approval in front of it. A preparation made
-    /// before the address changed is *not* approvable afterwards: the origin
-    /// is one of the things `e1_plan` hashes, so the approval the user is
-    /// holding stops matching and `DraftSession::generate` answers
-    /// `PLAN_HASH_MISMATCH` without opening either address. That is
-    /// `SECURITY.md`'s 配置变更会使计划哈希失效, and the case it covers —
-    /// leaving the drafting page mid-flight, saving another endpoint, and
-    /// coming back to press 生成 — is reachable from the interface.
+    /// before the address changed is *not* approvable afterwards, and it is
+    /// stopped twice over. The origin is one of the things `e1_plan` hashes,
+    /// so the approval the user is holding would stop matching at
+    /// `DraftSession::generate` — and the prepared body is dropped here
+    /// anyway, so the second half of the flight is a request that no longer
+    /// exists rather than one that is merely refused. That is `SECURITY.md`'s
+    /// 配置变更会使计划哈希失效 with nothing left over: leaving the drafting
+    /// page mid-flight, saving another endpoint, and coming back to press 生成
+    /// is reachable from the interface, and what it costs is one more
+    /// [`Session::prepare_draft`] against the address that is now current.
+    ///
+    /// An address that does not parse changes neither — the guard is
+    /// re-pointed only on success, and a user who mistyped their second
+    /// endpoint keeps the plan they were reading along with the first one.
     ///
     /// What is stored in the configuration is the origin the guard ended up
     /// with rather than the string that was typed: a path, a query and a
@@ -863,6 +870,7 @@ impl Session {
             .config()
             .e1_endpoint()
             .map(ToString::to_string);
+        self.draft.discard();
         Ok(self.snapshot())
     }
 
@@ -871,11 +879,14 @@ impl Session {
     /// [`PolicySession::clear_user_endpoint`] puts the guard back to
     /// `NetGuard::closed()`, which refuses every origin including loopback, so
     /// what is left is the state a fresh launch is in rather than a weaker one
-    /// that merely has no URL to hand. Nothing is persisted here either; there
-    /// was never anything on disk to remove.
+    /// that merely has no URL to hand. A body prepared against the address
+    /// that has just gone goes with it, for the reason
+    /// [`Session::set_user_endpoint`] gives. Nothing is persisted here either;
+    /// there was never anything on disk to remove.
     pub fn clear_user_endpoint(&mut self) -> ConfigSnapshot {
         self.policy.clear_user_endpoint();
         self.config.llm_endpoint = None;
+        self.draft.discard();
         self.snapshot()
     }
 

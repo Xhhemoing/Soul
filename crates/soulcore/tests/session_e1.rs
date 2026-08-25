@@ -423,6 +423,114 @@ fn clearing_the_endpoint_after_the_plan_voids_the_approval_too() {
     drop(keep);
 }
 
+/// The rest of `SECURITY.md`'s invalidation rule: the prepared body is *gone*
+/// after an endpoint change, not merely unapprovable.
+///
+/// The two tests above check the backstop, and it is a real one — the origin
+/// is part of what `e1_plan` hashes, so a stale approval is refused before a
+/// token is minted. What a hash check cannot do is stop a body that was
+/// redacted and described for one destination from sitting in the session
+/// waiting for an approval that can now only be turned down. So the change is
+/// made at the address form rather than at the consume: the preparation is
+/// dropped the moment the user saves somewhere else, and the only way forward
+/// is a second `prepare_draft` describing the address that is now current.
+///
+/// `discard_draft` answers whether there was anything to throw away, which is
+/// the one question that distinguishes "dropped" from "held and refused".
+#[test]
+fn saving_another_endpoint_drops_the_prepared_body_rather_than_holding_it() {
+    let (keep, directory) = scratch();
+    let described_against = MockLlm::start().expect("the endpoint the plan was described against");
+    let saved_afterwards = MockLlm::start().expect("the endpoint the user saved next");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&described_against.base_url())
+        .expect("a loopback address is an address");
+
+    let stale = session
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
+        .expect("a paste can always be described")
+        .approval();
+    session
+        .set_user_endpoint(&saved_afterwards.base_url())
+        .expect("a loopback address is an address");
+
+    assert!(
+        !session.discard_draft(),
+        "the body prepared for the previous address is still held on the session",
+    );
+    session
+        .generate_draft(&stale)
+        .expect_err("there is nothing left for that approval to name");
+    assert_eq!(described_against.request_count(), 0);
+    assert_eq!(saved_afterwards.request_count(), 0);
+
+    // A second preparation is what the user owes, and it goes to the address
+    // that is now current, once.
+    draft_through_the_endpoint(&mut session).expect("the current endpoint answers");
+    assert_eq!(described_against.request_count(), 0);
+    assert_eq!(saved_afterwards.request_count(), 1);
+    drop(keep);
+}
+
+/// The same, for the user who pressed 清除 instead of typing a second address.
+#[test]
+fn clearing_the_endpoint_drops_the_prepared_body_too() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the plan was described against");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let stale = session
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
+        .expect("a paste can always be described")
+        .approval();
+    session.clear_user_endpoint();
+
+    assert!(
+        !session.discard_draft(),
+        "a session with no endpoint is still holding a body described for one",
+    );
+    session
+        .generate_draft(&stale)
+        .expect_err("there is nothing left for that approval to name");
+    assert_eq!(endpoint.request_count(), 0);
+    drop(keep);
+}
+
+/// An address that does not parse changes nothing, the prepared body included.
+///
+/// The twin of [`a_refused_address_leaves_the_one_that_was_there`]. Dropping
+/// the preparation is the answer to a destination that *changed*; a typo in
+/// the form is not a change, and a user who mistyped their second address
+/// would otherwise lose both the endpoint they had and the plan they were
+/// reading, with nothing on screen to say the second one had gone.
+#[test]
+fn a_refused_address_leaves_the_prepared_body_where_it_was() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the plan was described against");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let approval = session
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
+        .expect("a paste can always be described")
+        .approval();
+    session
+        .set_user_endpoint("not an address at all")
+        .expect_err("that is not an address");
+
+    session
+        .generate_draft(&approval)
+        .expect("the address the plan was described against is still the one");
+    assert_eq!(endpoint.request_count(), 1);
+    drop(keep);
+}
+
 /// AC-02 for the endpoint: the next launch is back to reaching nothing.
 ///
 /// Free, and that is the point of not persisting: `Session::open` builds its
