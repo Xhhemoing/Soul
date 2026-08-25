@@ -70,7 +70,7 @@ export function ImportPatternPanel() {
       setNotice({
         kind: "error",
         code: "UNSUPPORTED_FORMAT",
-        message: `${file.name}：暂不支持解析该格式（UNSUPPORTED_FORMAT）。`,
+        message: `${file.name}：认得出这是个豆图文件，但本版本暂不支持解析该格式。`,
       });
     } finally {
       setBusy(false);
@@ -88,7 +88,7 @@ export function ImportPatternPanel() {
 
       {notice?.kind === "error" && (
         <p className="stock-form__error" role="alert">
-          {notice.message}
+          {notice.message}（{notice.code}）
         </p>
       )}
 
