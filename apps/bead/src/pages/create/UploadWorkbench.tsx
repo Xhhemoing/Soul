@@ -1,4 +1,13 @@
-import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+} from "react";
 import { useNavigate } from "react-router";
 
 import { decodeImage, MAX_SOURCE_SIDE } from "../../algo/decode.ts";
@@ -107,6 +116,7 @@ export function UploadWorkbench() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
   const saving = useRef(false);
+  const dragFrom = useRef<{ x: number; y: number; box: DOMRect } | null>(null);
 
   useEffect(() => {
     if (previewUrl === null) return undefined;
@@ -239,8 +249,13 @@ export function UploadWorkbench() {
     setSavedNote(`已加入待拼：${trimmed}`);
   }
 
-  function panCrop(event: KeyboardEvent<HTMLDivElement>): void {
+  function moveCrop(dx: number, dy: number): void {
     if (image === null) return;
+    setCropX((x) => clamp(x + dx, 0, Math.max(0, image.width - cropSide)));
+    setCropY((y) => clamp(y + dy, 0, Math.max(0, image.height - cropSide)));
+  }
+
+  function panCrop(event: KeyboardEvent<HTMLDivElement>): void {
     const step = event.shiftKey ? 10 : 1;
     const deltas: Record<string, [number, number]> = {
       ArrowLeft: [-step, 0],
@@ -251,8 +266,33 @@ export function UploadWorkbench() {
     const delta = deltas[event.key];
     if (delta === undefined) return;
     event.preventDefault();
-    setCropX((x) => clamp(x + delta[0], 0, Math.max(0, image.width - cropSide)));
-    setCropY((y) => clamp(y + delta[1], 0, Math.max(0, image.height - cropSide)));
+    moveCrop(delta[0], delta[1]);
+  }
+
+  // D-UP-7's other half. Pointer events rather than mouse ones so a touch drag
+  // is the same code path, and the displayed box is measured rather than
+  // assumed: the preview is CSS-scaled to the viewport, so a screen pixel is
+  // not a source pixel.
+  function dragCrop(event: PointerEvent<HTMLDivElement>): void {
+    if (image === null || dragFrom.current !== null) return;
+    const box = event.currentTarget.parentElement?.getBoundingClientRect();
+    if (box === undefined || box.width === 0 || box.height === 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragFrom.current = { x: event.clientX, y: event.clientY, box };
+  }
+
+  function dragCropMove(event: PointerEvent<HTMLDivElement>): void {
+    const from = dragFrom.current;
+    if (from === null || image === null) return;
+    const dx = Math.round(((event.clientX - from.x) / from.box.width) * image.width);
+    const dy = Math.round(((event.clientY - from.y) / from.box.height) * image.height);
+    if (dx === 0 && dy === 0) return;
+    dragFrom.current = { ...from, x: event.clientX, y: event.clientY };
+    moveCrop(dx, dy);
+  }
+
+  function dragCropEnd(): void {
+    dragFrom.current = null;
   }
 
   const pixelArtPath = result !== null ? result.kind === "PixelArt" : kindChoice === "PixelArt";
@@ -367,9 +407,13 @@ export function UploadWorkbench() {
                   <div
                     className="upload__crop"
                     role="group"
-                    aria-label="取景框：方向键平移"
+                    aria-label="取景框：拖拽或方向键平移"
                     tabIndex={0}
                     onKeyDown={panCrop}
+                    onPointerDown={dragCrop}
+                    onPointerMove={dragCropMove}
+                    onPointerUp={dragCropEnd}
+                    onPointerCancel={dragCropEnd}
                     style={{
                       left: `${(cropX / image.width) * 100}%`,
                       top: `${(cropY / image.height) * 100}%`,

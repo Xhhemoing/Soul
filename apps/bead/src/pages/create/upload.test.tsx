@@ -221,6 +221,46 @@ describe("T-UP-12 三预设与 ≤56 夹取（D-UP-6 / D-UP-7）", () => {
       expect(screen.getByTestId("conversion-grid").innerHTML).not.toBe(before),
     );
   });
+
+  it("取景框也能拖拽平移（D-UP-7）", async () => {
+    const { pick } = await openWorkbench(PHOTO);
+    await pick(file("photo.jpg", "image/jpeg"));
+    await screen.findByTestId("conversion-grid");
+    fireEvent.click(screen.getByRole("radio", { name: "手动视口" }));
+
+    const frame = await screen.findByRole("group", { name: /取景框/ });
+    fireEvent.change(await screen.findByLabelText("取景框边长（源像素）"), {
+      target: { value: "8" },
+    });
+    fireEvent.change(screen.getByLabelText("输出格数"), { target: { value: "8" } });
+    const before = (await screen.findByTestId("conversion-grid")).innerHTML;
+
+    // jsdom 没有版面也没有指针捕获：视口给一个 160px 的假矩形，
+    // 于是 80px 的拖拽正好是源图 16 像素宽度的一半。
+    frame.setPointerCapture = () => {};
+    vi.spyOn(frame.parentElement!, "getBoundingClientRect").mockReturnValue({
+      width: 160,
+      height: 160,
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 160,
+      bottom: 160,
+      toJSON: () => ({}),
+    });
+
+    expect(frame.style.left).toBe("0%");
+    fireEvent.pointerDown(frame, { pointerId: 1, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(frame, { pointerId: 1, clientX: 80, clientY: 0 });
+    fireEvent.pointerUp(frame, { pointerId: 1 });
+
+    // 16 像素宽的源图，8 像素的框：右移 8 像素就到头，夹在 50%。
+    expect(frame.style.left).toBe("50%");
+    await vi.waitFor(() =>
+      expect(screen.getByTestId("conversion-grid").innerHTML).not.toBe(before),
+    );
+  });
 });
 
 describe("T-UP-13 空网格禁止保存（D-UP-9）", () => {

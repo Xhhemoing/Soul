@@ -382,7 +382,9 @@ describe("暂无网格态与框架不变量（T-ASM-17 / D-ASM-12）", () => {
     expect(screen.getByRole("link", { name: "退出拼装" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "黑色背景" })).toBeInTheDocument();
     expect(screen.getByTestId("assemble-backdrop")).toBeInTheDocument();
-    expect(screen.getByText(/还没有豆图网格/)).toBeInTheDocument();
+    // D-UP-14 made the blank-project branch async (it now asks the `patterns`
+    // store first), so the note is awaited rather than read on first paint.
+    expect(await screen.findByText(/还没有豆图网格/)).toBeInTheDocument();
 
     expect(screen.queryByTestId("assemble-grid")).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "拼装控制" })).not.toBeInTheDocument();
