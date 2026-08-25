@@ -1,8 +1,9 @@
 //! AC-05: Telegram Desktop's `result.json` becomes events and contacts, and a
 //! file with fields missing fails in a way somebody can act on.
 //!
-//! There is no schema for this format — it is somebody else's — so the adapter
-//! states what it needs and the tests here are the record of what that is.
+//! The format is somebody else's, and the description Telegram publishes for
+//! it promises nothing, so the adapter states what it needs and the tests here
+//! are the record of what that is.
 
 use soul_import::defect::Locator;
 use soul_import::model::ImportSource;
@@ -79,9 +80,65 @@ fn a_desktop_export_becomes_the_people_and_the_messages_it_describes() {
     );
 }
 
-/// Telegram's phone book has no user id and chat messages have no phone
-/// number, so there is no join key. Merging them would produce either
-/// duplicate people or wrong ones; v0.1 imports neither.
+/// Desktop writes `personal_information.username` through its own
+/// `FormatUsername`, so the `@` arrives in the file. Prepending another one
+/// files the user under `@@roy_soul`, a handle nothing else in the graph will
+/// ever match — and a fixture that spelled the username bare, as this one once
+/// did, could never have caught it. Both spellings are read, so a future
+/// Desktop that drops the sigil is not a second bug.
+#[test]
+fn a_username_becomes_one_handle_however_the_export_spelled_it() {
+    assert_eq!(
+        basic()["personal_information"]["username"],
+        "@roy_soul",
+        "the fixture has to carry the `@` a real export carries",
+    );
+
+    for spelling in ["@roy_soul", "roy_soul"] {
+        let mut document = basic();
+        document["personal_information"]["username"] = serde_json::json!(spelling);
+
+        let staged = soul_import::telegram::parse(&document).expect("valid");
+        let handles = owner_handles(&staged);
+        assert!(
+            handles.iter().any(|handle| handle == "@roy_soul"),
+            "`{spelling}` is the handle @roy_soul: {handles:?}",
+        );
+        assert!(
+            !handles.iter().any(|handle| handle.starts_with("@@")),
+            "`{spelling}` was given a second `@`: {handles:?}",
+        );
+    }
+
+    // A sigil with nothing behind it is not a name, and a handle of `@` would
+    // be one every such export shares.
+    for nothing in ["", "@"] {
+        let mut document = basic();
+        document["personal_information"]["username"] = serde_json::json!(nothing);
+
+        let staged = soul_import::telegram::parse(&document).expect("valid");
+        let handles = owner_handles(&staged);
+        assert_eq!(
+            handles,
+            vec!["user111111111".to_owned()],
+            "`{nothing}` names nobody, so the user id is the only handle",
+        );
+    }
+}
+
+fn owner_handles(staged: &soul_import::model::StagedImport) -> Vec<String> {
+    staged
+        .owner()
+        .expect("personal_information names the user")
+        .handles
+        .iter()
+        .map(|handle| handle.value.clone())
+        .collect()
+}
+
+/// Telegram's phone book can carry a resolved `user_id`, so the join back to
+/// the chats is sometimes there. Not importing it is a scope decision: v0.1's
+/// graph is people the user has talked to, not people they have a number for.
 #[test]
 fn the_phone_book_does_not_become_contacts() {
     let document = basic();
