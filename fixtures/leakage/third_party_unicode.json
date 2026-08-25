@@ -36,6 +36,16 @@
     { "id": "name_li_lei", "text": "李雷", "note": "2 scalar 中文名，任何长度都算泄漏。" },
     { "id": "handle_wang_xiao", "text": "@wang_xiao2" },
     { "id": "phone_cn", "text": "13800138000" },
+    {
+      "id": "phone_cn_spaced",
+      "text": "138 0013 8000",
+      "note": "同一个号码，写成人读的分组形式。每组都短于 7 位，只有把组加起来才够一个号码，所以连续数字规则看不见它。"
+    },
+    {
+      "id": "phone_cn_hyphenated",
+      "text": "138-0013-8000",
+      "note": "同一个号码，分隔符换成连字符。分隔符只能是单个空格、U+3000、连字符或点，两个分隔符或标点就断开。"
+    },
     { "id": "email_third_party", "text": "lilei@example.invalid" }
   ],
   "cases": [
@@ -103,6 +113,26 @@
       "text": "留的号码是 13800138000。",
       "leaks": true,
       "expect_kinds": ["known_identifier"]
+    },
+    {
+      "id": "phone_spaced_groups_only",
+      "text": "留的号码是 138 0013 8000。",
+      "leaks": true,
+      "expect_kinds": ["known_identifier"],
+      "note": "分组写法与 phone_only 是同一个号码，规则二不看长度也不看写法。"
+    },
+    {
+      "id": "phone_hyphenated_groups_only",
+      "text": "留的号码是 138-0013-8000。",
+      "leaks": true,
+      "expect_kinds": ["known_identifier"],
+      "note": "另一种分隔符，同上。"
+    },
+    {
+      "id": "separated_short_groups_are_not_a_number",
+      "text": "下午 3 点，第 2 会议室，预算 45000。",
+      "leaks": false,
+      "note": "三组数字加起来只有 7 位却互不相连：逗号和汉字把分组断开，所以这既不是号码也不该被占位。redactor 侧的 short_numbers_and_ordinary_words_are_left_alone 断言的是同一句。"
     },
     {
       "id": "email_only",

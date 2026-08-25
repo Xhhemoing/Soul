@@ -150,6 +150,51 @@ fn identifiers_stay_placeheld_inside_an_exempted_turn() {
     assert!(redacted.as_str().contains(ACCOUNT_PLACEHOLDER));
 }
 
+/// The same promise for the same number, written in groups.
+///
+/// [`identifiers_stay_placeheld_inside_an_exempted_turn`] hands the redactor
+/// `13800138000` and gets it back placeheld, which proves the identifier set is
+/// consulted. A paste rarely spells a number that way: `138 0013 8000` is how
+/// somebody writes one down for somebody else to read, it is not the string the
+/// contact card holds, and it is eleven digits in three groups none of which is
+/// long enough to be a number on its own.
+///
+/// The exempted turn is the one place a paste travels verbatim, so it is the
+/// one place that difference reaches an endpoint. The redactor below knows the
+/// number in its unspaced spelling only, so what covers the grouped one is the
+/// shape and nothing else — and the message the user confirmed twice for still
+/// has to come out the other side.
+#[test]
+fn a_grouped_phone_number_stays_placeheld_inside_an_exempted_turn() {
+    let redactor = redactor();
+
+    for grouped in ["138 0013 8000", "138-0013-8000"] {
+        let turn_id = Uuid::now_v7();
+        let turns = vec![Turn::new(
+            turn_id,
+            SealedSubject::ThirdParty,
+            format!("{ORIGINAL}，电话 {grouped}"),
+        )];
+
+        let exemption = ExemptionRequest::for_turn(turn_id)
+            .confirm(true)
+            .expect("the user confirmed twice");
+        let redacted = redactor.redact_for_e1_with_exemption(&turns, exemption);
+
+        assert_eq!(
+            redacted.as_str(),
+            format!("{ORIGINAL}，电话 {ACCOUNT_PLACEHOLDER}"),
+            "`{grouped}` reached the body the user confirmed",
+        );
+        assert!(
+            !redacted.as_str().contains("8000"),
+            "the tail of the number travelled beside the placeholder: {}",
+            redacted.as_str(),
+        );
+        assert!(redacted.carries_exempted_original());
+    }
+}
+
 /// The same promise for a name nobody registered, which is every name on a
 /// Soul that has imported nothing.
 ///

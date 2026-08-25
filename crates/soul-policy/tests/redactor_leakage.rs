@@ -150,6 +150,102 @@ fn unregistered_identifier_shapes_are_placeheld_too() {
     assert_eq!(text.matches(ACCOUNT_PLACEHOLDER).count(), 3, "{text}");
 }
 
+/// The same number, written the way a person writes one down for another
+/// person: in groups.
+///
+/// `13800138000` has a shape the scrub has always seen. `138 0013 8000` is the
+/// same eleven digits and none of its groups is long enough to be a number on
+/// its own, so until the groups were counted rather than the run, the number a
+/// contact card would have had placeheld travelled verbatim out of the user's
+/// own turn — which is the one turn that is never replaced wholesale.
+///
+/// The identifier set is empty, so a placeholder in these bodies can only have
+/// come from the shape, and the whole grouped run has to go: a placeholder
+/// with `8000` left beside it is still the last four digits on the wire.
+#[test]
+fn a_phone_number_written_in_groups_is_placeheld_on_the_default_path() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+
+    for grouped in [
+        "138 0013 8000",
+        "138-0013-8000",
+        "138.0013.8000",
+        "138　0013　8000",
+        "010-1234-5678",
+    ] {
+        let redacted = redactor.redact_for_e1(&[own(&format!("回头打 {grouped} 找他。"))]);
+        assert_eq!(
+            redacted.as_str(),
+            format!("回头打 {ACCOUNT_PLACEHOLDER} 找他。"),
+            "`{grouped}` did not go whole",
+        );
+        assert_eq!(
+            redacted.third_party_turns(),
+            0,
+            "the user's own turn is not third-party prose",
+        );
+    }
+}
+
+/// The rule the grouped shape was added beside, still doing its job.
+///
+/// A contiguous run of seven digits or more was the whole of the phone shape
+/// before the groups were counted, and it is the spelling an export and a
+/// contact card use. Widening a rule is the easiest way to lose the case it
+/// started as, so the original one is pinned here on its own.
+#[test]
+fn a_contiguous_run_of_digits_is_still_placeheld() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+
+    let redacted = redactor.redact_for_e1(&[own("回头打 13800138000 找他。")]);
+    assert_eq!(
+        redacted.as_str(),
+        format!("回头打 {ACCOUNT_PLACEHOLDER} 找他。"),
+    );
+
+    // The boundary the number 7 draws, from both sides.
+    assert_eq!(
+        redactor
+            .redact_for_e1(&[own("单号 1234567 和房间 123456")])
+            .as_str(),
+        format!("单号 {ACCOUNT_PLACEHOLDER} 和房间 123456"),
+    );
+}
+
+/// The deliberate false positive, written down so it is a fact somebody has to
+/// change a test to move.
+///
+/// `2026-08-25` is eight digits in three groups joined by single hyphens, so
+/// the grouped shape reads it as a number and replaces it. It is a date, and
+/// prose that quotes one comes back with a placeholder where the date was.
+///
+/// The alternative was to excuse the `\d{4}-\d{2}-\d{2}` shape by name, which
+/// would also excuse any number punctuated 4-2-2. The trade taken here is the
+/// same one-directional one `KnownIdentifiers::add_name` takes: a placeholder
+/// too many is something the user can see and work around, and a number on the
+/// wire is not.
+#[test]
+fn an_iso_date_is_placeheld_too_and_that_is_the_trade() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+
+    let redacted = redactor.redact_for_e1(&[own("合同签在 2026-08-25，别记错。")]);
+    assert_eq!(
+        redacted.as_str(),
+        format!("合同签在 {ACCOUNT_PLACEHOLDER}，别记错。"),
+        "if the ISO date now survives, the shape has been narrowed — say so \
+         here and in `phone_shape_end`, and check a 4-2-2 number still goes",
+    );
+
+    // A date written the way Chinese prose writes one has Han characters
+    // between its groups, so nothing joins them and it is left alone.
+    assert_eq!(
+        redactor
+            .redact_for_e1(&[own("合同签在 2026 年 8 月 25 日，别记错。")])
+            .as_str(),
+        "合同签在 2026 年 8 月 25 日，别记错。",
+    );
+}
+
 /// The corpus's name, written the way an export writes a display label, with
 /// nothing registered and the turn exempted.
 ///
