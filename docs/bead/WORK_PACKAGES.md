@@ -27,7 +27,8 @@
 7. **BOM**：色号、显示名、颗数。
 8. **替代色**：库存缺色时，在库存内找 ΔE00&lt;3 的候选，按 ΔE 升序。
 
-完成标准：`cargo test` 在该包内绿；有 README 说明如何运行。
+完成标准：`cargo test` 在该包内绿；有 README 说明如何运行。  
+验收钉死：`docs/bead/reviews/round1-algorithms.md`（G1–G8 与 T-* 测试号）。Sharma 数值以 `docs/bead/fixtures-ciede2000.md` 为准；文中 #34 若夹具未列，标 TODO，禁止编造。
 
 ## WP-B02 — 应用壳
 

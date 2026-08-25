@@ -77,8 +77,10 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] PR #16 draft
 - [x] ROUND 1 先派 3 个 Fable 云端（上限 3）
 - [x] F2 前端 IA 合入专属线
-- [ ] O1 bead-core；其后 O2 壳（须遵守 D-UI id 前缀与 /assemble 双壳）
-- [ ] F1/F3 完成后合入审查；再派 F4/F5/S1/S2
+- [ ] O1 bead-core；O2 壳已在跑（须遵守 D-UI id 前缀与 /assemble 双壳）
+- [x] F3 算法契约合入（#18）
+- [ ] F1 完成后合入；再派 F4/F5/O3/S1/S2
+- [ ] O1 空闲后 resume，令其按 round1-algorithms.md 补测
 - [ ] 第一份可运行转图 + 壳
 
 ## 已知问题 / 禁令
