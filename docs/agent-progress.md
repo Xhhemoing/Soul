@@ -49,9 +49,9 @@ Fileplan revoke: defer v0.1.1 (Fable #4). Collect consent persistence: product b
 
 | Area | Evidence | Gap vs this Goal |
 |---|---|---|
-| Frontend | 11 routes + wizard cover slices 1–12; copy honesty holds; cross-page state consistent | Graph still T0 words; no prediction surface; no tie-correction UI |
-| Backend | Session is the one stateful module; WP01–WP11/WP13/DPAPI landed | T0 `Tally::band`; G1+ fanout; G2 intake moves locked axes; G3 no correct_tie |
-| API | 36 commands, three-way pinned | `complete_wizard` error shape; no directory revoke; no predict command (thin slice needs none) |
+| Frontend | 11 routes + wizard cover slices 1–12; copy honesty holds; cross-page state consistent; Graph has band buttons, lock badge and the `machine_band` disagreement line (SOUL-7A) | Graph still T0 words; no prediction surface |
+| Backend | Session is the one stateful module; WP01–WP11/WP13/DPAPI landed; `Session::correct_tie` / `release_tie` (SOUL-7A) | T0 `Tally::band`; G1+ fanout; G2 intake moves locked axes |
+| API | 38 commands, three-way pinned (36 + `correct_tie` / `release_tie`, SOUL-7A) | `complete_wizard` error shape; no directory revoke; no predict command (thin slice needs none) |
 | Database | SQLCipher + CK + forget atomic; no third-party plaintext cache | Forget leaves wrapped CK in free pages; schema `tie_strength` still loose vs main |
 | Login & permissions | Local DPAPI key chain; no cloud login | Expected |
 | Storage | As database | Same forget gap |
@@ -72,7 +72,7 @@ Fileplan revoke: defer v0.1.1 (Fable #4). Collect consent persistence: product b
 3. **P0 G2:** `intake` calls `place_axis` without lock check; locked axes move while still showing the lock badge.
 4. **P0 G3:** rebuild writes `UserVerdict::Unreviewed`; no product `correct_tie`.
 5. **P0 topology:** PR #7 has the port complete but is behind c441 honesty/tests. Port, do not merge. Exclusive branch is now FF'd onto c441 so the port does not collide with 77 already-landed commits.
-6. **Prediction:** thinnest lock-compatible slice is T4D demotion clock read forward (bands/dates, no model, no new WP, COMMANDS stays 36). Lands after T4D. Research preview already satisfies v0.1 data-collection preview (D8).
+6. **Prediction:** thinnest lock-compatible slice is T4D demotion clock read forward (bands/dates, no model, no new WP, no new command). Lands after T4D. Research preview already satisfies v0.1 data-collection preview (D8).
 7. **Store:** forget does not `secure_delete` / checkpoint, so wrapped CK can remain in free pages while DEK still opens the file.
 8. **IPC:** `complete_wizard` refusals are not `SessionRefusal` shape.
 9. **Policy:** E1 plan hash ignores origin; changing endpoint after prepare still sends.
@@ -96,6 +96,7 @@ Fileplan revoke: defer v0.1.1 (Fable #4). Collect consent persistence: product b
 | R1 start | Exclusive branch tracker | `3c6354f` (rebased) / #15 | Not to `main` |
 | R1 end | FF onto c441 + this record | (this commit) / #15 | Same |
 | R2 | Opus T4D port, 7 commits `f7a1a88`…`aac2b39` on `cursor/port-t4d-4a8e` | branch off `9ca342a` | Onto the exclusive line only |
+| R2 | SOUL-7A tie-correction UI+IPC, 2 commits `2a7e2e1` / `fc54529` on `cursor/graph-correct-ui-4a8e` | branch off `cursor/soul-integration-4a8e` | Onto the exclusive line only |
 
 ### Opus T4D port (Round 2)
 
@@ -111,11 +112,42 @@ hunk merge; and the three gap tests (AC-29 self-heal at the store, AC-34
 Hand-merged both ways rather than taken from one side: `soul-import`'s
 `commit.rs` and `tests/telegram.rs`, `soulcore`'s `session_import.rs`,
 `soul-draft`'s `analysis.rs` and `tests/people_summary.rs`, and the four
-desktop TypeScript files. No IPC command was added: `COMMANDS` is still 36.
+desktop TypeScript files. No IPC command was added by this port: `COMMANDS` was
+still 36 at `aac2b39`. SOUL-7A takes it to 38.
 
 `just ci` green locally on `aac2b39`. Hosted still billing-blocked, and the
 `src-tauri` sub-workspace was not built here (no GTK/WebView stack on this
 box).
+
+### SOUL-7A tie-correction UI+IPC (Round 2)
+
+`cursor/graph-correct-ui-4a8e` off `origin/cursor/soul-integration-4a8e`, two
+commits `2a7e2e1` (core + IPC) and `fc54529` (screen). PR #7 not merged, `main`
+not merged, trunk not rebased.
+
+The T4D port left `soul_graph::correct_tie` and
+`soulcore::commands::graph::correct_tie` with no product path: no `Session`
+method, no command, no `COMMANDS` key, so the three band words on `/graph` were
+three words. Constraint 10 says the user overrules the machine, and on the
+installed build they could not. Closed by `Session::correct_tie` /
+`Session::release_tie` (shaped like `correct_axis`: the band vocabulary is
+checked at this layer, the whole `PeopleGraphView` comes back), two forwarding
+commands taking `COMMANDS` 36 → 38, `correctTie` / `releaseTie` in `core.ts`,
+and a `Tie` that renders band buttons, a lock badge, the `machine_band`
+disagreement line and a release button — the same lock shape `Profile.tsx` uses.
+
+New gates: `soulcore/tests/session_graph_correct.rs` (6, including three
+refusals), `ipc_roundtrip` 54 → 56, `Graph.test.tsx` 10 → 14, and a stateful
+`correct_tie` / `release_tie` in `fakeCore` so those four are not empty
+assertions. Untouched: `soul-store` keys, COPY_ZH prediction keys, wizard
+refusal, forget path, schema, `StoredConfig`, `config.json`.
+
+Local green: `cargo test -p soulcore`, `cargo test --manifest-path
+apps/desktop/src-tauri/Cargo.toml --all-targets` (`ipc_roundtrip` 56,
+`command_surface` 6, `no_egress_path` 3, `one_store` 3, `shell_is_local_only`
+21), vitest 14 files / 176, fmt, clippy `--all-features -D warnings`,
+schema-freeze, e0-audit, denylist-audit, sbom, fixture corpus, smoke-lint.
+Hosted still billing-blocked.
 
 ## Blocked
 
@@ -125,10 +157,12 @@ box).
 - Author Win11 manual checklist.
 - Parent has no merge-PR capability — record and continue.
 - Prediction thin slice unblocked: T4D is on `cursor/port-t4d-4a8e`.
-- Desktop shell cargo tests (`apps/desktop/src-tauri`) cannot run on this box:
+- ~~Desktop shell cargo tests (`apps/desktop/src-tauri`) cannot run on this box:
   the GTK/WebView system libraries are missing, so only its `Cargo.lock` was
-  refreshed.
+  refreshed.~~ Cleared on the SOUL-7A box: `libwebkit2gtk-4.1-dev` and
+  `libgtk-3-dev` installed, `--all-targets` green there. Still per-box, not a
+  repo change.
 
 ## Next round focus
 
-Fable review of the T4D port. Then: tie-correction UI, intake `ignored` receipt, T4D projection sentences (simple behavior/group prediction), remaining policy nits. Do not start empty Goal 2 polish.
+Fable review of the T4D port and of SOUL-7A. Then: intake `ignored` receipt, T4D projection sentences (simple behavior/group prediction), remaining policy nits. Do not start empty Goal 2 polish.

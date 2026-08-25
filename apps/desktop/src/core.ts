@@ -612,6 +612,8 @@ export const COMMANDS = {
   previewPlan: "preview_plan",
   peopleGraph: "people_graph",
   personSummary: "person_summary",
+  correctTie: "correct_tie",
+  releaseTie: "release_tie",
   draftReply: "draft_reply",
   draftNotices: "draft_notices",
   prepareDraft: "prepare_draft",
@@ -693,6 +695,23 @@ export function peopleGraph(): Promise<PeopleGraph> {
 /** Everything Soul will say about one person, and what each line rests on. */
 export function personSummary(contactId: string): Promise<PersonSummary> {
   return invoke<PersonSummary>(COMMANDS.personSummary, { contactId });
+}
+
+/**
+ * The user read a tie and said the band is wrong. The core pins it.
+ *
+ * `band` is one of the three words `TieEdge.band` is spelled with, and the
+ * core refuses anything else rather than the shell deciding what a fourth one
+ * would mean. What comes back is the whole graph: a correction moves the band,
+ * the lock and the evidence behind that edge at once.
+ */
+export function correctTie(relationshipId: string, band: string): Promise<PeopleGraph> {
+  return invoke<PeopleGraph>(COMMANDS.correctTie, { relationshipId, band });
+}
+
+/** The user handed the band back to the counts. */
+export function releaseTie(relationshipId: string): Promise<PeopleGraph> {
+  return invoke<PeopleGraph>(COMMANDS.releaseTie, { relationshipId });
 }
 
 /**

@@ -14,13 +14,31 @@
  * may have written is the endpoint's own sentence rather than a rewrite of
  * anything — the core cannot verify that it is one, so this screen does not
  * say it is.
+ *
+ * ## Correcting a tie
+ *
+ * The band under each tie is a working hypothesis, and constraint 10 rules out
+ * one the user cannot overrule. So the three band words are buttons, the same
+ * way the profile page's axis positions are, and the screen keeps showing what
+ * the counts say after a correction: a lock the user can see the machine
+ * disagreeing with is the only kind that is honest about what it did. What a
+ * correction fixes is the one word; the counts beside it go on accumulating
+ * and a later rebuild recomputes them without moving the band, which is why
+ * there is a way back out to them as well.
+ *
+ * A correction is a write, so the whole graph comes back from the core rather
+ * than being patched here — the band, the lock and the evidence rows behind
+ * that edge all move, and a screen that updated one of them itself would be
+ * guessing at the other two. Same shape as `Profile.tsx`, for the same reason.
  */
 
 import { useEffect, useState } from "react";
 
 import {
+  correctTie,
   peopleGraph,
   personSummary,
+  releaseTie,
   type PeopleGraph,
   type PersonNode,
   type PersonSummary,
@@ -39,6 +57,16 @@ const BAND: Record<string, string> = {
   moderate: "中等",
   strong: "强",
 };
+
+/**
+ * The bands a correction may name, weakest first.
+ *
+ * Read off [`BAND`] rather than written out a second time: the three words are
+ * COPY_ZH's whole vocabulary for a 档位, and a fourth key here would be a word
+ * the core refuses anyway — `graph::band_named` is a closed set of the same
+ * three.
+ */
+const BANDS: readonly string[] = Object.keys(BAND);
 
 /** The shapes `soul-graph` will admit to seeing. It names no relationships. */
 const TIE_TYPE: Record<string, string> = {
@@ -75,6 +103,8 @@ export function Graph(): React.JSX.Element {
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [summary, setSummary] = useState<PersonSummary | null>(null);
   const [summaryRefusal, setSummaryRefusal] = useState<Refusal | null>(null);
+  const [tieRefusal, setTieRefusal] = useState<Refusal | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -90,6 +120,22 @@ export function Graph(): React.JSX.Element {
       live = false;
     };
   }, []);
+
+  /** Both writes answer with the whole graph, so both are the same call. */
+  const write = (change: Promise<PeopleGraph>): void => {
+    setBusy(true);
+    setTieRefusal(null);
+    change.then(
+      (value) => {
+        setGraph(value);
+        setBusy(false);
+      },
+      (error: unknown) => {
+        setTieRefusal(asRefusal(error));
+        setBusy(false);
+      },
+    );
+  };
 
   const summarize = (contactId: string): void => {
     setSummary(null);
@@ -139,9 +185,23 @@ export function Graph(): React.JSX.Element {
       {graph.ties.length === 0 ? null : (
         <section className="panel" aria-labelledby="ties-heading">
           <h2 id="ties-heading">关系与证据（{graph.ties.length}）</h2>
+          <p className="muted" data-testid="ties-explanation">
+            档位是核心按下面那些计数算出来的，是工作假设，不是对谁的判断。你觉得哪一条不对，
+            就按下面的 弱 / 中等 / 强 改；改过之后这一档就锁住了，以后再导入、再重算也不会覆盖你，
+            计数照旧继续累加。想让计数重新说话，按「按计数重新算」。
+          </p>
+          {tieRefusal === null ? null : (
+            <Refused title="这一档没有改成" refusal={tieRefusal} testId="tie-refusal-code" />
+          )}
           <ul className="facts" data-testid="ties-list">
             {graph.ties.map((tie) => (
-              <Tie key={tie.relationship_id} tie={tie} />
+              <Tie
+                key={tie.relationship_id}
+                tie={tie}
+                busy={busy}
+                onCorrect={(band) => write(correctTie(tie.relationship_id, band))}
+                onRelease={() => write(releaseTie(tie.relationship_id))}
+              />
             ))}
           </ul>
           {/*
@@ -207,11 +267,27 @@ function Person({ person, onSummarize }: PersonProps): React.JSX.Element {
 
 interface TieProps {
   readonly tie: TieEdge;
+  readonly busy: boolean;
+  readonly onCorrect: (band: string) => void;
+  readonly onRelease: () => void;
 }
 
-function Tie({ tie }: TieProps): React.JSX.Element {
+/**
+ * One tie: the band, the counts it was derived from, and the way to overrule
+ * it.
+ *
+ * The machine's own reading stays on screen once the two disagree. The core
+ * keeps `machine_band` beside the effective band exactly so this line can be
+ * drawn without asking the scorer to run again, and a lock that hid what it
+ * overruled would be the uncorrectable black box read backwards — the user
+ * could no longer tell what the counts say about the edge they pinned.
+ */
+function Tie({ tie, busy, onCorrect, onRelease }: TieProps): React.JSX.Element {
+  const disagrees =
+    tie.locked_by_user && tie.machine_band !== null && tie.machine_band !== tie.band;
+
   return (
-    <li>
+    <li data-testid={`tie-${tie.relationship_id}`}>
       <span>
         {words(BAND, tie.band)}：往来 {tie.interaction_count} 次（发出 {tie.outgoing_count}，收到{" "}
         {tie.incoming_count}），{tie.conversation_count} 个会话，{tie.active_day_count} 天有往来，
@@ -225,6 +301,34 @@ function Tie({ tie }: TieProps): React.JSX.Element {
         {" "}
         依据 {tie.evidence.length} 条证据（{tie.evidence.map((row) => row.kind).join("、")}）
       </span>
+      {tie.locked_by_user ? (
+        <span className="badge" data-testid={`tie-locked-${tie.relationship_id}`}>
+          你改过这一档，重算不再动它
+        </span>
+      ) : null}
+      {disagrees ? (
+        <span className="muted" data-testid={`tie-machine-${tie.relationship_id}`}>
+          {" "}
+          机器按这些计数算的是「{words(BAND, tie.machine_band ?? "")}」，你改过之后它没有生效。
+        </span>
+      ) : null}
+      <div className="switch-row">
+        {BANDS.map((band) => (
+          <button
+            key={band}
+            type="button"
+            disabled={busy || band === tie.band}
+            onClick={() => onCorrect(band)}
+          >
+            {words(BAND, band)}
+          </button>
+        ))}
+        {tie.locked_by_user ? (
+          <button type="button" disabled={busy} onClick={onRelease}>
+            按计数重新算
+          </button>
+        ) : null}
+      </div>
     </li>
   );
 }

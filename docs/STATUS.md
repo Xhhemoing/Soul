@@ -4,7 +4,7 @@
 
 本父代理专属线：`cursor/soul-integration-4a8e`，从本文件所在的 unique trunk 长出。本轮进度与合入/Blocked 记账写在 [`agent-progress.md`](agent-progress.md)；本跑拍板写在 [`agent-decisions.md`](agent-decisions.md)。**不要**把本段读成 Goal 1 已关闭或 `main` 已有应用。
 
-本树已吸收 T4D 端口（`cursor/port-t4d-4a8e`，非合入 PR #7）与 forget 页级销毁（`cursor/store-forget-4a8e`）。人脉图不再走 T0 3/10/3。Goal 1 仍未关：hosted CI 与作者 Win11 清单仍缺。
+本树已吸收 T4D 端口（`cursor/port-t4d-4a8e`，非合入 PR #7）与 forget 页级销毁（`cursor/store-forget-4a8e`）。人脉图不再走 T0 3/10/3。**档位纠正也有产品路径了**（SOUL-7A，`cursor/graph-correct-ui-4a8e`）：`COMMANDS` 从 36 长到 38（`correct_tie`、`release_tie`）。Goal 1 仍未关：hosted CI 与作者 Win11 清单仍缺。
 
 ## 当前里程碑
 
@@ -883,11 +883,25 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 分支 `cursor/port-t4d-4a8e`，从 `cursor/soul-integration-4a8e`（`9ca342a`）长出，七个提交 `f7a1a88`…`aac2b39`。**没有合 PR #7、没有合 `main`、没有 rebase 主干**：文件是从 `origin/cursor/goal1-unblock-a073`（核于 2026-08-25 尖端 `6133307`）逐个 checkout 过来的，两边都改过的文件按 hunk 手工合并，主干先前加的测试一条都没有丢。冻结算法 crate 的规则与常量一个字节都没动。
 
-落地内容：两个冻结 crate `crates/soul-algo-tie` / `crates/soul-algo-trait` 进工作区成员表，依赖按 0.3.0 路径钉住（D50 / D51），`docs/DECISIONS.md` 补齐 D32–D60。人脉图重建改走 T4D（`t4d_adapt.rs`、`build.rs` 换掉本地 3/10/3、`model.rs` 三元锁字段、`correct.rs`），`docs/schemas/relationship.schema.json` 的 `tie_strength` 收成可复核面并与 `schemas.lock.json` 同批重算（D42 / D45 / D48 / D59）。导入侧 owner 群消息不再产生 Outgoing 归因（D47），`date_unixtime` 越界与不存在的民事日在入库前判缺陷（D37 / D38）；`soulcore` 的 `evidence_written` 钉成 G1+ 之后的 15。人事摘要改由冻结的 `soul_algo_trait::a2_render` 出话，锁定边丢掉 `filed_band` 而不是自造「由你本人指定」（D35 / D40）——本树原有的端点出处文案与 `ENDPOINT_LINE_PREFIX` 保留，只把一条引用旧本地散文的断言改指冻结模板。问卷再答不再移动已锁轴，被拒答案照常落库并以 `axis_locked_by_user` 回报（D39 / D46）。界面上档位词换成 COPY_ZH 的 弱 / 中等 / 强，`TieEdge` 与 `IntakeReceipt` 加法字段；本树那段点名「看这个人的摘要」是 E1 触发的只留本机说明与 FORGET / LLM 文案原样保留，**没有新增 IPC，`COMMANDS` 仍是 36**，纠正仍只在 `soulcore` 命令面上。
+落地内容：两个冻结 crate `crates/soul-algo-tie` / `crates/soul-algo-trait` 进工作区成员表，依赖按 0.3.0 路径钉住（D50 / D51），`docs/DECISIONS.md` 补齐 D32–D60。人脉图重建改走 T4D（`t4d_adapt.rs`、`build.rs` 换掉本地 3/10/3、`model.rs` 三元锁字段、`correct.rs`），`docs/schemas/relationship.schema.json` 的 `tie_strength` 收成可复核面并与 `schemas.lock.json` 同批重算（D42 / D45 / D48 / D59）。导入侧 owner 群消息不再产生 Outgoing 归因（D47），`date_unixtime` 越界与不存在的民事日在入库前判缺陷（D37 / D38）；`soulcore` 的 `evidence_written` 钉成 G1+ 之后的 15。人事摘要改由冻结的 `soul_algo_trait::a2_render` 出话，锁定边丢掉 `filed_band` 而不是自造「由你本人指定」（D35 / D40）——本树原有的端点出处文案与 `ENDPOINT_LINE_PREFIX` 保留，只把一条引用旧本地散文的断言改指冻结模板。问卷再答不再移动已锁轴，被拒答案照常落库并以 `axis_locked_by_user` 回报（D39 / D46）。界面上档位词换成 COPY_ZH 的 弱 / 中等 / 强，`TieEdge` 与 `IntakeReceipt` 加法字段；本树那段点名「看这个人的摘要」是 E1 触发的只留本机说明与 FORGET / LLM 文案原样保留，**这一轮没有新增 IPC，`COMMANDS` 仍是 36**，纠正仍只在 `soulcore` 命令面上——那个洞由下一节的 SOUL-7A 补上，`COMMANDS` 在那里长到 38。
 
 补的门禁：`crates/soul-graph/tests/t4d_fixture_parity.rs` 把冻结 crate 自己的 21 个夹具写进真库，逐条比对 `soul_algo_tie::score` 与 rebuild 读回的档位与分列计数，并断言全库只有一个 `as_of`；AC-29 的 `lilei_12` 仍 strong、自愈路径 `group_heavy_plus_three_directs` 回 moderate 在同一条测试里。`crates/soul-import/tests/import_to_graph.rs` 补 AC-34 的 `last_contact` 那一半：owner 的群消息晚于两位历史发言人，两条边的 `last_contact` 不被它刷新。`crates/soul-draft/tests/day_constants_agree.rs` 钉 `DEMOTE_ONE_BAND_DAYS == DORMANT_AFTER_DAYS`，并扫产品 crate 与壳的源码，确认 180 / 360 没有第三处（D52）。
 
 本机在 `aac2b39`（本轮最后一个动代码的提交，之后两个只动 `docs/`）这棵树上 `just ci` 全绿（lint / schema-freeze / e0-audit / denylist-audit / fixtures-verify / `cargo test --workspace --all-targets` / smoke-lint / sbom / ui-lint / ui-test 14 文件 172 项）。**本机绿不是 hosted 绿**：hosted 仍是账本/额度阻塞，本轮没有产品 run。`apps/desktop/src-tauri` 这个独立工作区在本机装不起 GTK/WebView 依赖，因此桌面壳的 `cargo` 测试本轮没跑过，只更新了它的 `Cargo.lock`。
+
+## SOUL-7A：档位纠正接到人脉图上（核于 2026-08-25）
+
+分支 `cursor/graph-correct-ui-4a8e`，从 `origin/cursor/soul-integration-4a8e` 长出，两个提交 `2a7e2e1`（核心与 IPC）与 `fc54529`（界面）。**没有合 PR #7、没有合 `main`、没有 rebase 主干。**
+
+T4D 端口把 `crates/soul-graph/src/correct.rs` 和 `soulcore::commands::graph::{correct_tie, release_tie}` 带进了本树，而且钉住了「纠正只改那个词、不动计数、重算不覆盖」。缺的还是路：`Session` 上没有方法，`commands.rs` 里没有命令，`core.ts` 的 `COMMANDS` 里没有键，`/graph` 上那三个档位词只是三个字。后果和导入、采集、端点是同一类——**装出来的 Soul 上，用户读到一条自己认为算错了的关系，屏幕上没有任何地方能说它算错了**，而约束 10 明写用户推翻得了机器的判断。档案页的轴早就锁得住（`Session::correct_axis`），图上的档位锁不住。
+
+落地内容：`Session::correct_tie` / `Session::release_tie` 两个方法，形状照抄 `correct_axis`——档位词在这一层由 `graph_commands::band_named` 认，认不出来就是一条 `SessionRefusal`（`Routine` + 「一条关系只有弱、中等、强三档。」），一个没人提供的词到不了库；成功回的是整张 `PeopleGraphView` 而不是那一条边，因为一次纠正同时动档位、锁标记与那条边背后的证据行，界面自己补两个就是在猜。IPC 侧 `correct_tie` / `release_tie` 两条转发（命令体各一条语句，`command_surface.rs::the_command_layer_stays_thin` 照旧咬得住），`lib.rs` 的 `generate_handler!` 各加一行，**`COMMANDS` 从 36 长到 38**，`core.ts` 的 `correctTie` / `releaseTie` 拼的参数名是 `relationshipId` / `band`。`/graph` 的每一条关系下面因此多了三个档位按钮（读 `BAND` 的键，不第二次写出那三个词）、锁上之后多一枚「你改过这一档，重算不再动它」的徽章、多一行「机器按这些计数算的是「X」，你改过之后它没有生效。」（只在 `machine_band` 与生效档位真的不一样时才画），以及只在锁着时出现的「按计数重新算」。**锁住之后机器那一读留在屏幕上**：藏起来的锁就是那个不可纠正的黑箱反过来读一遍——用户会再也说不出计数对这条边的看法。
+
+补的门禁：`crates/soulcore/tests/session_graph_correct.rs` 六项——一次纠正把档位钉住且 `machine_band` 仍在（`a_correction_pins_the_band_and_keeps_the_machines_reading_beside_it`）、重算照旧数这条边而不动被纠正的档位（`a_rebuild_recounts_the_edge_and_leaves_the_corrected_band_alone`）、松开之后档位交回计数（`releasing_hands_the_band_back_to_the_counts`），另三条是反例：不是档位的词被拒且一个字节都没写、库里没有的边被拒而不是被建出来、开不了的库拒绝这次纠正。`apps/desktop/src-tauri/tests/ipc_roundtrip.rs` 从 54 长到 **56**：`a_tie_is_corrected_and_released_over_the_ipc` 走真 `invoke_handler` 纠正再松开，`the_tie_correction_arguments_are_required_and_spelled_the_way_the_webview_spells_them` 钉住 `relationshipId` / `band` 在 WebView 侧的拼法。`Graph.test.tsx` 从 10 长到 **14**：按下一个档位档位改了锁上了机器那一读还在、锁住之后才有「按计数重新算」且按下去交回计数、只有那三个档位词且当前这一档的按钮是灰的、核心拒绝时屏幕给理由码而图还是原来那张；原来那十条一条没改，`forbidNetwork` 那条现在把纠正也走一遍。`test/fakeCore.ts` 的 mock 把 `correct_tie` / `release_tie` 做成有状态的，纠正之后 double 自己维护锁标记、`machine_band` 与那条 `UserCorrection` 证据行——一个比真核心更好说话的 double 会让上面四条测试全部变成空断言。
+
+**没有动的**：`soul-store` 的键、`COPY_ZH` 的预测键、向导拒绝、遗忘那条路、schema、`schemas.lock.json`、`StoredConfig`（仍 `wizard_completed` + `authorized_roots` 两个字段）、`config.json`，也没有加依赖、没有加 fixture、没有动冻结算法 crate。档位词仍是 COPY_ZH 的 弱 / 中等 / 强。
+
+本机绿：`cargo test -p soulcore`（全部测试二进制无失败，其中新的 `session_graph_correct` 6）、`pnpm --filter @soul/desktop test`（14 个文件 **176** 项，从 172 长上来的四条就是上面那四条）、`cargo fmt --all --check`、`cargo clippy --workspace --all-targets --all-features -- -D warnings`、`xtask schema-freeze --check` / `e0-audit` / `denylist-audit` / `sbom`、`cargo test -p soul-testkit --test fixture_corpus`、`cargo test -p soulcore --test install_smoke_script`。**桌面壳这一侧这一轮真的跑起来了**：上一节记的「本机装不起 GTK/WebView 依赖」在这台机器上已经解决（装了 `libwebkit2gtk-4.1-dev` 与 `libgtk-3-dev`），`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets` 全绿——`ipc_roundtrip` **56**、`command_surface` 6、`no_egress_path` 3、`one_store` 3、`shell_is_local_only` 21。**本机绿不是 hosted 绿**：hosted 仍是账本/额度阻塞，本轮没有产品 run。真机上按一次档位按钮同样没有人做过。
 
 ## 下一步
 

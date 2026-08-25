@@ -634,6 +634,52 @@ impl Session {
         Ok(graph_commands::people_view(&store)?)
     }
 
+    /// The user read a tie and said the band is wrong. AC-07 on the graph.
+    ///
+    /// The same shape [`Session::correct_axis`] has, and for the same reasons:
+    /// the vocabulary is checked here so a word nobody offers never reaches the
+    /// store, and what comes back is the whole graph rather than the one edge —
+    /// a correction moves the band, the lock and the evidence behind that edge
+    /// at once, and a screen that patched one of them itself would be guessing
+    /// at the other two.
+    ///
+    /// The counts are not touched. What the user has overruled is the summary
+    /// word derived from them, which is why a later rebuild goes on counting
+    /// and the band stays where they put it.
+    pub fn correct_tie(
+        &mut self,
+        relationship_id: &str,
+        band: &str,
+    ) -> Result<PeopleGraphView, SessionRefusal> {
+        let relationship_id = parse_id(relationship_id, "关系")?;
+        let band = graph_commands::band_named(band).ok_or_else(|| SessionRefusal {
+            reason_code: ReasonCode::Routine.as_str().to_owned(),
+            explanation: "一条关系只有弱、中等、强三档。".to_owned(),
+        })?;
+        let at = now_unix_seconds();
+        let store = self.opened_store()?;
+        let mut store = hold(&store);
+        graph_commands::correct_tie(&mut store, relationship_id, band, at)?;
+        Ok(graph_commands::people_view(&store)?)
+    }
+
+    /// Hand the band back to the counts.
+    ///
+    /// The way out of the lock, which is the half AC-07 is only half of without
+    /// it: a correction the user cannot undo is a correction they have to be
+    /// sure about before pressing it.
+    pub fn release_tie(
+        &mut self,
+        relationship_id: &str,
+    ) -> Result<PeopleGraphView, SessionRefusal> {
+        let relationship_id = parse_id(relationship_id, "关系")?;
+        let at = now_unix_seconds();
+        let store = self.opened_store()?;
+        let mut store = hold(&store);
+        graph_commands::release_tie(&mut store, relationship_id, at)?;
+        Ok(graph_commands::people_view(&store)?)
+    }
+
     /// Everything Soul will say about one person, and what each line rests on.
     ///
     /// AC-16's product path, including the half that had nowhere to run: a

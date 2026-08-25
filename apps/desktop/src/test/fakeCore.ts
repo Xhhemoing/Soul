@@ -174,6 +174,98 @@ export function aPeopleGraph(overrides: Partial<PeopleGraph> = {}): PeopleGraph 
   };
 }
 
+/** The three words `soulcore::commands::graph::band_named` accepts. */
+const BAND_WORDS: readonly string[] = ["weak", "moderate", "strong"];
+
+/** What the core says when a correction names something that is not a band. */
+export const NOT_A_BAND_NOTICE = "一条关系只有弱、中等、强三档。";
+
+/**
+ * What `soul_graph::correct_tie` does to one edge, as far as the graph page
+ * can tell.
+ *
+ * The band moves and the lock goes on; the machine's own reading is kept
+ * rather than dropped, because the screen draws the disagreement out of it.
+ * The counts are left exactly as they were — a correction fixes the one
+ * summary word derived from them and nothing else — and the row that changed
+ * the band joins the evidence the edge cites, the way it does in the store.
+ */
+function tieCorrected(
+  current: PeopleGraph,
+  relationshipId: string,
+  band: string,
+  evidenceId: string,
+): PeopleGraph {
+  if (!BAND_WORDS.includes(band)) {
+    throw { reason_code: "ROUTINE", explanation: NOT_A_BAND_NOTICE };
+  }
+  return {
+    ...current,
+    ties: heldTies(current, relationshipId).map((tie) =>
+      tie.relationship_id !== relationshipId
+        ? tie
+        : {
+            ...tie,
+            band,
+            locked_by_user: true,
+            user_band: band,
+            machine_band: tie.machine_band ?? tie.band,
+            evidence: [...tie.evidence, aCorrectionRow(evidenceId)],
+          },
+    ),
+  };
+}
+
+/** And what a release does: the counts speak again, and the lock is gone. */
+function tieReleased(
+  current: PeopleGraph,
+  relationshipId: string,
+  evidenceId: string,
+): PeopleGraph {
+  return {
+    ...current,
+    ties: heldTies(current, relationshipId).map((tie) =>
+      tie.relationship_id !== relationshipId
+        ? tie
+        : {
+            ...tie,
+            band: tie.machine_band ?? tie.band,
+            locked_by_user: false,
+            user_band: null,
+            machine_band: null,
+            evidence: [...tie.evidence, aCorrectionRow(evidenceId)],
+          },
+    ),
+  };
+}
+
+/**
+ * The ties, or the refusal an edge nobody has gets.
+ *
+ * `soul_graph::correct_tie` reads the edge first and fails with the store's
+ * own `NotFound` rather than writing a correction to nothing, so a page that
+ * asked about a tie the core does not hold has to be told no.
+ */
+function heldTies(current: PeopleGraph, relationshipId: string): PeopleGraph["ties"] {
+  if (!current.ties.some((tie) => tie.relationship_id === relationshipId)) {
+    throw {
+      reason_code: "ROUTINE",
+      explanation: `这条关系不在库里：${relationshipId}`,
+    };
+  }
+  return current.ties;
+}
+
+/** The row a correction or a release writes. Ids and vocabulary, no prose. */
+function aCorrectionRow(evidenceId: string) {
+  return {
+    evidence_id: evidenceId,
+    kind: "user_correction",
+    method: "user_stated",
+    strength: "strong",
+  };
+}
+
 /** A summary the way `soul-draft` builds one: counts, and what backs them. */
 export function aPersonSummary(overrides: Partial<PersonSummary> = {}): PersonSummary {
   return {
@@ -799,6 +891,15 @@ export interface FakeCoreOptions {
   readonly graph?: PeopleGraph;
   /** As `graph`, but able to throw the way a refusal arrives — as a value. */
   readonly graphing?: () => PeopleGraph;
+  /**
+   * How the double answers a correction on one tie.
+   *
+   * Stateful by default, because the page's subject is a band that changes:
+   * the fallback mirrors what `soul_graph::correct_tie` writes, and the next
+   * `people_graph` sees it. Both can throw, which is how a refusal arrives.
+   */
+  readonly correctingTie?: (relationshipId: string, band: string) => PeopleGraph;
+  readonly releasingTie?: (relationshipId: string) => PeopleGraph;
   readonly summarizing?: (contactId: string) => PersonSummary;
   /**
    * How the double answers 用你自己的模型端点写.
@@ -972,6 +1073,9 @@ export function installFakeCore(
   let collect = options.collect ?? COLLECT_OFF;
   let configuration = snapshot;
   let profile: ProfileScreen | null = null;
+  /** The graph a correction writes to, and the next read sees. */
+  let graph: PeopleGraph | null = null;
+  let corrections = 0;
   /**
    * `Session::held_forget`, as far as this page can tell.
    *
@@ -988,6 +1092,18 @@ export function installFakeCore(
   const profileNow = (): ProfileScreen => {
     profile ??= (options.profile ?? (() => aProfileScreen()))();
     return profile;
+  };
+
+  /** The same for the graph, so a `graphing` option that refuses still does. */
+  const graphNow = (): PeopleGraph => {
+    graph ??= (options.graphing ?? (() => options.graph ?? EMPTY_GRAPH))();
+    return graph;
+  };
+
+  /** One row id per correction, so two of them are two rows. */
+  const nextCorrectionId = (): string => {
+    corrections += 1;
+    return `0192f000-0000-7000-8000-0000000000${(0xc0 + corrections).toString(16)}`;
   };
 
   mockIPC((cmd, payload) => {
@@ -1031,7 +1147,26 @@ export function installFakeCore(
           (payload as { path?: string }).path ?? "",
         );
       case "people_graph":
-        return (options.graphing ?? (() => options.graph ?? EMPTY_GRAPH))();
+        return graphNow();
+      case "correct_tie": {
+        const asked = payload as { relationshipId?: string; band?: string };
+        graph = (options.correctingTie ??
+          ((relationshipId: string, band: string) =>
+            tieCorrected(graphNow(), relationshipId, band, nextCorrectionId())))(
+          asked.relationshipId ?? "",
+          asked.band ?? "",
+        );
+        return graph;
+      }
+      case "release_tie": {
+        const asked = payload as { relationshipId?: string };
+        graph = (options.releasingTie ??
+          ((relationshipId: string) =>
+            tieReleased(graphNow(), relationshipId, nextCorrectionId())))(
+          asked.relationshipId ?? "",
+        );
+        return graph;
+      }
       case "person_summary":
         return (options.summarizing ?? (() => aPersonSummary()))(
           (payload as { contactId?: string }).contactId ?? "",
