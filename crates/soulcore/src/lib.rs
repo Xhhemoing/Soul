@@ -13,6 +13,7 @@
 pub mod collect_probe;
 pub mod commands;
 pub mod config;
+pub mod e1_watch;
 pub mod headless;
 pub mod netwatch;
 
