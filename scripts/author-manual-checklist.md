@@ -12,7 +12,7 @@ CI 到此为止。下面每一条都要在一台 **Windows 11 x64、非管理员
 
 打包在作者机器上做，不在 CI 上做：`tauri build` 会去取 NSIS，那是出网，
 CI 不允许（见 `docs/STATUS.md` WP13「Windows 手动缺口」）。
-从 **HEAD of `cursor/soul-goal1-7b1c`（`85d1b1a` 或之后）**打。不要用 `2e72ddf` 的 `windows-binaries` 做卸载：
+从 **HEAD of `cursor/soul-goal1-7b1c`（`a0c329b` 或之后）**打。不要用 `2e72ddf` 的 `windows-binaries` 做卸载：
 那次构建还把 `soul.exe` 装进 `%LOCALAPPDATA%\Soul`，卸载会碰到 `keys.dpapi`。
 
 ```powershell
