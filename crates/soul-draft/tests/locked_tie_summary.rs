@@ -41,6 +41,15 @@ const FILING_FRAGMENTS: [&str; 2] = ["按上面的计数", "一档"];
 /// repository.
 const UNFROZEN_VARIANT: &str = "由你本人指定";
 
+/// The fragment every demotion-clock projection carries (`COPY_ZH.md` §6).
+///
+/// The projection goes the same way the filing sentence does on a corrected
+/// edge, and for the same reason: it says what the machine's clock will do to
+/// this band, and on an edge the user has ruled on the clock does not decide
+/// the band any more. AD-13 lists the suppression; this file is where it is
+/// checked against a real correction.
+const PROJECTION_FRAGMENT: &str = "如果你们一直没有新的往来";
+
 fn id(tail: &str) -> Uuid {
     format!("0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4{tail:0>3}")
         .parse()
@@ -143,6 +152,10 @@ fn an_uncorrected_edge_is_still_filed_under_a_band() {
         files_the_tie(&text),
         "the frozen filing sentence belongs on a derived band:\n{text}",
     );
+    assert!(
+        text.contains(PROJECTION_FRAGMENT),
+        "a derived band is on the machine's clock, so it is projected:\n{text}",
+    );
 }
 
 /// GC-9a: the correction takes the filing sentence out, and nothing takes its
@@ -163,10 +176,17 @@ fn a_corrected_edge_is_not_filed_under_anything() {
         !after.contains(UNFROZEN_VARIANT),
         "a replacement sentence is copy, and copy is frozen elsewhere:\n{after}",
     );
+    assert!(
+        !after.contains(PROJECTION_FRAGMENT),
+        "the user's band is not something the demotion clock will change:\n{after}",
+    );
 
     // Everything else the summary said is a count, and a count is unaffected by
     // who chose the word for it.
-    for line in before.lines().filter(|line| !files_the_tie(line)) {
+    for line in before
+        .lines()
+        .filter(|line| !files_the_tie(line) && !line.contains(PROJECTION_FRAGMENT))
+    {
         assert!(
             after.contains(line),
             "the correction removed more than the filing sentence: `{line}`",
@@ -186,6 +206,10 @@ fn releasing_the_tie_brings_the_filing_sentence_back() {
     assert!(
         files_the_tie(&text),
         "after a release the band is the machine's again:\n{text}",
+    );
+    assert!(
+        text.contains(PROJECTION_FRAGMENT),
+        "and so is the clock that will move it:\n{text}",
     );
 }
 

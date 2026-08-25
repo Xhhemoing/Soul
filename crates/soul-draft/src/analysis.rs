@@ -46,6 +46,7 @@ use soul_schema::evidence::SoulEvidence;
 use crate::a2_adapt;
 use crate::draft::ReplyGenerator;
 use crate::error::{DraftError, DraftResult};
+use crate::projection::{self, ClockReading};
 use crate::reply;
 
 /// One thing the summary says, and what it rests on.
@@ -324,7 +325,57 @@ fn points_for(edge: &TieEdge, resolved: &[SoulEvidence]) -> DraftResult<Vec<Summ
             bullet.evidence_ids,
         )?);
     }
+    for bullet in projected_points(strength, &counted, last_contact) {
+        points.push(SummaryPoint::new(
+            bullet.text_zh,
+            band,
+            bullet.evidence_ids,
+        )?);
+    }
     Ok(points)
+}
+
+/// What the demotion clock will do to this band if nothing else happens
+/// (AD-13, `COPY_ZH.md` §6).
+///
+/// The projection rests on one date — the last exchange in any venue — so it
+/// cites the row holding that exchange when the caller could identify one, and
+/// falls back to the rows the counts rest on when it could not. It is not
+/// allowed to cite anything the counts may not.
+///
+/// An edge whose instants do not read produces nothing. That includes a row
+/// written before the rebuild recorded its `as_of`: without the instant the
+/// silence was measured against there is no date to project from, and a
+/// forecast off the row's own last contact would silently mean "as of the day
+/// this person last wrote", which is not the same clock.
+fn projected_points(
+    strength: &TieStrength,
+    counted: &[Uuid],
+    last_contact: Option<Uuid>,
+) -> Vec<projection::ProjectedBullet> {
+    let Some(reading) = clock_reading(strength) else {
+        return Vec::new();
+    };
+    let evidence = match last_contact {
+        Some(row) => vec![row],
+        None => counted.to_vec(),
+    };
+    projection::project(&reading, &evidence)
+}
+
+/// The clock as this edge recorded it, or `None` when an instant it needs is
+/// missing or unreadable.
+fn clock_reading(strength: &TieStrength) -> Option<ClockReading> {
+    Some(ClockReading {
+        band: strength.band,
+        as_of_unix: a2_adapt::parse_rfc3339(strength.as_of_utc.as_ref()?.as_str())?,
+        last_contact_unix: a2_adapt::parse_rfc3339(strength.last_contact_utc.as_str())?,
+        last_direct_contact_unix: strength
+            .last_direct_contact_utc
+            .as_ref()
+            .and_then(|at| a2_adapt::parse_rfc3339(at.as_str())),
+        locked_by_user: strength.is_locked_by_user(),
+    })
 }
 
 /// The rows a count rests on: everything the edge cites, minus the user's own
