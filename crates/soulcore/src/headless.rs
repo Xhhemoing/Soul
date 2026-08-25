@@ -62,7 +62,7 @@ use crate::config::Config;
 use crate::netwatch::{self, WatchReport};
 
 /// The import corpus, compiled in. See the module docs.
-const IMPORT_CORPUS: &str =
+pub(crate) const IMPORT_CORPUS: &str =
     include_str!("../../../fixtures/import/soul-import-v1/three_partners.jsonl");
 
 /// A completed questionnaire, compiled in for the same reason.
