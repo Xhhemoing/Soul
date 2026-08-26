@@ -13,12 +13,16 @@
 //! cargo run --example emit-parity-fixtures --manifest-path crates/bead-core/Cargo.toml
 //! ```
 
-use bead_core::color::Rgba;
+use bead_core::color::{to_channel, Rgba};
 use bead_core::detect::ImageKind;
+use bead_core::fit::Sampling;
 use bead_core::image::Image;
 use bead_core::palette::{BeadColor, Palette};
-use bead_core::parity::{build, cases, detected_kind, ParityCase, NEAR_TIE_MARGIN};
-use bead_core::quantize::{map_image_traced, Dither, MapOptions};
+use bead_core::parity::{
+    build, cases, detected_kind, ParityCase, NEAR_TIE_MARGIN, ROUNDING_RAMP_GREY,
+    ROUNDING_SEED_GREY,
+};
+use bead_core::quantize::{map_image_traced, Dither, MapOptions, FLOYD_STEINBERG_KERNEL};
 use bead_core::Rgb;
 
 /// The committed bytes, pulled in at compile time so the test needs no
@@ -29,9 +33,19 @@ fn committed(name: &str) -> &'static str {
         "photo-flat" => include_str!("../fixtures/parity/photo-flat.json"),
         "photo-dithered" => include_str!("../fixtures/parity/photo-dithered.json"),
         "with-transparency" => include_str!("../fixtures/parity/with-transparency.json"),
+        "dither-rounding" => include_str!("../fixtures/parity/dither-rounding.json"),
         other => panic!("`{other}` has no committed fixture; run the emit example"),
     }
 }
+
+/// Every committed case, in the order `cases()` names them.
+const CASE_NAMES: [&str; 5] = [
+    "pixel-art",
+    "photo-flat",
+    "photo-dithered",
+    "with-transparency",
+    "dither-rounding",
+];
 
 /// T-PAR-1: every case reproduces its committed file byte for byte.
 #[test]
@@ -54,15 +68,7 @@ fn every_case_matches_its_committed_fixture() {
 #[test]
 fn the_fixture_set_covers_the_paths_the_review_names() {
     let names: Vec<String> = cases().into_iter().map(|c| c.name).collect();
-    assert_eq!(
-        names,
-        vec![
-            "pixel-art",
-            "photo-flat",
-            "photo-dithered",
-            "with-transparency"
-        ]
-    );
+    assert_eq!(names, CASE_NAMES);
 
     let by_name = |name: &str| cases().into_iter().find(|c| c.name == name).expect(name);
     assert_eq!(
@@ -82,6 +88,15 @@ fn the_fixture_set_covers_the_paths_the_review_names() {
             .iter()
             .any(|p| !p.is_opaque()),
         "the transparency case has to contain a hole"
+    );
+
+    let rounding = by_name("dither-rounding");
+    assert_eq!(rounding.dither, Dither::FloydSteinberg);
+    assert_eq!(
+        rounding.sampling,
+        Sampling::Nearest,
+        "the ramp has to reach the dither unresampled, or the rounding it pins \
+         would be the box filter's rather than the lookup's"
     );
 }
 
@@ -108,6 +123,64 @@ fn the_two_photo_cases_share_an_image() {
     assert_ne!(
         flat.grid, dithered.grid,
         "if dithering changed nothing here the pair would pin nothing"
+    );
+}
+
+/// AL-4: the `dither-rounding` fixture is only worth committing if it would say
+/// something different when the lookup stops rounding.
+///
+/// The lookup clamps *and* rounds (`color::to_channel`). The original four
+/// fixtures agree with a lookup that only clamped, so on their own they let a
+/// port drop the rounding and still reproduce every committed byte. This walks
+/// the fork by hand at the cell where the ramp straddles it, and then checks
+/// that the committed grid took the rounded branch.
+#[test]
+fn the_dither_ramp_turns_on_how_the_lookup_rounds() {
+    let palette = Palette::generic_5mm();
+
+    let seed = Rgb::new(ROUNDING_SEED_GREY, ROUNDING_SEED_GREY, ROUNDING_SEED_GREY);
+    let slate = palette.color(palette.nearest(seed).id);
+    assert_eq!(slate.code, "G08", "the ramp's seed grey quantises to Slate");
+
+    // The only kernel weight that reaches the cell to the right.
+    let (dx, dy, weight) = FLOYD_STEINBERG_KERNEL[0];
+    assert_eq!((dx, dy), (1, 0));
+    let carried = |placed: u8| {
+        f64::from(ROUNDING_RAMP_GREY) + weight * (f64::from(ROUNDING_SEED_GREY) - f64::from(placed))
+    };
+    let carried = [
+        carried(slate.rgb.r),
+        carried(slate.rgb.g),
+        carried(slate.rgb.b),
+    ];
+    assert_eq!(carried, [241.875, 235.3125, 230.5]);
+
+    let rounded = Rgb::new(
+        to_channel(carried[0]),
+        to_channel(carried[1]),
+        to_channel(carried[2]),
+    );
+    assert_eq!(rounded, Rgb::new(242, 235, 231));
+    assert_eq!(palette.color(palette.nearest(rounded).id).code, "G01");
+
+    // What a lookup that only clamped would have asked for instead. Every
+    // channel here is already inside `0..=255`, so clamping is the identity and
+    // the cast to `u8` is all that is left of it.
+    let clamped_only = Rgb::new(carried[0] as u8, carried[1] as u8, carried[2] as u8);
+    assert_eq!(clamped_only, Rgb::new(241, 235, 230));
+    assert_eq!(palette.color(palette.nearest(clamped_only).id).code, "G02");
+
+    let case = cases()
+        .into_iter()
+        .find(|c| c.name == "dither-rounding")
+        .expect("dither-rounding");
+    let fixture = build(&case, &palette).expect("a valid framing");
+    let second = fixture.grid.as_slice()[1].expect("the second cell is a bead");
+    assert_eq!(
+        palette.color(second).code,
+        "G01",
+        "the committed grid has to be on the rounded side of the fork, or the \
+         fixture pins nothing about rounding"
     );
 }
 
@@ -235,12 +308,7 @@ fn an_empty_cell_is_not_a_near_tie() {
 /// it must not require anyone to agree about rounding.
 #[test]
 fn the_fixture_format_has_no_floating_point_in_it() {
-    for name in [
-        "pixel-art",
-        "photo-flat",
-        "photo-dithered",
-        "with-transparency",
-    ] {
+    for name in CASE_NAMES {
         let text = committed(name);
         assert!(text.ends_with("}\n"), "{name} should end with a newline");
         for (line_number, line) in text.lines().enumerate() {
