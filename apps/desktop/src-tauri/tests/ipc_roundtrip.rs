@@ -287,9 +287,16 @@ fn preparing_a_generation_describes_the_request_without_quoting_it() {
     assert_eq!(plan["third_party_turns"], json!(1));
     assert_eq!(plan["placeheld_turns"], json!(1));
     assert_eq!(plan["carries_exempted_original"], json!(false));
+    // The notice is the core's promise about what leaves, plus the address it
+    // would leave for. This shell has none configured, so what the panel has
+    // to say is that pressing 确认 buys a refusal rather than a request.
     assert_eq!(
         plan["notice"],
-        json!(soulcore::commands::draft::E1_PLAN_NOTICE),
+        json!(format!(
+            "{}{}",
+            soulcore::commands::draft::E1_PLAN_NOTICE,
+            soulcore::commands::draft::E1_PLAN_NO_ENDPOINT_NOTICE,
+        )),
     );
     assert!(
         plan["plan_hash"]
@@ -386,8 +393,11 @@ fn a_second_confirmation_crosses_the_ipc_and_the_paste_does_not_follow_it() {
 /// A confirmation the user did not give sends nothing.
 ///
 /// The preparation is real and the approval echoes the wrong hash, which is the
-/// shape a replayed or tampered-with confirmation arrives in. `discard_draft`
-/// is the other half of the same promise: the user read the plan and said no.
+/// shape a replayed or tampered-with confirmation arrives in. What survives it
+/// is the confirmation panel: the plan the user is looking at was not the thing
+/// that went wrong, so the body stays and `discard_draft` still has something to
+/// throw away — the other half of the same promise, the user reading the plan
+/// and saying no.
 ///
 /// The endpoint is configured before any of it, which is what makes the
 /// refusal mean something. On a shell with nothing configured this call is
@@ -431,11 +441,18 @@ fn an_approval_that_does_not_echo_the_plan_generates_nothing() {
         "an approval nobody gave reached the address the user typed",
     );
 
-    // And there is nothing left to approve a second time.
+    // The plan on screen is still there — a mismatched approval says nothing
+    // about it — and saying no is what disposes of it.
+    assert_eq!(
+        shell.invoke("discard_draft", json!({})).expect("an answer"),
+        json!(true),
+    );
     assert_eq!(
         shell.invoke("discard_draft", json!({})).expect("an answer"),
         json!(false),
+        "and now there is nothing left to approve a second time",
     );
+    assert_eq!(endpoint.request_count(), 0);
 
     let _ = std::fs::remove_dir_all(&shell.directory);
 }
@@ -868,6 +885,71 @@ fn the_same_approval_replayed_over_the_ipc_opens_one_socket_and_is_refused() {
             "the IPC answered with `{prose}`: {played}",
         );
     }
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
+/// AC-11 across the two pages that share one session, over the real handler.
+///
+/// 设置 and 起草 are separate routes and one `Session`, so the sequence below is
+/// what a user who fills the endpoint form mid-flight actually performs:
+/// describe a request, change the address, come back and press 确认 on the
+/// panel that is still there. The plan carries counts and a model name, so its
+/// hash is the same for both addresses; only the origin the preparation was
+/// described against can tell them apart.
+///
+/// Both endpoints are real loopback servers. Two zeros are the whole claim.
+#[test]
+fn an_approval_read_against_one_address_reaches_neither_after_settings_moves_it() {
+    let described = MockLlm::start().expect("the endpoint the plan named");
+    let elsewhere = MockLlm::start().expect("the endpoint the user typed next");
+    let shell = Shell::on(scratch());
+    let pasted = "周五的场地我已经订好了，你直接过来就行";
+
+    shell
+        .invoke("set_user_endpoint", json!({ "url": described.base_url() }))
+        .expect("a loopback address is an address");
+    let plan = shell
+        .invoke("prepare_draft", json!({ "pasted": pasted }))
+        .expect("a paste can always be described");
+    assert!(
+        plan["notice"]
+            .as_str()
+            .is_some_and(|notice| notice.contains(&described.port().to_string())),
+        "the confirmation screen never named the address it describes: {plan}",
+    );
+
+    shell
+        .invoke("set_user_endpoint", json!({ "url": elsewhere.base_url() }))
+        .expect("the second address is an address too");
+
+    let refusal = shell
+        .invoke(
+            "generate_draft",
+            json!({
+                "approval": {
+                    "preparation_id": plan["preparation_id"],
+                    "plan_hash": plan["plan_hash"],
+                }
+            }),
+        )
+        .expect_err("the approval was read against the first address");
+    assert!(
+        refusal["explanation"]
+            .as_str()
+            .is_some_and(|explanation| !explanation.is_empty()),
+        "the drafting panel is shown a blank refusal: {refusal}",
+    );
+    assert_eq!(
+        (described.request_count(), elsewhere.request_count()),
+        (0, 0),
+        "an approval given for one address opened a socket: {refusal}",
+    );
+    assert_eq!(
+        shell.invoke("discard_draft", json!({})).expect("an answer"),
+        json!(false),
+        "the preparation outlived the address it was described against",
+    );
 
     let _ = std::fs::remove_dir_all(&shell.directory);
 }

@@ -18,8 +18,14 @@
 //! so a rebuilt body would be a *different* body — placeheld where the user
 //! had confirmed — and the counts the user approved would no longer describe
 //! what went out. Holding it also bounds the blast radius: there is room for
-//! exactly one prepared body, a second `prepare` replaces it, and `generate`
-//! takes it by value. One body, one request, no way to replay it.
+//! exactly one prepared body, a second `prepare` replaces it, and a
+//! `generate` that runs takes it by value. One body, one request, no way to
+//! replay it.
+//!
+//! The body is bound to the address it was described against as well as to
+//! its own shape. `prepare` reads the E1 origin and names it on the screen;
+//! `generate` refuses an approval given against a different one, and
+//! `Session::set_user_endpoint` throws the preparation away outright.
 //!
 //! ## What is not here
 //!
@@ -48,6 +54,7 @@ use soul_policy::audit::AuditContent;
 use soul_policy::hitl::{
     ActionKind, ActionRequest, CapabilityScope, HitlDenial, PlanHash, RequestOrigin,
 };
+use soul_policy::net_guard::Origin;
 use soul_policy::redactor::{
     ExemptionRequest, KnownIdentifiers, OneShotExemption, RedactedBody, Redactor,
 };
@@ -84,6 +91,38 @@ pub const E1_PLAN_NOTICE: &str = "确认之后，只有下面这些内容会发�
      用来生成草稿。第三人正文默认已占位。草稿生成之后仍然由你自己决定要不要发出去，\
      Soul 不会替你发送。";
 
+/// The first half of the sentence that names where this preparation goes.
+///
+/// [`E1_PLAN_NOTICE`] says 你自己配置的模型端点 and never which one, and 设置 and
+/// 起草 are two pages over one [`crate::commands::session::Session`]: a plan
+/// described against one address and approved after the address changed would
+/// be a request the user agreed to send somewhere else. So the origin is read
+/// when the body is built, written into the sentence the user reads, and kept
+/// on the preparation — [`DraftSession::generate`] refuses anything that is
+/// not that origin, and 设置 throws the preparation away when the address
+/// moves.
+///
+/// What is named is an [`Origin`] rather than the string that was typed:
+/// scheme, host and port, with the path, the query and any credentials
+/// already gone — `Origin::parse` refuses a `user:password@host` authority
+/// outright. A screen is a thing that ends up in screenshots, which is the
+/// same reason
+/// [`ENDPOINT_UNPARSABLE_NOTICE`](crate::commands::session::ENDPOINT_UNPARSABLE_NOTICE)
+/// declines to read a refused address back.
+pub const E1_PLAN_ENDPOINT_HEAD: &str = "这一次会发到你在设置里填的这个地址：";
+
+/// And the second half: what the address being named actually buys.
+pub const E1_PLAN_ENDPOINT_TAIL: &str = "。这份准备只对这一个地址有效——\
+     中途在设置里换了地址或者清掉它，这份准备就作废，要重新准备一次给你看。";
+
+/// The same sentence for a session that has no address to name.
+///
+/// Preparing works with nothing configured, because that is what lets the
+/// confirmation screen exist at all. What the screen must not do is let the
+/// absence go unmentioned and read as 已配置.
+pub const E1_PLAN_NO_ENDPOINT_NOTICE: &str = "设置里现在没有填模型端点，\
+     所以这一次准备没有地方可以发：按下确认只会得到一次拒绝，什么都不会离开这台机器。";
+
 /// The model name a session uses until the user names one.
 ///
 /// It only ever reaches anything once an endpoint is configured — the
@@ -115,6 +154,16 @@ struct Pending {
     body: RedactedBody,
     facts: BodyFacts,
     plan_hash: PlanHash,
+    /// The E1 origin this body was described against, if there was one.
+    ///
+    /// Not in the plan hash, because the hash is taken over what
+    /// `PolicySession::e1_generate` rebuilds and that is the shape of the
+    /// request rather than its destination. It is held here instead, and
+    /// [`DraftSession::generate`] compares it: an approval is an answer to a
+    /// sentence that named an address, so it authorizes that address and no
+    /// other. `None` is a preparation described while 设置 was empty, which
+    /// authorizes nothing at all.
+    origin: Option<Origin>,
 }
 
 impl DraftSession {
@@ -185,7 +234,8 @@ impl DraftSession {
     ///
     /// Nothing leaves here. What comes back is what the user is being asked
     /// to approve, and its hash is what [`DraftSession::generate`] will be
-    /// held to.
+    /// held to — as is the address it names, which is read here rather than
+    /// when the approval comes back.
     pub fn prepare(
         &mut self,
         policy: &mut PolicySession,
@@ -200,6 +250,8 @@ impl DraftSession {
         let facts = BodyFacts::of(&body);
         let plan_hash = PlanHash::of(&e1_plan(self.drafter.model(), &body));
         let id = Uuid::now_v7();
+        let endpoint = policy.guard().config().e1_endpoint().cloned();
+        let notice = plan_notice(endpoint.as_ref());
 
         // A second prepare replaces the first, so an unapproved body cannot
         // sit around waiting for a token that was issued for another one.
@@ -209,6 +261,7 @@ impl DraftSession {
             body,
             facts,
             plan_hash: plan_hash.clone(),
+            origin: endpoint,
         });
 
         Ok(E1DraftPlan {
@@ -218,7 +271,7 @@ impl DraftSession {
             third_party_turns: facts.third_party_turns,
             placeheld_turns: facts.placeheld_turns,
             carries_exempted_original: facts.carries_exempted_original,
-            notice: E1_PLAN_NOTICE.to_owned(),
+            notice,
             not_sent_notice: NOT_SENT_NOTICE.to_owned(),
         })
     }
@@ -237,27 +290,59 @@ impl DraftSession {
     ///   pastes with one third-party turn each hash identically. Without the
     ///   id, an approval the user gave for one message would send another.
     ///
+    /// Neither of them can catch the third mistake, because it is not about
+    /// the body at all: the address. The plan named one, so the approval is
+    /// an answer about that one, and an endpoint changed on 设置 in between
+    /// would otherwise be where an approved body went.
+    ///
     /// The token is minted here because this call *is* the approval: the
     /// ledger's job is to make sure one click buys one request.
+    ///
+    /// The preparation is matched before it is taken, and what happens to it
+    /// afterwards depends on which check said no. An id or a hash that does
+    /// not match is a confirmation that did not come from the panel on
+    /// screen — a stale echo, a replay, a shell that invented one — and the
+    /// panel is still there, so the body stays and a correct approval can
+    /// still spend it. An address that is not the one the plan named is the
+    /// other way round: what the user read is no longer true of anything, so
+    /// the body goes. Taking on success is what makes one click one request;
+    /// taking first only ever cost a user their confirmation screen.
     pub fn generate(
         &mut self,
         policy: &mut PolicySession,
         approval: &Approval,
         now_ms: u64,
     ) -> Result<Drafted, DraftRefusal> {
-        let Some(pending) = self.pending.take() else {
+        let Some(held) = self.pending.as_ref() else {
             return Err(DraftRefusal::NothingPrepared);
         };
-        if approval.preparation_id != pending.id.to_string() {
+        if approval.preparation_id != held.id.to_string() {
             return Err(DraftRefusal::NotThePreparedRequest);
         }
-        if pending.plan_hash.as_str() != approval.plan_hash {
+        if held.plan_hash.as_str() != approval.plan_hash {
             return Err(HitlDenial::PlanHashMismatch {
                 approved: approval.plan_hash.clone(),
-                current: pending.plan_hash.as_str().to_owned(),
+                current: held.plan_hash.as_str().to_owned(),
             }
             .into());
         }
+
+        let described = held.origin.clone();
+        let current = policy.guard().config().e1_endpoint();
+        let bound = described.as_ref() == current;
+        let configured = current.is_some();
+        if !configured {
+            // The same refusal `e1_generate` would have reached a step later,
+            // decided here so that a plan describing an address that has gone
+            // is not left sitting where the next approval could spend it.
+            self.pending = None;
+            return Err(E1Refusal::NotConfigured.into());
+        }
+        if !bound {
+            self.pending = None;
+            return Err(DraftRefusal::NotThePreparedEndpoint);
+        }
+        let pending = self.pending.take().expect("the preparation just matched");
 
         let token = policy
             .issue_token(
@@ -275,6 +360,21 @@ impl DraftSession {
         let mut audit = vec![outcome.audit()];
         audit.extend(draft.audit());
         Ok(Drafted { draft, audit })
+    }
+}
+
+/// What the confirmation panel says, with the address it is about in it.
+///
+/// Composed here rather than in the interface for the reason
+/// [`E1_PLAN_NOTICE`] is a constant at all: it is a promise about where a
+/// request goes, and a sentence assembled in TypeScript is one no Rust test
+/// reads. The panel renders `E1DraftPlan::notice` verbatim.
+fn plan_notice(endpoint: Option<&Origin>) -> String {
+    match endpoint {
+        Some(origin) => {
+            format!("{E1_PLAN_NOTICE}{E1_PLAN_ENDPOINT_HEAD}{origin}{E1_PLAN_ENDPOINT_TAIL}")
+        }
+        None => format!("{E1_PLAN_NOTICE}{E1_PLAN_NO_ENDPOINT_NOTICE}"),
     }
 }
 
@@ -503,10 +603,11 @@ pub fn prepare_pasted(
 
 /// Step two: the user read the plan and approved this exact preparation.
 ///
-/// The approval has to echo both halves of what was on screen. An approval
+/// The approval has to echo both halves of what was on screen, and the
+/// address the screen named has to still be the one configured. An approval
 /// that names another preparation, or another shape of the same preparation,
-/// reaches no endpoint — [`DraftSession::generate`] takes the prepared body by
-/// value before it checks, so a refusal also leaves nothing to approve twice.
+/// reaches no endpoint; nor does one given against an address that has since
+/// changed, which [`DraftSession::generate`] discards the preparation over.
 pub fn generate_prepared(
     drafting: &mut DraftSession,
     policy: &mut PolicySession,
@@ -751,6 +852,11 @@ pub enum DraftRefusal {
     NothingPrepared,
     #[error("the approval names a request that is no longer the prepared one")]
     NotThePreparedRequest,
+    #[error(
+        "the address configured now is not the one this preparation was described against, \
+         so the approval does not cover it"
+    )]
+    NotThePreparedEndpoint,
 }
 
 impl DraftRefusal {
@@ -764,6 +870,7 @@ impl DraftRefusal {
             DraftRefusal::NothingPrepared | DraftRefusal::NotThePreparedRequest => {
                 ReasonCode::PlanHashMismatch
             }
+            DraftRefusal::NotThePreparedEndpoint => ReasonCode::E1OriginMismatch,
             DraftRefusal::Profile(_) | DraftRefusal::Graph(_) => ReasonCode::Routine,
         }
     }
@@ -789,7 +896,8 @@ impl DraftRefusal {
             )),
             DraftRefusal::Hitl(_)
             | DraftRefusal::NothingPrepared
-            | DraftRefusal::NotThePreparedRequest => Some(AuditContent::denied(
+            | DraftRefusal::NotThePreparedRequest
+            | DraftRefusal::NotThePreparedEndpoint => Some(AuditContent::denied(
                 AuditAction::HitlDeny,
                 self.reason_code(),
             )),

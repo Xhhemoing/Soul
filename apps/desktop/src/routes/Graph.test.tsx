@@ -62,6 +62,15 @@ describe("人脉图页", () => {
     expect(localOnly).not.toHaveTextContent(
       "别人的数据只留在本机：这些节点和边都不进任何出网请求，也不进研究预览。",
     );
+
+    // 出网的不止「往来次数」一项。`soul-draft::analysis::summary_body` 把每一条
+    // 计数点都写进请求体：条数与方向、一对一还是群里、最近一次的日期、档位。
+    // 这一行要把它们点出来，否则用户读到的是一个比实际小的清单。
+    expect(localOnly).toHaveTextContent("谁先开口");
+    expect(localOnly).toHaveTextContent("一对一");
+    expect(localOnly).toHaveTextContent("最近一次往来的日期");
+    expect(localOnly).toHaveTextContent("哪一档");
+    expect(localOnly).toHaveTextContent("不带姓名");
   });
 
   /**

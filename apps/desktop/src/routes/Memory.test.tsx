@@ -42,6 +42,10 @@ describe("自传记忆页", () => {
     // the sentence on screen has to name the disk it does not scrub.
     expect(screen.getByTestId("forget-notice")).toHaveTextContent("磁盘块");
     expect(screen.getByTestId("forget-notice")).toHaveTextContent("SSD");
+    // 遗忘会写库——丢掉的密钥、墓碑和那条审计记录都落在 soul.db 里，所以这一行
+    // 不能声称什么都不写；它要说的是这不是 v0.1 砍掉的文件写执行。
+    expect(screen.getByTestId("forget-notice")).not.toHaveTextContent("不写任何文件");
+    expect(screen.getByTestId("forget-notice")).toHaveTextContent("不是文件整理的执行");
   });
 
   it("写一条会把用户填的原样交给核心", async () => {

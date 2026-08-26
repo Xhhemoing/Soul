@@ -834,11 +834,19 @@ impl Session {
     ///
     /// Nothing is contacted. `Origin::parse` reads a string and `NetGuard`
     /// holds the answer; the first packet still waits for the plan on the
-    /// drafting screen and the approval in front of it. A preparation made
-    /// before the address changed would be approved against the address that
-    /// is here when the user presses 生成 — the plan is counts and a model
-    /// name, and never named a host — which is reachable only by leaving the
-    /// drafting page mid-flight and coming back to it.
+    /// drafting screen and the approval in front of it.
+    ///
+    /// Any prepared body is thrown away, for the reason
+    /// [`DraftSession::set_identifiers`] throws one away: it was described
+    /// against the address that is being replaced, and 设置 and 起草 are two
+    /// pages over one session, so leaving the drafting page mid-flight is the
+    /// product path into this and not a corner. The plan the user read names
+    /// the old address, and an approval given for it must not buy a request
+    /// to the new one. `DraftSession::generate` refuses that approval anyway
+    /// — the preparation carries the origin it was described against — and
+    /// this is the half that means there is nothing left to refuse.
+    ///
+    /// [`DraftSession::set_identifiers`]: crate::commands::draft::DraftSession::set_identifiers
     ///
     /// What is stored in the configuration is the origin the guard ended up
     /// with rather than the string that was typed: a path, a query and a
@@ -854,6 +862,9 @@ impl Session {
                 reason_code: ReasonCode::EgressTargetUnparsable.as_str().to_owned(),
                 explanation: ENDPOINT_UNPARSABLE_NOTICE.to_owned(),
             })?;
+        // After the parse, so an address that is not one leaves both the guard
+        // and the confirmation screen exactly as they were.
+        self.draft.discard();
         self.config.llm_endpoint = self
             .policy
             .guard()
@@ -870,8 +881,13 @@ impl Session {
     /// what is left is the state a fresh launch is in rather than a weaker one
     /// that merely has no URL to hand. Nothing is persisted here either; there
     /// was never anything on disk to remove.
+    ///
+    /// A prepared body goes with it, as in [`Session::set_user_endpoint`]: a
+    /// plan that named an address the session no longer has is not something
+    /// an approval can still be given for.
     pub fn clear_user_endpoint(&mut self) -> ConfigSnapshot {
         self.policy.clear_user_endpoint();
+        self.draft.discard();
         self.config.llm_endpoint = None;
         self.snapshot()
     }
@@ -1122,20 +1138,29 @@ impl Session {
     /// on the user's behalf, and until it was written down `/audit` heard
     /// about forgets that ran and nothing at all about the ones that were
     /// turned away.
+    ///
+    /// The preview is matched before it is taken, and a refusal leaves it
+    /// where it was. A mismatched confirmation destroyed nothing, so the
+    /// preview the Memory screen is still showing is still the one a correct
+    /// confirmation may spend — taking it would have meant a stale echo, or a
+    /// second window, silently cost the user the screen in front of them and
+    /// made the button they had already read do nothing.
     pub fn forget_memory(
         &mut self,
         confirmation: &ForgetConfirmation,
     ) -> Result<ForgetReceiptView, SessionRefusal> {
-        let matched = self.held_forget.take().filter(|held| {
-            held.preview_id.to_string() == confirmation.preview_id
-                && held.memory_id.to_string() == confirmation.memory_id
-        });
-        let Some(held) = matched else {
+        if !self.forget_was_previewed(confirmation) {
             return Err(self.refuse_forget());
-        };
+        }
 
         let at = now_unix_seconds();
         let store = self.opened_store()?;
+        // Taken now, and not before: everything above this line can refuse,
+        // and none of it destroys anything.
+        let held = self
+            .held_forget
+            .take()
+            .expect("the confirmation matched the held preview");
         let mut store = hold(&store);
         let receipt = memory_commands::forget(&mut store, held.memory_id, at)?;
         Ok(ForgetReceiptView::of(
@@ -1143,6 +1168,18 @@ impl Session {
             &receipt,
             &held.impact,
         ))
+    }
+
+    /// Whether the confirmation echoes the preview this session is holding.
+    ///
+    /// Both halves, because a preview names one memory: an id from an older
+    /// screen and a memory the user is looking at now are two different
+    /// answers, and neither of them on its own is the one that was read.
+    fn forget_was_previewed(&self, confirmation: &ForgetConfirmation) -> bool {
+        self.held_forget.as_ref().is_some_and(|held| {
+            held.preview_id.to_string() == confirmation.preview_id
+                && held.memory_id.to_string() == confirmation.memory_id
+        })
     }
 
     /// Record the denial a forget that was not previewed owes the chain, and

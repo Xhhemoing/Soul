@@ -603,6 +603,20 @@ fn a_forget_only_runs_on_the_preview_the_user_read() {
         "the notice does not say that the disk itself is not wiped: {}",
         listed.forget_notice,
     );
+    // And it may not claim the opposite of what a forget does. Dropping the
+    // wrapped key, writing the tombstone and appending the denial-or-receipt
+    // all land in `soul.db`; what v0.1 does not do is execute a file plan, so
+    // that is the promise the sentence is allowed to make.
+    assert!(
+        !listed.forget_notice.contains("不写任何文件"),
+        "the notice claims a forget writes nothing, and it writes the store: {}",
+        listed.forget_notice,
+    );
+    assert!(
+        listed.forget_notice.contains("不是文件整理的执行"),
+        "the notice does not say which kind of write this is not: {}",
+        listed.forget_notice,
+    );
 
     // A forget nobody previewed is refused, and nothing is destroyed by the
     // refusal — the memory is still readable afterwards.
@@ -719,6 +733,88 @@ fn a_forget_only_runs_on_the_preview_the_user_read() {
         assert!(!played.contains(prose), "the chain carries `{prose}`");
         assert!(!debugged.contains(prose), "the chain carries `{prose}`");
     }
+    drop(keep);
+}
+
+/// A confirmation that does not match costs the user nothing — not even the
+/// preview they are looking at.
+///
+/// The refusal above was written first and took the held preview on its way
+/// out, which is a second, quieter destruction: nothing was forgotten, and the
+/// screen still showing 「这一次会销毁 1 个内容密钥」 had been silently voided.
+/// The next press of the button the user had already read would be refused as
+/// well, with a sentence telling them to go and read a preview again — the one
+/// in front of them.
+///
+/// So the order here is the product's: preview once, confirm wrongly, and then
+/// confirm with the id that was on screen the whole time. The last call has to
+/// destroy the memory.
+#[test]
+fn a_forget_confirmation_that_misses_leaves_the_preview_on_screen_spendable() {
+    let (keep, directory) = scratch();
+    let mut session = Session::open(&directory);
+
+    let written = session
+        .write_memory(&NewMemory {
+            memory_type: "episodic".to_owned(),
+            title: "搬家那天".to_owned(),
+            summary: "下午三点交的钥匙。".to_owned(),
+        })
+        .expect("a memory");
+    let memory_id = written.memory_id.clone();
+
+    let preview = session.preview_forget(&memory_id).expect("the price");
+    let before = session.audit().expect("the chain").entries.len();
+
+    // The shape a stale confirmation arrives in: the right memory, an id from
+    // a screen that is not this one.
+    let refusal = session
+        .forget_memory(&ForgetConfirmation {
+            preview_id: uuid::Uuid::now_v7().to_string(),
+            memory_id: memory_id.clone(),
+        })
+        .expect_err("that is not the preview on screen");
+    assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+    assert!(
+        session.memory(&memory_id).is_ok(),
+        "a refused confirmation destroyed the memory",
+    );
+
+    // The denial is recorded, and it is the only thing that happened.
+    let chain = session.audit().expect("the chain");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    assert_eq!(chain.entries.len(), before + 1);
+    assert_eq!(
+        chain.entries.last().expect("the denial").action,
+        "hitl.deny",
+    );
+
+    // And now the button the user has been looking at all along works. Without
+    // match-before-take this is a second refusal on a screen nothing is wrong
+    // with, and the memory outlives a forget the user asked for twice.
+    let receipt = session
+        .forget_memory(&ForgetConfirmation {
+            preview_id: preview.preview_id.clone(),
+            memory_id: memory_id.clone(),
+        })
+        .expect("the preview the user read is still the one being held");
+    assert_eq!(receipt.content_keys_destroyed, 1);
+    assert!(
+        receipt.matched_preview,
+        "the receipt charged something else"
+    );
+    session
+        .memory(&memory_id)
+        .expect_err("the content key is gone");
+
+    // One preview buys one forget: the same confirmation again finds nothing
+    // held, and there is no second key to destroy.
+    session
+        .forget_memory(&ForgetConfirmation {
+            preview_id: preview.preview_id,
+            memory_id: memory_id.clone(),
+        })
+        .expect_err("the preview was spent by the forget that ran");
     drop(keep);
 }
 

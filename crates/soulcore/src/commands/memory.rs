@@ -84,8 +84,15 @@ pub const MEMORY_TYPES: [MemoryType; 5] = [
 /// What forgetting means here, in the core's own words.
 ///
 /// It says destruction rather than deletion because that is what happens: the
-/// content key goes, the row stays as a tombstone, and nothing on disk is
-/// rewritten. Held on this side so the screen cannot soften it.
+/// content key goes and the row stays as a tombstone. Held on this side so the
+/// screen cannot soften it.
+///
+/// The middle sentence is careful about which writes it denies, because a
+/// forget does write: it drops a wrapped key, leaves a tombstone and appends
+/// to the audit chain, and all three of those land in `soul.db`. The promise
+/// PRODUCT_LOCK makes is the other one — v0.1 executes no file plan — so what
+/// the notice says is that this button is not that missing `execute` and that
+/// no file under an authorized root moves.
 ///
 /// The last sentence is the second half of D15. PRODUCT_LOCK refuses to
 /// promise an SSD physical erase *and* requires the UI to write that honestly,
@@ -93,7 +100,9 @@ pub const MEMORY_TYPES: [MemoryType; 5] = [
 /// remember it: without it, "forgotten" reads as "the bits are gone".
 pub const FORGET_NOTICE: &str =
     "遗忘销毁的是这条记忆的内容密钥：正文从此打不开，行会留成一块墓碑，\
-    引用过它的推断会被标成失去依据。这一步不可撤销，也不写任何文件。\
+    引用过它的推断会被标成失去依据。这一步不可撤销。它改的只有加密库本身——\
+    密钥、墓碑，以及追加一条不含正文的审计记录；它不是文件整理的执行，\
+    你授权过的那些目录里的文件一个都不会动。\
     这不是把磁盘块擦干净：SSD 上可能还留着旧密文，只是没有密钥再也打不开。";
 
 /// One memory in a list, with the prose left sealed.

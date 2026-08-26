@@ -15,7 +15,8 @@ use soul_policy::ReasonCode;
 use soul_testkit::leakage::LeakageChecker;
 use soul_testkit::mock_llm::MockLlm;
 use soulcore::commands::draft::{
-    Approval, DraftRefusal, DraftRefusalView, DraftSession, E1_PLAN_NOTICE, NOT_SENT_NOTICE,
+    Approval, DraftRefusal, DraftRefusalView, DraftSession, E1_PLAN_ENDPOINT_HEAD,
+    E1_PLAN_ENDPOINT_TAIL, E1_PLAN_NOTICE, E1_PLAN_NO_ENDPOINT_NOTICE, NOT_SENT_NOTICE,
     TEMPLATE_NOTICE,
 };
 use soulcore::commands::policy::PolicySession;
@@ -101,8 +102,24 @@ fn preparing_describes_a_request_without_making_one() {
     assert_eq!(plan.third_party_turns, 1);
     assert_eq!(plan.placeheld_turns, 1);
     assert!(!plan.carries_exempted_original);
-    assert_eq!(plan.notice, E1_PLAN_NOTICE);
     assert_eq!(plan.not_sent_notice, NOT_SENT_NOTICE);
+
+    // The notice is the promise about what leaves, plus the address it leaves
+    // for. Naming it is the whole reason an approval can be held to one:
+    // 设置 and 起草 are two pages over one session, so a plan that said only
+    // 你自己配置的模型端点 would describe whichever address is configured when
+    // 生成 is pressed.
+    assert!(plan.notice.starts_with(E1_PLAN_NOTICE), "{}", plan.notice);
+    assert!(
+        plan.notice.contains(&endpoint.port().to_string()),
+        "the confirmation screen does not say where this goes: {}",
+        plan.notice,
+    );
+    assert!(
+        plan.notice.contains(E1_PLAN_ENDPOINT_HEAD) && plan.notice.contains(E1_PLAN_ENDPOINT_TAIL),
+        "{}",
+        plan.notice,
+    );
 
     // The plan is what the user is asked about, so it must not be readable as
     // the conversation.
@@ -190,6 +207,103 @@ fn approving_a_shape_that_is_not_the_prepared_one_sends_nothing() {
         DraftRefusal::Hitl(HitlDenial::PlanHashMismatch { .. }),
     ));
     assert_eq!(refused.reason_code(), ReasonCode::PlanHashMismatch);
+    assert_eq!(endpoint.request_count(), 0);
+
+    // The confirmation panel is still on screen, so the body it describes is
+    // still there to approve. An approval that did not match is a statement
+    // about the approval, not about the preparation: taking the body here
+    // would mean a stale echo or a second window voided the plan in front of
+    // the user, and the button they had already read would then refuse them
+    // too. Nothing is spent twice either — the request count below is what
+    // says so.
+    assert_eq!(
+        drafting.pending_plan_hash().map(PlanHash::as_str),
+        Some(plan.plan_hash.as_str()),
+        "a mismatched approval threw away the plan the user is looking at",
+    );
+    drafting
+        .generate(&mut policy, &plan.approval(), NOW_MS)
+        .expect("the approval that does echo the plan still works");
+    assert_eq!(endpoint.request_count(), 1, "one approval, one request");
+}
+
+// ------------------------------ the address the plan was described against ---
+
+/// AC-11 for the case the hash cannot see: the same body, a different address.
+///
+/// The plan carries counts and a model name, so it hashes identically no
+/// matter where it is pointed, and `PolicySession::e1_generate` reads the
+/// address off the guard at the moment it runs. Between the two steps there is
+/// a person, and on the product side there is a settings page over the same
+/// session — so a preparation described against one endpoint could be approved
+/// into another one. The preparation carries the origin it was described
+/// against, and this is what that buys.
+#[test]
+fn an_approval_given_for_one_address_does_not_send_to_another() {
+    let described = MockLlm::start().expect("the address the plan named");
+    let elsewhere = MockLlm::start().expect("the address the user moved to");
+    let mut policy = pointed_at(&described);
+    let mut drafting = drafting();
+
+    let plan = drafting
+        .prepare(&mut policy, a_paste(), None, RequestOrigin::User, NOW_MS)
+        .expect("a plan");
+    assert!(
+        plan.notice.contains(&described.port().to_string()),
+        "the plan does not name the address it was described against: {}",
+        plan.notice,
+    );
+
+    policy
+        .set_user_endpoint(&elsewhere.base_url())
+        .expect("a loopback address is an address");
+    let refused = drafting
+        .generate(&mut policy, &plan.approval(), NOW_MS)
+        .expect_err("the approval was given for the other address");
+
+    assert!(matches!(refused, DraftRefusal::NotThePreparedEndpoint));
+    assert_eq!(refused.reason_code(), ReasonCode::E1OriginMismatch);
+    assert_eq!(
+        (described.request_count(), elsewhere.request_count()),
+        (0, 0),
+        "an approval given for one address opened a socket",
+    );
+
+    // And the body is gone rather than waiting: what the user read is no
+    // longer true of anything, so there is nothing here for a second approval
+    // to spend.
+    assert!(drafting.pending_plan_hash().is_none());
+    assert!(!drafting.discard());
+}
+
+/// The same refusal in the direction a settings page reaches more easily:
+/// prepared with nothing configured, approved after an address appeared.
+///
+/// The plan the user read said 设置里现在没有填模型端点, which is not an
+/// approval to send anywhere.
+#[test]
+fn an_approval_prepared_against_no_address_does_not_send_to_one_that_appeared() {
+    let endpoint = MockLlm::start().expect("the address the user typed afterwards");
+    let mut policy = PolicySession::closed();
+    let mut drafting = drafting();
+
+    let plan = drafting
+        .prepare(&mut policy, a_paste(), None, RequestOrigin::User, NOW_MS)
+        .expect("describing a request works with nothing configured");
+    assert!(
+        plan.notice.contains(E1_PLAN_NO_ENDPOINT_NOTICE),
+        "the plan does not say there is nowhere to send it: {}",
+        plan.notice,
+    );
+
+    policy
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+    let refused = drafting
+        .generate(&mut policy, &plan.approval(), NOW_MS)
+        .expect_err("the plan named no address, so it authorized none");
+
+    assert!(matches!(refused, DraftRefusal::NotThePreparedEndpoint));
     assert_eq!(endpoint.request_count(), 0);
 }
 

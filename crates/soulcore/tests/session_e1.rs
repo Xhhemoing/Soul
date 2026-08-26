@@ -1364,6 +1364,207 @@ fn an_ordinary_paste_prepared_and_discarded_leaves_no_injection_entry() {
     drop(keep);
 }
 
+// ----------------------------- AC-11: one plan, one address, from the product ---
+
+/// The product path into approving a plan against an address nobody described
+/// it for: 设置 and 起草 are two pages over one [`Session`].
+///
+/// Prepare on the drafting page, walk over to the settings page and point the
+/// endpoint somewhere else, walk back and press 生成 with the confirmation that
+/// is still on screen. The plan the user read was counts and a model name and,
+/// until this, never a host — so a build that only compared the hash would
+/// happily send that body to an address the user had never seen it described
+/// against.
+///
+/// Both endpoints are real loopback servers, so the two counts below are
+/// statements about sockets.
+#[test]
+fn an_approval_read_against_one_address_is_refused_after_the_address_moves() {
+    let (keep, directory) = scratch();
+    let described = MockLlm::start().expect("the endpoint the plan named");
+    let elsewhere = MockLlm::start().expect("the endpoint the user moved to");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&described.base_url())
+        .expect("a loopback address is an address");
+
+    let plan = session
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
+        .expect("a paste can always be described");
+    assert!(
+        plan.notice.contains(&described.port().to_string()),
+        "the confirmation screen never named the address it was describing: {}",
+        plan.notice,
+    );
+
+    // The settings page, mid-flight.
+    session
+        .set_user_endpoint(&elsewhere.base_url())
+        .expect("the second address is an address too");
+
+    let refusal = session
+        .generate_draft(&plan.approval())
+        .expect_err("the approval was read against the first address");
+    // Two things refuse this and the first one gets there: the settings page
+    // threw the preparation away as the address moved, so what the approval
+    // finds is nothing at all. The other one — the origin the preparation
+    // carries, which answers `E1_ORIGIN_MISMATCH` — is reached in
+    // `draft_commands.rs::an_approval_given_for_one_address_does_not_send_to_another`,
+    // on a pair no settings page has touched.
+    assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+    assert!(
+        !refusal.explanation.is_empty(),
+        "the drafting panel is shown a blank refusal",
+    );
+    assert_eq!(
+        (described.request_count(), elsewhere.request_count()),
+        (0, 0),
+        "an approval given for one address opened a socket: {}",
+        refusal.reason_code,
+    );
+
+    // Nothing is left holding the body either, so a second press of the same
+    // button cannot find it once the address is back.
+    assert!(
+        !session.discard_draft(),
+        "the preparation outlived the plan"
+    );
+    session
+        .set_user_endpoint(&described.base_url())
+        .expect("the user changes their mind back");
+    session
+        .generate_draft(&plan.approval())
+        .expect_err("the preparation is gone, not merely parked");
+    assert_eq!(
+        (described.request_count(), elsewhere.request_count()),
+        (0, 0),
+        "the old approval bought a request after the address came back",
+    );
+
+    // AC-23: two refusals, and the chain heard about them without learning the
+    // paste or either port.
+    let chain = session.audit().expect("the store opened");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    let played = serde_json::to_string(&chain).expect("serialize the chain");
+    for prose in [
+        "周五的场地",
+        "直接过来",
+        &described.port().to_string(),
+        &elsewhere.port().to_string(),
+    ] {
+        assert!(!played.contains(prose), "the chain carries `{prose}`");
+    }
+    drop(keep);
+}
+
+/// The same thing with the address taken away rather than replaced.
+#[test]
+fn an_approval_read_against_an_address_is_refused_after_it_is_cleared() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the plan named");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let plan = session
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
+        .expect("a paste can always be described");
+    session.clear_user_endpoint();
+
+    let refusal = session
+        .generate_draft(&plan.approval())
+        .expect_err("there is nowhere to send it now");
+    assert_eq!(
+        refusal.reason_code, "PLAN_HASH_MISMATCH",
+        "clearing the address left the preparation behind for the approval to find",
+    );
+    assert_eq!(
+        endpoint.request_count(),
+        0,
+        "a cleared endpoint was contacted",
+    );
+    assert!(
+        !session.discard_draft(),
+        "the preparation outlived the plan"
+    );
+    drop(keep);
+}
+
+/// The control: nobody touched the address, so the plan still runs.
+///
+/// Without this the two tests above would pass on a build that had simply
+/// stopped generating anything.
+#[test]
+fn an_approval_read_against_the_address_that_is_still_configured_still_runs() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    draft_through_the_endpoint(&mut session).expect("the endpoint answers");
+    assert_eq!(endpoint.request_count(), 1, "one approval, one request");
+    drop(keep);
+}
+
+/// A confirmation that does not echo the plan does not cost the user the
+/// confirmation panel.
+///
+/// The hash gate is what stops a replayed or tampered-with approval, and the
+/// body it was protecting is still the one on screen: the panel is there, the
+/// user has read it, and pressing 确认 has to work. Taking the body on a
+/// mismatch would mean the second press is refused as well — with a sentence
+/// about a plan that had never gone anywhere.
+///
+/// The endpoint is a real loopback server, so the counts are about sockets:
+/// zero after the refusal, one after the approval that matched, and the same
+/// one after it is replayed.
+#[test]
+fn a_mismatched_approval_leaves_the_plan_on_screen_approvable() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut session = Session::open(&directory);
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let plan = session
+        .prepare_draft("周五的场地我已经订好了，你直接过来就行", None)
+        .expect("a paste can always be described");
+
+    let refusal = session
+        .generate_draft(&Approval {
+            preparation_id: plan.preparation_id.clone(),
+            plan_hash: "d5".repeat(32),
+        })
+        .expect_err("that is not the plan that was prepared");
+    assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+    assert_eq!(
+        endpoint.request_count(),
+        0,
+        "an approval nobody gave reached the address the user typed",
+    );
+
+    session
+        .generate_draft(&plan.approval())
+        .expect("the plan the user is looking at is still the one being held");
+    assert_eq!(endpoint.request_count(), 1, "one approval, one request");
+
+    // And it is still one click one request: the approval that worked spent
+    // the body.
+    session
+        .generate_draft(&plan.approval())
+        .expect_err("the preparation was spent");
+    assert_eq!(
+        endpoint.request_count(),
+        1,
+        "a replay opened a second socket"
+    );
+    drop(keep);
+}
+
 /// Clearing puts the session back where it started, guard included.
 #[test]
 fn clearing_the_endpoint_closes_the_guard_again() {

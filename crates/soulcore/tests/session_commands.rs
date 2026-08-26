@@ -522,12 +522,14 @@ fn a_generation_that_is_refused_is_recorded_as_a_denial() {
     assert_eq!(entry.reason_code.as_deref(), Some("PLAN_HASH_MISMATCH"));
     assert!(entry.follows_previous);
 
-    // The second refusal is a different one — the body was spent on the way to
-    // the first — and it is recorded too.
+    // The second refusal is a different one, and it is recorded too. The body
+    // survived the mismatch — the panel it belongs to is still on screen — so
+    // the approval that does echo the plan gets as far as the address, and
+    // this session has none.
     let refusal = session
         .generate_draft(&plan.approval())
-        .expect_err("there is nothing prepared any more");
-    assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+        .expect_err("there is nowhere to send it");
+    assert_eq!(refusal.reason_code, "E1_NOT_CONFIGURED");
     let chain = session.audit().expect("the chain");
     assert!(chain.verified, "{:?}", chain.verification_problem);
     assert_eq!(chain.entries.len(), before + 2);
@@ -580,12 +582,16 @@ fn an_approval_that_does_not_match_the_plan_reaches_no_endpoint() {
         .expect_err("a plan hash that was never on screen");
     assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
 
-    // The prepared body was taken by value on the way to that refusal, so the
-    // right approval now has nothing to approve. One preparation, one chance.
+    // The mismatch says nothing about the plan itself, so the body is still
+    // held and the approval that does echo it is answered on its merits. On
+    // this session that means the last gate: there is no address to send to,
+    // and the preparation is dropped rather than left where the next approval
+    // could find it.
     let refusal = session
         .generate_draft(&plan.approval())
-        .expect_err("there is nothing prepared any more");
-    assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+        .expect_err("there is nowhere to send it");
+    assert_eq!(refusal.reason_code, "E1_NOT_CONFIGURED");
+    assert!(!session.discard_draft(), "the preparation was spent");
     drop(keep);
 }
 
