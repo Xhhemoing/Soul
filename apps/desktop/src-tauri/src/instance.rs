@@ -277,3 +277,81 @@ mod win32 {
         }
     }
 }
+
+/// The one part of the claim that has to be run rather than read.
+///
+/// `tests/shell_is_local_only.rs` asserts the *shape* of this file off its own
+/// source — the name is `Local\`, the last-error is cleared before the create,
+/// nothing touches a file — because a Linux runner has no `CreateMutexW` to
+/// call and the `elsewhere` stub answers `Claimed` to everything. So the
+/// branch that actually matters, the one a second launch takes, has only ever
+/// been type-checked. These three run it on Windows.
+///
+/// Nothing here calls [`claim`] or names [`MUTEX_NAME`]. That name belongs to
+/// whatever Soul is running on the machine the test is running on, and taking
+/// it would stop the author's Soul from starting — the same reason `lib.rs`
+/// keeps the claim out of `configure`. Each test builds its own name from the
+/// process id and a label instead, so neither two tests in this binary nor two
+/// binaries running at once can land on the same one. Still `Local\`: a test
+/// has even less business in the machine-wide namespace than the product does.
+///
+/// Placed after `mod win32` deliberately: the test in `shell_is_local_only.rs`
+/// that keeps every `unsafe` inside the Win32 block decides what is inside it
+/// by source position, so anything added above that module reads as outside.
+#[cfg(all(test, windows))]
+mod runs_on_windows {
+    use super::win32::{create_mutex, Creation};
+
+    /// A name in this logon session that nothing else has a reason to hold.
+    fn test_name(label: &str) -> String {
+        format!(r"Local\soul-instance-test-{}-{label}", std::process::id())
+    }
+
+    /// The first Soul's answer: the name was free and this process made it.
+    #[test]
+    fn the_first_create_claims_the_name() {
+        let claimed = create_mutex(&test_name("first"));
+        assert!(
+            matches!(claimed, Creation::Claimed(_)),
+            "a name nothing holds came back taken",
+        );
+    }
+
+    /// The second launch's answer, which is the whole point of the module:
+    /// while the first handle is alive, the same name is reported taken.
+    #[test]
+    fn a_second_create_of_a_held_name_is_taken() {
+        let name = test_name("held");
+        let held = create_mutex(&name);
+        assert!(
+            matches!(held, Creation::Claimed(_)),
+            "the first create did not claim the name, so the second proves nothing",
+        );
+
+        assert!(
+            matches!(create_mutex(&name), Creation::Taken),
+            "a name this process is still holding came back free",
+        );
+
+        drop(held);
+    }
+
+    /// And the release is the kernel's, not a file's: once the last handle is
+    /// closed the name is free again with nothing left behind to clean up.
+    /// This is what makes a Soul that was killed rather than closed harmless.
+    #[test]
+    fn the_name_is_free_again_once_the_handle_is_dropped() {
+        let name = test_name("dropped");
+        let first = create_mutex(&name);
+        assert!(
+            matches!(first, Creation::Claimed(_)),
+            "the first create did not claim the name",
+        );
+        drop(first);
+
+        assert!(
+            matches!(create_mutex(&name), Creation::Claimed(_)),
+            "the name stayed taken after its only handle closed, which is a stale lock",
+        );
+    }
+}
