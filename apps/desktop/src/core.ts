@@ -147,6 +147,9 @@ export interface TieEdge {
   readonly to_contact_id: string;
   readonly types: readonly string[];
   readonly band: string;
+  readonly locked_by_user: boolean;
+  readonly user_band: string | null;
+  readonly machine_band: string | null;
   readonly interaction_count: number;
   readonly outgoing_count: number;
   readonly incoming_count: number;
@@ -321,6 +324,11 @@ export interface GivenAnswer {
 }
 
 /** What one questionnaire run left behind. AC-03 is `profile_is_empty`. */
+export interface IgnoredAnswer {
+  readonly question_id: string;
+  readonly reason: string;
+}
+
 export interface IntakeReceipt {
   readonly answered: number;
   readonly axes_known: number;
@@ -330,6 +338,7 @@ export interface IntakeReceipt {
   readonly stated_entries: number;
   readonly profile_is_empty: boolean;
   readonly evidence_ids: readonly string[];
+  readonly ignored: readonly IgnoredAnswer[];
 }
 
 export interface InferenceRow {

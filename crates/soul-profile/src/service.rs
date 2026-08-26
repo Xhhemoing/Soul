@@ -12,7 +12,9 @@
 //!    every later inference about that axis is stored but not applied. The
 //!    inference is kept rather than dropped: the user is entitled to see that
 //!    the machine still thinks otherwise, and the audit chain already records
-//!    that it was written.
+//!    that it was written. Re-answering the questionnaire is bound by the same
+//!    rule: [`intake`] records the answer and leaves the corrected axis where
+//!    the user put it, reporting the answer in [`IntakeOutcome::ignored`].
 //! 3. **Nothing numeric, nothing clinical.** Every profile write goes through
 //!    [`crate::numeric::reject_numeric_rating`] and every readable string
 //!    through [`soul_policy::assert_non_clinical`].
@@ -69,6 +71,64 @@ pub struct IntakeOutcome {
     /// The event each answer was recorded as, same order. A prose answer's
     /// words are in the sealed body of one of these and nowhere else.
     pub event_ids: Vec<Uuid>,
+    /// The answers that were recorded and did not reach their axis, and why.
+    /// Never folded into silence: a re-fill that hits an axis the user has
+    /// corrected has to be visible, both to the user ("we kept your
+    /// correction") and to whoever reads back what the run did.
+    pub ignored: Vec<IgnoredAnswer>,
+}
+
+impl IntakeOutcome {
+    /// Whether the user's lock kept any answer out.
+    pub fn ignored_any(&self) -> bool {
+        !self.ignored.is_empty()
+    }
+
+    /// Evidence ids of the answers that were recorded and not applied. They
+    /// resolve: the rows exist, they are simply not cited by any axis.
+    pub fn ignored_ids(&self) -> Vec<Uuid> {
+        self.ignored
+            .iter()
+            .map(|answer| answer.evidence_id)
+            .collect()
+    }
+}
+
+/// Why a questionnaire answer did not reach its axis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntakeSkip {
+    /// The user corrected this axis. Only the user moves it now.
+    AxisLockedByUser,
+}
+
+impl IntakeSkip {
+    /// A stable machine word for the reason, carrying no answer content, so a
+    /// caller can log or display it without reopening what the user wrote.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            IntakeSkip::AxisLockedByUser => "axis_locked_by_user",
+        }
+    }
+}
+
+/// One answer the intake recorded and did not apply.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IgnoredAnswer {
+    /// Which question it answered. Borrowed from the canonical list.
+    pub question_id: &'static str,
+    /// The axis it would have moved.
+    pub axis_id: Uuid,
+    /// What it claimed. The axis is not in this position and was not moved
+    /// toward it.
+    pub position: AxisPosition,
+    /// The evidence row the recorder wrote for it. Written whether or not the
+    /// axis moves — the user answered the question, and that is a fact about
+    /// the user whatever the axis does with it.
+    pub evidence_id: Uuid,
+    /// The event the answer was recorded as.
+    pub event_id: Uuid,
+    /// Why it was not applied.
+    pub reason: IntakeSkip,
 }
 
 /// Whether an inference reached the profile, and if not, why not.
@@ -176,6 +236,16 @@ pub fn blank_profile(profile_id: Uuid) -> SoulProfile {
 /// evidence is allowed to refine. Locking an axis is what [`correct_axis`] is
 /// for, and the difference is deliberate: voice is an instruction the agent
 /// layer obeys, an axis is a belief the soul layer holds.
+///
+/// An answer never moves an axis the user has already corrected. The check is
+/// the same [`axis_is_locked`] that [`record_axis_inference`] makes, for the
+/// same reason: a questionnaire answer is not a correction, so it does not get
+/// to overwrite one. Without it, re-running the questionnaire moved the
+/// position, the band and the citations while leaving the lock flag standing —
+/// the worst of the two possible defects, because the axis went on looking
+/// pinned. The refused answer is still recorded and is reported in
+/// [`IntakeOutcome::ignored`]; what the lock stops is the axis moving, not the
+/// evidence table growing.
 pub fn intake<S>(
     store: &mut S,
     profile_id: Uuid,
@@ -207,12 +277,25 @@ where
     let mut voice = VoiceProfile::from_value(&profile.voice);
     let mut evidence_ids = Vec::with_capacity(sink.accepted().len());
     let mut event_ids = Vec::with_capacity(sink.accepted().len());
+    let mut ignored = Vec::new();
 
     for staged in sink.accepted() {
         evidence_ids.push(staged.evidence_id);
         event_ids.push(staged.event_id);
 
         match (staged.target, staged.value) {
+            (QuestionTarget::Axis(axis), StagedValue::Position(position))
+                if axis_is_locked(&profile, axis.axis_id) =>
+            {
+                ignored.push(IgnoredAnswer {
+                    question_id: staged.question_id,
+                    axis_id: axis.axis_id,
+                    position,
+                    evidence_id: staged.evidence_id,
+                    event_id: staged.event_id,
+                    reason: IntakeSkip::AxisLockedByUser,
+                });
+            }
             (QuestionTarget::Axis(axis), StagedValue::Position(position)) => place_axis(
                 &mut profile,
                 &axis,
@@ -249,6 +332,7 @@ where
         profile,
         evidence_ids,
         event_ids,
+        ignored,
     })
 }
 

@@ -151,6 +151,9 @@ export function aPeopleGraph(overrides: Partial<PeopleGraph> = {}): PeopleGraph 
         to_contact_id: "0192f000-0000-7000-8000-000000000002",
         types: ["direct", "reciprocal"],
         band: "moderate",
+        locked_by_user: false,
+        user_band: null,
+        machine_band: "moderate",
         interaction_count: 6,
         outgoing_count: 3,
         incoming_count: 3,
@@ -366,6 +369,7 @@ export function anIntakeReceipt(overrides: Partial<IntakeReceipt> = {}): IntakeR
     stated_entries: 0,
     profile_is_empty: false,
     evidence_ids: ["0192f000-0000-7000-8000-0000000000d1"],
+    ignored: [],
     ...overrides,
   };
 }

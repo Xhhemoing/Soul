@@ -241,6 +241,20 @@ pub fn response_of(
     Ok(QuestionnaireResponse::new(answered_at, checked))
 }
 
+/// One answer the intake recorded and did not apply, and why.
+///
+/// Two tokens and no content. The question is named because the user is
+/// entitled to know which of their answers did not land, and the reason is a
+/// machine word — `axis_locked_by_user` — rather than a sentence, because the
+/// words a user reads are the interface's to choose and `soul-profile` already
+/// owns the only spelling of the reason itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IgnoredAnswer {
+    pub question_id: String,
+    pub reason: String,
+}
+
 /// What one questionnaire run left behind.
 ///
 /// Counts and identifiers. `axes_unknown` is the interesting one: it is how
@@ -249,6 +263,10 @@ pub fn response_of(
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IntakeReceipt {
+    /// Answers that moved something. An answer the user's own correction kept
+    /// out is in [`IntakeReceipt::ignored`] and is not counted here: a receipt
+    /// that said "recorded 3" about a run that changed two axes and refused
+    /// one would be the polite version of not mentioning the refusal (D39).
     pub answered: usize,
     pub axes_known: usize,
     pub axes_unknown: usize,
@@ -257,8 +275,13 @@ pub struct IntakeReceipt {
     /// False once anything in the profile came from the user. AC-03 is this
     /// field being false after a questionnaire and no import.
     pub profile_is_empty: bool,
-    /// One per recorded answer. Every one of them is `user_stated`.
+    /// One per recorded answer, refused ones included: the row exists either
+    /// way, because the user answered the question. Every one of them is
+    /// `user_stated`.
     pub evidence_ids: Vec<String>,
+    /// The answers that reached an axis the user had already corrected, and
+    /// were recorded without moving it. Empty on a first run.
+    pub ignored: Vec<IgnoredAnswer>,
 }
 
 impl IntakeReceipt {
@@ -271,14 +294,23 @@ impl IntakeReceipt {
             .filter(|axis| axis.position != AxisPosition::Unknown)
             .count();
         let stated = stated_count(&outcome.profile);
+        let ignored: Vec<IgnoredAnswer> = outcome
+            .ignored
+            .iter()
+            .map(|answer| IgnoredAnswer {
+                question_id: answer.question_id.to_owned(),
+                reason: answer.reason.as_str().to_owned(),
+            })
+            .collect();
         IntakeReceipt {
-            answered: outcome.evidence_ids.len(),
+            answered: outcome.evidence_ids.len().saturating_sub(ignored.len()),
             axes_known: known,
             axes_unknown: outcome.profile.trait_axes.len() - known,
             voice_fields_user_set: voice.user_set.len(),
             stated_entries: stated,
             profile_is_empty: known == 0 && voice.user_set.is_empty() && stated == 0,
             evidence_ids: outcome.evidence_ids.iter().map(Uuid::to_string).collect(),
+            ignored,
         }
     }
 }

@@ -8,6 +8,9 @@ publish = false
 description = "Soul's people graph: nodes are people, edges carry interaction strength, relationship type, last contact and evidence. Never leaves the machine."
 
 [dependencies]
+# The frozen tie-strength rule. WP05 absorbs it rather than keeping a second
+# copy of the thresholds; nothing in this crate decides a band any more.
+soul-algo-tie = { workspace = true }
 soul-schema = { workspace = true }
 soul-store-api = { workspace = true }
 # For the audit content a graph rebuild owes the chain. No HTTP client sits

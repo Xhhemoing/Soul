@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use soul_graph::model::{PersonNode, SoulGraph, TieEdge};
-use soul_graph::{GraphBuild, GraphError};
+use soul_graph::{GraphBuild, GraphError, TieCorrection};
 use soul_policy::audit::append_or_store_error;
 use soul_schema::common::{Sha256Hex, SupportedBand};
 use soul_schema::evidence::SoulEvidence;
@@ -43,6 +43,45 @@ pub fn rebuild(store: &mut SqlCipherStore, at_unix_seconds: i64) -> Result<Graph
 /// The graph as the UI reads it. Reads nothing but what a rebuild left behind.
 pub fn load(store: &SqlCipherStore) -> Result<SoulGraph, GraphError> {
     soul_graph::load(store)
+}
+
+/// Fix the band on one tie because the user says so, and hold it there.
+///
+/// The graph half of AC-07's instinct: a working hypothesis the user has ruled
+/// on is theirs, and a later rebuild recomputes the counts without moving the
+/// band. `at_unix_seconds` is the caller's clock, so a replay writes the same
+/// audit entry. The band comes from [`band_named`]: the shell round-trips the
+/// word a [`TieEdgeView`] handed it rather than inventing a fourth spelling.
+pub fn correct_tie(
+    store: &mut SqlCipherStore,
+    relationship_id: Uuid,
+    band: SupportedBand,
+    at_unix_seconds: i64,
+) -> Result<TieCorrection, GraphError> {
+    soul_graph::correct_tie(store, relationship_id, band, at_unix_seconds)
+}
+
+/// Hand the band back to the counts.
+pub fn release_tie(
+    store: &mut SqlCipherStore,
+    relationship_id: Uuid,
+    at_unix_seconds: i64,
+) -> Result<TieCorrection, GraphError> {
+    soul_graph::release_tie(store, relationship_id, at_unix_seconds)
+}
+
+/// The band a vocabulary word names, and nothing else.
+///
+/// A closed set, the way `profile::position_named` is: three words in, three
+/// bands out, and anything else is not a band this product has. The inverse of
+/// [`band_word`], so the shell can round-trip what a view handed it.
+pub fn band_named(key: &str) -> Option<SupportedBand> {
+    match key {
+        "weak" => Some(SupportedBand::Weak),
+        "moderate" => Some(SupportedBand::Moderate),
+        "strong" => Some(SupportedBand::Strong),
+        _ => None,
+    }
 }
 
 /// The evidence rows one edge cites.
@@ -170,7 +209,18 @@ pub struct TieEdgeView {
     /// Observed shapes — `direct`, `group_only`, `reciprocal`, `one_sided` —
     /// never a claim about what the relationship is.
     pub types: Vec<String>,
+    /// The band in force: the user's own on a corrected edge, the machine's
+    /// otherwise. Every reader that only wants "how much contact is there" can
+    /// go on reading this field and will respect a correction without knowing
+    /// one happened.
     pub band: String,
+    /// True once the user has ruled on this edge.
+    pub locked_by_user: bool,
+    /// The band the user chose, present exactly when `locked_by_user`.
+    pub user_band: Option<String>,
+    /// What the counts say, kept beside the effective band so a corrected edge
+    /// can show both. The interface composes the sentence; this is the token.
+    pub machine_band: Option<String>,
     pub interaction_count: u64,
     pub outgoing_count: u64,
     pub incoming_count: u64,
@@ -195,6 +245,15 @@ impl TieEdgeView {
                 .map(|kind| kind.as_str().to_owned())
                 .collect(),
             band: band_word(edge.tie_strength.band).to_owned(),
+            locked_by_user: edge.tie_strength.is_locked_by_user(),
+            user_band: edge
+                .tie_strength
+                .user_band
+                .map(|band| band_word(band).to_owned()),
+            machine_band: edge
+                .tie_strength
+                .machine_band
+                .map(|band| band_word(band).to_owned()),
             interaction_count: edge.tie_strength.interaction_count,
             outgoing_count: edge.tie_strength.outgoing_count,
             incoming_count: edge.tie_strength.incoming_count,
