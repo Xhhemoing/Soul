@@ -38,10 +38,18 @@ function buttonWords(): string[] {
 }
 
 describe("文件计划页", () => {
-  it("还没有授权目录的时候，说清楚 Soul 现在读不到任何文件", async () => {
+  /**
+   * The empty state is about this page's directory scan, not about Soul as a
+   * whole. Import still reads a file the user picked, and the store still
+   * opens `config.json` / `soul.db`, so "Soul 读不到你机器上的任何文件" is false.
+   */
+  it("还没有授权目录的时候，说清楚这一页不会去扫目录", async () => {
     await open();
 
-    expect(screen.getByTestId("no-roots")).toHaveTextContent("还没有授权任何目录");
+    const empty = screen.getByTestId("no-roots");
+    expect(empty).toHaveTextContent("还没有授权任何目录");
+    expect(empty).toHaveTextContent("不会去扫你机器上的任何目录");
+    expect(empty.textContent).not.toContain("Soul 读不到你机器上的任何文件");
     expect(screen.getByTestId("read-only-notice")).toHaveTextContent(READ_ONLY_NOTICE);
   });
 
