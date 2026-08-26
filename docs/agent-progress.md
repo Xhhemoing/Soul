@@ -7,29 +7,44 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 ## Current round
 
-**ROUND 16** — honest scan-only toward the 20-round floor. Do not re-open closed R4–R15 items. Do not land declined identifier leftovers (Pd family, NBSP) without new zh-CN paste-vector evidence. Do not persist collect consent. Do not bump schema version. Do not merge to `main`.
+**ROUND 17** — honest scan-only toward the 20-round floor. Do not re-open closed R4–R16 items. Do not land declined identifier leftovers without new zh-CN paste-vector evidence. Do not persist collect consent. Do not bump schema version. Do not merge to `main`.
 
 | Field | Value |
 |---|---|
-| Current task | Round 15 closed. All NO_HIGH_VALUE. Round 16 Fable: Telegram `@` alias; events_by_source collect poll; D62 refuse-newer; import transact wrap; intake transact wrap; tray/single-instance; cloud toggle inert; denylist runtime file; COPY_ZH twins; landable vs 20-round floor. |
+| Current task | Round 16 closed. All NO_HIGH_VALUE. Round 17 Fable: e1-watch; G1+ owner fold; forgotten-peer tie-correct; E1 multiline provenance; DPAPI store_notice; name-harvest fold; E1 redirect refuse; injection.blocked counts; research empty-state; landable vs 20-round floor. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
-| Exclusive tip | `052d692` (+ this docs closeout); PR #15 |
+| Exclusive tip | `e6ee138` (+ this docs closeout); PR #15 |
 
-### Round 16 Fable dispatch
+### Round 17 Fable dispatch
 
 | # | Direction |
 |---|---|
-| 1 | Telegram `username_handle` still strips one leading `@` then prefixes once |
-| 2 | Collect poll still uses `events_by_source` (no table-scan JSON parse) |
-| 3 | Opening a newer-stamped db still refuses without writing stamp 2 (D62) |
-| 4 | Import commit still one store transaction (SOUL-7C) |
-| 5 | Questionnaire intake still one store transaction (R11 wrap) |
-| 6 | Single-instance mutex still refuses a second SQLCipher before open |
-| 7 | Settings cloud toggle still inert (no persist, no outbound) |
-| 8 | Runtime `diagnostic_terms.txt` still what `assert_non_clinical` loads |
-| 9 | COPY_ZH §6 projection keys still match soul-draft emitters |
+| 1 | `soul-headless e1-watch` still watches the one path that opens a request |
+| 2 | G1+ owner fold still merges alias + `AmbiguousOwner` |
+| 3 | Forgotten contacts still cannot be band-corrected back to Live |
+| 4 | Endpoint replies with line breaks still refused (`read_grounded_in`) |
+| 5 | `store_notice` still states DPAPI unrecoverability |
+| 6 | Spaced-Han display labels still fold to the unspaced spelling |
+| 7 | Endpoint that redirects elsewhere is still refused; target never contacted |
+| 8 | Paste/import injection markers still counted into the chain without quoting text |
+| 9 | Research empty-state still uses `candidate_rows_total`, not “nothing imported” |
 | 10 | Synthesis: remaining landable v0.1 slices vs 20-round floor vs author-machine-only |
+
+## ROUND 16 record
+
+| Field | Value |
+|---|---|
+| ROUND | 16 |
+| 子代理任务 | 10× Fable: Telegram `@` alias; events_by_source; D62 refuse-newer; import transact; intake transact; tray mutex; cloud toggle; denylist file; COPY_ZH twins; landable vs 20-round floor |
+| 发现问题 | None at HIGH_VALUE |
+| 修复问题 | None. No product-code landing |
+| 测试结果 | Reviewers: workspace 1031 tests / 150 binaries 0 fail; desktop 89 tests 0 fail (ipc_roundtrip 56); vitest 190; e0-audit / denylist-audit / schema-freeze clean |
+| Commit | this closeout (docs) |
+| PR | #15 |
+| Merge状态 | Exclusive → `main` still `BLOCKED`. PR #7 still not merged |
+| 下一轮重点 | e1-watch; G1+ owner fold; forgotten-peer tie-correct; E1 multiline; DPAPI store_notice; name-harvest fold; E1 redirect; injection.blocked; research empty-state; synthesis toward 20-round floor |
+| NO_HIGH_VALUE | All ten |
 
 ## ROUND 15 record
 
