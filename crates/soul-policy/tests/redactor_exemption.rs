@@ -200,14 +200,16 @@ fn a_grouped_phone_number_stays_placeheld_inside_an_exempted_turn() {
 ///
 /// The test above covers the ASCII hyphen and the ASCII space, which is what a
 /// contact card and an English layout give. A Chinese IME in fullwidth mode
-/// gives U+FF10–U+FF19 for the digits and U+FF0D for the dash; a paste out of
-/// a document that has been autocorrected gives U+2013. None of them is the
-/// string the contact card holds, so what covers them is the shape, and the
-/// exempted turn is the one place a paste reaches an endpoint verbatim.
+/// gives U+FF10–U+FF19 for the digits, U+FF0D for the dash and U+FF0E for the
+/// dot; a paste out of a document that has been autocorrected gives U+2013.
+/// None of them is the string the contact card holds, so what covers them is
+/// the shape, and the exempted turn is the one place a paste reaches an
+/// endpoint verbatim.
 ///
-/// `138-0013–8000` is the case that says why the whole run has to go rather
-/// than the first seven digits: with only the ASCII hyphen joining, the run
-/// stopped at the en-dash and left `8000` standing beside the placeholder.
+/// `138-0013–8000` and `138.0013．8000` are the cases that say why the whole
+/// run has to go rather than the first seven digits: with only the ASCII
+/// spelling joining, the run stopped at the separator it did not know and left
+/// `8000` standing beside the placeholder.
 #[test]
 fn a_phone_number_typed_on_an_ime_stays_placeheld_inside_an_exempted_turn() {
     let redactor = redactor();
@@ -215,8 +217,10 @@ fn a_phone_number_typed_on_an_ime_stays_placeheld_inside_an_exempted_turn() {
     for typed in [
         "１３８００１３８０００",
         "１３８－００１３－８０００",
+        "１３８．００１３．８０００",
         "138\u{2013}0013\u{2013}8000",
         "138-0013\u{2013}8000",
+        "138.0013\u{FF0E}8000",
     ] {
         let turn_id = Uuid::now_v7();
         let turns = vec![Turn::new(
