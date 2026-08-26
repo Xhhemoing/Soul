@@ -64,6 +64,10 @@ pub const EGRESS_GATEWAY: &str = "soul-egress";
 /// `soul.local` is a naming authority for JSON Schema `$id`s and is never
 /// resolved over the network. The loopback entries exist for the UI-to-core
 /// channel and for local model endpoints.
+///
+/// Host entries (`http://127.0.0.1`, `http://localhost`, …) are anchored at
+/// the host: `http://127.0.0.1.evil.com` is not loopback. Path entries that
+/// already end in `/` keep a path-prefix match.
 pub const ALLOWED_URL_PREFIXES: &[&str] = &[
     "https://soul.local/schemas/",
     "http://127.0.0.1",
@@ -477,10 +481,7 @@ pub fn find_url_literals(file: &Path, text: &str) -> Vec<UrlHit> {
     let mut hits = Vec::new();
     for (index, line) in text.lines().enumerate() {
         for url in extract_urls(line) {
-            if ALLOWED_URL_PREFIXES
-                .iter()
-                .any(|prefix| url.starts_with(prefix))
-            {
+            if url_is_allowed(&url) {
                 continue;
             }
             hits.push(UrlHit {
@@ -529,4 +530,26 @@ fn extract_urls(line: &str) -> Vec<String> {
         urls.push(format!("{scheme}://{host_and_path}"));
     }
     urls
+}
+
+/// Whether `url` is covered by [`ALLOWED_URL_PREFIXES`] as a host or a path.
+///
+/// A bare `starts_with` on `http://127.0.0.1` also matches
+/// `http://127.0.0.1.evil.com`. After a host prefix the next character has to
+/// be the end of the URL, a port, a path, a query or a fragment. A prefix
+/// that already ends in `/` is a path allow, so anything under it is fine.
+fn url_is_allowed(url: &str) -> bool {
+    ALLOWED_URL_PREFIXES.iter().any(|prefix| {
+        let Some(rest) = url.strip_prefix(prefix) else {
+            return false;
+        };
+        if prefix.ends_with('/') {
+            return true;
+        }
+        rest.is_empty()
+            || rest.starts_with('/')
+            || rest.starts_with(':')
+            || rest.starts_with('?')
+            || rest.starts_with('#')
+    })
 }

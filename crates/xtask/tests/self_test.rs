@@ -71,6 +71,39 @@ fn the_url_scanner_accepts_the_allowlist() {
     assert_eq!(scan.files_scanned, 1);
 }
 
+/// `http://127.0.0.1` as a prefix also matches `http://127.0.0.1.evil.com`.
+/// AC-21's source half is "no business domain"; a scanner that green-ticks a
+/// lookalike host is worse than no scanner.
+#[test]
+fn the_url_scanner_does_not_treat_a_lookalike_host_as_loopback() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    write(
+        dir.path(),
+        "crates/pretend/src/lib.rs",
+        concat!(
+            "const LOOKALIKE: &str = \"http://127.0.0.1.evil.com/collect\";\n",
+            "const LOCALHOST: &str = \"https://localhost.evil.com/\";\n",
+            "const OK: &str = \"http://127.0.0.1:7331/rpc\";\n",
+        ),
+    );
+
+    let scan = egress::scan_tree_for_urls(dir.path()).expect("scan");
+    let urls: Vec<&str> = scan.hits.iter().map(|hit| hit.url.as_str()).collect();
+    assert!(
+        urls.contains(&"http://127.0.0.1.evil.com/collect"),
+        "a loopback prefix must not cover a lookalike host: {urls:#?}",
+    );
+    assert!(
+        urls.contains(&"https://localhost.evil.com/"),
+        "localhost as a prefix must not cover localhost.evil.com: {urls:#?}",
+    );
+    assert!(
+        !urls.iter().any(|url| url.contains("7331")),
+        "the real loopback URL with a port must still be allowed: {urls:#?}",
+    );
+    assert_eq!(scan.hits.len(), 2, "{urls:#?}");
+}
+
 /// Packaging scripts are scanned too: fetching a bundler or a runtime is one
 /// line of PowerShell, and it would otherwise be the one line in the
 /// repository nothing looks at.
