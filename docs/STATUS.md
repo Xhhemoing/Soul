@@ -4,7 +4,7 @@
 
 本父代理专属线：`cursor/soul-integration-4a8e`，从本文件所在的 unique trunk 长出。本轮进度与合入/Blocked 记账写在 [`agent-progress.md`](agent-progress.md)；本跑拍板写在 [`agent-decisions.md`](agent-decisions.md)。**不要**把本段读成 Goal 1 已关闭或 `main` 已有应用。
 
-本树已吸收 T4D 端口（`cursor/port-t4d-4a8e`，非合入 PR #7）与 forget 页级销毁（`cursor/store-forget-4a8e`）。人脉图不再走 T0 3/10/3。**档位纠正也有产品路径了**（SOUL-7A，`cursor/graph-correct-ui-4a8e`）：`COMMANDS` 从 36 长到 38（`correct_tie`、`release_tie`）。Round 3 还合入了 T4D 降档时钟投影（AD-9/AD-13，无新命令）、向导拒绝形状、`keys.dpapi` `create_new`、以及 SOUL-7B 档案页锁定轴的 ignored 回执。Goal 1 仍未关：hosted CI 与作者 Win11 清单仍缺。Round 10 合入分组号码占位；Round 11 合入问卷 intake 整批事务（WP06 leftover 8）；Round 12 合入全角数字与破折号分组号码占位；Round 13 见 [`agent-progress.md`](agent-progress.md)。
+本树已吸收 T4D 端口（`cursor/port-t4d-4a8e`，非合入 PR #7）与 forget 页级销毁（`cursor/store-forget-4a8e`）。人脉图不再走 T0 3/10/3。**档位纠正也有产品路径了**（SOUL-7A，`cursor/graph-correct-ui-4a8e`）：`COMMANDS` 从 36 长到 38（`correct_tie`、`release_tie`）。Round 3 还合入了 T4D 降档时钟投影（AD-9/AD-13，无新命令）、向导拒绝形状、`keys.dpapi` `create_new`、以及 SOUL-7B 档案页锁定轴的 ignored 回执。Goal 1 仍未关：hosted CI 与作者 Win11 清单仍缺。Round 10 合入分组号码占位；Round 11 合入问卷 intake 整批事务（WP06 leftover 8）；Round 12 合入全角数字与破折号分组号码占位；Round 13 合入全角句点分组号码占位；Round 14 见 [`agent-progress.md`](agent-progress.md)。
 
 ## 当前里程碑
 

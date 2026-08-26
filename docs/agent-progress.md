@@ -7,29 +7,44 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 ## Current round
 
-**ROUND 13** — review the Unicode phone-shape landing and remaining identifier/honesty leftovers. Do not re-open closed R4–R12 items (D55, D61–D63, P2 E1 mutex, fileplan, config.json, COMMANDS=38, contiguous+grouped+fullwidth/dash-family phone shape, tray mutex, NSIS data-dir hook, keys.dpapi create_new, cloud toggle inert, import-tx wrap, questionnaire `transact` wrap).
+**ROUND 14** — review the fullwidth-dot landing and rotate leftover honesty/reliability scans toward the 20-round floor. Do not re-open closed R4–R13 items (D55, D61–D63, P2 E1 mutex, fileplan, config.json, COMMANDS=38, contiguous+grouped+fullwidth/dash-family+fullwidth-dot phone shape, tray mutex, NSIS data-dir hook, keys.dpapi create_new, cloud toggle inert, import-tx wrap, questionnaire `transact` wrap). Do not land U+2015/U+00AD/U+FE58/U+FE63/U+30FC unless new paste-vector evidence appears.
 
 | Field | Value |
 |---|---|
-| Current task | Round 12 closed. Landed fullwidth/dash-family phone placeholder. Round 13 Fable: landing review; remaining Pd/soft-hyphen; add_account width-literal; intake refusal-notice pin; fakeCore truncation; denylist frozen-ten; NSIS comment; SECURITY DPAPI tense; PendingForget; landable vs 20-round floor. |
+| Current task | Round 13 closed. Landed U+FF0E phone separator. Round 14 Fable: landing review; NBSP group spaces; eleven-route state; schema freeze; research_export; E1 cap/HITL; keys.dpapi honesty; IPC 38/38; store_opened; landable vs 20-round floor. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
-| Exclusive tip | `e893109` (+ this docs closeout); PR #15 |
+| Exclusive tip | `080d5c0` (+ this docs closeout); PR #15 |
 
-### Round 13 Fable dispatch
+### Round 14 Fable dispatch
 
 | # | Direction |
 |---|---|
-| 1 | Review the phone-unicode landing (`a988fe2` / merge `e893109`) for regressions |
-| 2 | Remaining dash/hyphen leftovers outside the landed family: U+2015, U+00AD, U+FE58, U+FE63, U+30FC |
-| 3 | `add_account` stays width-literal for non-phone registered identifiers |
-| 4 | Live pin that a questionnaire refusal carries `INTAKE_ROLLED_BACK_NOTICE` |
-| 5 | `fakeCore.ts` forget-mismatch truncation vs `FORGET_NOT_PREVIEWED_NOTICE` |
-| 6 | Denylist frozen-ten vs runtime `diagnostic_terms.txt` honesty |
-| 7 | NSIS PREUNINSTALL comment vs pre-hook uninstallers |
-| 8 | SECURITY.md DPAPI present tense vs last windows-latest run on `2e72ddf` |
-| 9 | `ForgetState::PendingForget` unreachable vs Graph/Memory `== Forgotten` checks |
+| 1 | Review the fullwidth-dot landing (`77b7402` / merge `080d5c0`) for regressions |
+| 2 | Remaining space leftovers after U+0020/U+3000: NBSP U+00A0, narrow NBSP U+202F (Word/PDF paste) |
+| 3 | Eleven-route UI state still agrees after intake wrap + identifier widenings |
+| 4 | Schema freeze vs `schemas.lock.json` (version still 2; no silent bump) |
+| 5 | Research preview still honors `research_export` / ZeroThirdPartyRows |
+| 6 | E1 4 MiB body cap and HITL approval still hold; do not open a model socket |
+| 7 | `keys.dpapi` `create_new` comment vs actual reclaim path (honesty only) |
+| 8 | Desktop `ipc_roundtrip` still covers all 38 COMMANDS |
+| 9 | Closed-store `opened_store()?` on prepare/generate still holds; paste stays store-free |
 | 10 | Synthesis: remaining landable v0.1 slices vs 20-round floor vs author-machine-only |
+
+## ROUND 13 record
+
+| Field | Value |
+|---|---|
+| ROUND | 13 |
+| 子代理任务 | 10× Fable + Opus: phone-unicode landing review; remaining Pd/soft-hyphen; add_account width-literal; intake refusal-notice pin; fakeCore truncation; denylist frozen-ten; NSIS comment; SECURITY DPAPI tense; PendingForget; landable vs 20-round floor |
+| 发现问题 | ASCII `.` was already a group separator; a 全角 IME emits U+FF0E (`．`) for the same key, so `１３８．００１３．８０００` and mixed `138.0013．8000` skipped the shape. Remaining Pd (U+2015 etc.) mechanically behave the same but are not proven zh-CN phone-separator paste vectors — dedicated scan NO_HIGH_VALUE; parent declined synthesis HIGH_VALUE on that family. Direction #3 (add_account width) was policy-blocked |
+| 修复问题 | `is_group_separator` learns U+FF0E in redactor and leakage checker lockstep. Two-separators-in-a-row and comma exclusions unchanged |
+| 测试结果 | Parent re-run on merge `080d5c0`: redactor_exemption 16; redactor_leakage 16; leakage_checker 10; fixture_corpus 9; session_e1 33. Opus mutation: U+FF0E arm removed kills 6 tests |
+| Commit | `77b7402` on `cursor/phone-fullwidth-dot-4a8e`; merge `080d5c0` |
+| PR | #15 |
+| Merge状态 | Exclusive has the merge. → `main` still `BLOCKED`. PR #7 still not merged |
+| 下一轮重点 | Fullwidth-dot landing review; NBSP group spaces; eleven-route state; schema freeze; research_export; E1 cap/HITL; keys.dpapi honesty; IPC 38/38; store_opened; synthesis toward 20-round floor |
+| NO_HIGH_VALUE | Phone-unicode landing (already merged); remaining Pd/soft-hyphen as paste vectors; intake refusal-notice pin; fakeCore truncation; denylist frozen-ten; NSIS comment; SECURITY DPAPI tense; PendingForget |
 
 ## ROUND 12 record
 
