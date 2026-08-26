@@ -3,8 +3,10 @@
 //! A promise not to change anything is worth what it can be checked against, so
 //! the scan takes a [`DirectorySnapshot`] before it starts and another when it
 //! finishes, and hands both back. The hash covers every name, size and
-//! modification time it can see, which is enough to catch a walk that created a
-//! file, truncated one, or touched a timestamp. It is deliberately computed by
+//! modification time the scan's own limits let it reach, which is enough to
+//! catch a walk that created a file, truncated one, or touched a timestamp
+//! anywhere it went. Where a cap ends the walk the proof ends with it, and says
+//! so through [`DirectoryScan::truncated`]. It is deliberately computed by
 //! the same code on both sides: a snapshot the caller could not reproduce would
 //! only prove that this module agrees with itself, so
 //! [`DirectorySnapshot::of`] is public and the tests take their own.
@@ -24,7 +26,7 @@
 //! line does. AC-25 names the file-name channel explicitly. What a name is
 //! *trying* to do is counted for the audit trail and changes nothing else.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 use sha2::{Digest, Sha256};
@@ -43,6 +45,11 @@ use crate::screen::{screen_segment, shorten};
 /// Limits rather than exhaustiveness: the user is being shown a preview, and a
 /// preview that takes ten minutes on a home directory is a hang. When a limit
 /// is reached the scan says so instead of quietly showing less.
+///
+/// [`ScanLimits::max_entries`] stops the walk rather than filtering it. Listing
+/// the rest of a home directory as a hundred thousand skip records is the same
+/// ten minutes with a longer answer at the end, so once the cap is reached no
+/// further directory is opened and no further name is read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScanLimits {
     pub max_depth: usize,
@@ -121,7 +128,8 @@ pub enum SkipReason {
     Unreadable,
     /// Below [`ScanLimits::max_depth`].
     DepthLimit,
-    /// Past [`ScanLimits::max_entries`].
+    /// Where [`ScanLimits::max_entries`] ended the walk. Recorded once, for the
+    /// first name that did not fit; what lies past it was never read.
     EntryLimit,
     /// The name itself is one no plan may repeat; see [`crate::screen`].
     UnplannableName,
@@ -157,29 +165,43 @@ pub struct DirectorySnapshot {
 }
 
 impl DirectorySnapshot {
-    /// Hash every name, type, size and modification time below `root`.
+    /// Hash every name, type, size and modification time below `root`, up to
+    /// the same limits the scan itself walks under.
     ///
     /// Reads directories, never files. Unreadable entries are folded into the
     /// hash as unreadable, so a directory that becomes unreadable during a scan
     /// changes the snapshot rather than disappearing from it.
+    ///
+    /// The entry cap ends this walk exactly as it ends the scan's, and both
+    /// walks take each directory in name order, so a snapshot of an unchanged
+    /// tree stops at the same name twice. The hash then states what was looked
+    /// at, which is the honest claim for a capped preview: it proves nothing
+    /// about the part nobody visited, and does not pretend to.
     pub fn of(root: &Path, limits: ScanLimits) -> DirectorySnapshot {
         let mut lines: Vec<String> = Vec::new();
         let mut bytes = 0u64;
         let mut pending = vec![(root.to_path_buf(), String::new(), 0usize)];
 
-        while let Some((directory, prefix, depth)) = pending.pop() {
-            let Ok(read) = std::fs::read_dir(&directory) else {
+        'walk: while let Some((directory, prefix, depth)) = pending.pop() {
+            if lines.len() >= limits.max_entries {
+                break;
+            }
+            let Some(listing) = read_in_name_order(&directory) else {
                 lines.push(format!("{prefix}\u{0}unreadable-dir"));
                 continue;
             };
-            for entry in read {
-                let Ok(entry) = entry else {
-                    lines.push(format!("{prefix}\u{0}unreadable-entry"));
-                    continue;
-                };
-                let name = entry.file_name().to_string_lossy().into_owned();
+            for _ in 0..listing.unreadable_entries {
+                if lines.len() >= limits.max_entries {
+                    break 'walk;
+                }
+                lines.push(format!("{prefix}\u{0}unreadable-entry"));
+            }
+            for (name, path) in listing.named {
+                if lines.len() >= limits.max_entries {
+                    break 'walk;
+                }
                 let relative = join_relative(&prefix, &name);
-                match std::fs::symlink_metadata(entry.path()) {
+                match std::fs::symlink_metadata(&path) {
                     Ok(metadata) => {
                         let file_type = metadata.file_type();
                         let tag = if file_type.is_symlink() {
@@ -206,7 +228,7 @@ impl DirectorySnapshot {
                         }
                         if file_type.is_dir() && !file_type.is_symlink() && depth < limits.max_depth
                         {
-                            pending.push((entry.path(), relative, depth + 1));
+                            pending.push((path, relative, depth + 1));
                         }
                     }
                     Err(_) => lines.push(format!("{relative}\u{0}unreadable")),
@@ -343,23 +365,29 @@ pub fn scan(
     let mut truncated = false;
     let mut pending = vec![(root.clone(), String::new(), 0usize)];
 
-    while let Some((directory, prefix, depth)) = pending.pop() {
-        let Ok(read) = std::fs::read_dir(&directory) else {
+    'walk: while let Some((directory, prefix, depth)) = pending.pop() {
+        if entries.len() >= limits.max_entries {
+            truncated = true;
+            skipped.push(SkippedEntry {
+                shown: shorten(&prefix),
+                reason: SkipReason::EntryLimit,
+            });
+            break;
+        }
+        let Some(listing) = read_in_name_order(&directory) else {
             skipped.push(SkippedEntry {
                 shown: shorten(&prefix),
                 reason: SkipReason::Unreadable,
             });
             continue;
         };
-        for entry in read {
-            let Ok(entry) = entry else {
-                skipped.push(SkippedEntry {
-                    shown: shorten(&prefix),
-                    reason: SkipReason::Unreadable,
-                });
-                continue;
-            };
-            let name = entry.file_name().to_string_lossy().into_owned();
+        for _ in 0..listing.unreadable_entries {
+            skipped.push(SkippedEntry {
+                shown: shorten(&prefix),
+                reason: SkipReason::Unreadable,
+            });
+        }
+        for (name, path) in listing.named {
             let relative = join_relative(&prefix, &name);
 
             if entries.len() >= limits.max_entries {
@@ -368,7 +396,7 @@ pub fn scan(
                     shown: shorten(&relative),
                     reason: SkipReason::EntryLimit,
                 });
-                continue;
+                break 'walk;
             }
 
             let untrusted = UntrustedText::new(name.clone());
@@ -384,7 +412,7 @@ pub fn scan(
                 continue;
             }
 
-            let Ok(metadata) = std::fs::symlink_metadata(entry.path()) else {
+            let Ok(metadata) = std::fs::symlink_metadata(&path) else {
                 skipped.push(SkippedEntry {
                     shown: shorten(&relative),
                     reason: SkipReason::Unreadable,
@@ -432,7 +460,7 @@ pub fn scan(
 
             if file_type.is_dir() {
                 if depth + 1 < limits.max_depth {
-                    pending.push((entry.path(), relative, depth + 1));
+                    pending.push((path, relative, depth + 1));
                 } else {
                     truncated = true;
                     skipped.push(SkippedEntry {
@@ -457,6 +485,42 @@ pub fn scan(
         after,
         injection_signals,
         truncated,
+    })
+}
+
+/// One directory's contents, ready to be walked in a fixed order.
+struct DirectoryListing {
+    /// `(name, path)` sorted by name.
+    named: Vec<(String, PathBuf)>,
+    /// Entries the directory offered but would not describe.
+    unreadable_entries: usize,
+}
+
+/// Read one directory, sorted by name; `None` if the directory itself will not
+/// open.
+///
+/// The order the filesystem hands entries back in is its own business, and a
+/// walk that stops at a cap turns that order into part of the answer. Sorting
+/// first means the before and after snapshots of an unchanged tree cover the
+/// same names, so a truncated preview still reports "nothing moved" rather than
+/// a change that never happened.
+fn read_in_name_order(directory: &Path) -> Option<DirectoryListing> {
+    let read = std::fs::read_dir(directory).ok()?;
+    let mut named: Vec<(String, PathBuf)> = Vec::new();
+    let mut unreadable_entries = 0usize;
+    for entry in read {
+        match entry {
+            Ok(entry) => named.push((
+                entry.file_name().to_string_lossy().into_owned(),
+                entry.path(),
+            )),
+            Err(_) => unreadable_entries += 1,
+        }
+    }
+    named.sort();
+    Some(DirectoryListing {
+        named,
+        unreadable_entries,
     })
 }
 

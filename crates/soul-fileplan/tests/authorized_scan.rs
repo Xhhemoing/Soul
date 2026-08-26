@@ -304,6 +304,95 @@ fn a_limit_that_bites_is_reported_instead_of_hidden() {
     assert!(soul_fileplan::plan::build(&scan).truncated());
 }
 
+/// The entry cap ends the walk. It is not a filter applied to a walk that
+/// happens anyway: a scan that reached the cap and then went on listing the
+/// rest of the tree as skip records would still take the ten minutes on a home
+/// directory that the cap exists to prevent.
+#[test]
+fn the_entry_cap_ends_the_walk_instead_of_listing_what_is_past_it() {
+    use soul_fileplan::SkipReason;
+
+    const CAP: usize = 3;
+
+    let tree = Tree::build();
+    let authorization = authorized(&tree);
+
+    let before = walk(tree.base());
+    let scan = soul_fileplan::scan::scan(
+        &authorization,
+        &tree.alpha(),
+        ScanLimits {
+            max_depth: 8,
+            max_entries: CAP,
+        },
+    )
+    .expect("a capped scan");
+    let after = walk(tree.base());
+
+    // Alpha holds a dozen entries over two levels, so a cap of three bites.
+    assert!(scan.truncated(), "a cap that bit should say so");
+    assert!(
+        scan.entries().len() <= CAP,
+        "{} entries came back under a cap of {CAP}",
+        scan.entries().len(),
+    );
+
+    let past_the_cap = scan
+        .skipped()
+        .iter()
+        .filter(|entry| entry.reason == SkipReason::EntryLimit)
+        .count();
+    assert_eq!(
+        past_the_cap,
+        1,
+        "the walk records where it stopped, once; it does not name the rest of \
+         the tree it never read: {:?}",
+        scan.skipped(),
+    );
+
+    // The snapshots cover what was walked, and both walks stop at the same
+    // name, so a capped preview still proves the directory did not move.
+    assert_eq!(scan.snapshot_before().hash(), scan.snapshot_after().hash());
+    assert!(
+        scan.disk_unchanged(),
+        "{:?} then {:?}",
+        scan.snapshot_before(),
+        scan.snapshot_after(),
+    );
+    assert!(scan.snapshot_before().entries() <= CAP);
+    assert_eq!(before, after, "the tree changed while it was being scanned");
+}
+
+/// Two capped scans of the same unchanged tree see the same entries. The cap
+/// turns the order the filesystem hands names back in into part of the answer,
+/// and an answer that depended on it would report changes nobody made.
+#[test]
+fn a_capped_scan_of_an_unchanged_tree_repeats_itself() {
+    let tree = Tree::build();
+    let authorization = authorized(&tree);
+    let limits = ScanLimits {
+        max_depth: 8,
+        max_entries: 3,
+    };
+
+    let first =
+        soul_fileplan::scan::scan(&authorization, &tree.alpha(), limits).expect("a capped scan");
+    let second = soul_fileplan::scan::scan(&authorization, &tree.alpha(), limits)
+        .expect("the same capped scan again");
+
+    let names = |scan: &soul_fileplan::DirectoryScan| {
+        scan.entries()
+            .iter()
+            .map(|entry| entry.relative().to_owned())
+            .collect::<Vec<String>>()
+    };
+    assert_eq!(names(&first), names(&second));
+    assert_eq!(
+        first.snapshot_before().hash(),
+        second.snapshot_after().hash()
+    );
+}
+
 /// The plan says, in the value its hash is taken over, that this build will not
 /// carry it out. A build that started executing plans would hash differently
 /// from the one the user approved a plan in.
