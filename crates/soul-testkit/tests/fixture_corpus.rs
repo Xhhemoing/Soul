@@ -343,6 +343,17 @@ fn the_leakage_fixture_covers_the_named_edge_cases() {
         leaking.iter().any(|t| t.contains('\u{FF0D}')),
         "a number grouped by a fullwidth hyphen",
     );
+    assert!(
+        leaking.iter().any(|t| t.contains('\u{FF0E}')),
+        "a number grouped by a fullwidth dot",
+    );
+    assert!(
+        leaking
+            .iter()
+            .any(|t| t.contains('\u{FF0E}') && t.contains('.')),
+        "a number grouped by both widths of dot, whose tail a checker that \
+         knew only the ASCII one would report clean",
+    );
 
     let hits = fixture.cases.iter().filter(|c| c.leaks).count();
     let misses = fixture.cases.len() - hits;

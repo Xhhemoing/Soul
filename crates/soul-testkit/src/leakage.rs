@@ -62,11 +62,17 @@ fn is_phone_digit(c: char) -> bool {
 /// comma: a comma groups digits (`45,000`) but is also how a Chinese sentence
 /// separates its clauses, so joining across one would let a budget and a room
 /// number add up to somebody's phone number.
+///
+/// Both widths of a separator are listed, because a Chinese IME in fullwidth
+/// mode gives U+FF0D for the dash key and U+FF0E for the dot key. A checker
+/// that knew only the ASCII spellings would report clean on a registered
+/// number that had merely been typed in the other mode.
 fn is_group_separator(c: char) -> bool {
     matches!(
         c,
         ' ' | '\u{3000}'
             | '.'
+            | '\u{FF0E}'
             | '-'
             | '\u{2010}'
             | '\u{2011}'

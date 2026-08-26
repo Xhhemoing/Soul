@@ -473,10 +473,13 @@ const MIN_PHONE_DIGITS: usize = 7;
 /// date and nobody can be reached on it, and a paste that quotes one loses it
 /// to a placeholder.
 ///
-/// The two widenings above each add one of the same kind. A year range,
+/// The widenings above each add one of the same kind. A year range,
 /// `2019–2026`, is eight digits in two groups joined by an en-dash, which is
 /// the punctuation a range is written with far more often than a number is.
-/// `２０２６－０８－２５` is that same ISO date, typed on an IME.
+/// `２０２６－０８－２５` is that same ISO date, typed on an IME, and
+/// `２０２６．０８．２５` is it again with the dot that IME gives: a
+/// fullwidth-dotted digit run totalling seven digits or more is placeheld, on
+/// exactly the terms the ASCII-dotted `2026.08.25` already was.
 ///
 /// The trade is deliberate and it is the same one-directional trade
 /// [`KnownIdentifiers::add_name`] makes: a placeholder too many is something
@@ -545,9 +548,16 @@ fn is_phone_digit(c: char) -> bool {
 /// run stopped at the dash it did not know, and `8000` — the last four digits
 /// — stood beside the placeholder, which is the failure the whole-run
 /// replacement above exists to prevent.
+///
+/// The dot is likewise whichever width it was typed in. The same IME in
+/// fullwidth mode gives U+FF0E for the same key the ASCII dot is on, so
+/// `１３８．００１３．８０００` is a number with neither an ASCII digit nor an
+/// ASCII separator anywhere in it, and `138.0013．8000` is the half-corrected
+/// line that left the tail standing. The ASCII dot was already accepted here;
+/// U+FF0E is the same separator in the other width.
 fn is_group_separator(c: char) -> bool {
     is_label_space(c)
-        || c == '.'
+        || matches!(c, '.' | '\u{FF0E}')
         || matches!(
             c,
             '-' | '\u{2010}'

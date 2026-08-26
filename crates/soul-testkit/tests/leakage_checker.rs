@@ -136,9 +136,12 @@ fn a_registered_number_is_caught_in_every_width_and_grouping() {
         "138　0013　8000",
         "138\u{2013}0013\u{2013}8000",
         "138\u{FF0D}0013\u{FF0D}8000",
+        "138\u{FF0E}0013\u{FF0E}8000",
         "138-0013\u{2013}8000",
+        "138.0013\u{FF0E}8000",
         "１３８００１３８０００",
         "１３８－００１３－８０００",
+        "１３８．００１３．８０００",
         "１３８ ００１３ ８０００",
         "138００１３8000",
     ] {
@@ -170,8 +173,10 @@ fn digits_that_do_not_add_up_to_the_registered_number_are_not_a_leak() {
         "下午 3 点，第 2 会议室，预算 45000。",
         // The same digits, broken by prose rather than joined by a separator.
         "先拨 138，再拨 0013，最后 8000。",
-        // Two separators in a row do not join, as in the redactor.
+        // Two separators in a row do not join, as in the redactor, in either
+        // width the separator was typed in.
         "138 - 0013 - 8000",
+        "１３８ ．００１３．８０００",
         // A different number that merely starts the same way.
         "留的号码是 13800139999。",
     ] {

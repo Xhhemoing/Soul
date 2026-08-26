@@ -211,6 +211,9 @@ fn a_phone_number_written_in_groups_is_placeheld_on_the_default_path() {
 /// card would have had placeheld went out of the user's own turn verbatim —
 /// the one turn that is never replaced wholesale.
 ///
+/// The same mode gives U+FF0E for the dot key, so a number grouped by dots on
+/// a fullwidth IME carries neither an ASCII digit nor an ASCII separator.
+///
 /// The identifier set is empty, so a placeholder here can only be the shape.
 #[test]
 fn a_phone_number_typed_in_fullwidth_digits_is_placeheld() {
@@ -226,10 +229,13 @@ fn a_phone_number_typed_in_fullwidth_digits_is_placeheld() {
         "１３８-００１３-８０００",
         "１３８\u{2013}００１３\u{2013}８０００",
         "１３８.００１３.８０００",
+        // The dot the same fullwidth mode gives for the same key: U+FF0E.
+        "１３８．００１３．８０００",
         // Half typed in one mode and half in the other, which is what a
         // partly-corrected line looks like.
         "138００１３8000",
         "１３８-0013－8000",
+        "138．0013．8000",
     ] {
         let redacted = redactor.redact_for_e1(&[own(&format!("回头打 {typed} 找他。"))]);
         assert_eq!(
@@ -264,6 +270,10 @@ fn a_number_grouped_by_two_different_dashes_leaves_no_tail() {
         "138\u{2013}0013-8000",
         "138 0013\u{FF0D}8000",
         "138\u{FF0D}0013 8000",
+        // The dot in both widths: the ASCII one joined and the fullwidth one
+        // did not, so the run stopped one group short of the tail.
+        "138.0013\u{FF0E}8000",
+        "138\u{FF0E}0013.8000",
     ] {
         let redacted = redactor.redact_for_e1(&[own(&format!("回头打 {mixed} 找他。"))]);
         assert!(
@@ -338,16 +348,20 @@ fn an_iso_date_is_placeheld_too_and_that_is_the_trade() {
     );
 }
 
-/// The two false positives the dash family and the fullwidth digits add, in
-/// the same place and on the same terms as the ISO date above.
+/// The false positives the dash family, the fullwidth digits and the
+/// fullwidth dot add, in the same place and on the same terms as the ISO date
+/// above.
 ///
 /// A year range is the one thing an en-dash is used for far more often than a
 /// phone number, and `2019–2026` is eight digits in two groups joined by one,
 /// so it reads as a number and goes. `２０２６－０８－２５` is the ISO date
-/// again, typed on an IME. Both are the price of the two widenings, and both
-/// are the same one-directional trade `phone_shape_end` already documents: a
-/// placeholder too many is something the user can see and work around, and the
-/// last four digits of somebody's number on the wire are not.
+/// again, typed on an IME, and `２０２６．０８．２５` is that date with the dot
+/// the same IME gives — a fullwidth-dotted digit run adding to seven digits or
+/// more is placeheld exactly as the ASCII-dotted `2026.08.25` already was.
+/// Each is the price of one widening, and each is the same one-directional
+/// trade `phone_shape_end` already documents: a placeholder too many is
+/// something the user can see and work around, and the last four digits of
+/// somebody's number on the wire are not.
 ///
 /// Naming the year-range and date shapes to excuse them would excuse every
 /// number punctuated the same way along with them, which is letting a number
@@ -363,6 +377,10 @@ fn a_year_range_and_a_fullwidth_date_are_placeheld_too_and_that_is_the_trade() {
         ),
         (
             "合同签在 ２０２６－０８－２５，别记错。",
+            format!("合同签在 {ACCOUNT_PLACEHOLDER}，别记错。"),
+        ),
+        (
+            "合同签在 ２０２６．０８．２５，别记错。",
             format!("合同签在 {ACCOUNT_PLACEHOLDER}，别记错。"),
         ),
     ] {
@@ -484,11 +502,28 @@ fn a_name_in_front_of_a_verb_of_saying_is_placeheld_inside_an_exempted_turn() {
 
 /// A short number is not an account. Placeholders that fire on everything are
 /// as useless as placeholders that never fire.
+///
+/// The same sentence typed on a fullwidth IME is the same sentence: the
+/// widenings taught the shape more spellings of a separator, not more ways for
+/// one to reach across a comma or a Han character. And two separators in a row
+/// still end the run, in either width, so `１２３４．．５６７` is not the seven
+/// digits a single dot between the groups would have made it.
 #[test]
 fn short_numbers_and_ordinary_words_are_left_alone() {
     let redactor = Redactor::new(KnownIdentifiers::new());
-    let redacted = redactor.redact_for_e1(&[own("下午 3 点，第 2 会议室，预算 45000。")]);
-    assert_eq!(redacted.as_str(), "下午 3 点，第 2 会议室，预算 45000。");
+
+    for body in [
+        "下午 3 点，第 2 会议室，预算 45000。",
+        "下午 ３ 点，第 ２ 会议室，预算 ４５０００。",
+        "上一段编号 １２３４．．５６７ 到此为止。",
+        "上一段编号 1234..567 到此为止。",
+    ] {
+        assert_eq!(
+            redactor.redact_for_e1(&[own(body)]).as_str(),
+            body,
+            "digits that never touch were joined into a number",
+        );
+    }
 }
 
 /// `mixed` is handled as third-party. PRODUCT_LOCK says so, and the part that
