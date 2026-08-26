@@ -7,29 +7,44 @@ Process: Fable (`claude-fable-5-thinking-xhigh`) scans/reviews; Opus (`claude-op
 
 ## Current round
 
-**ROUND 14** — review the fullwidth-dot landing and rotate leftover honesty/reliability scans toward the 20-round floor. Do not re-open closed R4–R13 items (D55, D61–D63, P2 E1 mutex, fileplan, config.json, COMMANDS=38, contiguous+grouped+fullwidth/dash-family+fullwidth-dot phone shape, tray mutex, NSIS data-dir hook, keys.dpapi create_new, cloud toggle inert, import-tx wrap, questionnaire `transact` wrap). Do not land U+2015/U+00AD/U+FE58/U+FE63/U+30FC unless new paste-vector evidence appears.
+**ROUND 15** — honest scan-only toward the 20-round floor. Do not re-open closed R4–R14 items. Do not land U+2015/U+00AD/U+FE58/U+FE63/U+30FC or NBSP U+00A0/U+202F unless new zh-CN paste-vector evidence appears. Do not persist collect consent. Do not bump schema version. Do not merge to `main`.
 
 | Field | Value |
 |---|---|
-| Current task | Round 13 closed. Landed U+FF0E phone separator. Round 14 Fable: landing review; NBSP group spaces; eleven-route state; schema freeze; research_export; E1 cap/HITL; keys.dpapi honesty; IPC 38/38; store_opened; landable vs 20-round floor. |
+| Current task | Round 14 closed. No product landing (NBSP declined: mechanical miss, no proven CN-mobile paste vector). Round 15 Fable: collect session-only; forget-impact bind; Graph same-band; T4D projection on Graph; wizard refusal; A2 renderer; fileplan write-absence; e0-audit; smoke gates; landable vs 20-round floor. |
 | Parent model | product/account setting |
 | Hosted CI | `BLOCKED` — billing/spending |
-| Exclusive tip | `080d5c0` (+ this docs closeout); PR #15 |
+| Exclusive tip | `aa6254e` (+ this docs closeout); PR #15 |
 
-### Round 14 Fable dispatch
+### Round 15 Fable dispatch
 
 | # | Direction |
 |---|---|
-| 1 | Review the fullwidth-dot landing (`77b7402` / merge `080d5c0`) for regressions |
-| 2 | Remaining space leftovers after U+0020/U+3000: NBSP U+00A0, narrow NBSP U+202F (Word/PDF paste) |
-| 3 | Eleven-route UI state still agrees after intake wrap + identifier widenings |
-| 4 | Schema freeze vs `schemas.lock.json` (version still 2; no silent bump) |
-| 5 | Research preview still honors `research_export` / ZeroThirdPartyRows |
-| 6 | E1 4 MiB body cap and HITL approval still hold; do not open a model socket |
-| 7 | `keys.dpapi` `create_new` comment vs actual reclaim path (honesty only) |
-| 8 | Desktop `ipc_roundtrip` still covers all 38 COMMANDS |
-| 9 | Closed-store `opened_store()?` on prepare/generate still holds; paste stays store-free |
+| 1 | Collect consent still session-only; `config.json` still has no collect field (D63) |
+| 2 | Forget preview still binds to the impact the user read |
+| 3 | Graph/Profile same-band pin still holds |
+| 4 | T4D demotion-clock projection still renders on Graph `person_summary` |
+| 5 | Wizard refusal still `{reason_code, explanation}` with no quoted secrets |
+| 6 | A2 renderer still frozen (no new analysis surface) |
+| 7 | Fileplan still preview-only; no execute button (AC-27 is v0.1.1) |
+| 8 | `xtask e0-audit` still has a single HTTP client in soul-egress |
+| 9 | Local gate counts still match STATUS (vitest 190, ipc_roundtrip 56) |
 | 10 | Synthesis: remaining landable v0.1 slices vs 20-round floor vs author-machine-only |
+
+## ROUND 14 record
+
+| Field | Value |
+|---|---|
+| ROUND | 14 |
+| 子代理任务 | 10× Fable: fullwidth-dot landing review; NBSP/narrow-NBSP spaces; eleven-route state; schema freeze; research_export; E1 cap/HITL; keys.dpapi honesty; IPC 38/38; store_opened; landable vs 20-round floor |
+| 发现问题 | U+00A0/U+202F between digit groups mechanically skip `phone_shape_end` (dedicated scan). Proven zh-CN mobile paste is U+202D/U+202C wrappers around ASCII-space groups, which already placehold. No Word/WPS/PDF exhibit of NBSP *between* CN mobile groups |
+| 修复问题 | None. Parent declined NBSP landing (same paste-vector bar as R13 Pd family). Synthesis HIGH_VALUE on U+00A0 was conditional on that bar |
+| 测试结果 | Reviewers at `aa6254e`: redactor 16+16; leakage_checker 10; fixture_corpus 9; session_e1 33; research_preview 5; vitest 190; ipc_roundtrip 56; command_surface 6; schema-freeze --check matches lock; STORE_SCHEMA_VERSION still 2 |
+| Commit | this closeout (docs) |
+| PR | #15 |
+| Merge状态 | Exclusive → `main` still `BLOCKED`. PR #7 still not merged |
+| 下一轮重点 | Collect session-only; forget-impact bind; Graph same-band; T4D on Graph; wizard refusal; A2 freeze; fileplan write-absence; e0-audit; local gate counts; synthesis toward 20-round floor |
+| NO_HIGH_VALUE | Fullwidth-dot landing (already merged); NBSP as paste vector; eleven-route state; schema freeze; research_export; E1 cap/HITL; keys.dpapi honesty; IPC 38/38; closed-store prepare/generate |
 
 ## ROUND 13 record
 
