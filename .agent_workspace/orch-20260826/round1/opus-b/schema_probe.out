@@ -1,0 +1,28 @@
+探针    说明                                              期望   实测   依据
+--------------------------------------------------------------------------------
+P01   空对象仍合法（D59）                                     合法   合法   D59  一致
+P02   整套 T4D 可复核面                                     合法   合法   D58/D59  一致
+P03   声明 T4D 但缺 silent_days                           拒绝   拒绝   D59 整包必填  一致
+P04   声明 T4D 但缺 as_of_utc                             拒绝   拒绝   D59 / as_of 纪律  一致
+P05   声明 T4D 但缺 direct_active_day_count               拒绝   拒绝   D59 整包必填  一致
+P06   分列计数不带 algorithm_id（棘轮）                         拒绝   拒绝   dependentRequired 棘轮  一致
+P07   silent_days 不带 algorithm_id（棘轮）                 拒绝   拒绝   dependentRequired 棘轮  一致
+P08   band=none 不可存（A2 的 Band::None 无落点）              拒绝   拒绝   缺口 S1  一致
+P09   第三套判档规则偷渡                                       拒绝   拒绝   DECISION §5  一致
+P10   A2 字段名 direct_count 直接落库                        拒绝   拒绝   缺口 S2 字段名不对齐  一致
+P11   last_contact_evidence_id 无落点                    拒绝   拒绝   缺口 S3  一致
+P12   any_direct 无落点                                  拒绝   拒绝   缺口 S4  一致
+P13   locked_by_user=true 但无 user_band（D32 反向未强制）     合法   合法   缺口 S5  一致
+P14   user_band 无 locked_by_user                      拒绝   拒绝   D32 正向已强制  一致
+P15   user_band=null + locked_by_user=false（未锁）       合法   合法   D32/D48  一致
+P16   machine_band 与 band 并存                          合法   合法   D32/D48  一致
+P17   last_direct_contact_utc=null 允许跳过序列化            合法   合法   DECISION §4.3  一致
+P18   裸 band 无 algorithm_id（保留 Goal 1 今日宽松度）          合法   合法   D58 遗留债  一致
+P19   裸 interaction_count 不触发棘轮（棘轮只覆盖 T4D 新字段）        合法   合法   缺口 S6  一致
+P20   silent_days 为负                                  拒绝   拒绝   minimum:0  一致
+P21   silent_days 与 as_of−last_contact 矛盾（无跨字段约束）     合法   合法   缺口 S7  一致
+P22   群聊计数带 algorithm_id 但 direct 全缺                  拒绝   拒绝   D59 整包必填  一致
+P23   user_band 有值但 locked_by_user=false（D32 直接反例）    合法   合法   缺口 S5  一致
+P24   locked_by_user=true 但 user_band=null（D32 直接反例）  合法   合法   缺口 S5  一致
+
+24/24 条探针的实测与报告记录一致。
