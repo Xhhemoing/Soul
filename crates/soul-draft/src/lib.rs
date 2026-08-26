@@ -30,6 +30,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]
 
+pub mod a2_adapt;
 pub mod analysis;
 pub mod brief;
 pub mod draft;

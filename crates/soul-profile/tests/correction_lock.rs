@@ -15,14 +15,14 @@ use uuid::Uuid;
 use soul_profile::service::AxisUpdate;
 use soul_profile::{
     axes, axis_is_locked, correct_axis, intake, profile_view, read_profile, read_voice,
-    record_axis_inference, render, set_voice, suggest_voice, AxisProposal, VoiceDirectness,
-    VoiceRegister, VoiceSetting,
+    record_axis_inference, render, set_voice, suggest_voice, AxisProposal, IntakeSkip,
+    VoiceDirectness, VoiceRegister, VoiceSetting,
 };
 use soul_schema::common::{EvidenceBand, Privacy, Purpose, SchemaVersion, Subject, SupportedBand};
 use soul_schema::evidence::{EvidenceKind, EvidenceMethod, SoulEvidence};
 use soul_schema::inference::InferenceMethod;
 use soul_schema::profile::{AxisPosition, SoulProfile};
-use soul_store_api::{FakeStore, ProfileStore};
+use soul_store_api::{EventStore, FakeStore, ProfileStore};
 
 const NOW: i64 = 1_787_529_600;
 
@@ -201,6 +201,106 @@ fn locking_one_axis_does_not_lock_the_others() {
     assert_eq!(
         position(&profile, axes::CURIOSITY.axis_id),
         AxisPosition::LeansLow,
+    );
+}
+
+/// The other half of the lock, and the one the questionnaire used to walk
+/// through: answering the wizard again is not a correction, so it does not get
+/// to move an axis the user corrected. The answer is still recorded — the user
+/// answered the question, and that is a fact about the user whatever the axis
+/// does with it — and the run says which answers it refused and why.
+#[test]
+fn re_answering_the_questionnaire_does_not_move_a_corrected_axis() {
+    let (mut store, profile_id) = seeded();
+    correct_axis(
+        &mut store,
+        profile_id,
+        axes::CURIOSITY.axis_id,
+        AxisPosition::LeansLow,
+        NOW,
+    )
+    .expect("correction");
+    let corrected_evidence = read_profile(&store, profile_id)
+        .expect("profile")
+        .trait_axes
+        .iter()
+        .find(|axis| axis.axis_id == axes::CURIOSITY.axis_id)
+        .and_then(|axis| axis.evidence_ids.clone())
+        .expect("the correction is cited");
+
+    let response =
+        soul_profile::questionnaire::every_axis(AxisPosition::LeansHigh, "2026-08-25T09:00:00Z");
+    let outcome = intake(&mut store, profile_id, &response, NOW).expect("intake");
+
+    assert_eq!(
+        outcome.evidence_ids.len(),
+        5,
+        "all five answers were recorded, including the one that lost",
+    );
+
+    let ignored = match outcome.ignored.as_slice() {
+        [only] => *only,
+        other => panic!("exactly one answer hit a locked axis, got {other:?}"),
+    };
+    assert_eq!(ignored.axis_id, axes::CURIOSITY.axis_id);
+    assert_eq!(ignored.question_id, axes::CURIOSITY.question_id);
+    assert_eq!(ignored.position, AxisPosition::LeansHigh);
+    assert_eq!(ignored.reason, IntakeSkip::AxisLockedByUser);
+    assert_eq!(ignored.reason.as_str(), "axis_locked_by_user");
+    assert!(outcome.ignored_any());
+    assert_eq!(outcome.ignored_ids(), vec![ignored.evidence_id]);
+    assert!(
+        outcome.evidence_ids.contains(&ignored.evidence_id),
+        "the refused answer is one of the run's rows, not a row that went missing",
+    );
+
+    let evidence = store
+        .get_evidence(ignored.evidence_id)
+        .expect("the refused answer's evidence row exists and resolves");
+    assert_eq!(evidence.kind, EvidenceKind::Questionnaire);
+    assert_eq!(evidence.method, Some(EvidenceMethod::UserStated));
+    assert!(
+        store.get_event(ignored.event_id).is_ok(),
+        "and so does the event its words are sealed in",
+    );
+
+    let profile = read_profile(&store, profile_id).expect("profile");
+    let curiosity = profile
+        .trait_axes
+        .iter()
+        .find(|axis| axis.axis_id == axes::CURIOSITY.axis_id)
+        .expect("axis");
+    assert_eq!(
+        curiosity.position,
+        AxisPosition::LeansLow,
+        "the correction stands",
+    );
+    assert_eq!(curiosity.locked_by_user, Some(true), "and so does the lock");
+    assert_eq!(
+        curiosity.evidence_band,
+        EvidenceBand::Strong,
+        "the axis was not quietly downgraded to what a questionnaire is worth",
+    );
+    assert_eq!(
+        curiosity.evidence_ids.as_ref(),
+        Some(&corrected_evidence),
+        "it still cites the correction, not the answer that lost",
+    );
+
+    let orderliness = profile
+        .trait_axes
+        .iter()
+        .find(|axis| axis.axis_id == axes::ORDERLINESS.axis_id)
+        .expect("axis");
+    assert_eq!(
+        orderliness.position,
+        AxisPosition::LeansHigh,
+        "an axis the user never corrected still moves; the lock is per axis",
+    );
+    assert_eq!(orderliness.evidence_band, EvidenceBand::Moderate);
+    assert_eq!(
+        outcome.profile, profile,
+        "what the run returned is what was written",
     );
 }
 

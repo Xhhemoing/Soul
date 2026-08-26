@@ -2,6 +2,8 @@
 
 单一事实来源。每个子代理完工必须更新本文件。
 
+核于 2026-08-26。本树是 Goal 1 关闭线 `cursor/goal1-closeout-c49c`，已 merge `origin/main` @ `a0ec14b`（M2）。T4D/A0/A2 已走产品路径：`TieEdgeView` 带 `venue_split_measured` / `direct_count` / `group_count`，图上同屏报一对一与群里两个数（分列缺席则整句不出）。`Session::correct_tie` 锁边后 A2 只消费生效档。AC-34 Telegram owner 群消息不扇出。`COMMANDS` 含 `correct_tie` / `release_tie`。本机 `cargo test --workspace --all-targets` 与 `pnpm --filter @soul/desktop test`（164）绿。**作者 Win11 清单与 hosted AC-26（私库 Billing）仍未过，不在代理解的范围内。** 不要启动 Goal 2，不要做 AC-27。
+
 ## 当前里程碑
 
 **`PLAN_FROZEN`**。Goal 1 **还不能关**。
@@ -30,13 +32,13 @@ Goal 1 已开工：分支 `cursor/soul-goal1-7b1c`。文档 PR `#1` 不夹带应
 | WP01 骨架 | 完成。见下节 |
 | WP02 数据面 | 完成。见下节 |
 | WP08 权限面 | 完成。见下节 |
-| WP03 档案 | 完成。见下节。与 WP06 的两套问卷已并成一套（见「WP06 与 WP03 的接缝」） |
+| WP03 档案 | 完成，并吸收 A0 锁（G2）：intake 对锁定轴不 `place_axis`，`ignored` 带 `axis_locked_by_user`；见 `intake_replay.rs` |
 | WP04 自传记忆 | 完成。见下节 |
-| WP05 人脉图 | 完成。见下节 |
+| WP05 人脉图 | 完成，并吸收 T4D（G1/G1+/G3）：重建走 `soul_algo_tie`；owner 群消息不扇出；`correct_tie`/`release_tie` 已进 Session 与桌面 IPC |
 | WP06 导入 | 完成。见下节。问卷回退与 WP03 的入档路径已合并，`soul-profile` 实现 `UserStatedSink` |
 | WP07 前台采集 | 完成。见下节。壳这一侧由 WP09 第五段接上——在那之前 crate 有门、产品没有开关 |
 | WP09 桌面壳 | 十段都完成。见下节。壳里那一个 store 句柄由 WP13 第二段落地（遗留 8 消除），十一道题与最后四条功能视图是第三段（遗留 9 消除），`/import` 那一屏是第四段——在此之前装出来的 Soul 读不了任何导出文件；`/collect` 那一屏是第五段——在此之前装出来的 Soul 打不开采集；设置页的端点表单是第六段——在此之前那行「语言模型端点」永远是「未填写」；确认屏上的「这一条按原文带上」是第七段——在此之前 AC-13 的二次确认没有地方按；起草读用户钉住的语气、起草 / E1 / 文件计划的审计落链是第八段——在此之前档案页的语气到不了任何写字的地方，`/audit` 上也没有这三种动作；档案页再答十一题是第九段——在此之前向导走完就再也问不到边界与价值观；人事摘要走用户端点、拒绝与文件名注入落链是第十段 |
-| WP10 起草与人事摘要 | 完成。见下节。本机路径与端点路径的确认屏都已接上（遗留 6 消除）。壳的 `KnownIdentifiers` 已从第三人显示名填上（遗留 7 消除）。端点本身要到 WP09 第六段才有地方填，二次确认要到第七段才有地方按，用户钉住的语气要到第八段才真的进 prompt。`analysis::phrase_with` 接到 `Session::person_summary` 是 WP09 第十段 |
+| WP10 起草与人事摘要 | 完成，并吸收 A2：`soul-draft` 走 `a2_render`，无第二套阈值；D52 等值测试在 `day_constants_agree.rs` |
 | WP11 文件计划 | 完成。见下节。`/files` 已接 `PlanPreview`，仍然没有执行按钮（遗留 8 消除）。预览写 `file.plan` 审计是 WP09 第八段；拒绝与 `injection.blocked` 落链是第十段 |
 | WP13 安装 smoke / CI / SBOM / 壳接库 | 两段都完成。见下节。剩下的是 Windows 真机手动那七条 |
 | DPAPI（WP13 遗留） | 完成。见「DPAPI 完成情况」。`unsafe` 隔离在 `crates/soul-win-dpapi`。windows-latest 已跑过 `cfg(windows)` 往返、`dpapi_key_chain`、桌面 `one_store`（`one_session_hands_out_one_store` 过） |

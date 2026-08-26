@@ -13,7 +13,13 @@ description = "Drafting that never sends, and people summaries that never claim 
 # a draft says about the user comes from `soul-profile`; everything a summary
 # says about a person comes from `soul-graph` edges and the evidence rows the
 # caller resolved.
+#
+# `soul-algo-trait` is the frozen A2 renderer and is a plain dependency because
+# the people summary's wording is its output, not this crate's (D40). The edge
+# is one way: the renderer takes counts and returns sentences, and knows nothing
+# about a store, a graph or a draft.
 [dependencies]
+soul-algo-trait = { workspace = true }
 soul-schema = { workspace = true }
 soul-policy = { workspace = true }
 soul-profile = { workspace = true }
@@ -29,6 +35,7 @@ uuid = { workspace = true }
 # rather than against a re-serialization of it. `xtask e0-audit` does not
 # follow dev edges, so this does not make the crate an egress path.
 [dev-dependencies]
+soul-algo-tie = { workspace = true }
 soul-egress = { workspace = true }
 soul-store-api = { workspace = true }
 soul-testkit = { workspace = true }

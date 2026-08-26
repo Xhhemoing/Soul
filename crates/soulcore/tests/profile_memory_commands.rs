@@ -233,6 +233,82 @@ fn a_voice_the_user_set_is_what_the_draft_layer_reads_back() {
     );
 }
 
+/// D39: a re-filled questionnaire that hits an axis the user has corrected
+/// says so, and does not count the refused answer as an answer.
+///
+/// The evidence row is still written — the user answered the question, and
+/// that is a fact about them whatever the axis does with it — so the receipt
+/// carries two ids and one of them is named as ignored. A receipt that
+/// reported `answered: 2` here would be telling the user their correction had
+/// been taken as a third opinion.
+#[test]
+fn an_answer_a_correction_refuses_is_reported_as_ignored_rather_than_answered() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let profile_id = Uuid::now_v7();
+    let mut store = store_commands::open_test_store(dir.path(), SEED).expect("open");
+
+    let first =
+        profile_commands::intake_from(&mut store, profile_id, &two_given(), ANSWERED_AT, NOW)
+            .expect("the first run");
+    assert_eq!(first.answered, 2);
+    assert!(first.ignored.is_empty(), "nothing is locked yet");
+
+    profile_commands::correct_axis(
+        &mut store,
+        profile_id,
+        CURIOSITY.axis_id,
+        AxisPosition::Mixed,
+        NOW,
+    )
+    .expect("the user rules on curiosity");
+
+    let again =
+        profile_commands::intake_from(&mut store, profile_id, &two_given(), ANSWERED_AT, NOW)
+            .expect("the second run");
+    assert_eq!(
+        again.evidence_ids.len(),
+        2,
+        "both answers are recorded; one of them simply does not move an axis",
+    );
+    assert_eq!(again.ignored.len(), 1);
+    assert_eq!(again.ignored[0].question_id, CURIOSITY.question_id);
+    assert_eq!(again.ignored[0].reason, "axis_locked_by_user");
+    assert_eq!(
+        again.answered, 1,
+        "`answered` counts the answers that moved something",
+    );
+
+    let view = profile_commands::view(&store, profile_id).expect("the view resolves");
+    let curiosity = view
+        .axes
+        .iter()
+        .find(|axis| axis.axis_id == CURIOSITY.axis_id)
+        .expect("curiosity is in the view");
+    assert_eq!(
+        curiosity.position,
+        AxisPosition::Mixed,
+        "re-answering does not overwrite a correction",
+    );
+    assert!(curiosity.locked_by_user);
+}
+
+/// 2026-08-24T00:00:00Z, as the questionnaire spells it.
+const ANSWERED_AT: &str = "2026-08-24T00:00:00Z";
+
+/// The same two answers a wizard would hand in.
+fn two_given() -> Vec<profile_commands::GivenAnswer> {
+    [
+        (CURIOSITY.question_id, AxisPosition::LeansHigh),
+        (ORDERLINESS.question_id, AxisPosition::LeansLow),
+    ]
+    .into_iter()
+    .map(|(question_id, position)| profile_commands::GivenAnswer {
+        question_id: question_id.to_owned(),
+        given: soul_profile::axes::position_key(position).to_owned(),
+    })
+    .collect()
+}
+
 /// Two axis answers, which is enough to prove the surface is wired without
 /// restating `soul-profile`'s own fixture-driven intake test.
 fn two_answers() -> QuestionnaireResponse {

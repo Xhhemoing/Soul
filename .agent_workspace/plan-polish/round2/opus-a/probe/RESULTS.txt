@@ -1,0 +1,37 @@
+# 基线：Goal 1 @ 6c91d39 的 docs/schemas/（tie_strength 仍是裸 object）
+schemas dir : /tmp/base-schemas
+relationship: df34747e28ef2e01ff02f094b26a2b7722c096256563474835f2c61f1ec122ff
+
+  FAIL struct/tie_strength_additionalProperties_false
+  FAIL struct/tie_strength_has_dependentRequired
+  FAIL struct/tie_strength_has_if_then
+  FAIL struct/tie_strength_is_typed — tie_strength 仍是裸 object，没有 properties
+  FAIL struct/band_enum_excludes_none — None
+  FAIL struct/band_refs_defs
+  FAIL struct/algorithm_id_enum_two_values
+  FAIL struct/no_score_like_property — 裸 object 挡不住 ['percentile', 'rank', 'score', 'tie_weight', 'weight']
+  FAIL struct/then_requires_split_counts
+  FAIL struct/then_requires_as_of
+  FAIL struct/then_requires_base_eight
+  FAIL reject/score_field — 本应被拒却通过了
+  FAIL reject/partial_t4d_extras — 本应被拒却通过了
+  FAIL reject/algorithm_id_alone — 本应被拒却通过了
+  FAIL reject/t4d_missing_as_of — 本应被拒却通过了
+  FAIL reject/t4d_missing_direct_active_days — 本应被拒却通过了
+  FAIL reject/t4d_missing_silent_days — 本应被拒却通过了
+  FAIL reject/t4d_missing_band — 本应被拒却通过了
+  FAIL reject/silent_days_without_algorithm_id — 本应被拒却通过了
+  FAIL reject/as_of_without_algorithm_id — 本应被拒却通过了
+  FAIL reject/tie_weight_field — 本应被拒却通过了
+  FAIL reject/percentile_field — 本应被拒却通过了
+  FAIL reject/band_none — 本应被拒却通过了
+  FAIL reject/negative_count — 本应被拒却通过了
+  FAIL reject/third_algorithm_id — 本应被拒却通过了
+  FAIL reject/as_of_as_unix_integer — 本应被拒却通过了
+31/57 passed
+
+# 落地后：本分支 docs/schemas/
+schemas dir : /workspace/docs/schemas
+relationship: 350a7ffc61ab78652518b07f5bb02fea8ee567d66f3bd5d5f9411364f9752aca
+
+57/57 passed

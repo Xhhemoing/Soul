@@ -48,6 +48,8 @@ describe("人脉图页", () => {
 
     const ties = screen.getByTestId("ties-list");
     expect(ties).toHaveTextContent("发出 3");
+    expect(ties).toHaveTextContent("一对一 6 次");
+    expect(ties).toHaveTextContent("群里 0 次");
     expect(ties).toHaveTextContent("一对一说过话");
     expect(screen.getByTestId("tie-evidence")).toHaveTextContent("依据 2 条证据");
 
@@ -71,6 +73,25 @@ describe("人脉图页", () => {
     expect(localOnly).toHaveTextContent("最近一次往来的日期");
     expect(localOnly).toHaveTextContent("哪一档");
     expect(localOnly).toHaveTextContent("不带姓名");
+  });
+
+  it("遗留边没有分列时，屏幕不把缺席说成一对一零次", async () => {
+    const graph = aPeopleGraph();
+    await open({
+      graph: {
+        ...graph,
+        ties: graph.ties.map((tie) => ({
+          ...tie,
+          venue_split_measured: false,
+          direct_count: 0,
+          group_count: 0,
+        })),
+      },
+    });
+    const ties = screen.getByTestId("ties-list");
+    expect(ties).toHaveTextContent("往来 6 次");
+    expect(ties).not.toHaveTextContent("一对一 0 次");
+    expect(ties).not.toHaveTextContent("群里 0 次");
   });
 
   /**
@@ -102,6 +123,20 @@ describe("人脉图页", () => {
     expect(screen.getByTestId("summary-notice")).toHaveTextContent(WORKING_HYPOTHESIS_NOTICE);
     expect(core.callsTo("person_summary")[0]?.payload).toEqual({
       contactId: "0192f000-0000-7000-8000-000000000002",
+    });
+  });
+
+  it("可以把一条边锁定，屏幕写生效档按你锁定的来，不出现未批准的指定句", async () => {
+    const core = await open({ graph: aPeopleGraph() });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "锁定为往来较多" }));
+    expect(await screen.findByTestId("tie-lock")).toHaveTextContent("生效档按你锁定的来");
+    expect(screen.getByTestId("tie-lock").textContent ?? "").not.toContain(
+      ["由你本人", "指定"].join(""),
+    );
+    expect(core.callsTo("correct_tie")[0]?.payload).toEqual({
+      relationshipId: "0192f000-0000-7000-8000-00000000000a",
+      band: "strong",
     });
   });
 

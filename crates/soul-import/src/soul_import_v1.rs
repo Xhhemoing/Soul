@@ -293,9 +293,10 @@ fn check_instant<'a>(object: &Map<String, Value>, field: &'a str, faults: &mut V
 
 /// Conversations with more than one other person in them.
 ///
-/// The distinction matters to the graph: a message the user sent in a group is
-/// evidence of contact with everyone who was there, and a tie only ever seen
-/// in a group is a weaker thing than a tie built one to one.
+/// The distinction matters to the graph: a tie only ever seen in a group is a
+/// weaker thing than one built one to one, and a message the user sent to a
+/// group is not attributed to anybody, because the file does not say who was
+/// listening.
 fn crowded_conversations(
     messages: &[(usize, ImportMessage)],
     participants: &ParticipantIndex,
