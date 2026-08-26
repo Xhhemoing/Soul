@@ -318,10 +318,11 @@ pub const ROUNDING_RAMP_GREY: u8 = 234;
 
 /// The parity cases, in the order their files are named.
 ///
-/// Five, covering what T-PAR-1 asks for: the pixel-art path, the photograph
-/// path with dithering off and on, and an image with a hole in it — plus the
-/// dither ramp the round 2 alignment review asked for, which crosses the
-/// lookup's rounding boundary.
+/// Six, covering what T-PAR-1 asks for: the pixel-art path, the photograph path
+/// with dithering off and on, and an image with a hole in it — plus the two the
+/// round 2 alignment review asked for, a dither ramp that crosses the lookup's
+/// rounding boundary and a hole read through the box filter rather than the
+/// nearest sampler.
 pub fn cases() -> Vec<ParityCase> {
     vec![
         pixel_art_case(),
@@ -329,6 +330,7 @@ pub fn cases() -> Vec<ParityCase> {
         photo_case("photo-dithered", Dither::FloydSteinberg),
         transparent_case(),
         dither_rounding_case(),
+        transparency_box_average_case(),
     ]
 }
 
@@ -479,6 +481,73 @@ fn dither_rounding_case() -> ParityCase {
         },
         // One source pixel per cell: the ramp reaches the dither untouched.
         sampling: Sampling::Nearest,
+        dither: Dither::FloydSteinberg,
+    }
+}
+
+/// The mask [`transparency_box_average_case`] cuts out of its colour ramp: `#`
+/// is opaque, `.` is fully transparent. An octagonal ring, drawn so that the
+/// 2×2 source block behind each cell is 0, 2, 3 or 4 pixels opaque.
+const RING_MASK: [&str; 12] = [
+    "...######...",
+    "..########..",
+    ".##########.",
+    "###......###",
+    "##........##",
+    "##........##",
+    "##........##",
+    "##........##",
+    "###......###",
+    ".##########.",
+    "..########..",
+    "...######...",
+];
+
+/// A hole read through the box filter instead of the nearest sampler.
+///
+/// `with-transparency` pins what an empty cell does to the bill and to the four
+/// step orders, but it samples nearest, so every cell it produces inherits one
+/// source pixel's alpha and the question of what a *partly* covered cell is
+/// never comes up. The photograph cases do use the box filter and are fully
+/// opaque. This case is the missing combination.
+///
+/// The box filter averages alpha over every covered sample and re-thresholds
+/// it, but averages colour over the opaque samples only. The ring
+/// is drawn so both halves of that rule are load-bearing: each cell covers a
+/// 2×2 block, and the blocks along the ring's diagonal edges are 2 or 3 pixels
+/// opaque. Two of four averages to 127.5, half a code value under the 128
+/// threshold, and the cell comes out empty; three of four averages to 191.25
+/// and the cell is a bead whose colour is the mean of those three, with the
+/// transparent corner contributing nothing.
+///
+/// Dithering is on so that the box filter's partial cells also pin G7's rule
+/// that an empty cell neither receives nor relays quantisation error.
+fn transparency_box_average_case() -> ParityCase {
+    let mut pixels = Vec::with_capacity(12 * 12);
+    for y in 0..12u32 {
+        for x in 0..12u32 {
+            let opaque = RING_MASK[y as usize].as_bytes()[x as usize] == b'#';
+            pixels.push(if opaque {
+                Rgba::new(
+                    (40 + x * 17) as u8,
+                    (60 + y * 15) as u8,
+                    (220 - x * 9 - y * 6) as u8,
+                    255,
+                )
+            } else {
+                Rgba::TRANSPARENT
+            });
+        }
+    }
+    ParityCase {
+        name: "transparency-box-average".to_owned(),
+        image: Image::from_pixels(12, 12, pixels).expect("12x12"),
+        fit: FitMode::FixedBoards {
+            board: crate::fit::BoardSpec::new("6x6", 6, 6),
+            cols: 1,
+            rows: 1,
+        },
+        sampling: Sampling::BoxAverage,
         dither: Dither::FloydSteinberg,
     }
 }

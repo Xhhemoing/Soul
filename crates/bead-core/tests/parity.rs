@@ -13,7 +13,7 @@
 //! cargo run --example emit-parity-fixtures --manifest-path crates/bead-core/Cargo.toml
 //! ```
 
-use bead_core::color::{to_channel, Rgba};
+use bead_core::color::{srgb_compress, srgb_expand, to_channel, Rgba};
 use bead_core::detect::ImageKind;
 use bead_core::fit::Sampling;
 use bead_core::image::Image;
@@ -34,17 +34,21 @@ fn committed(name: &str) -> &'static str {
         "photo-dithered" => include_str!("../fixtures/parity/photo-dithered.json"),
         "with-transparency" => include_str!("../fixtures/parity/with-transparency.json"),
         "dither-rounding" => include_str!("../fixtures/parity/dither-rounding.json"),
+        "transparency-box-average" => {
+            include_str!("../fixtures/parity/transparency-box-average.json")
+        }
         other => panic!("`{other}` has no committed fixture; run the emit example"),
     }
 }
 
 /// Every committed case, in the order `cases()` names them.
-const CASE_NAMES: [&str; 5] = [
+const CASE_NAMES: [&str; 6] = [
     "pixel-art",
     "photo-flat",
     "photo-dithered",
     "with-transparency",
     "dither-rounding",
+    "transparency-box-average",
 ];
 
 /// T-PAR-1: every case reproduces its committed file byte for byte.
@@ -97,6 +101,15 @@ fn the_fixture_set_covers_the_paths_the_review_names() {
         Sampling::Nearest,
         "the ramp has to reach the dither unresampled, or the rounding it pins \
          would be the box filter's rather than the lookup's"
+    );
+
+    let soft_edge = by_name("transparency-box-average");
+    assert_eq!(soft_edge.sampling, Sampling::BoxAverage);
+    assert_eq!(soft_edge.dither, Dither::FloydSteinberg);
+    assert!(
+        soft_edge.image.as_slice().iter().any(|p| !p.is_opaque()),
+        "the box-average case has to contain a hole too — that is the whole \
+         combination it adds"
     );
 }
 
@@ -182,6 +195,78 @@ fn the_dither_ramp_turns_on_how_the_lookup_rounds() {
         "the committed grid has to be on the rounded side of the fork, or the \
          fixture pins nothing about rounding"
     );
+}
+
+/// AL-4: the box filter averages alpha over every covered sample and colour
+/// over the opaque ones. `transparency-box-average` is drawn so both halves are
+/// load-bearing, and this says which cells prove which half.
+#[test]
+fn the_box_filtered_hole_straddles_the_alpha_threshold() {
+    let palette = Palette::generic_5mm();
+    let case = cases()
+        .into_iter()
+        .find(|c| c.name == "transparency-box-average")
+        .expect("transparency-box-average");
+    let plan = bead_core::fit::plan(case.image.width(), case.image.height(), &case.fit)
+        .expect("a valid framing");
+    let sampled = bead_core::fit::render(&case.image, &plan, case.sampling);
+    assert_eq!((sampled.width(), sampled.height()), (6, 6));
+
+    // Each cell covers a 2×2 block of source pixels.
+    let covered = |cx: u32, cy: u32| -> Vec<Rgba> {
+        let mut opaque = Vec::new();
+        for y in 2 * cy..2 * cy + 2 {
+            for x in 2 * cx..2 * cx + 2 {
+                let pixel = case.image.as_slice()[(y * 12 + x) as usize];
+                if pixel.is_opaque() {
+                    opaque.push(pixel);
+                }
+            }
+        }
+        opaque
+    };
+
+    let mut seen = [0usize; 5];
+    for cy in 0..6 {
+        for cx in 0..6 {
+            let opaque = covered(cx, cy);
+            seen[opaque.len()] += 1;
+            let cell = sampled.as_slice()[(cy * 6 + cx) as usize];
+            // Mean alpha over all four samples, thresholded at 128: two of four
+            // is 127.5 and loses by half a code value, three of four is 191.25.
+            assert_eq!(
+                cell.is_opaque(),
+                opaque.len() >= 3,
+                "cell ({cx}, {cy}) covers {} opaque source pixels",
+                opaque.len()
+            );
+        }
+    }
+    assert!(
+        seen[2] > 0 && seen[3] > 0,
+        "the ring has to have cells on both sides of the threshold, not just \
+         empty and full ones: {seen:?}"
+    );
+
+    // A three-of-four cell takes its colour from those three alone; letting the
+    // transparent corner contribute would drag it towards whatever sits behind
+    // the alpha.
+    let (cx, cy) = (0, 1);
+    let opaque = covered(cx, cy);
+    assert_eq!(opaque.len(), 3);
+    let mean = |channel: fn(&Rgba) -> u8| {
+        let sum: f64 = opaque
+            .iter()
+            .map(|p| srgb_expand(f64::from(channel(p)) / 255.0))
+            .sum();
+        to_channel(srgb_compress(sum / opaque.len() as f64) * 255.0)
+    };
+    let cell = sampled.as_slice()[(cy * 6 + cx) as usize];
+    assert_eq!(
+        (cell.r, cell.g, cell.b, cell.a),
+        (mean(|p| p.r), mean(|p| p.g), mean(|p| p.b), 255)
+    );
+    assert!(palette.nearest_rgba(cell).is_some());
 }
 
 /// T-PAR-2: the input is raw RGBA and nothing else. No PNG, no JPEG, no ICC
