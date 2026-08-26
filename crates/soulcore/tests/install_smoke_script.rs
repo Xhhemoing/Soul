@@ -208,7 +208,67 @@ fn the_script_finds_the_installer_under_programs_not_the_data_directory() {
     );
 }
 
-/// Uninstall must remove only the install tree, never the DPAPI/database directory.
+/// Uninstall has to be shown to have spared the store, not assumed to have.
+///
+/// The NSIS `PREUNINSTALL` hook refuses when `$INSTDIR` is the data directory,
+/// and the test below proves this script deletes nothing there itself. Neither
+/// says what the uninstaller did to `keys.dpapi`, and on a clean machine there
+/// is nothing to say: `soul-headless smoke` runs in a scratch store and
+/// deletes it, so phase 3 never creates the real one. Hence the witness — a
+/// sentinel planted when the file is absent, a fingerprint when it is not, and
+/// a byte-identity check on the far side of the uninstall.
+#[test]
+fn the_uninstall_phase_proves_the_user_data_files_survived() {
+    let blob = soulcore::commands::session::KEY_BLOB_FILE_NAME;
+    let database = soulcore::commands::store::DATABASE_FILE_NAME;
+    assert_eq!(blob, "keys.dpapi");
+    assert_eq!(database, "soul.db");
+
+    for name in [blob, database] {
+        assert!(
+            SCRIPT.contains(&format!("'{name}'")),
+            "install-smoke.ps1 never names {name}, so nothing checks it outlived the uninstaller",
+        );
+    }
+    assert!(
+        SCRIPT.contains("is still in the data directory"),
+        "the uninstall phase records no finding about the data directory",
+    );
+
+    // The directory it looks in is %LOCALAPPDATA%\Soul, not the install tree
+    // under %LOCALAPPDATA%\Programs\Soul.
+    assert!(
+        SCRIPT.contains("Join-Path $env:LOCALAPPDATA $script:ProductName"),
+        "the uninstall phase does not look at the data directory at all",
+    );
+
+    // Existing and still there are two different questions, and both are asked.
+    assert!(SCRIPT.contains("New-UserDataWitness"));
+    assert!(
+        SCRIPT.contains("Test-FingerprintsMatch"),
+        "the files are checked for existence but not for content",
+    );
+    assert!(
+        SCRIPT.contains("soul-install-smoke-witness"),
+        "a clean machine has no store to spare, so the script has to plant one",
+    );
+
+    // And the sentinel is taken back: a fake keys.dpapi left on the machine is
+    // the first thing a real first launch would try to open.
+    assert!(
+        SCRIPT.contains("Remove-PlantedWitness"),
+        "a planted sentinel is never removed",
+    );
+    assert!(
+        SCRIPT.contains("if (-not $witness.Planted) { continue }"),
+        "the cleanup does not distinguish a sentinel from the user's own store",
+    );
+}
+
+/// Uninstall must remove only the install tree, never the DPAPI/database
+/// directory. The sentinel cleanup above deletes a path held in a variable,
+/// which is fine; what is banned is naming the data directory on a line that
+/// deletes.
 #[test]
 fn the_script_does_not_delete_the_data_directory() {
     for pattern in ["Remove-Item", "Remove–Item", "RMDir", "RmDir"] {

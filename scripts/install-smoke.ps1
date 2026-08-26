@@ -30,7 +30,13 @@
       4. The uninstaller runs silently. The install directory
          (%LOCALAPPDATA%\Programs\Soul) must go; user data under
          %LOCALAPPDATA%\Soul must not be removed by this script or the
-         uninstaller.
+         uninstaller, and that is asserted rather than assumed: keys.dpapi and
+         soul.db are fingerprinted before the uninstaller starts and have to
+         be there, byte for byte, after it finishes. On a clean machine there
+         is nothing to fingerprint - soul-headless smoke works in a scratch
+         directory and deletes it - so a missing file is planted as a sentinel
+         first and removed again afterwards. A file that was already there is
+         the person's own store and is only read.
 
 .NOTES
     Run this unelevated. That is the AC-01 check: phase 1 asserts the script's
@@ -291,6 +297,81 @@ function Invoke-SilentUninstaller {
     return (Start-Process -FilePath $uninstaller -ArgumentList @('/S', "_?=$directory") -Wait -PassThru).ExitCode
 }
 
+# --- the store an uninstall must not touch ---------------------------------
+
+# The two files under %LOCALAPPDATA%\Soul whose loss is permanent. keys.dpapi
+# wraps the DEK and exists nowhere else on this machine; soul.db is the only
+# thing it opens. An uninstaller that takes them has not removed a program, it
+# has erased the person's history.
+$script:UserDataFileNames = @('keys.dpapi', 'soul.db')
+
+# A length and a digest rather than the bytes themselves: a real soul.db is as
+# large as the history in it, and this is read twice inside a finally block.
+function Get-FileFingerprint {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    return [pscustomobject]@{
+        Length = (Get-Item -LiteralPath $Path).Length
+        Sha256 = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+    }
+}
+
+function Test-FingerprintsMatch {
+    param(
+        [Parameter(Mandatory)] [object] $Before,
+        [Parameter(Mandatory)] [object] $After
+    )
+
+    return ($Before.Length -eq $After.Length) -and ($Before.Sha256 -eq $After.Sha256)
+}
+
+# Record the state of the user data files before the uninstaller runs.
+#
+# A clean machine has none of them: phase 3 runs the headless smoke against a
+# scratch store and deletes it, and nothing here starts the GUI. On such a
+# machine an uninstaller that wiped the data directory and one that spared it
+# look exactly alike, so a file that is missing is planted with a payload
+# unique to this run. Anything already on disk is the person's own store: it is
+# fingerprinted and never written.
+function New-UserDataWitness {
+    param([Parameter(Mandatory)] [string] $DataDirectory)
+
+    $witnesses = @()
+    foreach ($name in $script:UserDataFileNames) {
+        $path = Join-Path $DataDirectory $name
+        $planted = $false
+        if (-not (Test-Path -LiteralPath $path)) {
+            New-Item -ItemType Directory -Path $DataDirectory -Force | Out-Null
+            $payload = "soul-install-smoke-witness $PID $(Get-Date -Format o) $([guid]::NewGuid())"
+            [System.IO.File]::WriteAllText($path, $payload)
+            $planted = $true
+        }
+
+        $witnesses += [pscustomobject]@{
+            Name        = $name
+            Path        = $path
+            Planted     = $planted
+            Fingerprint = Get-FileFingerprint -Path $path
+        }
+        Write-Host ("  {0} {1}" -f $(if ($planted) { 'planted' } else { 'found  ' }), $path)
+    }
+    return , $witnesses
+}
+
+# Take back the sentinels this run wrote, and nothing else. A fake keys.dpapi
+# left on the machine is the first thing a real first launch would try to open,
+# and the directory itself is never a candidate for deletion.
+function Remove-PlantedWitness {
+    param([Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $Witnesses)
+
+    foreach ($witness in $Witnesses) {
+        if (-not $witness.Planted) { continue }
+        $sentinel = $witness.Path
+        if (-not (Test-Path -LiteralPath $sentinel)) { continue }
+        Remove-Item -LiteralPath $sentinel -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # Run the headless smoke and watch what the operating system says its sockets
 # are doing while it runs.
 function Invoke-HeadlessSmoke {
@@ -504,6 +585,20 @@ catch {
 finally {
     # --- phase 4: uninstall, whatever happened above ------------------------
     if ($installed) {
+        # Recorded before the uninstaller runs, and in its own try: a machine
+        # that will not hold a witness still has to end this run uninstalled.
+        $witnesses = @()
+        try {
+            # %LOCALAPPDATA%\Soul, which is not the install directory.
+            $dataDirectory = Join-Path $env:LOCALAPPDATA $script:ProductName
+            $witnesses = New-UserDataWitness -DataDirectory $dataDirectory
+        }
+        catch {
+            Add-Finding -Phase 'uninstall' -Check 'the user data files were recorded' `
+                -Passed $false -Detail $_.Exception.Message
+            $exitCode = 1
+        }
+
         try {
             $code = Invoke-SilentUninstaller -InstallerPath $Installer `
                 -LogDirectory $LogDirectory -Entry $entry
@@ -523,10 +618,33 @@ finally {
                 -Passed ($null -eq $stillListed) `
                 -Detail $(if ($null -eq $stillListed) { '' } else { "$($stillListed.DisplayName) is still in $($stillListed.Hive)" })
             if ($null -ne $stillListed) { $exitCode = 1 }
+
+            foreach ($witness in $witnesses) {
+                $survived = Test-Path -LiteralPath $witness.Path
+                $detail = $witness.Path
+                if ($survived) {
+                    $survived = Test-FingerprintsMatch -Before $witness.Fingerprint `
+                        -After (Get-FileFingerprint -Path $witness.Path)
+                    if (-not $survived) {
+                        $detail = "$($witness.Path) is not the file that was there before the uninstall"
+                    }
+                }
+                else {
+                    $detail = "$($witness.Path) was removed by the uninstaller; losing it is permanent"
+                }
+
+                Add-Finding -Phase 'uninstall' `
+                    -Check "$($witness.Name) is still in the data directory" `
+                    -Passed $survived -Detail $detail
+                if (-not $survived) { $exitCode = 1 }
+            }
         }
         catch {
             Write-Host "install-smoke: uninstall failed: $($_.Exception.Message)" -ForegroundColor Red
             $exitCode = 1
+        }
+        finally {
+            Remove-PlantedWitness -Witnesses $witnesses
         }
     }
 }
