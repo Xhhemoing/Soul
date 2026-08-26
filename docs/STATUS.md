@@ -838,7 +838,7 @@ CI 能证的一半已经在 `2e72ddf` 那一次 run 上绿了。HEAD 上的 NSIS
 
 | ID | CI / 自动化证据 | 仍缺 |
 |---|---|---|
-| AC-01 | `soul.exe` 内嵌 `asInvoker`；`install-smoke.ps1 -SkipInstall` 验证进程名、清单、`uiAccess=false`（`2e72ddf` package）。HEAD 另用测试钉住托盘文案、`$INSTDIR=%LOCALAPPDATA%\Programs\Soul`、`PREUNINSTALL` 在数据目录上 `Abort`（不弹 `MessageBox`）、以及 `bundle.icon` 文件都在盘上 | 托盘图标是否出现、启动不弹 UAC 的肉眼、标准用户 NSIS 真装真卸（须用 HEAD 在 Win11 上 `tauri build`，不要用 `2e72ddf` 工件）——作者清单 1–4 |
+| AC-01 | `soul.exe` 内嵌 `asInvoker`；`install-smoke.ps1 -SkipInstall` 验证进程名、清单、`uiAccess=false`（`2e72ddf` package）。HEAD 另用测试钉住托盘文案、`$INSTDIR=%LOCALAPPDATA%\Programs\Soul`、`PREUNINSTALL` 在数据目录上 `Abort`（不弹 `MessageBox`）、以及 `bundle.icon` 文件都在盘上；关窗收进托盘这一条现在也由 `shell_is_local_only.rs::closing_the_window_leaves_soul_in_the_tray_rather_than_ending_it` 按源码顺序钉住（`CloseRequested` 上 `prevent_close` + `hide`、带 `TrayState.installed` 这道门、且必须挂在 `run` 里那条 `configure(...).setup(...).on_window_event(...).run(...)` 链上） | 托盘图标是否出现、启动不弹 UAC 的肉眼、标准用户 NSIS 真装真卸（须用 HEAD 在 Win11 上 `tauri build`，不要用 `2e72ddf` 工件）——作者清单 1–4 |
 | AC-02 | headless 主流程 `fully_closed`；`session_commands` 配置形状拒能力字段；smoke「nothing is switched on」。同意现在会在内存里翻 `collect_enabled`，所以 AC-02 靠的是文件里没有它的位置而不是没有人写过它：`session_collect.rs::a_restart_reopens_a_closed_collection` 与 `ipc_roundtrip::a_restart_finds_collection_off_again` 重开之后同时断言快照全关与 `config.json` 字节里没有那两个词 | — |
 | AC-03 | 问卷 intake 与 `session_screens` / Wizard 测试 | — |
 | AC-04 / AC-05 | 导入 fixture + 无明文残留；Telegram 缺字段可读失败。**壳这一侧也接上了**：`session_import.rs`（过 `Session`、过真库、重开后仍在、数据目录里搜不到原文）、`ipc_roundtrip.rs` 走真的 `invoke_handler`（soul-import-v1 与 Telegram 各一条 happy-path，Telegram 缺字段那条拒绝 JSON 里没有会话标题也没有 `Roy`）、`Import.test.tsx` 用 fixture 自己的行断言 DOM 上没有正文 | 真机上用界面导一次（作者清单 8，可选，不是门禁项） |

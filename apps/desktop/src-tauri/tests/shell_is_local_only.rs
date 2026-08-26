@@ -125,6 +125,61 @@ fn block_after<'a>(source: &'a str, needle: &str) -> &'a str {
     panic!("the block after `{needle}` is never closed");
 }
 
+/// The thing every other AC-01 test is downstream of: closing the window has
+/// to leave Soul running in the tray. Nothing at run time can be made to prove
+/// it here — no runner has a notification area, and standing up a real Tauri
+/// window to press its close button is not a thing a Linux CI job does — so
+/// what is asserted is the shape of `run`, which is what a merge loses. Drop
+/// the handler and close means exit; the second Start-menu launch and the
+/// single-instance reveal then both hand back a window that is not there.
+#[test]
+fn closing_the_window_leaves_soul_in_the_tray_rather_than_ending_it() {
+    assert!(
+        LIB.contains("on_window_event"),
+        "nothing in run answers a window event, so closing the window ends Soul",
+    );
+
+    let handler = block_after(LIB, "on_window_event");
+    assert!(
+        handler.contains("CloseRequested"),
+        "the window handler does not single out a close request: {handler}",
+    );
+    assert!(
+        handler.contains("prevent_close"),
+        "the close request is seen and then allowed through, which ends Soul: {handler}",
+    );
+    assert!(
+        handler.contains("hide"),
+        "the close is refused without putting the window away, so it will not close \
+         and does not go anywhere either: {handler}",
+    );
+    // The gate, not decoration: without a tray the menu's 退出 is unreachable,
+    // and a window that refuses to close and cannot be quit is worse than no
+    // tray at all. See the comment above the handler in `lib.rs` and the
+    // module note in `tray.rs`.
+    assert!(
+        handler.contains("TrayState") && handler.contains("installed"),
+        "the handler hides on every close, including a session that got no tray: {handler}",
+    );
+
+    // And it is registered on the chain that actually starts Soul, rather than
+    // in a helper nobody calls: after `configure` builds the application and
+    // before `run` hands it to Tauri.
+    let configured = LIB
+        .find("configure(")
+        .expect("run no longer builds the application through configure");
+    let registered = LIB
+        .find(".on_window_event(")
+        .expect("the close handler is not registered on a builder at all");
+    let started = LIB
+        .find(".run(tauri::generate_context!())")
+        .expect("run no longer starts the application; this test is reading the wrong file");
+    assert!(
+        configured < registered && registered < started,
+        "the close handler is not on the builder chain that run starts",
+    );
+}
+
 /// The hole this closes: closing the window leaves Soul in the tray, so the
 /// obvious way to get it back is to start Soul again — and the second process
 /// used to open its own handle on `soul.db` before anything noticed. Two
@@ -267,6 +322,27 @@ fn the_claim_leaves_nothing_on_disk_next_to_the_keys() {
         set_last < created,
         "a stale last-error of 183 would make the first launch look like a second",
     );
+
+    // Immediately before, not merely somewhere above. Anything called in
+    // between would leave its own last-error behind, and the clear would then
+    // be protecting the wrong call — which reads the same in a diff and fails
+    // the same way, one launch in a hundred. Whitespace, comments and the
+    // `unsafe { ... }` the two calls are wrapped in are all that may stand
+    // between them.
+    let between = &INSTANCE[set_last + "ffi::SetLastError".len()..created];
+    let code = between
+        .lines()
+        .map(|line| line.split("//").next().unwrap_or_default().trim())
+        .collect::<Vec<_>>()
+        .join(" ");
+    for (at, _) in code.match_indices('(') {
+        let preceding = code[..at].trim_end().chars().next_back();
+        assert!(
+            !preceding.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '!'),
+            "something is called between SetLastError and CreateMutexW: {code}",
+        );
+    }
+
     for forbidden in [
         "soul.lock",
         "File::",
