@@ -14,7 +14,7 @@
 | 目标轮次 | ≥20，之后继续，除非用户停止 |
 | 每轮编制 | 5× Fable-xhigh + 3× Opus-fast + 2× gpt-5.6-sol-xhigh-fast |
 | 已检查模块 | 壳 + bead-core + TS + DATA-1 + AL + B04 + B05 + B10 workflow |
-| 当前任务 | ROUND 3：B08 ACCEPT-WITH-NITS（#55）；本机 39/608 绿；Fork 浏览器核通过 |
+| 当前任务 | ROUND 3：AL-4 rust 边界 fixture 已吸收（#56）；本机 bead-core 155 |
 | PR | #16 专属线；#20–#46（#45 B03 实现；#46 B07 IA） |
 | Merge | B04 `15ad3b3`；B05 `8526c5c`；B10 本提交；不合 unique trunk |
 | Blocked | 子代理 `gh` 只读；hosted Bead CI 空 runner（非产品失败） |
@@ -31,7 +31,7 @@
 | Storage | DATA-1 + bead-v1：网格进 IDB，游标仍可迁自 localStorage | B07 导入导出后置 |
 | Cache | 无 | 后置 |
 | 第三方 | 无品牌色板授权 | fixture `generic-5mm` |
-| 核心业务 | 色号 + BOM + 四模式 steps 已对 rust fixture；AL 复审 PASS | AL-4（MED）rust 边界 fixture 后置；B04 |
+| 核心业务 | 色号 + BOM + 四模式 steps 已对 rust fixture；AL-4 边界 fixture 已吸收 | TS 侧跟 oracle 新 case 后置 |
 | 测试 | `@bead/app` **39 文件 / 608**；bead-core 153 | AL-4 / MED-1 后置 |
 | 构建 | Soul just/pnpm | 隔离，勿改根脚本 |
 | CI/CD | 独立 `bead.yml` 已合；hosted 两作业 3s 空 runner（无 step） | 本机命令为门；勿 empty-commit |
@@ -96,7 +96,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 - [x] B04 实现合入 `15ad3b3`（#37）；本机 `@bead/app` **25 文件 / 316** 绿
 - [x] S2 构建探针合入（#35，`docs/bead/reviews/round2-build.md`）
 - [x] S1 覆盖探针合入（#36，`docs/bead/reviews/round2-coverage.md`）
-- [ ] AL-4（MED）rust 侧补跨取整边界的 oracle fixture（不改 TS 语义）
+- [x] AL-4 rust oracle 边界 fixture 吸收（#56，`dither-rounding` + `transparency-box-average`；本机 cargo 155）
 - [x] B05 实现合入 `8526c5c`（#39）；本机 `@bead/app` **27 文件 / 358** 绿
 - [x] B04 复审合入 `76ae0ef`（#38，ACCEPT；MED-1 行窗口写盘后置）
 - [x] B03 上传 IA 合入（#43，`round3-create-upload.md` D-UP-1..16）
@@ -128,7 +128,7 @@ Merge状态     跳过（11.11：先保存成果；不合 unique trunk）
 
 ## 下一轮重点（ROUND 3）
 
-B08 复审 ACCEPT-WITH-NITS，浏览器核通过。下一刀：AL-4 rust 边界 fixture，或 B04/B05 MED-1。hosted Bead CI 仍是空 runner，勿 empty-commit。
+AL-4 已吸收（#56）。下一刀：Fable 复审 AL-4，或把新 oracle case 接到 TS `oracle-parity`。hosted Bead CI 仍是空 runner，勿 empty-commit。
 
 ```text
 ROUND 2（进行中）
@@ -140,6 +140,7 @@ Commit        15ad3b3 absorb B04；本提交记进度
 PR            #16 #32–#37
 Merge状态     已进专属线；不合 unique trunk
 下一轮重点    B05 实现；B10 workflow；MED-1 后置
+已收          [R3 Opus AL-4 rust fixture](https://cursor.com/agents/bc-98c0372b-6464-5031-8b8e-69573abef8a1) → #56
 已收          [R3 Fable review B08](https://cursor.com/agents/bc-668d082f-a9e4-5db7-9c94-d540e0d7022b) → #55
 已核          B08：Explore 扩容；slime Fork 进编辑器；cakebox 禁用；拼装为 fork 网格
 已收          [R3 Opus B08 implement](https://cursor.com/agents/bc-25eb9b45-259f-5e5e-85d4-99f78fbb0481) → #54
