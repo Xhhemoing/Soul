@@ -92,11 +92,30 @@ impl KnownIdentifiers {
         self
     }
 
+    /// Both the label as it was stored and the same label with its whitespace
+    /// taken out.
+    ///
+    /// An export writes a name the way its own format joins one — Telegram
+    /// puts a space between `first_name` and `last_name`, so `李` and `雷`
+    /// arrive as `李 雷` — and the ordinary spelling of that name has no space
+    /// in it. One `replace` over the stored spelling misses the other, which
+    /// on the E1 path means a paste that writes the person's name the way a
+    /// person writes it reaches the endpoint unplaceheld.
+    ///
+    /// Only the whole label is stripped, never its parts. Registering `李` on
+    /// its own would placehold 李先生 and every other ordinary use of the
+    /// character out of the user's own prose, which is a different and worse
+    /// failure than the one being fixed.
     pub fn add_name(&mut self, name: &str) -> &mut Self {
         let normalized = normalize(name);
-        if !normalized.is_empty() {
-            self.names.insert(normalized);
+        if normalized.is_empty() {
+            return self;
         }
+        let unspaced: String = normalized.chars().filter(|c| !c.is_whitespace()).collect();
+        if !unspaced.is_empty() {
+            self.names.insert(unspaced);
+        }
+        self.names.insert(normalized);
         self
     }
 

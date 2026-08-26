@@ -15,8 +15,8 @@
 use uuid::Uuid;
 
 use soul_policy::redactor::{
-    KnownIdentifiers, RedactedBody, Redactor, Turn, ACCOUNT_PLACEHOLDER, NAME_PLACEHOLDER,
-    THIRD_PARTY_PLACEHOLDER,
+    ExemptionRequest, KnownIdentifiers, RedactedBody, Redactor, Turn, ACCOUNT_PLACEHOLDER,
+    NAME_PLACEHOLDER, THIRD_PARTY_PLACEHOLDER,
 };
 use soul_schema::common::SealedSubject;
 use soul_testkit::leakage::{LeakageChecker, LeakageFixture};
@@ -202,6 +202,76 @@ fn the_research_path_emits_no_third_party_line_at_all() {
     );
     assert_eq!(redacted.third_party_turns(), 1);
     assert_eq!(redacted.as_str().lines().count(), 2);
+}
+
+/// The label an export sealed and the spelling a person types.
+///
+/// Telegram joins `first_name` and `last_name` with a space, so the label
+/// stored for 李雷 is `李 雷`, and nobody writing about him types the space.
+/// `scrub_identifiers` is a `replace` over the strings in the set, so for as
+/// long as the set held only the export's spelling the ordinary one went out
+/// verbatim — inside the user's own words on the default path, and inside the
+/// confirmed body itself on the exemption path.
+#[test]
+fn a_name_stored_with_a_space_is_placeheld_when_the_paste_leaves_it_out() {
+    let redactor = Redactor::new(KnownIdentifiers::new().with_name("李 雷"));
+    let mention = "李雷说周五的场地已经订好了";
+
+    let default = redactor.redact_for_e1(&[own(mention)]);
+    assert!(
+        !default.as_str().contains("李雷"),
+        "the ordinary spelling of a name Soul knows reached the body: {}",
+        default.as_str(),
+    );
+    assert!(
+        default.as_str().contains(NAME_PLACEHOLDER),
+        "the name was dropped rather than placeheld: {}",
+        default.as_str(),
+    );
+    assert!(
+        default.as_str().contains("场地"),
+        "the placeholder swallowed the sentence around it: {}",
+        default.as_str(),
+    );
+
+    // The hardest case, because the whole turn travels: a placeholder in it
+    // can only have come from the identifier set.
+    let turn = third_party(mention);
+    let exemption = ExemptionRequest::for_turn(turn.turn_id)
+        .confirm(true)
+        .expect("the user confirmed twice");
+    let exempted = redactor.redact_for_e1_with_exemption(&[turn], exemption);
+    assert!(
+        !exempted.as_str().contains("李雷"),
+        "an exemption is for one message's prose, not for a name: {}",
+        exempted.as_str(),
+    );
+    assert!(exempted.as_str().contains(NAME_PLACEHOLDER));
+    assert!(exempted.as_str().contains("场地"));
+
+    // And the spelling the export sealed is still the one it was.
+    let spaced = redactor.redact_for_e1(&[own("李 雷说周五的场地已经订好了")]);
+    assert!(!spaced.as_str().contains("李 雷"), "{}", spaced.as_str());
+    assert!(spaced.as_str().contains(NAME_PLACEHOLDER));
+}
+
+/// The other side of that: a label is registered whole, never in pieces.
+///
+/// Registering `李` and `雷` separately would catch the unspaced spelling too,
+/// and would placehold 李先生 and every other ordinary use of those characters
+/// out of the user's own prose. That is a worse failure than the one above,
+/// and it is the one this pins against.
+#[test]
+fn a_character_from_a_known_name_is_still_an_ordinary_word() {
+    let redactor = Redactor::new(KnownIdentifiers::new().with_name("李 雷"));
+    let text = "李先生来了，雷声也停了，我们照常开会。";
+
+    let redacted = redactor.redact_for_e1(&[own(text)]);
+    assert_eq!(
+        redacted.as_str(),
+        text,
+        "a name's characters were placeheld out of the user's own sentence",
+    );
 }
 
 /// Normalization applies on both sides, so a decomposed spelling in the input

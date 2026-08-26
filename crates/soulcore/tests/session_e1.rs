@@ -692,6 +692,16 @@ const IMPORTED_NAME: &str = "李 雷";
 /// the contact graph can.
 const PASTE_NAMING_A_CONTACT: &str = "李 雷 说周五的场地他已经订好了，你直接过来就行";
 
+/// The same person, named the way a person names them.
+///
+/// The space in [`IMPORTED_NAME`] is the export's, not the language's:
+/// `soul-import` builds the label out of `first_name` and `last_name` and
+/// joins them with one, and nobody typing about 李雷 puts it in. So this is
+/// the paste an installed Soul actually receives, and it is the one that
+/// reached the endpoint verbatim for as long as the identifier set held only
+/// the spelling the file happened to use.
+const PASTE_NAMING_A_CONTACT_UNSPACED: &str = "李雷说周五的场地已经订好了，你直接过来就行";
+
 fn telegram_export() -> String {
     fixtures::read_text("import/telegram/result_basic.json").expect("fixture")
 }
@@ -821,6 +831,65 @@ fn a_name_this_soul_imported_is_placeheld_even_in_a_body_the_user_confirmed() {
     for prose in [IMPORTED_NAME, "场地"] {
         assert!(!played.contains(prose), "the chain carries `{prose}`");
     }
+    drop(keep);
+}
+
+/// The same claim for the spelling nobody stored.
+///
+/// The test above sends a paste that contains `李 雷` character for character,
+/// so it passes on a build whose whole defence is one `replace` over the
+/// label the export sealed. That build is the one an installed Soul was: the
+/// contact row says `李 雷`, the user writes 李雷, and the two Chinese
+/// characters the shape scrub cannot see went to the endpoint. Same import,
+/// same second confirmation, one space removed.
+#[test]
+fn the_ordinary_spelling_of_an_imported_name_is_placeheld_too() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut session = Session::open(&directory);
+
+    session
+        .commit_telegram(&telegram_export())
+        .expect("the export commits");
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+
+    let exempted = session
+        .prepare_draft(PASTE_NAMING_A_CONTACT_UNSPACED, Some(true))
+        .expect("a plan");
+    assert!(exempted.carries_exempted_original);
+    assert_eq!(exempted.placeheld_turns, 0);
+    session
+        .generate_draft(&exempted.approval())
+        .expect("the endpoint answers");
+
+    let sent = endpoint.requests();
+    assert_eq!(sent.len(), 1, "one approval, one request");
+    assert!(
+        !sent[0].body.contains("李雷"),
+        "the contact's name reached the endpoint because the paste left out the \
+         space the export put in: {}",
+        sent[0].body,
+    );
+    assert!(
+        !sent[0].body.contains(IMPORTED_NAME),
+        "the stored spelling reached the endpoint: {}",
+        sent[0].body,
+    );
+    assert!(
+        sent[0].body.contains(NAME_PLACEHOLDER),
+        "the name was dropped rather than placeheld: {}",
+        sent[0].body,
+    );
+    // The confirmation still bought what it was for, so the placeholder above
+    // is one name rather than the whole turn.
+    assert!(
+        sent[0].body.contains("场地"),
+        "the confirmed message did not travel: {}",
+        sent[0].body,
+    );
+    assert!(!sent[0].body.contains(THIRD_PARTY_PLACEHOLDER));
     drop(keep);
 }
 
