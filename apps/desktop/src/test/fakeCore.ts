@@ -967,6 +967,7 @@ export function installFakeCore(
   let collect = options.collect ?? COLLECT_OFF;
   let configuration = snapshot;
   let profile: ProfileScreen | null = null;
+  let graphHeld: PeopleGraph = options.graph ?? EMPTY_GRAPH;
 
   /** Read on demand, so a `profile` option that refuses still refuses. */
   const profileNow = (): ProfileScreen => {
@@ -1012,7 +1013,46 @@ export function installFakeCore(
           (payload as { path?: string }).path ?? "",
         );
       case "people_graph":
-        return (options.graphing ?? (() => options.graph ?? EMPTY_GRAPH))();
+        return (options.graphing ?? (() => graphHeld))();
+      case "correct_tie": {
+        const asked = payload as { relationshipId?: string; band?: string };
+        const current = graphHeld;
+        const next: PeopleGraph = {
+          ...current,
+          ties: current.ties.map((tie) =>
+            tie.relationship_id === asked.relationshipId
+              ? {
+                  ...tie,
+                  band: asked.band ?? tie.band,
+                  locked_by_user: true,
+                  user_band: asked.band ?? tie.band,
+                  machine_band: tie.machine_band ?? tie.band,
+                }
+              : tie,
+          ),
+        };
+        graphHeld = next;
+        return next;
+      }
+      case "release_tie": {
+        const asked = payload as { relationshipId?: string };
+        const current = graphHeld;
+        const next: PeopleGraph = {
+          ...current,
+          ties: current.ties.map((tie) =>
+            tie.relationship_id === asked.relationshipId
+              ? {
+                  ...tie,
+                  band: tie.machine_band ?? tie.band,
+                  locked_by_user: false,
+                  user_band: null,
+                }
+              : tie,
+          ),
+        };
+        graphHeld = next;
+        return next;
+      }
       case "person_summary":
         return (options.summarizing ?? (() => aPersonSummary()))(
           (payload as { contactId?: string }).contactId ?? "",

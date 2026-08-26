@@ -594,6 +594,8 @@ export const COMMANDS = {
   previewPlan: "preview_plan",
   peopleGraph: "people_graph",
   personSummary: "person_summary",
+  correctTie: "correct_tie",
+  releaseTie: "release_tie",
   draftReply: "draft_reply",
   draftNotices: "draft_notices",
   prepareDraft: "prepare_draft",
@@ -675,6 +677,14 @@ export function peopleGraph(): Promise<PeopleGraph> {
 /** Everything Soul will say about one person, and what each line rests on. */
 export function personSummary(contactId: string): Promise<PersonSummary> {
   return invoke<PersonSummary>(COMMANDS.personSummary, { contactId });
+}
+
+export function correctTie(relationshipId: string, band: string): Promise<PeopleGraph> {
+  return invoke<PeopleGraph>(COMMANDS.correctTie, { relationshipId, band });
+}
+
+export function releaseTie(relationshipId: string): Promise<PeopleGraph> {
+  return invoke<PeopleGraph>(COMMANDS.releaseTie, { relationshipId });
 }
 
 /**

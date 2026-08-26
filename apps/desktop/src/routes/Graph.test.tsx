@@ -96,6 +96,20 @@ describe("人脉图页", () => {
     });
   });
 
+  it("可以把一条边锁定，屏幕写生效档按你锁定的来，不出现未批准的指定句", async () => {
+    const core = await open({ graph: aPeopleGraph() });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "锁定为往来较多" }));
+    expect(await screen.findByTestId("tie-lock")).toHaveTextContent("生效档按你锁定的来");
+    expect(screen.getByTestId("tie-lock").textContent ?? "").not.toContain(
+      ["由你本人", "指定"].join(""),
+    );
+    expect(core.callsTo("correct_tie")[0]?.payload).toEqual({
+      relationshipId: "0192f000-0000-7000-8000-00000000000a",
+      band: "strong",
+    });
+  });
+
   /**
    * AC-16's other half: when the core says the endpoint rewrote the counts,
    * the screen has to say so. Draft already renders `source_notice` for the

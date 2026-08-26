@@ -633,6 +633,45 @@ impl Session {
         Ok(graph_commands::people_view(&store)?)
     }
 
+    /// The user ruled on one tie's band. AC-32's product path: the shell
+    /// round-trips the word a [`TieEdgeView`] already showed, and a later
+    /// rebuild keeps that band while the counts keep moving.
+    pub fn correct_tie(
+        &mut self,
+        relationship_id: &str,
+        band: &str,
+    ) -> Result<PeopleGraphView, SessionRefusal> {
+        let relationship_id = Uuid::parse_str(relationship_id).map_err(|_| SessionRefusal {
+            reason_code: ReasonCode::Routine.as_str().to_owned(),
+            explanation: "这不是一条认得出来的关系编号。".to_owned(),
+        })?;
+        let band = graph_commands::band_named(band).ok_or_else(|| SessionRefusal {
+            reason_code: ReasonCode::Routine.as_str().to_owned(),
+            explanation: "关系档只有弱、中等、强三种说法。".to_owned(),
+        })?;
+        let at = now_unix_seconds();
+        let store = self.opened_store()?;
+        let mut store = hold(&store);
+        graph_commands::correct_tie(&mut store, relationship_id, band, at)?;
+        Ok(graph_commands::people_view(&store)?)
+    }
+
+    /// Hand the band back to the counts.
+    pub fn release_tie(
+        &mut self,
+        relationship_id: &str,
+    ) -> Result<PeopleGraphView, SessionRefusal> {
+        let relationship_id = Uuid::parse_str(relationship_id).map_err(|_| SessionRefusal {
+            reason_code: ReasonCode::Routine.as_str().to_owned(),
+            explanation: "这不是一条认得出来的关系编号。".to_owned(),
+        })?;
+        let at = now_unix_seconds();
+        let store = self.opened_store()?;
+        let mut store = hold(&store);
+        graph_commands::release_tie(&mut store, relationship_id, at)?;
+        Ok(graph_commands::people_view(&store)?)
+    }
+
     /// Everything Soul will say about one person, and what each line rests on.
     ///
     /// AC-16's product path, including the half that had nowhere to run: a
