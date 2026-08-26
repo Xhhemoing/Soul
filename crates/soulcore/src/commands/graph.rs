@@ -226,6 +226,15 @@ pub struct TieEdgeView {
     pub incoming_count: u64,
     pub conversation_count: u64,
     pub active_day_count: u64,
+    /// True when the rebuild that scored this edge also wrote the per-venue
+    /// tallies. A missing split is not four zeroes; the interface must not
+    /// invent a P1b sentence from serde defaults.
+    pub venue_split_measured: bool,
+    /// One-to-one exchanges (`direct_out + direct_in`). Meaningful only when
+    /// [`Self::venue_split_measured`].
+    pub direct_count: u64,
+    /// Group-chat exchanges (`group_out + group_in`). Same gate.
+    pub group_count: u64,
     pub first_contact_utc: String,
     pub last_contact_utc: String,
     pub local_only: bool,
@@ -259,6 +268,9 @@ impl TieEdgeView {
             incoming_count: edge.tie_strength.incoming_count,
             conversation_count: edge.tie_strength.conversation_count,
             active_day_count: edge.tie_strength.active_day_count,
+            venue_split_measured: edge.tie_strength.as_of_utc.is_some(),
+            direct_count: edge.tie_strength.direct_out_count + edge.tie_strength.direct_in_count,
+            group_count: edge.tie_strength.group_out_count + edge.tie_strength.group_in_count,
             first_contact_utc: edge.tie_strength.first_contact_utc.as_str().to_owned(),
             last_contact_utc: edge.tie_strength.last_contact_utc.as_str().to_owned(),
             local_only: edge.egress_scope == soul_schema::relationship::EgressScope::LocalOnly,

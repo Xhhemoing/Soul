@@ -2,7 +2,7 @@
 
 单一事实来源。每个子代理完工必须更新本文件。
 
-核于 2026-08-26。本树是 Goal 1 关闭线 `cursor/goal1-closeout-c49c`，已 merge `origin/main` @ `a0ec14b`（M2）。G1/G1+/G2/G3 已接到产品 crate 与桌面 IPC：`COMMANDS` 现含 `correct_tie` / `release_tie`。本机 `cargo test --workspace --all-targets` 绿。**Goal 1 还不能关**：hosted AC-26 被私库 Billing 挡住；作者 Win11 清单未勾。不要启动 Goal 2，不要做 AC-27。
+核于 2026-08-26。本树是 Goal 1 关闭线 `cursor/goal1-closeout-c49c`，已 merge `origin/main` @ `a0ec14b`（M2）。T4D/A0/A2 已走产品路径：`TieEdgeView` 带 `venue_split_measured` / `direct_count` / `group_count`，图上同屏报一对一与群里两个数；`Session::correct_tie` 锁边后 A2 只消费生效档且不渲染未冻结的「由你本人指定」。AC-34 Telegram owner 群消息不扇出。`COMMANDS` 含 `correct_tie` / `release_tie`。**Goal 1 代理侧关闭项已接到代码与本机 CI 测**；hosted AC-26（私库 Billing）与作者 Win11 清单仍未过，这两项不在代理解的范围内。不要启动 Goal 2，不要做 AC-27。
 
 ## 当前里程碑
 

@@ -25,6 +25,7 @@ import { Profile } from "./Profile";
 import { denylistHits, diagnosticTerms, renderedText } from "../test/denylist";
 import {
   aProfileScreen,
+  anIntakeReceipt,
   forbidNetwork,
   installFakeCore,
   QUESTIONS,
@@ -316,6 +317,29 @@ describe("在档案页上再答几题", () => {
     expect(core.callsTo("profile_screen")).toHaveLength(2);
     expect(screen.getByTestId("profile-known")).toHaveTextContent("五条轴里有 2 条有方向");
     expect(screen.getByTestId("profile-receipt")).toHaveTextContent("记下了 1 条");
+  });
+
+  it("锁定轴被跳过时，回执列出编号和原因", async () => {
+    const core = await open({
+      recording: () =>
+        anIntakeReceipt({
+          answered: 0,
+          ignored: [
+            { question_id: "q.axis.orderliness", reason: "axis_locked_by_user" },
+          ],
+        }),
+    });
+    const user = userEvent.setup();
+    await askAgain(user);
+    await user.click(
+      within(choicesFor("q.axis.orderliness")).getByRole("button", { name: "偏那一端" }),
+    );
+    await user.click(screen.getByRole("button", { name: "写进档案" }));
+
+    const ignored = await screen.findByTestId("profile-ignored");
+    expect(ignored).toHaveTextContent("q.axis.orderliness");
+    expect(ignored).toHaveTextContent("axis_locked_by_user");
+    expect(core.callsTo("answer_questionnaire")).toHaveLength(1);
   });
 
   /**

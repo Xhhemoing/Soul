@@ -155,6 +155,9 @@ export interface TieEdge {
   readonly incoming_count: number;
   readonly conversation_count: number;
   readonly active_day_count: number;
+  readonly venue_split_measured: boolean;
+  readonly direct_count: number;
+  readonly group_count: number;
   readonly first_contact_utc: string;
   readonly last_contact_utc: string;
   readonly local_only: boolean;

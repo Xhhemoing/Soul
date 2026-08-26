@@ -113,6 +113,15 @@ fn the_tie_view_shows_the_band_the_lock_and_the_machines_reading() {
     let before = tie(&store, relationship_id);
     assert!(!before.locked_by_user);
     assert_eq!(before.user_band, None);
+    assert!(
+        before.venue_split_measured,
+        "a rebuilt edge carries the venue split the band was decided on",
+    );
+    assert_eq!(
+        before.direct_count + before.group_count,
+        before.interaction_count,
+        "the two venue totals are the whole of the interaction count",
+    );
 
     graph_commands::correct_tie(&mut store, relationship_id, SupportedBand::Strong, AT)
         .expect("correct");

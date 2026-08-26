@@ -208,8 +208,12 @@ function Tie({ tie, onLock, onUnlock }: TieProps): React.JSX.Element {
     <li>
       <span>
         {words(BAND, tie.band)}：往来 {tie.interaction_count} 次（发出 {tie.outgoing_count}，收到{" "}
-        {tie.incoming_count}），{tie.conversation_count} 个会话，{tie.active_day_count} 天有往来，
-        最近一次 {tie.last_contact_utc}。
+        {tie.incoming_count}）
+        {tie.venue_split_measured
+          ? `，一对一 ${tie.direct_count} 次，群里 ${tie.group_count} 次`
+          : ""}
+        ，{tie.conversation_count} 个会话，{tie.active_day_count} 天有往来，最近一次{" "}
+        {tie.last_contact_utc}。
       </span>
       <span className="muted">
         {" "}

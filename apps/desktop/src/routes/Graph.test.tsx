@@ -48,6 +48,8 @@ describe("人脉图页", () => {
 
     const ties = screen.getByTestId("ties-list");
     expect(ties).toHaveTextContent("发出 3");
+    expect(ties).toHaveTextContent("一对一 6 次");
+    expect(ties).toHaveTextContent("群里 0 次");
     expect(ties).toHaveTextContent("一对一说过话");
     expect(screen.getByTestId("tie-evidence")).toHaveTextContent("依据 2 条证据");
 
