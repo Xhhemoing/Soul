@@ -1,0 +1,868 @@
+@import "./tokens.css";
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* ---- AppShell -------------------------------------------------------- */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.shell__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.shell__brand {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.shell__main {
+  flex: 1;
+  padding: 16px;
+  padding-bottom: 88px;
+}
+
+/* Standing, not dismissible: while it is up nothing is being saved (DATA-1). */
+.persistence-banner {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  border: 1px solid var(--warn-border);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+/* Bottom nav keeps its shape at desktop widths on purpose (R4). */
+.bottom-nav {
+  position: fixed;
+  inset: auto 0 0 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border);
+}
+
+.bottom-nav__link {
+  min-height: 56px;
+  min-width: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.bottom-nav__link[aria-current="page"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- primitives ------------------------------------------------------ */
+
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.empty-state {
+  background: var(--bg-raised);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+}
+
+.empty-state__message {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+}
+
+.empty-state__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.button,
+.button:visited {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button--primary,
+.button--primary:visited {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.progress-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+
+.progress-bar__fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.swatch__chip {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid var(--swatch-outline);
+  flex: none;
+}
+
+/* ---- page bits ------------------------------------------------------- */
+
+.section {
+  margin-bottom: 24px;
+}
+
+.section__title {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+
+.personal-strip {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.chip-link {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  color: inherit;
+}
+
+.chip-link__count {
+  display: block;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.tag-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.pattern-feed {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pattern-card {
+  display: block;
+  height: 100%;
+  text-decoration: none;
+  color: inherit;
+}
+
+.pattern-card__preview {
+  height: 88px;
+  border-radius: 8px;
+  background: var(--bg-raised);
+  margin-bottom: 8px;
+}
+
+.meta-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.meta-list dt {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.meta-list dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.palette-list,
+.stock-list,
+.project-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stub-note {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+/* ---- inventory (WP-B05) ---------------------------------------------- */
+
+.stock-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.stock-form__field {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.stock-form__field input {
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.stock-form__error {
+  color: var(--danger, #c8342a);
+  font-size: 12px;
+}
+
+.stock-row,
+.shortage-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.stock-row__hex,
+.shortage-row span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.stock-row__beads {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.stock-row__beads input {
+  width: 96px;
+  min-height: 36px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.shortage-list,
+.substitute-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.substitute-group__wanted {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 8px;
+}
+
+.substitute-group__none {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.substitute-group__candidates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.substitute-group__candidates li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.purchase-export {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.purchase-export__text {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  padding: 8px;
+  resize: vertical;
+}
+
+.swatch__namespace {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* ---- upload workbench (WP-B03) -------------------------------------- */
+
+.upload {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.upload__field {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  justify-items: start;
+}
+
+.upload__panel {
+  display: grid;
+  gap: 12px;
+}
+
+.upload__group {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.upload__group legend {
+  padding: 0 4px;
+}
+
+.upload__viewport {
+  position: relative;
+  display: inline-block;
+  max-width: 280px;
+}
+
+.upload__viewport img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* The framing box is an outline over the source, never a colour wash: the
+   picture underneath has to stay readable while it is being positioned. */
+.upload__crop {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 35%);
+  cursor: move;
+}
+
+.upload__badges {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.upload__grid {
+  --assemble-cell: 8px;
+  display: grid;
+  grid-template-columns: repeat(var(--assemble-columns, 28), var(--assemble-cell));
+  grid-auto-rows: var(--assemble-cell);
+  gap: 1px;
+  align-content: start;
+  justify-content: start;
+  overflow: auto;
+  padding: 8px 0;
+}
+
+.upload__bom {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.upload__empty {
+  margin: 0;
+  color: var(--danger, #c8342a);
+  font-size: 13px;
+}
+
+/* ---- pixel editor (WP-B06) ------------------------------------------ */
+
+.editor__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.editor__save {
+  margin: 0;
+  min-width: 5em;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.editor {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+/* D-ED-21: one comfortable cell pitch, no zoom controls. 56×56 lands near
+   700px, which fits a 1280 viewport; anything narrower scrolls in both axes
+   rather than shrinking the beads into a smudge. */
+.editor__grid {
+  --editor-cell: 12px;
+  display: grid;
+  grid-template-columns: repeat(var(--assemble-columns, 28), var(--editor-cell));
+  grid-auto-rows: var(--editor-cell);
+  gap: 1px;
+  align-content: start;
+  justify-content: start;
+  overflow: auto;
+  max-width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.editor__bead {
+  border-radius: 2px;
+  background: var(--bg-elevated, #ffffff);
+}
+
+/* An empty cell has to read as empty rather than as white bead G01, so it is
+   the surface with a hairline, not a colour. */
+.editor__bead--empty {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.editor__tools {
+  display: grid;
+  gap: 12px;
+  flex: 1 1 280px;
+  min-width: 260px;
+}
+
+.editor__history {
+  display: flex;
+  gap: 8px;
+}
+
+.editor__group {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.editor__field {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  justify-items: start;
+}
+
+.editor__palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.editor__swatch {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.editor__swatch[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.editor__panel {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.editor__stats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.editor__stat {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+/* ---- assemble (outside AppShell) ------------------------------------ */
+
+.assemble {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.assemble__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.assemble__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  flex: 1;
+}
+
+.assemble__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.assemble__backdrop-controls,
+.assemble__modes {
+  border: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.assemble__note {
+  margin: 0;
+  opacity: 0.85;
+}
+
+.assemble__session {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+.assemble__hud {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assemble__readout {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.assemble__readout dt {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.assemble__readout dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.assemble__clock {
+  font-variant-numeric: tabular-nums;
+}
+
+.assemble__hint {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.8;
+  flex-basis: 100%;
+}
+
+.assemble__status {
+  margin: 0;
+  min-height: 1.55em;
+  font-weight: 600;
+}
+
+/* ---- canvas (D-ASM-5 / D-ASM-6) -------------------------------------- */
+
+.assemble__grid {
+  --assemble-cell: 12px;
+  display: grid;
+  grid-template-columns: repeat(var(--assemble-columns, 28), var(--assemble-cell));
+  grid-auto-rows: var(--assemble-cell);
+  gap: 1px;
+  align-content: start;
+  justify-content: center;
+  overflow: auto;
+  padding: 8px 0;
+}
+
+/* D-ASM-10: 5mm is the physical pitch of a generic 5mm bead, gap folded away so
+   the pitch is the cell. Browsers convert mm at a nominal 96dpi — the standing
+   disclaimer next to the switch is the whole of the v0 answer to that. */
+.assemble__grid[data-scale="physical"] {
+  --assemble-cell: 5mm;
+  gap: 0;
+  justify-content: start;
+}
+
+.assemble__bead {
+  border-radius: 2px;
+}
+
+.assemble__bead--empty {
+  background: transparent;
+}
+
+/* Three states, and none of them is colour alone: the current step also carries
+   an outline, and the HUD spells out what it is in words. */
+.assemble__bead[data-cell-state="pending"] {
+  opacity: 0.15;
+}
+
+.assemble__bead[data-cell-state="done"] {
+  opacity: 1;
+}
+
+.assemble__bead[data-cell-state="current"] {
+  opacity: 1;
+  box-shadow: inset 0 0 0 2px var(--assemble-outline, #ffffff);
+  animation: assemble-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes assemble-pulse {
+  50% {
+    box-shadow: inset 0 0 0 1px var(--assemble-outline, #ffffff);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assemble__bead[data-cell-state="current"] {
+    animation: none;
+  }
+}
+
+/* ---- control orb (D-ASM-7) ------------------------------------------- */
+
+.assemble__orb {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 2;
+}
+
+.assemble__orb-button {
+  min-height: 44px;
+  min-width: 88px;
+  padding: 0 14px;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.assemble__orb-button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.assemble__orb-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.assemble__complete {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  align-self: start;
+}
+
+.assemble__complete h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+/* ---- import / export panels (WP-B07) -------------------------------- */
+
+.import-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  justify-items: start;
+}
+
+.import-panel__errors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.import-panel__export {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  width: 100%;
+}

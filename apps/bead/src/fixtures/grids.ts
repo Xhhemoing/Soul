@@ -1,0 +1,449 @@
+/**
+ * D-ASM-2: the v0 way a real grid reaches the assemble canvas. These are
+ * read-only build-time fixtures keyed by `PatternId` — no upload path (that is
+ * WP-B03) and nothing here is ever persisted (BD19).
+ *
+ * Encoding is one string per row: `.` is an empty cell and `0`–`9` index into
+ * the pattern's own `palette` in `catalog.ts`. Those are gallery colour codes,
+ * never the `generic-5mm` G-codes (BD20) — the two code spaces collide and
+ * mixing them is what BD20 forbids.
+ *
+ * The grid is the authority for bead counts: `catalog.ts` carries the numbers
+ * this file produces, and `grids.test.ts` fails the moment they drift.
+ */
+
+import { BOARD_28, BOARD_56 } from "../algo/framing.ts";
+import { createGrid, type Cell, type Grid } from "../algo/grid.ts";
+import { asPatternId, type PatternId } from "../stores/ids.ts";
+import { PATTERNS } from "./catalog.ts";
+
+const EMPTY = ".";
+
+/** What `<AssembleCanvas>` eats. Deliberately narrower than `PaletteEntry`. */
+export interface FixtureSwatch {
+  readonly code: string;
+  readonly name: string;
+  readonly hex: string;
+}
+
+export interface FixtureGrid {
+  readonly grid: Grid;
+  readonly palette: readonly FixtureSwatch[];
+}
+
+/**
+ * Exported so a sick fixture dies in the test run rather than half-rendering a
+ * board: an unknown character, a ragged row or an out-of-range palette index is
+ * a throw, never a silently empty cell.
+ */
+export function decodeFixtureRows(
+  rows: readonly string[],
+  size: number,
+  paletteSize: number,
+): Grid {
+  if (rows.length !== size) {
+    throw new RangeError(`fixture 网格应有 ${size} 行，实际 ${rows.length} 行`);
+  }
+  const cells: Cell[] = [];
+  rows.forEach((row, y) => {
+    if (row.length !== size) {
+      throw new RangeError(`fixture 第 ${y} 行应有 ${size} 列，实际 ${row.length} 列`);
+    }
+    for (const char of row) {
+      if (char === EMPTY) {
+        cells.push(null);
+        continue;
+      }
+      const index = "0123456789".indexOf(char);
+      if (index === -1) throw new RangeError(`fixture 第 ${y} 行出现未知字符 ${JSON.stringify(char)}`);
+      if (index >= paletteSize) {
+        throw new RangeError(`fixture 第 ${y} 行的色号下标 ${index} 超出色板长度 ${paletteSize}`);
+      }
+      cells.push(index);
+    }
+  });
+  return createGrid(size, size, cells);
+}
+
+/* ---- geometry ---------------------------------------------------------
+ * Hand-typing 3136 characters is not a plan, so the larger motifs are written
+ * as shapes and the row strings fall out of them. Every predicate takes integer
+ * cell coordinates and answers for that one cell.
+ */
+
+function inRect(x: number, y: number, x0: number, y0: number, x1: number, y1: number): boolean {
+  return x >= x0 && x <= x1 && y >= y0 && y <= y1;
+}
+
+function inDisc(x: number, y: number, cx: number, cy: number, radius: number): boolean {
+  const dx = x - cx;
+  const dy = y - cy;
+  return dx * dx + dy * dy <= radius * radius;
+}
+
+function inEllipse(x: number, y: number, cx: number, cy: number, rx: number, ry: number): boolean {
+  const dx = (x - cx) / rx;
+  const dy = (y - cy) / ry;
+  return dx * dx + dy * dy <= 1;
+}
+
+function inRoundedRect(
+  x: number,
+  y: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  radius: number,
+): boolean {
+  const nearestX = Math.min(Math.max(x, x0 + radius), x1 - radius);
+  const nearestY = Math.min(Math.max(y, y0 + radius), y1 - radius);
+  return inDisc(x, y, nearestX, nearestY, radius);
+}
+
+function paint(size: number, charAt: (x: number, y: number) => string): string[] {
+  return Array.from({ length: size }, (_unusedRow, y) =>
+    Array.from({ length: size }, (_unusedCell, x) => charAt(x, y)).join(""),
+  );
+}
+
+type Silhouette = (x: number, y: number) => boolean;
+
+/**
+ * The one-cell ring *inside* a silhouette. Asking each cell whether any of its
+ * eight neighbours is outside — rather than subtracting a second inset shape —
+ * is what keeps a join between two rectangles from growing a dark seam, which
+ * is the same reason `isArcadeShell` below counts neighbours.
+ */
+function isRimOf(inside: Silhouette, x: number, y: number): boolean {
+  if (!inside(x, y)) return false;
+  for (let dy = -1; dy <= 1; dy += 1) {
+    for (let dx = -1; dx <= 1; dx += 1) {
+      if (!inside(x + dx, y + dy)) return true;
+    }
+  }
+  return false;
+}
+
+/** The one-cell ring *outside* a silhouette, for motifs outlined from without. */
+function isHaloOf(inside: Silhouette, x: number, y: number): boolean {
+  if (inside(x, y)) return false;
+  for (let dy = -1; dy <= 1; dy += 1) {
+    for (let dx = -1; dx <= 1; dx += 1) {
+      if (inside(x + dx, y + dy)) return true;
+    }
+  }
+  return false;
+}
+
+function inDiamond(x: number, y: number, cx: number, cy: number, radius: number): boolean {
+  return Math.abs(x - cx) + Math.abs(y - cy) <= radius;
+}
+
+/* ---- gal-slime-01 · 28×28 ------------------------------------------- */
+
+// One slime, 12×10. 0 薄荷绿身体 / 1 深松绿底部阴影 / 2 纯白眼白 / 3 墨黑描边。
+const SLIME_SPRITE: readonly string[] = [
+  "....3333....",
+  "..33000033..",
+  ".3000000003.",
+  ".3022002203.",
+  ".3023003203.",
+  "300000000003",
+  "300003300003",
+  "300111111003",
+  "311111111113",
+  ".3333333333.",
+];
+
+/** Top-left corners of the three squad members; they never overlap. */
+const SLIME_ANCHORS: ReadonlyArray<readonly [number, number]> = [
+  [1, 2],
+  [15, 2],
+  [8, 15],
+];
+
+function stamp(
+  canvas: string[][],
+  sprite: readonly string[],
+  [originX, originY]: readonly [number, number],
+): void {
+  sprite.forEach((row, y) => {
+    [...row].forEach((char, x) => {
+      if (char === EMPTY) return;
+      const line = canvas[originY + y];
+      if (line === undefined || originX + x >= line.length) {
+        throw new RangeError(`sprite 落在画布外：(${originX + x}, ${originY + y})`);
+      }
+      line[originX + x] = char;
+    });
+  });
+}
+
+function slimeRows(): string[] {
+  const canvas = Array.from({ length: BOARD_28 }, () => new Array<string>(BOARD_28).fill(EMPTY));
+  for (const anchor of SLIME_ANCHORS) stamp(canvas, SLIME_SPRITE, anchor);
+  return canvas.map((row) => row.join(""));
+}
+
+/* ---- gal-torii-02 · 56×56 (DEV-GAL-3) -------------------------------- */
+
+// 0 朱红鸟居 / 1 暖砂夕阳 / 2 苔绿草坡 / 3 墨黑描边。The gate is six rectangles
+// in the order a real torii is built: 笠木 / 岛木 / 贯 / 额束 and the two pillars.
+const TORII_GRASS_TOP = 46;
+
+function inTorii(x: number, y: number): boolean {
+  return (
+    inRect(x, y, 4, 8, 51, 11) ||
+    inRect(x, y, 7, 12, 48, 14) ||
+    inRect(x, y, 9, 20, 46, 23) ||
+    inRect(x, y, 26, 15, 29, 20) ||
+    inRect(x, y, 15, 12, 19, 48) ||
+    inRect(x, y, 36, 12, 40, 48)
+  );
+}
+
+// The outline is drawn outside the vermilion rather than inside it: at four
+// cells wide a pillar has no interior left once a rim is taken out of it.
+function toriiChar(x: number, y: number): string {
+  if (inTorii(x, y)) return "0";
+  if (y >= TORII_GRASS_TOP) return "2";
+  if (isHaloOf(inTorii, x, y)) return "3";
+  if (inDisc(x, y, 27.5, 22, 15)) return "1";
+  return EMPTY;
+}
+
+function toriiRows(): string[] {
+  return paint(BOARD_56, toriiChar);
+}
+
+/* ---- gal-lantern-04 · 28×28 ------------------------------------------ */
+
+// 0 朱红灯身 / 1 明黄透光与流苏 / 2 墨黑骨架。
+function lanternChar(x: number, y: number): string {
+  // 提绳、上下灯盖与流苏：先画，它们压在灯身之外。
+  if (inRect(x, y, 13, 0, 14, 2)) return "2";
+  if (inRect(x, y, 10, 3, 17, 5)) return "2";
+  if (inRect(x, y, 10, 23, 17, 25)) return "2";
+  if (inRect(x, y, 13, 26, 14, 27)) return "1";
+
+  if (!inEllipse(x, y, 13.5, 14.5, 10, 9)) return EMPTY;
+  if (!inEllipse(x, y, 13.5, 14.5, 8.6, 7.7)) return "2";
+  // 竖骨：把灯身分成几瓣，颜色之外再给一层形状线索。
+  if (x === 9 || x === 18) return "2";
+  if (inEllipse(x, y, 13.5, 14.5, 4, 5.6)) return "1";
+  return "0";
+}
+
+function lanternRows(): string[] {
+  return paint(BOARD_28, lanternChar);
+}
+
+/* ---- gal-arcade-05 · 56×56 ------------------------------------------ */
+
+// 0 浅灰机身 / 1 墨黑外壳与十字键 / 2 朱红按键。
+
+/** Body slab plus the two grip lobes, as one silhouette. */
+function inArcadeBody(x: number, y: number): boolean {
+  return (
+    inRoundedRect(x, y, 5, 14, 50, 34, 8) ||
+    inDisc(x, y, 14, 37, 9) ||
+    inDisc(x, y, 41, 37, 9)
+  );
+}
+
+const SHELL_THICKNESS = 2;
+
+// Taking the shell as "within 2 of the outside" rather than as the gap between
+// two inset silhouettes keeps it an even thickness and leaves no dark seam
+// where the slab meets a grip.
+function isArcadeShell(x: number, y: number): boolean {
+  for (let dy = -SHELL_THICKNESS; dy <= SHELL_THICKNESS; dy += 1) {
+    for (let dx = -SHELL_THICKNESS; dx <= SHELL_THICKNESS; dx += 1) {
+      if (!inArcadeBody(x + dx, y + dy)) return true;
+    }
+  }
+  return false;
+}
+
+const ARCADE_BUTTONS: ReadonlyArray<readonly [number, number]> = [
+  [40, 22],
+  [45, 27],
+  [40, 32],
+  [35, 27],
+];
+
+function arcadeChar(x: number, y: number): string {
+  if (!inArcadeBody(x, y)) return EMPTY;
+  if (isArcadeShell(x, y)) return "1";
+  // D-pad cross.
+  if (inRect(x, y, 10, 24, 22, 28) || inRect(x, y, 14, 20, 18, 32)) return "1";
+  for (const [cx, cy] of ARCADE_BUTTONS) if (inDisc(x, y, cx, cy, 2.6)) return "2";
+  // Start / select.
+  if (inRect(x, y, 24, 25, 26, 26) || inRect(x, y, 30, 25, 32, 26)) return "1";
+  return "0";
+}
+
+function arcadeRows(): string[] {
+  return paint(BOARD_56, arcadeChar);
+}
+
+/* ---- gal-gift-06 · 28×28 --------------------------------------------- */
+
+// 0 湖蓝盒身 / 1 金黄缎带 / 2 墨黑描边 / 3 纯白高光。One face of the box, which is
+// what a 立体 pattern hands you: the other five panels are the same drawing.
+/** The two bow lobes, the knot and the band that runs down the face. */
+function inGiftRibbon(x: number, y: number): boolean {
+  return (
+    inDisc(x, y, 10, 2, 2.4) ||
+    inDisc(x, y, 17, 2, 2.4) ||
+    inRect(x, y, 13, 1, 14, 8) ||
+    inRect(x, y, 12, 4, 15, 25)
+  );
+}
+
+/** Lid, body and ribbon as one silhouette, so the outline wraps the bow too. */
+function inGift(x: number, y: number): boolean {
+  return inRect(x, y, 2, 4, 25, 8) || inRect(x, y, 4, 9, 23, 25) || inGiftRibbon(x, y);
+}
+
+function giftChar(x: number, y: number): string {
+  if (!inGift(x, y)) return EMPTY;
+  if (isRimOf(inGift, x, y)) return "2";
+  if (inGiftRibbon(x, y)) return "1";
+  if (inRect(x, y, 6, 12, 7, 20)) return "3";
+  return "0";
+}
+
+function giftRows(): string[] {
+  return paint(BOARD_28, giftChar);
+}
+
+/* ---- gal-mochi-07 · 28×28 -------------------------------------------- */
+
+// 0 竹签棕 / 1 樱粉 / 2 纯白 / 3 抹茶绿 / 4 墨黑描边。Three dumplings, no faces:
+// at seven cells across, a dumpling has no interior left for eyes once the rim
+// is taken out of it, and two beads of black touching the rim read as a smudge.
+const MOCHI_CENTERS: ReadonlyArray<readonly [number, string]> = [
+  [6, "1"],
+  [13, "2"],
+  [20, "3"],
+];
+const MOCHI_X = 13.5;
+const MOCHI_RADIUS = 3.4;
+
+function inMochi(x: number, y: number): boolean {
+  if (inRect(x, y, 12, 1, 15, 27)) return true;
+  return MOCHI_CENTERS.some(([cy]) => inDisc(x, y, MOCHI_X, cy, MOCHI_RADIUS));
+}
+
+function mochiChar(x: number, y: number): string {
+  if (!inMochi(x, y)) return EMPTY;
+  if (isRimOf(inMochi, x, y)) return "4";
+  for (const [cy, code] of MOCHI_CENTERS) {
+    if (inDisc(x, y, MOCHI_X, cy, MOCHI_RADIUS)) return code;
+  }
+  return "0";
+}
+
+function mochiRows(): string[] {
+  return paint(BOARD_28, mochiChar);
+}
+
+/* ---- gal-mush-08 · 28×28 --------------------------------------------- */
+
+// 0 朱红菌盖 / 1 纯白斑点 / 2 墨黑描边与眼睛 / 3 暖砂菌柄。
+function inMushCap(x: number, y: number): boolean {
+  return y <= 14 && inEllipse(x, y, 13.5, 14, 11, 9);
+}
+
+function inMush(x: number, y: number): boolean {
+  return inMushCap(x, y) || inRect(x, y, 10, 15, 17, 23);
+}
+
+function mushChar(x: number, y: number): string {
+  if (!inMush(x, y)) return EMPTY;
+  if (isRimOf(inMush, x, y)) return "2";
+  if ((x === 12 || x === 15) && y === 18) return "2";
+  if (!inMushCap(x, y)) return "3";
+  if (inDisc(x, y, 8, 10, 2.6) || inDisc(x, y, 19, 10, 2.6) || inDisc(x, y, 13.5, 7, 2.2)) {
+    return "1";
+  }
+  return "0";
+}
+
+function mushRows(): string[] {
+  return paint(BOARD_28, mushChar);
+}
+
+/* ---- gal-quilt-09 · 56×56 -------------------------------------------- */
+
+// 0 靛蓝外框 / 1 米白内框 / 2 金黄星 / 3 朱红星心。The field between the frames is
+// left empty on purpose: filling it would take 2704 beads, half again the
+// heaviest board in the catalog, and the lattice is the motif either way.
+const QUILT_STAR_AXIS: readonly number[] = [13, 28, 43];
+
+function quiltChar(x: number, y: number): string {
+  if (inRect(x, y, 3, 3, 53, 53) && !inRect(x, y, 6, 6, 50, 50)) return "0";
+  if (inRect(x, y, 8, 8, 48, 48) && !inRect(x, y, 9, 9, 47, 47)) return "1";
+  for (const cy of QUILT_STAR_AXIS) {
+    for (const cx of QUILT_STAR_AXIS) {
+      if (inDiamond(x, y, cx, cy, 1)) return "3";
+      if (inDiamond(x, y, cx, cy, 4)) return "2";
+    }
+  }
+  return EMPTY;
+}
+
+function quiltRows(): string[] {
+  return paint(BOARD_56, quiltChar);
+}
+
+/* ---- registry -------------------------------------------------------- */
+
+interface FixtureSpec {
+  readonly size: number;
+  readonly rows: () => readonly string[];
+}
+
+// gal-cakebox-03 is deliberately absent and stays that way (D-GAL-3): 2260 beads
+// do not fit a single 28×28 board, multi-board assembly is post-v0 (round1-map
+// §3), and it is the in-catalog case both the「暂无网格」state (D-ASM-12) and the
+// disabled Fork button (D-GAL-10) are tested against.
+const SPECS: ReadonlyMap<string, FixtureSpec> = new Map([
+  ["gal-slime-01", { size: BOARD_28, rows: slimeRows }],
+  ["gal-torii-02", { size: BOARD_56, rows: toriiRows }],
+  ["gal-lantern-04", { size: BOARD_28, rows: lanternRows }],
+  ["gal-arcade-05", { size: BOARD_56, rows: arcadeRows }],
+  ["gal-gift-06", { size: BOARD_28, rows: giftRows }],
+  ["gal-mochi-07", { size: BOARD_28, rows: mochiRows }],
+  ["gal-mush-08", { size: BOARD_28, rows: mushRows }],
+  ["gal-quilt-09", { size: BOARD_56, rows: quiltRows }],
+]);
+
+/** Ids this file draws, in catalog order. Tests iterate this. */
+export const GRIDDED_PATTERN_IDS: readonly PatternId[] = [...SPECS.keys()].map(asPatternId);
+
+const cache = new Map<string, FixtureGrid>();
+
+/**
+ * Decoded on first read and kept — the grid is derived data, so it is rebuilt
+ * from the fixture rather than stored, but rebuilding it on every render of a
+ * 56×56 board would be wasteful.
+ */
+export function fixtureGridFor(patternId: PatternId): FixtureGrid | null {
+  const cached = cache.get(patternId);
+  if (cached !== undefined) return cached;
+
+  const spec = SPECS.get(patternId);
+  if (spec === undefined) return null;
+  const pattern = PATTERNS.find((candidate) => candidate.id === patternId);
+  if (pattern === undefined) return null;
+
+  const decoded: FixtureGrid = {
+    grid: decodeFixtureRows(spec.rows(), spec.size, pattern.palette.length),
+    palette: pattern.palette.map(({ code, name, hex }) => ({ code, name, hex })),
+  };
+  cache.set(patternId, decoded);
+  return decoded;
+}
