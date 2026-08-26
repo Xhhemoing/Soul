@@ -33,6 +33,7 @@ fn locking_a_tie_through_the_session_survives_a_later_rebuild() {
         "the graph view carries the venue split the band was decided on",
     );
 
+    let unfrozen_filing = ["由你本人", "指定"].concat();
     let summary = session.person_summary(&peer).expect("A2");
     assert!(
         !summary.text.contains("按上面的计数"),
@@ -40,7 +41,7 @@ fn locking_a_tie_through_the_session_survives_a_later_rebuild() {
         summary.text,
     );
     assert!(
-        !summary.text.contains("由你本人指定"),
+        !summary.text.contains(&unfrozen_filing),
         "COPY_ZH has not frozen a user-set filing sentence: {}",
         summary.text,
     );
@@ -59,7 +60,7 @@ fn locking_a_tie_through_the_session_survives_a_later_rebuild() {
         .expect("the lock is on the chain");
     assert_eq!(correction.decision, "allowed");
     let encoded = serde_json::to_string(&chain).expect("serialize");
-    for needle in ["公司门口", "café", "好的没问题", "由你本人指定"] {
+    for needle in ["公司门口", "café", "好的没问题", unfrozen_filing.as_str()] {
         assert!(
             !encoded.contains(needle),
             "an audit entry must not carry a body ({needle}): {encoded}",

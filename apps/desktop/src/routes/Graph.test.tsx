@@ -66,6 +66,25 @@ describe("人脉图页", () => {
     );
   });
 
+  it("遗留边没有分列时，屏幕不把缺席说成一对一零次", async () => {
+    const graph = aPeopleGraph();
+    await open({
+      graph: {
+        ...graph,
+        ties: graph.ties.map((tie) => ({
+          ...tie,
+          venue_split_measured: false,
+          direct_count: 0,
+          group_count: 0,
+        })),
+      },
+    });
+    const ties = screen.getByTestId("ties-list");
+    expect(ties).toHaveTextContent("往来 6 次");
+    expect(ties).not.toHaveTextContent("一对一 0 次");
+    expect(ties).not.toHaveTextContent("群里 0 次");
+  });
+
   /**
    * A node's label is sealed text in the store and this screen never opens the
    * seal, so the only way to tell two people apart is the identifier digest.
