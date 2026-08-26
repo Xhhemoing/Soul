@@ -1,0 +1,85 @@
+
+=== 组 A ===
+A00            lock 的 algorithm 字段为 sha256                              预期 sha256     实测 sha256     一致 
+A:_defs.schema.json 字节 sha256 与 lock 一致                                      预期 5e565260e72d17dd0a93445df6b2dc16ced44827c53200d9af02585b350be7e7 实测 5e565260e72d17dd0a93445df6b2dc16ced44827c53200d9af02585b350be7e7 一致 
+A:audit.schema.json 字节 sha256 与 lock 一致                                      预期 4c6b96dd33c3112278443b2d7e1845fa415a66e740405ad3d247b5a79ee2cc83 实测 4c6b96dd33c3112278443b2d7e1845fa415a66e740405ad3d247b5a79ee2cc83 一致 
+A:contact.schema.json 字节 sha256 与 lock 一致                                      预期 b94ad999fb8ba6c29e8f6d1549a180368c8ec0baae2650177ce94889cea9e9b6 实测 b94ad999fb8ba6c29e8f6d1549a180368c8ec0baae2650177ce94889cea9e9b6 一致 
+A:event.schema.json 字节 sha256 与 lock 一致                                      预期 51f81dc9d435c158470a0267f30ac9d280ee38ea905269b48ab5c2655d28b96d 实测 51f81dc9d435c158470a0267f30ac9d280ee38ea905269b48ab5c2655d28b96d 一致 
+A:evidence.schema.json 字节 sha256 与 lock 一致                                      预期 c597c3a9841371ad4ccd012415e85d6c565daa4d2e3a0cf15e8d4ae57f5478fa 实测 c597c3a9841371ad4ccd012415e85d6c565daa4d2e3a0cf15e8d4ae57f5478fa 一致 
+A:export-manifest.schema.json 字节 sha256 与 lock 一致                                      预期 b71339c2db9c7a209c72f333e371a217e5b4d0bac7b120a03ec54dbd4432c95c 实测 b71339c2db9c7a209c72f333e371a217e5b4d0bac7b120a03ec54dbd4432c95c 一致 
+A:inference.schema.json 字节 sha256 与 lock 一致                                      预期 ad29b20ddca24d7cb3ecb987d2be39b092d7d6d8d6a88b2ca3eb21f69ef9283f 实测 ad29b20ddca24d7cb3ecb987d2be39b092d7d6d8d6a88b2ca3eb21f69ef9283f 一致 
+A:memory.schema.json 字节 sha256 与 lock 一致                                      预期 c4a522422b5b881a481d73676c158f22158b7bfddfefffb7a1441d52dd36a687 实测 c4a522422b5b881a481d73676c158f22158b7bfddfefffb7a1441d52dd36a687 一致 
+A:profile.schema.json 字节 sha256 与 lock 一致                                      预期 51b5c6110ba9696f5799ee5b1c37469eb711775e7f2feb929eb612c2351babe1 实测 51b5c6110ba9696f5799ee5b1c37469eb711775e7f2feb929eb612c2351babe1 一致 
+A:relationship.schema.json 字节 sha256 与 lock 一致                                      预期 ebf049a990366ab74bc837c7b24957d8d8ecda49dac44d26053db00b32ee4be7 实测 ebf049a990366ab74bc837c7b24957d8d8ecda49dac44d26053db00b32ee4be7 一致 
+A:soul-import-v1.schema.json 字节 sha256 与 lock 一致                                      预期 9bff534f1c1ab9b24eac3c2054685ef241ded47aa343265dde57251ea5887928 实测 9bff534f1c1ab9b24eac3c2054685ef241ded47aa343265dde57251ea5887928 一致 
+A98            磁盘上每份 schema 都在 lock 里                                   预期 {}         实测 {}         一致 
+A99            lock 里每条都在磁盘上                                            预期 {}         实测 {}         一致 
+
+=== 组 C ===
+C01            空 tie_strength 对象仍合法                                     预期 合法         实测 合法         一致 
+C02            整套 T4D 可复核面                                              预期 合法         实测 合法         一致 
+C03            声明 T4D 缺 silent_days                                     预期 拒绝         实测 拒绝         一致 
+C04            声明 T4D 缺 as_of_utc                                       预期 拒绝         实测 拒绝         一致 
+C05            声明 T4D 缺 direct_active_day_count                         预期 拒绝         实测 拒绝         一致 
+C06            分列计数不带 algorithm_id（棘轮）                                  预期 拒绝         实测 拒绝         一致 
+C07            silent_days 不带 algorithm_id（棘轮）                          预期 拒绝         实测 拒绝         一致 
+C08            band=none 无落点                                            预期 拒绝         实测 拒绝         一致 
+C09            algorithm_id=T3R 偷渡第三套规则                                 预期 拒绝         实测 拒绝         一致 
+C10            algorithm_id=T4 合法（DECISION §5 档内回退）                     预期 合法         实测 合法         一致 
+C11            裸 band 不触发棘轮                                             预期 合法         实测 合法         一致 
+C12            裸 interaction_count 不触发棘轮                                预期 合法         实测 合法         一致 
+C13            silent_days 为负被拒                                         预期 拒绝         实测 拒绝         一致 
+C14            silent_days 与 as_of−last_contact 矛盾（无跨字段约束）              预期 合法         实测 合法         一致 
+C15            群聊计数带 algorithm_id 但 direct 全缺                           预期 拒绝         实测 拒绝         一致 
+C16            last_direct_contact_utc=null 可跳过序列化                      预期 合法         实测 合法         一致 
+
+=== 组 D ===
+D01            locked_by_user=缺席     user_band=缺席       → D32 允许        预期 合法         实测 合法         一致 
+D02            locked_by_user=缺席     user_band=null     → D32 允许        预期 合法         实测 拒绝         !! 不符 schema 拒绝了 D32 允许的组合
+D03            locked_by_user=缺席     user_band="strong" → D32 禁止        预期 拒绝         实测 拒绝         一致 
+D04            locked_by_user=false  user_band=缺席       → D32 允许        预期 合法         实测 合法         一致 
+D05            locked_by_user=false  user_band=null     → D32 允许        预期 合法         实测 合法         一致 
+D06            locked_by_user=false  user_band="strong" → D32 禁止        预期 拒绝         实测 合法         !! 不符 schema 放行了 D32 禁止的组合
+D07            locked_by_user=true   user_band=缺席       → D32 禁止        预期 拒绝         实测 合法         !! 不符 schema 放行了 D32 禁止的组合
+D08            locked_by_user=true   user_band=null     → D32 禁止        预期 拒绝         实测 合法         !! 不符 schema 放行了 D32 禁止的组合
+D09            locked_by_user=true   user_band="strong" → D32 允许        预期 合法         实测 合法         一致 
+
+=== 组 E ===
+E01            锁定边 band 与 user_band 矛盾（D48 生效档=锁定档）                     预期 拒绝         实测 合法         !! 不符 D48：生效档 = 用户锁定时的档
+E02            未锁边 band 与 machine_band 矛盾（生效档=机器档）                      预期 拒绝         实测 合法         !! 不符 D32：未锁边生效档应为机器档
+E03            重建边完全省略 machine_band（D32「未锁边也写」）                         预期 拒绝         实测 合法         !! 不符 D32：未锁边也写 machine_band
+E04            machine_band=none 被拒（与 band 同样排除 none）                   预期 拒绝         实测 拒绝         一致 
+E05            user_band=none 被拒                                        预期 拒绝         实测 拒绝         一致 
+
+=== 组 F ===
+F01            a2::TieScore.band 直接写入 tie_strength                      预期 —          实测 合法          
+F02            a2::TieScore.interaction_count 直接写入 tie_strength         预期 —          实测 合法          
+F03            a2::TieScore.outgoing 直接写入 tie_strength                  预期 —          实测 拒绝          
+F04            a2::TieScore.incoming 直接写入 tie_strength                  预期 —          实测 拒绝          
+F05            a2::TieScore.active_day_count 直接写入 tie_strength          预期 —          实测 合法          
+F06            a2::TieScore.conversation_count 直接写入 tie_strength        预期 —          实测 合法          
+F07            a2::TieScore.any_direct 直接写入 tie_strength                预期 —          实测 拒绝          
+F08            a2::TieScore.direct_count 直接写入 tie_strength              预期 —          实测 拒绝          
+F09            a2::TieScore.group_count 直接写入 tie_strength               预期 —          实测 拒绝          
+F10            a2::TieScore.last_contact_unix 直接写入 tie_strength         预期 —          实测 拒绝          
+F11            a2::TieScore.as_of_unix 直接写入 tie_strength                预期 —          实测 拒绝          
+F12            a2::TieScore.evidence_ids 直接写入 tie_strength              预期 —          实测 拒绝          
+F13            a2::TieScore.last_contact_evidence_id 直接写入 tie_strength  预期 —          实测 拒绝          
+F90            last_contact_evidence_id 写在 relationship 顶层              预期 拒绝         实测 拒绝         一致 
+F91            顶层 evidence_ids 存在且必填                                    预期 合法         实测 合法         一致 
+F92            tie_strength 内没有任何证据字段                                   预期 []         实测 []         一致 
+
+=== 组 G ===
+G00            本机 FormatChecker 认识 date-time                            预期 合法         实测 合法         一致 jsonschema 需额外装 rfc3339-validator，否则 date-time 静默跳过
+G01            非法时间戳，未挂 FormatChecker（默认）                               预期 合法         实测 合法         一致 format 在 2020-12 默认是注解不是断言
+G02            同一实例，挂上 FormatChecker                                    预期 拒绝         实测 拒绝         一致 
+G03            非法 uuid7 被 pattern 拦下（pattern 一直是断言）                     预期 拒绝         实测 拒绝         一致 
+
+=== 组 H ===
+H01            省略 egress_scope 仍合法（const 但不在 required）                  预期 合法         实测 合法         一致 
+H02            egress_scope 不在顶层 required                               预期 合法         实测 合法         一致 
+H03            tie_strength 整体缺席合法                                      预期 合法         实测 合法         一致 
+H04            evidence_ids 为空数组被拒（minItems:1）                          预期 拒绝         实测 拒绝         一致 
+H05            types 仍是裸 array（任何元素都进得去）                                预期 合法         实测 合法         一致 
+
+49/56 条判定与本文件登记的预期一致（13 条为无预期的事实记录）。
