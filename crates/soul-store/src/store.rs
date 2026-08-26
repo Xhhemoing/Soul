@@ -77,8 +77,106 @@ pub(crate) fn placeholders(count: usize) -> String {
     out
 }
 
+/// The `WHERE` clause an [`EventFilter`] selects, and the values to bind to it.
+///
+/// Shared by the listing and the count so the two can never drift into
+/// disagreeing about which rows the same filter means.
+fn event_where(filter: &EventFilter) -> StoreResult<(String, Vec<String>)> {
+    let mut clauses: Vec<&str> = Vec::new();
+    let mut bound: Vec<String> = Vec::new();
+
+    if let Some(source) = filter.source.as_ref() {
+        clauses.push("source = ?");
+        bound.push(enum_text(source)?);
+    }
+    if let Some(kind) = filter.kind.as_ref() {
+        clauses.push("kind = ?");
+        bound.push(enum_text(kind)?);
+    }
+    if let Some(since) = filter.since.as_ref() {
+        clauses.push("ts >= ?");
+        bound.push(since.clone());
+    }
+
+    let mut sql = String::new();
+    if !clauses.is_empty() {
+        sql.push_str(" WHERE ");
+        sql.push_str(&clauses.join(" AND "));
+    }
+    Ok((sql, bound))
+}
+
 pub(crate) fn as_text(ids: &[Uuid]) -> Vec<String> {
     ids.iter().map(Uuid::to_string).collect()
+}
+
+/// What `meta.schema_version` says about a file this build is about to open.
+enum StampedVersion {
+    /// No `meta` table, or no `schema_version` row in it: a fresh file, or one
+    /// written before the stamp existed.
+    Unstamped,
+    /// A version this build can read, at or below [`sql::STORE_SCHEMA_VERSION`].
+    Readable,
+    /// Written by a build that knew a schema this one does not, or stamped
+    /// with something that is not a version at all.
+    Unreadable(String),
+}
+
+/// Read `meta.schema_version` without writing anything.
+///
+/// `docs/DECISIONS.md` D62 gives this build two moves and no others. Forward
+/// is additive: every statement in [`sql::DDL`] is `IF NOT EXISTS`, so a
+/// version 1 file gains `destroyed_content_keys` and is re-stamped. Backward
+/// is not a move at all — this build cannot know what a newer schema promises,
+/// and the damage was never the read that fails afterwards but the stamp, which
+/// used to be upserted to [`sql::STORE_SCHEMA_VERSION`] unconditionally and so
+/// relabelled a newer file as one this build had written. Every later launch
+/// then believed the label.
+///
+/// So this runs before the pragmas, before the DDL and before the upsert, and
+/// a [`StampedVersion::Unreadable`] answer has to leave the file exactly as it
+/// was found. Recreating it is not on the table either: the forget ledger and
+/// the hash-chained audit are not things that can be built again.
+fn stamped_version(conn: &Connection, path: &Path) -> StoreResult<StampedVersion> {
+    let read_failed = |what: &str, error: rusqlite::Error| {
+        StoreError::Backend(format!(
+            "the database at {} opened under this key but {what} could not be read: {error}",
+            path.display()
+        ))
+    };
+
+    let meta_tables: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'meta'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| read_failed("its table list", error))?;
+    if meta_tables == 0 {
+        return Ok(StampedVersion::Unstamped);
+    }
+
+    // `CAST(... AS TEXT)` so a stamp somebody stored as an integer, or as a
+    // float, is something this build reads and judges rather than something it
+    // fails to fetch.
+    let stamp: Option<Option<String>> = conn
+        .query_row(
+            "SELECT CAST(value AS TEXT) FROM meta WHERE key = 'schema_version'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| read_failed("its schema version", error))?;
+
+    Ok(match stamp {
+        None => StampedVersion::Unstamped,
+        Some(None) => StampedVersion::Unreadable("NULL".into()),
+        Some(Some(text)) => match text.trim().parse::<i64>() {
+            Ok(version) if version <= sql::STORE_SCHEMA_VERSION => StampedVersion::Readable,
+            Ok(version) => StampedVersion::Unreadable(version.to_string()),
+            Err(_) => StampedVersion::Unreadable(format!("{text:?}")),
+        },
+    })
 }
 
 /// SQLCipher-backed [`soul_store_api::SoulStore`].
@@ -138,11 +236,48 @@ impl SqlCipherStore {
             ))
         })?;
 
+        // Everything below this line writes to the file, so the question of
+        // whether this build may write to it at all is settled here.
+        if let StampedVersion::Unreadable(found) = stamped_version(&conn, &path)? {
+            return Err(StoreError::Backend(format!(
+                "the database at {} is stamped meta.schema_version = {found}, and this build \
+                 understands {}: it was written by a newer Soul, or by something that is not \
+                 this one. Nothing has been written to it — not a pragma, not a table, and not \
+                 the stamp — because an older build cannot know what a newer schema promises, \
+                 and stamping the file down to {} would hide where it came from, from every \
+                 launch after this one. Install the newer Soul, or move this database aside.",
+                path.display(),
+                sql::STORE_SCHEMA_VERSION,
+                sql::STORE_SCHEMA_VERSION,
+            )));
+        }
+
         conn.pragma_update(None, "journal_mode", "WAL")
             .map_err(backend)?;
         conn.pragma_update(None, "synchronous", "FULL")
             .map_err(backend)?;
+        // Forgetting is a `DELETE` of a wrapped content key, and plain SQLite
+        // would leave those bytes where they were, on a page that has merely
+        // joined the free list — still inside a file the DEK opens. SQLCipher
+        // happens to turn secure deletion on for us when its codec attaches,
+        // which is a fact about a dependency's internals and not something
+        // this crate says anywhere. Asking for it here, and refusing to hand
+        // back a store that answers anything else, makes it ours to keep.
+        conn.pragma_update(None, "secure_delete", "ON")
+            .map_err(backend)?;
+        let secure_delete: i64 = conn
+            .query_row("PRAGMA secure_delete", [], |row| row.get(0))
+            .map_err(backend)?;
+        if secure_delete != 1 {
+            return Err(StoreError::Backend(format!(
+                "this SQLite build answered PRAGMA secure_delete with {secure_delete} after being \
+                 asked for 1, so a destroyed content key would stay legible in a free page"
+            )));
+        }
         conn.execute_batch(sql::DDL).map_err(backend)?;
+        // Only ever reached for a file at or below this version, so this moves
+        // the stamp forward — 1 to 2 once the additive DDL above has given the
+        // file what version 2 means — and never back down.
         conn.execute(
             "INSERT INTO meta (key, value) VALUES ('schema_version', ?1)
              ON CONFLICT (key) DO UPDATE SET value = excluded.value",
@@ -229,9 +364,30 @@ impl SqlCipherStore {
         Ok(Some(SecretKey::from_bytes(bytes)))
     }
 
+    /// Whether this id has already been through a forget.
+    ///
+    /// The wrapped key is gone by then, and nothing else in the database says
+    /// the id ever existed, so a caller asking to seal under it again would be
+    /// handed a brand new key — and the tombstoned rows that name the id would
+    /// have a live key behind them once more.
+    pub fn content_key_destroyed(&self, content_key_id: Uuid) -> StoreResult<bool> {
+        self.conn
+            .query_row(
+                "SELECT 1 FROM destroyed_content_keys WHERE content_key_id = ?1",
+                [content_key_id.to_string()],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .map(|row| row.is_some())
+            .map_err(backend)
+    }
+
     fn ensure_content_key(&mut self, content_key_id: Uuid) -> StoreResult<SecretKey> {
         if let Some(existing) = self.content_key(content_key_id)? {
             return Ok(existing);
+        }
+        if self.content_key_destroyed(content_key_id)? {
+            return Err(StoreError::ContentKeyDestroyed(content_key_id));
         }
         let fresh = SecretKey::random();
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
@@ -332,11 +488,92 @@ impl SqlCipherStore {
             .map_err(backend)
     }
 
+    /// `PRAGMA secure_delete` as SQLite reports it: 0 off, 1 on, 2 for the
+    /// `FAST` compromise that only zeroes what it can do without extra page
+    /// writes. [`SqlCipherStore::open`] refuses to hand back a store that
+    /// answers anything but 1, because forgetting rests on the freed bytes
+    /// being gone rather than merely unlinked.
+    pub fn secure_delete(&self) -> StoreResult<i64> {
+        self.conn
+            .query_row("PRAGMA secure_delete", [], |row| row.get(0))
+            .map_err(backend)
+    }
+
     /// `PRAGMA integrity_check`, for tests that reopen after a crash.
     pub fn integrity_check(&self) -> StoreResult<String> {
         self.conn
             .query_row("PRAGMA integrity_check", [], |row| row.get(0))
             .map_err(backend)
+    }
+
+    /// Run `work` with every write it makes inside one SQLite transaction.
+    ///
+    /// This is the entry point `soul-store-api` deliberately does not have, and
+    /// it exists for one shape of caller: a command that writes many rows which
+    /// only mean something together. An import is the case that forced it. Each
+    /// write below used to commit on its own, so a `synchronous=FULL` commit
+    /// fsync was paid once per message — seconds for an eight-thousand message
+    /// export on an ordinary filesystem, and linear in the export from there —
+    /// and a crash halfway through left an import that could not be re-run
+    /// without writing every surviving event a second time.
+    ///
+    /// Both problems have the same answer. Inside `work` the per-row writes
+    /// nest as savepoints, which are bookkeeping in the same open transaction
+    /// rather than durability points of their own, and the single commit at the
+    /// end is the only fsync. A `work` that returns an error, panics, or is cut
+    /// off by a power loss leaves nothing: the transaction is rolled back, or —
+    /// when the process never got that far — was never committed to begin with.
+    ///
+    /// `BEGIN IMMEDIATE` rather than the deferred default: the write lock is
+    /// taken up front, so a transaction that is going to be refused is refused
+    /// before `work` has sealed anything.
+    ///
+    /// Not reentrant, and it says so by failing rather than by silently joining
+    /// the transaction already open. Nesting these would make the inner one's
+    /// commit look durable while the outer one could still roll it away, which
+    /// is exactly the confusion this method exists to remove.
+    pub fn transact<T, E, F>(&mut self, work: F) -> Result<T, E>
+    where
+        F: FnOnce(&mut SqlCipherStore) -> Result<T, E>,
+        E: From<StoreError>,
+    {
+        self.conn
+            .execute_batch("BEGIN IMMEDIATE")
+            .map_err(|error| E::from(backend(error)))?;
+
+        // A panic inside `work` would otherwise unwind past the rollback and
+        // leave the connection mid-transaction. `soulcore` recovers a poisoned
+        // store mutex rather than propagating it, so the next command would
+        // find a connection whose next write silently joined a transaction
+        // nobody is going to commit.
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| work(self)));
+
+        match outcome {
+            Ok(Ok(value)) => match self.conn.execute_batch("COMMIT") {
+                Ok(()) => Ok(value),
+                Err(error) => {
+                    self.roll_back_quietly();
+                    Err(E::from(backend(error)))
+                }
+            },
+            Ok(Err(refused)) => {
+                self.roll_back_quietly();
+                Err(refused)
+            }
+            Err(panicked) => {
+                self.roll_back_quietly();
+                std::panic::resume_unwind(panicked)
+            }
+        }
+    }
+
+    /// Undo the open transaction, keeping whatever went wrong first.
+    ///
+    /// A `ROLLBACK` that itself fails means SQLite has already ended the
+    /// transaction — the usual cause is a statement that rolled it back — and
+    /// reporting that instead of the original error would name the symptom.
+    fn roll_back_quietly(&self) {
+        let _ = self.conn.execute_batch("ROLLBACK");
     }
 }
 
@@ -369,7 +606,14 @@ impl EventStore for SqlCipherStore {
             to_doc(&event)?,
         );
 
-        let tx = self.conn.transaction().map_err(backend)?;
+        // A savepoint rather than a transaction, so that the same write is
+        // correct on its own and inside a [`SqlCipherStore::transact`]. On its
+        // own the outermost savepoint *is* the transaction — SQLite opens one
+        // for it and the release below commits it, fsync included, which is
+        // what AC-24's crash tests interrupt. Under an import's wrap it is
+        // bookkeeping in a transaction that has not committed yet, and a crash
+        // here loses the whole import rather than every message after this one.
+        let tx = self.conn.savepoint().map_err(backend)?;
         tx.execute(
             "INSERT INTO events
                 (event_id, ts, source, kind, actor_subject, privacy_subject, body_blob_id, doc)
@@ -403,27 +647,8 @@ impl EventStore for SqlCipherStore {
     }
 
     fn list_events(&self, filter: &EventFilter) -> StoreResult<Vec<SoulEvent>> {
-        let mut sql = String::from("SELECT doc FROM events");
-        let mut clauses: Vec<&str> = Vec::new();
-        let mut bound: Vec<String> = Vec::new();
-
-        if let Some(source) = filter.source.as_ref() {
-            clauses.push("source = ?");
-            bound.push(enum_text(source)?);
-        }
-        if let Some(kind) = filter.kind.as_ref() {
-            clauses.push("kind = ?");
-            bound.push(enum_text(kind)?);
-        }
-        if let Some(since) = filter.since.as_ref() {
-            clauses.push("ts >= ?");
-            bound.push(since.clone());
-        }
-        if !clauses.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&clauses.join(" AND "));
-        }
-        sql.push_str(" ORDER BY rowid");
+        let (where_clause, bound) = event_where(filter)?;
+        let mut sql = format!("SELECT doc FROM events{where_clause} ORDER BY rowid");
         if let Some(limit) = filter.limit {
             sql.push_str(&format!(" LIMIT {limit}"));
         }
@@ -440,6 +665,28 @@ impl EventStore for SqlCipherStore {
             events.push(from_doc(&row.map_err(backend)?)?);
         }
         Ok(events)
+    }
+
+    /// `count(*)`, rather than the trait default that reads and JSON-parses
+    /// every matching row only to ask for the length of the vector. The collect
+    /// screen asks for this once a second with the store lock held, so the
+    /// default turns an idle-looking status poll into a full table scan.
+    fn count_events(&self, filter: &EventFilter) -> StoreResult<u64> {
+        let (where_clause, bound) = event_where(filter)?;
+        let sql = format!("SELECT count(*) FROM events{where_clause}");
+        let matched: i64 = self
+            .conn
+            .query_row(&sql, rusqlite::params_from_iter(bound.iter()), |row| {
+                row.get(0)
+            })
+            .map_err(backend)?;
+        let matched = u64::try_from(matched).unwrap_or(0);
+
+        // `list_events` stops at `limit`, so counting the same filter must too.
+        Ok(match filter.limit {
+            Some(limit) => matched.min(limit as u64),
+            None => matched,
+        })
     }
 }
 
@@ -550,7 +797,7 @@ impl ProfileStore for SqlCipherStore {
         let id = inference.inference_id;
         let doc = to_doc(&inference)?;
         let live = enum_text(&InferenceState::Live)?;
-        let tx = self.conn.transaction().map_err(backend)?;
+        let tx = self.conn.savepoint().map_err(backend)?;
         tx.execute(
             "INSERT INTO inferences (inference_id, state, doc) VALUES (?1, ?2, ?3)
              ON CONFLICT (inference_id) DO UPDATE
@@ -649,7 +896,7 @@ impl MemoryStore for SqlCipherStore {
             to_doc(&memory)?,
         );
 
-        let tx = self.conn.transaction().map_err(backend)?;
+        let tx = self.conn.savepoint().map_err(backend)?;
         tx.execute(
             "INSERT INTO memories (memory_id, content_key_id, forget_state, doc)
              VALUES (?1, ?2, ?3, ?4)
@@ -786,7 +1033,7 @@ impl GraphStore for SqlCipherStore {
         let id = relationship.relationship_id;
         let doc = to_doc(&relationship)?;
 
-        let tx = self.conn.transaction().map_err(backend)?;
+        let tx = self.conn.savepoint().map_err(backend)?;
         tx.execute(
             "INSERT INTO relationships (relationship_id, from_contact_id, to_contact_id, doc)
              VALUES (?1, ?2, ?3, ?4)
@@ -981,7 +1228,7 @@ impl AuditLog for SqlCipherStore {
             to_doc(&linked.entry)?,
         );
 
-        let tx = self.conn.transaction().map_err(backend)?;
+        let tx = self.conn.savepoint().map_err(backend)?;
         tx.execute(
             "INSERT INTO audit (seq, entry_id, ts, prev_hash, entry_hash, action, decision, doc)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",

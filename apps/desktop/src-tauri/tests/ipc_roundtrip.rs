@@ -207,16 +207,34 @@ fn a_finished_wizard_is_still_finished_after_a_restart() {
 }
 
 /// The refusal reaches the WebView as an error rather than as a configuration
-/// that quietly claims to be finished.
+/// that quietly claims to be finished — and in the shape every other refusal
+/// on this surface has.
+///
+/// The wizard used to answer `{"reason": "not_acknowledged"}`, which is not
+/// what `src/refusal.tsx` reads: `asRefusal` wants a code and a sentence, and
+/// anything else becomes the code `unavailable` with the stringified object
+/// for a sentence. The first screen a new user sees was the one screen whose
+/// refusal the shared renderer could not read.
 #[test]
-fn an_unacknowledged_wizard_comes_back_as_an_error() {
+fn an_unacknowledged_wizard_comes_back_as_a_code_and_a_sentence() {
     let refusal = invoke(
         "complete_wizard",
         json!({ "answers": { "acknowledged_defaults_are_off": false } }),
     )
     .expect_err("the wizard refuses");
 
-    assert_eq!(refusal["reason"], json!("not_acknowledged"));
+    assert_eq!(refusal["reason_code"], json!("ROUTINE"));
+    assert!(
+        refusal["explanation"]
+            .as_str()
+            .is_some_and(|explanation| !explanation.is_empty()),
+        "the wizard is shown a blank refusal: {refusal}",
+    );
+    assert_eq!(
+        refusal.as_object().map(|fields| fields.len()),
+        Some(2),
+        "the shell reads exactly two fields off a refusal: {refusal}",
+    );
 }
 
 /// AC-22, end to end: asking for the cloud gets the same notice back.
@@ -1970,6 +1988,151 @@ fn an_export_crosses_the_ipc_as_counts_and_becomes_people() {
     let _ = std::fs::remove_dir_all(&shell.directory);
 }
 
+/// The 人脉图's correction buttons over the real handler, both ways.
+///
+/// `soulcore`'s `session_graph_correct.rs` proves what the session does to the
+/// store. What only this side can show is that the two commands are
+/// registered, that `relationshipId` survives Tauri's conversion into
+/// `relationship_id` — the same argument
+/// `the_webview_spelling_of_the_argument_is_the_one_that_arrives` makes about
+/// the cloud switch — and that the three tokens the screen draws the lock out
+/// of arrive on the JSON: the band in force, the band the user chose, and what
+/// the counts say. A `machine_band` lost in serialization would leave the page
+/// unable to show that the machine still disagrees, which is the visible half
+/// of AC-07.
+#[test]
+fn a_tie_is_corrected_and_released_over_the_ipc() {
+    let shell = Shell::on(scratch());
+    let text = fixture("import/soul-import-v1/three_partners.jsonl");
+    shell
+        .invoke("commit_soul_import_v1", json!({ "text": text }))
+        .expect("a real export commits");
+
+    let graph = shell.invoke("people_graph", json!({})).expect("a graph");
+    let tie = graph["ties"].as_array().expect("ties")[0].clone();
+    let relationship_id = tie["relationship_id"]
+        .as_str()
+        .expect("a relationship id")
+        .to_owned();
+    let machine = tie["band"].as_str().expect("a band").to_owned();
+    let chosen = if machine == "strong" { "weak" } else { "strong" };
+    assert_eq!(tie["locked_by_user"], json!(false));
+    assert_eq!(tie["user_band"], json!(null));
+
+    let corrected = shell
+        .invoke(
+            "correct_tie",
+            json!({ "relationshipId": relationship_id, "band": chosen }),
+        )
+        .expect("the user read the tie and said the band is wrong");
+    let after = corrected["ties"]
+        .as_array()
+        .expect("ties")
+        .iter()
+        .find(|row| row["relationship_id"] == json!(relationship_id))
+        .expect("the corrected tie")
+        .clone();
+    assert_eq!(after["band"], json!(chosen));
+    assert_eq!(after["locked_by_user"], json!(true));
+    assert_eq!(after["user_band"], json!(chosen));
+    assert_eq!(
+        after["machine_band"],
+        json!(machine),
+        "the counts' own reading did not survive the IPC: {after}",
+    );
+    // Identifiers, counts and vocabulary words. COPY_ZH holds no wording for a
+    // user-set band, so the sentence is the interface's to compose out of copy
+    // that is already frozen — a tie that crossed with prose on it would be
+    // the core writing screen copy nobody read.
+    assert!(
+        !after
+            .to_string()
+            .chars()
+            .any(|glyph| ('\u{4e00}'..='\u{9fff}').contains(&glyph)),
+        "a tie carried copy across the IPC: {after}",
+    );
+
+    // AC-23: the correction is an action, so the 审计 page hears about it, and
+    // what it hears is the edge and the row rather than a band word.
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the chain reads back");
+    assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
+    let recorded = chain["entries"]
+        .as_array()
+        .expect("entries")
+        .iter()
+        .find(|entry| entry["action"] == json!("profile.correct"))
+        .unwrap_or_else(|| panic!("the correction never reached the chain: {chain}"));
+    assert_eq!(recorded["decision"], json!("allowed"));
+    assert!(
+        recorded["subject_refs"]
+            .as_array()
+            .is_some_and(|refs| refs.contains(&json!(relationship_id))),
+        "the entry does not name the edge it is about: {recorded}",
+    );
+
+    let released = shell
+        .invoke("release_tie", json!({ "relationshipId": relationship_id }))
+        .expect("the user asked for the counts to speak again");
+    let back = released["ties"]
+        .as_array()
+        .expect("ties")
+        .iter()
+        .find(|row| row["relationship_id"] == json!(relationship_id))
+        .expect("the released tie")
+        .clone();
+    assert_eq!(back["locked_by_user"], json!(false));
+    assert_eq!(back["user_band"], json!(null));
+    assert_eq!(back["machine_band"], json!(null));
+    assert_eq!(
+        back["band"],
+        json!(machine),
+        "the counts have not changed, so releasing gives back the band they gave: {back}",
+    );
+
+    let _ = std::fs::remove_dir_all(&shell.directory);
+}
+
+/// `relationshipId` and `band` are what `core.ts` sends, and a command that
+/// tolerated either of them missing would hide a rename. The band is checked
+/// against the three words the product has before anything reaches the store,
+/// so a fourth one comes back as a coded refusal rather than as a panic.
+#[test]
+fn the_tie_correction_arguments_are_required_and_spelled_the_way_the_webview_spells_them() {
+    const AN_EDGE: &str = "0192f000-0000-7000-8000-00000000000a";
+
+    for body in [
+        json!({}),
+        json!({ "band": "strong" }),
+        json!({ "relationshipId": AN_EDGE }),
+    ] {
+        assert!(
+            invoke("correct_tie", body.clone()).is_err(),
+            "a half-filled correction resolved to something: {body}",
+        );
+    }
+    assert!(
+        invoke("release_tie", json!({})).is_err(),
+        "a release of nothing in particular resolved to something",
+    );
+
+    let refusal = invoke(
+        "correct_tie",
+        json!({ "relationshipId": AN_EDGE, "band": "very_strong" }),
+    )
+    .expect_err("that is not a band this product has");
+    assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+    // A well-formed identifier for an edge nobody has: v0.1 cannot invent one,
+    // so this refuses rather than creating an edge nothing was observed for.
+    let refusal = invoke(
+        "correct_tie",
+        json!({ "relationshipId": AN_EDGE, "band": "strong" }),
+    )
+    .expect_err("an empty store holds no edges");
+    assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+}
+
 /// What `result_missing_fields.json` calls its chats and its owner, copied
 /// from `soulcore`'s `session_import.rs`. A personal chat's title is the other
 /// person's name, so a refusal that named one would be a refusal that named
@@ -3236,6 +3399,22 @@ fn the_research_preview_crosses_the_ipc_as_counts_and_no_third_party_row() {
         "the store has to hold third-party rows for this test to mean anything",
     );
 
+    // An import on its own leaves nothing this preview may publish: every row
+    // it wrote is stored `research_export: deny`, the owner's included. The
+    // questionnaire is what puts a trait axis in the store, and a trait axis
+    // is a band rather than a message, which is the difference the preview is
+    // about.
+    shell
+        .invoke(
+            "answer_questionnaire",
+            json!({
+                "answers": [
+                    { "question_id": "q.axis.curiosity", "given": "leans_high" },
+                ]
+            }),
+        )
+        .expect("one answer is an intake");
+
     let before = footprint(&shell.directory);
     assert!(
         !before.is_empty(),
@@ -3276,6 +3455,22 @@ fn the_research_preview_crosses_the_ipc_as_counts_and_no_third_party_row() {
             .unwrap_or_default()
             > 0,
         "the query produced no candidates at all: {research}",
+    );
+
+    // Being the owner's is not what decides it. Sixteen messages went in as
+    // the owner's own hours and every one of them is stored with research
+    // egress denied, so the page has to be able to say how many it withheld
+    // and none of them may be on it.
+    assert!(
+        research["deny_rows_excluded"].as_u64().unwrap_or_default() > 0,
+        "the imported rows are the owner's and are stored `deny`; a zero here means the \
+         disposition was never read: {research}",
+    );
+    assert!(
+        research["rows"]
+            .as_array()
+            .is_some_and(|rows| rows.iter().all(|row| row["event_kind"] != json!("import.item"))),
+        "an imported row reached the 研究 page: {research}",
     );
 
     // Not a list of names: an appended audit row, a grown write-ahead log or a
@@ -3341,6 +3536,13 @@ fn a_store_that_will_not_open_is_a_coded_refusal_rather_than_an_empty_answer() {
     let text = fixture("import/soul-import-v1/three_partners.jsonl");
     for (command, body) in [
         ("people_graph", json!({})),
+        (
+            "correct_tie",
+            json!({
+                "relationshipId": "0192f000-0000-7000-8000-00000000000a",
+                "band": "strong",
+            }),
+        ),
         ("memory_list", json!({})),
         ("audit_chain", json!({})),
         ("research_preview", json!({})),

@@ -137,6 +137,17 @@ pub const NO_ANSWERS_NOTICE: &str = "这份问卷一道题都没有答，所以�
 pub const FORGET_NOT_PREVIEWED_NOTICE: &str = "这次遗忘对不上你刚才看过的那份影响面预览。\
     什么都没有销毁：先看一遍这条记忆现在的预览，再决定。";
 
+/// What a forget is told when the confirmation named the right preview but the
+/// store moved under it.
+///
+/// A separate sentence from the one above because it is a separate thing to
+/// have done wrong, and only one of them is the user's: the id matched, the
+/// screen was read, and what changed is the memory. Saying 对不上预览 here
+/// would send someone looking for a stale window that does not exist.
+pub const FORGET_IMPACT_CHANGED_NOTICE: &str =
+    "这条记忆在你看过影响面预览之后又动过，那份预览上的数字已经不是这次遗忘会销毁的东西。\
+    什么都没有销毁，那份预览也作废了：重新看一遍现在的预览，再决定。";
+
 /// What collection is, stated once, on the page that offers it.
 ///
 /// PRODUCT_LOCK's sentence for this slice — 仅前台应用使用时长，窗口标题不采 —
@@ -179,6 +190,33 @@ pub const ENDPOINT_UNPARSABLE_NOTICE: &str = "这个地址不像一个端点：�
 
 /// A collector that would not wind down. Rare enough to be worth a sentence.
 pub const COLLECT_NOT_STOPPED_NOTICE: &str = "同意已经收回，但采集线程没有正常收尾：";
+
+/// What an import that started writing and then stopped is told.
+///
+/// The counterpart of [`IMPORT_REFUSED_NOTICE`], which is for a file that never
+/// got as far as the store. This one is for a file that did: the events, the
+/// people and the graph they imply go in as one transaction, so a failure
+/// anywhere in it rolls the whole file back. Saying so is the part that matters
+/// to the person reading it. Imported events carry no external id, so before
+/// the wrap a half-written import could only be finished by re-importing the
+/// file, which wrote a second copy of everything that had already landed —
+/// "再导一次" was advice with a cost attached. It no longer has one.
+pub const IMPORT_ROLLED_BACK_NOTICE: &str = "这个文件没有导入：写到一半出了问题，\
+    整份导入已经回滚，库里一行都没有留下。同一个文件可以直接再导一次，不会多出一份事件。\
+    下面写的是哪里出的问题：";
+
+/// What a questionnaire that started writing and then stopped is told.
+///
+/// The counterpart of [`IMPORT_ROLLED_BACK_NOTICE`] for the other way a
+/// profile gets made. It says the same thing about what is left — nothing —
+/// and a different thing about what to do next, because there is no file to
+/// point at: the answers are still on the screen the user just filled in, and
+/// handing them in again is the whole of the retry. The axes replace their
+/// citations rather than accumulating them, so answering twice does not leave
+/// a profile that rests on two accounts of the same questionnaire.
+pub const INTAKE_ROLLED_BACK_NOTICE: &str = "这份问卷没有记下来：写到一半出了问题，\
+    整次录入已经回滚，库里一行都没有留下，档案还是原来的样子。\
+    答案还在这一页上，直接再交一次就行，不会多出一份记录。下面写的是哪里出的问题：";
 
 /// Where this machine keeps Soul's data.
 pub fn data_directory() -> Result<PathBuf, DirectoryError> {
@@ -244,7 +282,9 @@ impl KeyProtection {
     /// What the user is told about this machine's key material.
     pub const fn notice(self) -> &'static str {
         match self {
-            KeyProtection::Dpapi => "数据库密钥由 Windows 的用户级密钥保护接管。",
+            KeyProtection::Dpapi => {
+                "数据库密钥由 Windows 的用户级密钥保护接管。删掉数据目录里的密钥文件、换 Windows 账户、或重装系统丢了主密钥，这份库就永久打不开；这一版没有恢复入口。"
+            }
             KeyProtection::DeveloperKeyFile => {
                 "这是开发构建：数据库密钥放在库旁边的种子文件里，没有平台密钥保护。"
             }
@@ -634,6 +674,52 @@ impl Session {
         Ok(graph_commands::people_view(&store)?)
     }
 
+    /// The user read a tie and said the band is wrong. AC-07 on the graph.
+    ///
+    /// The same shape [`Session::correct_axis`] has, and for the same reasons:
+    /// the vocabulary is checked here so a word nobody offers never reaches the
+    /// store, and what comes back is the whole graph rather than the one edge —
+    /// a correction moves the band, the lock and the evidence behind that edge
+    /// at once, and a screen that patched one of them itself would be guessing
+    /// at the other two.
+    ///
+    /// The counts are not touched. What the user has overruled is the summary
+    /// word derived from them, which is why a later rebuild goes on counting
+    /// and the band stays where they put it.
+    pub fn correct_tie(
+        &mut self,
+        relationship_id: &str,
+        band: &str,
+    ) -> Result<PeopleGraphView, SessionRefusal> {
+        let relationship_id = parse_id(relationship_id, "关系")?;
+        let band = graph_commands::band_named(band).ok_or_else(|| SessionRefusal {
+            reason_code: ReasonCode::Routine.as_str().to_owned(),
+            explanation: "一条关系只有弱、中等、强三档。".to_owned(),
+        })?;
+        let at = now_unix_seconds();
+        let store = self.opened_store()?;
+        let mut store = hold(&store);
+        graph_commands::correct_tie(&mut store, relationship_id, band, at)?;
+        Ok(graph_commands::people_view(&store)?)
+    }
+
+    /// Hand the band back to the counts.
+    ///
+    /// The way out of the lock, which is the half AC-07 is only half of without
+    /// it: a correction the user cannot undo is a correction they have to be
+    /// sure about before pressing it.
+    pub fn release_tie(
+        &mut self,
+        relationship_id: &str,
+    ) -> Result<PeopleGraphView, SessionRefusal> {
+        let relationship_id = parse_id(relationship_id, "关系")?;
+        let at = now_unix_seconds();
+        let store = self.opened_store()?;
+        let mut store = hold(&store);
+        graph_commands::release_tie(&mut store, relationship_id, at)?;
+        Ok(graph_commands::people_view(&store)?)
+    }
+
     /// Everything Soul will say about one person, and what each line rests on.
     ///
     /// AC-16's product path, including the half that had nowhere to run: a
@@ -707,12 +793,22 @@ impl Session {
     /// the one `prepare_pasted` built, and [`E1DraftPlan`] gains no field for a
     /// marker or a URL that would then be on the confirmation screen.
     ///
+    /// A store that did not open stops this before anything is described.
+    /// [`Session::append_audit`] returns `Ok(())` on a closed store — it has to,
+    /// or AC-17's local drafting would stop with the database — so a request
+    /// prepared here and approved next would leave a machine with no
+    /// `egress.request` behind it and no way to notice. Refusing at the door is
+    /// what [`Session::person_summary`] already does with E1's other
+    /// user-triggered path, and the paste that stays store-free is
+    /// [`Session::draft_pasted`], which builds no request body.
+    ///
     /// [`Draft::audit`]: soul_draft::draft::Draft::audit
     pub fn prepare_draft(
         &mut self,
         pasted: &str,
         include_original: Option<bool>,
     ) -> Result<E1DraftPlan, SessionRefusal> {
+        self.opened_store()?;
         // Read every time, for the reason `owner_brief` is: a cached set is a
         // set that does not have the person imported five minutes ago in it,
         // and their name is what this call is deciding whether to send.
@@ -743,7 +839,13 @@ impl Session {
     /// `audit.schema.json` already has for it, and until this the chain heard
     /// about generations that succeeded and nothing at all about the ones that
     /// were stopped.
+    ///
+    /// The store is checked here as well as in [`Session::prepare_draft`],
+    /// because the two entries this owes are the whole reason a request may
+    /// leave: a chain that cannot be appended to is not a chain that quietly
+    /// misses one row, it is a socket nobody has to account for.
     pub fn generate_draft(&mut self, approval: &Approval) -> Result<DraftValue, SessionRefusal> {
+        self.opened_store()?;
         let generated = draft::generate_prepared(&mut self.draft, &mut self.policy, approval);
         let drafted = generated.map_err(|refusal| self.refuse_draft(refusal))?;
         self.append_audit(&drafted.audit)?;
@@ -918,7 +1020,7 @@ impl Session {
     /// The same for a Telegram Desktop `result.json`. AC-05.
     ///
     /// v0.1 does not open archives: the user points at the `result.json` that
-    /// Telegram's own *Export chat history → Machine-readable JSON* produced,
+    /// Telegram's own *Settings → Advanced → Export Telegram data* produced,
     /// and this reads the text of that one file.
     pub fn preview_telegram(&self, text: &str) -> Result<ImportPreview, SessionRefusal> {
         self.opened_store()?;
@@ -956,6 +1058,22 @@ impl Session {
     /// `/graph` show the people this file just added without a second opening
     /// of anything. `soul-graph::rebuild` is idempotent — a second import
     /// updates the ties rather than growing a parallel graph.
+    ///
+    /// The two of them are one transaction, and that is the whole of what an
+    /// import promises about failure. Writing a message used to be its own
+    /// commit, so an export of a hundred thousand of them was a hundred
+    /// thousand `synchronous=FULL` fsyncs on one IPC call, and anything that
+    /// went wrong partway — a graph that will not build, a machine that lost
+    /// power — left an import nobody could re-run: the events already in the
+    /// store have no external id to match against, so a second attempt would
+    /// write them again. Wrapped, a file either landed whole or was never here,
+    /// which is the state the same file can simply be imported into again.
+    ///
+    /// The rebuild is inside the wrap rather than after it because a graph that
+    /// refuses to build is a reason not to keep the import. Two contacts of
+    /// class `self` is the case that matters: `soul_graph::rebuild` fails on
+    /// them from then on, and before this the events and the second owner row
+    /// that caused it both stayed, on rows the user has no way to edit.
     fn commit_import(
         &mut self,
         staged: &soul_import::model::StagedImport,
@@ -964,9 +1082,13 @@ impl Session {
         let store = self.opened_store()?;
         let view = {
             let mut store = hold(&store);
-            let receipt = import_commands::commit(&mut store, staged, at)?;
-            let build = graph_commands::rebuild(&mut store, at)?;
-            ImportReceiptView::of(&receipt, build.edges_written.len())
+            store
+                .transact(|store| -> Result<ImportReceiptView, SessionRefusal> {
+                    let receipt = import_commands::commit(store, staged, at)?;
+                    let build = graph_commands::rebuild(store, at)?;
+                    Ok(ImportReceiptView::of(&receipt, build.edges_written.len()))
+                })
+                .map_err(|refusal| rolled_back(IMPORT_ROLLED_BACK_NOTICE, refusal))?
         };
         // The people this file added are people whose names must not travel.
         // The guard above is released first: `sync_identifiers` takes it again
@@ -993,6 +1115,18 @@ impl Session {
     /// left blank is refused, because it would leave the profile exactly as
     /// empty as it was and reporting that as a completed intake would be a
     /// lie the wizard then repeats to the user.
+    ///
+    /// The intake is one transaction, for the reason [`Self::commit_import`]
+    /// is: what is being written is the questionnaire, not the answers one at
+    /// a time. `soul-profile`'s intake records every answer as a sealed event
+    /// and a `user_stated` evidence row, then writes the profile those rows
+    /// support, then appends the audit entry the run owes; an answer whose
+    /// event and evidence landed while the profile never did is a row nothing
+    /// cites and no screen shows. Re-running the questionnaire is safe — the
+    /// axes replace their `evidence_ids` — so the leftovers were never wrong,
+    /// only permanent: nothing in the product deletes them, and 遗忘 works on
+    /// memories rather than on unclaimed evidence. Wrapped, a questionnaire
+    /// either landed whole or was never here.
     pub fn answer_questionnaire(
         &mut self,
         answers: &[GivenAnswer],
@@ -1006,13 +1140,17 @@ impl Session {
         let at = now_unix_seconds();
         let store = self.opened_store()?;
         let mut store = hold(&store);
-        Ok(profile_commands::intake_from(
-            &mut store,
-            OWNER_PROFILE_ID,
-            answers,
-            &rfc3339_utc(at),
-            at,
-        )?)
+        store
+            .transact(|store| -> Result<IntakeReceipt, SessionRefusal> {
+                Ok(profile_commands::intake_from(
+                    store,
+                    OWNER_PROFILE_ID,
+                    answers,
+                    &rfc3339_utc(at),
+                    at,
+                )?)
+            })
+            .map_err(|refusal| rolled_back(INTAKE_ROLLED_BACK_NOTICE, refusal))
     }
 
     /// The profile screen: axes, voice, the pointers to what the user stated.
@@ -1146,6 +1284,23 @@ impl Session {
     /// alternative is worse than it looks: a refusal that also dropped the
     /// pending would make one mistyped confirmation the reason a user has to
     /// walk the irreversible screen a second time.
+    ///
+    /// Matching the two ids is not enough to say the user read the price they
+    /// are about to pay. The preview is a set of numbers read off the store at
+    /// the moment it was asked for, and `execute_forget` resolves the plan
+    /// again against the store as it is when it runs; between the two, this
+    /// session can have written. An edit reseals under the same content key,
+    /// so the memory stays one forget unit and the confirmation still matches
+    /// — while the impact underneath it has moved. Until this re-read the
+    /// disagreement was reported by `matched_preview` on the receipt, which is
+    /// to say after the destruction, on a screen whose whole purpose was to be
+    /// read before it.
+    ///
+    /// So the price is quoted a second time and compared before anything is
+    /// destroyed, and a forget whose cost has changed is refused rather than
+    /// run at the new number. This refusal does take the preview: the numbers
+    /// on it are no longer true of anything, and the point of turning the user
+    /// away is that they read the current ones.
     pub fn forget_memory(
         &mut self,
         confirmation: &ForgetConfirmation,
@@ -1155,12 +1310,18 @@ impl Session {
                 && held.memory_id.to_string() == confirmation.memory_id
         });
         let Some(held) = matched else {
-            return Err(self.refuse_forget());
+            return Err(self.refuse_forget(FORGET_NOT_PREVIEWED_NOTICE));
         };
 
         let at = now_unix_seconds();
-        let store = self.opened_store()?;
-        let mut store = hold(&store);
+        let handle = self.opened_store()?;
+        let mut store = hold(&handle);
+        if memory_commands::preview_forget(&store, held.memory_id)? != held.impact {
+            // `refuse_forget` writes to the same store, and this lock is not
+            // reentrant.
+            drop(store);
+            return Err(self.refuse_forget(FORGET_IMPACT_CHANGED_NOTICE));
+        }
         let receipt = memory_commands::forget(&mut store, held.memory_id, at)?;
         Ok(ForgetReceiptView::of(
             held.memory_id,
@@ -1179,7 +1340,12 @@ impl Session {
     /// record the denial is reported instead of the refusal — it is the more
     /// serious of the two problems, and returning the refusal would leave
     /// nobody looking at it.
-    fn refuse_forget(&self) -> SessionRefusal {
+    ///
+    /// The two ways to be turned away read differently and are recorded the
+    /// same: which of them happened is a fact about what the user was looking
+    /// at, and the chain says only that a confirmation was denied under
+    /// `PLAN_HASH_MISMATCH`.
+    fn refuse_forget(&self, explanation: &str) -> SessionRefusal {
         let entries = [AuditContent::denied(
             AuditAction::HitlDeny,
             ReasonCode::PlanHashMismatch,
@@ -1187,7 +1353,7 @@ impl Session {
         match self.append_audit(&entries) {
             Ok(()) => SessionRefusal {
                 reason_code: ReasonCode::PlanHashMismatch.as_str().to_owned(),
-                explanation: FORGET_NOT_PREVIEWED_NOTICE.to_owned(),
+                explanation: explanation.to_owned(),
             },
             Err(problem) => problem,
         }
@@ -1487,6 +1653,26 @@ fn hold(store: &Arc<Mutex<SqlCipherStore>>) -> MutexGuard<'_, SqlCipherStore> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Say, in front of whatever refused, that the write it refused is gone.
+///
+/// Several layers can stop a wrapped write and none of them knows it was
+/// wrapped: for an import the store, `soul-import` and the graph rebuild that
+/// runs before the transaction closes; for a questionnaire the store,
+/// `soul-import`'s recorder and `soul-profile`. Each explains what went wrong
+/// and none of them can say what is left, which is the one thing the user has
+/// to know before deciding whether to press the button again. Which sentence
+/// says so is the caller's, because 导入 and 问卷 are not undone the same way:
+/// see [`IMPORT_ROLLED_BACK_NOTICE`] and [`INTAKE_ROLLED_BACK_NOTICE`].
+///
+/// The reason code is left alone. It is the vocabulary an audit reader shares
+/// with the screen, and rolling back is not a different reason to refuse.
+fn rolled_back(notice: &str, refusal: SessionRefusal) -> SessionRefusal {
+    SessionRefusal {
+        explanation: format!("{notice}\n{}", refusal.explanation),
+        ..refusal
+    }
+}
+
 /// One Telegram export, as JSON, or a refusal that says where the file stops
 /// being readable without quoting what is there.
 ///
@@ -1498,8 +1684,9 @@ fn telegram_document(text: &str) -> Result<serde_json::Value, SessionRefusal> {
         reason_code: ReasonCode::Routine.as_str().to_owned(),
         explanation: format!(
             "{IMPORT_REFUSED_NOTICE}\n第 {} 行第 {} 列起，这个文件不是一段读得下去的 JSON。\
-             Telegram 的「导出聊天记录」要选 Machine-readable JSON，导出目录里的 result.json \
-             才是这一版认得的形状；压缩包和 HTML 导出都读不了。",
+             Telegram Desktop 要从 Settings → Advanced → Export Telegram data 导出，\
+             选 Machine-readable JSON；导出目录里的 result.json 才是这一版认得的形状。\
+             单聊的 Export chat history、压缩包和 HTML 导出都读不了。",
             error.line(),
             error.column(),
         ),
@@ -1645,19 +1832,15 @@ impl From<soul_import::defect::ImportFailure> for SessionRefusal {
 
 /// A file that parsed and then could not be stored.
 ///
-/// Said differently from a parse failure on purpose: a commit is not atomic in
-/// v0.1 — `soul-store-api` has no entry point that lets a caller open a
-/// transaction — so a failure here can leave part of the export behind.
-/// Re-running the same file is safe; the people are matched by identifier
-/// digest and only the events are written a second time.
+/// What is left behind is not said here, because it is not this error's to
+/// say: whichever layer refused, [`Session::commit_import`] wraps the answer
+/// in [`IMPORT_ROLLED_BACK_NOTICE`], and a sentence about atomicity in one of
+/// the two refusals and not the other would read as a difference between them.
 impl From<soul_import::commit::ImportError> for SessionRefusal {
     fn from(error: soul_import::commit::ImportError) -> SessionRefusal {
         SessionRefusal {
             reason_code: ReasonCode::Routine.as_str().to_owned(),
-            explanation: format!(
-                "这次导入没有做完：{error}。v0.1 的导入不是一个事务，中途失败可能已经写进去一部分；\
-                 同一个文件再导一次是安全的，人会被认回来，事件会多一份。"
-            ),
+            explanation: format!("这次导入没有做完：{error}"),
         }
     }
 }

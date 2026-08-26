@@ -14,6 +14,8 @@
 
 use std::path::{Path, PathBuf};
 
+use soul_store_api::types::EventFilter;
+use soul_store_api::EventStore;
 use soul_testkit::fixtures;
 use soulcore::commands::session::Session;
 
@@ -114,7 +116,11 @@ fn a_soul_import_v1_file_committed_through_the_session_lands_sealed_and_shows_up
     assert_eq!(receipt.contacts_created, 5);
     assert_eq!(receipt.contacts_matched, 0);
     assert_eq!(receipt.events_written, 16);
-    assert!(receipt.evidence_written >= 16);
+    assert_eq!(
+        receipt.evidence_written, 15,
+        "one row per message that names somebody, and the one message the user \
+         sent to the group names nobody",
+    );
     assert_eq!(receipt.ties_rebuilt, 4, "AC-08: one tie per partner");
 
     // The counts are not a story the receipt tells about itself: the graph the
@@ -251,6 +257,116 @@ fn importing_the_same_file_twice_matches_the_people_it_already_knows() {
         3,
         "two imports of one export must not produce two sets of people",
     );
+    drop(keep);
+}
+
+/// A second export from a second account, whose owner the first one's
+/// identifier digests cannot match.
+///
+/// Committing it puts a second contact of class `self` in the store, and
+/// `soul_graph::rebuild` — which runs inside the commit's transaction — refuses
+/// an ego network with two centres. It is the cheapest honest way to make a
+/// commit fail after it has already written events, sealed bodies and contact
+/// rows, which is the state the transaction has to be able to undo.
+const SECOND_ACCOUNT: &str = concat!(
+    r#"{"type":"header","format":"soul-import-v1","version":1,"exported_at":"2026-08-24T08:00:00Z"}"#,
+    "\n",
+    r#"{"type":"message","id":"m-9001","occurred_at":"2026-08-22T11:00:00Z","sender_scope":"self","conversation_id":"c-90","sender_id":"u-second-account","text":"这台机器上还有另一个号"}"#,
+    "\n",
+    r#"{"type":"message","id":"m-9002","occurred_at":"2026-08-22T11:01:00Z","sender_scope":"third_party","conversation_id":"c-90","sender_id":"u-zhou","text":"收到"}"#,
+    "\n",
+);
+
+/// What the second export says. A rolled-back import must leave none of it
+/// legible in the data directory either — the seals it wrote went back with it.
+const SPOKEN_BY_THE_SECOND_ACCOUNT: &[&str] = &["这台机器上还有另一个号", "收到"];
+
+/// Events in this session's store, through the one handle the product opens.
+fn events_in(session: &Session) -> usize {
+    let store = session.store().expect("the session opened the database");
+    let store = store.lock().expect("nobody panicked holding the store");
+    store
+        .list_events(&EventFilter::all())
+        .expect("the events read back")
+        .len()
+}
+
+/// One import is one transaction: a commit that fails partway leaves the store
+/// exactly as it was, and the file can simply be imported again.
+///
+/// The failure here is not a crash — `session_crash.rs` owns that story, with
+/// a child that really dies inside `STORE_EVENT_COMMIT_MID`. This is the
+/// ordinary half: an error that unwinds through a commit which has already
+/// written five events, three contacts and their sealed bodies. Before the
+/// wrap all of that stayed, and the refusal on screen was the only sign that
+/// the file had been half-taken; the user's only way forward was to import it
+/// again, which wrote every surviving event a second time.
+#[test]
+fn a_commit_that_fails_after_it_has_written_rows_leaves_none_of_them_behind() {
+    let (keep, directory) = scratch();
+    let text = fixtures::read_text("import/soul-import-v1/valid_basic.jsonl").expect("fixture");
+
+    let mut session = Session::open(&directory);
+    let first = session.commit_soul_import_v1(&text).expect("first import");
+    assert_eq!(first.events_written, 5);
+    assert_eq!(first.contacts_created, 3);
+
+    let people_before = session.people().expect("graph").people.len();
+    let ties_before = session.people().expect("graph").ties.len();
+    let entries_before = session.audit().expect("the chain").entries.len();
+
+    let refusal = session
+        .commit_soul_import_v1(SECOND_ACCOUNT)
+        .expect_err("a store with two account owners has no graph to build");
+    assert_eq!(refusal.reason_code, "ROUTINE");
+    assert!(
+        refusal.explanation.contains("回滚"),
+        "a refusal that wrote and then undid it has to say so: {}",
+        refusal.explanation,
+    );
+    for spoken in SPOKEN_BY_THE_SECOND_ACCOUNT {
+        assert!(
+            !refusal.explanation.contains(spoken),
+            "the refusal repeated {spoken:?} out of the file: {}",
+            refusal.explanation,
+        );
+    }
+
+    // The events, the contacts, the ties and the chain are the first import's,
+    // to the row. A commit that wrote and then failed wrote nothing.
+    assert_eq!(events_in(&session), 5, "the refused import left events");
+    let after = session.people().expect("graph");
+    assert_eq!(after.people.len(), people_before);
+    assert_eq!(after.ties.len(), ties_before);
+    assert_eq!(
+        session.audit().expect("the chain").entries.len(),
+        entries_before,
+        "the refused import left audit entries for rows that are not there",
+    );
+    assert!(
+        session.audit().expect("the chain").verified,
+        "rolling back a commit broke the chain",
+    );
+
+    // And the store still works: the file that did land goes in again and
+    // recognizes its own people, which a half-written second import would
+    // have made impossible to reason about.
+    let again = session
+        .commit_soul_import_v1(&text)
+        .expect("the store is usable after a rolled-back commit");
+    assert_eq!(again.contacts_matched, 3);
+    assert_eq!(again.contacts_created, 0);
+
+    // AC-04 still: nothing the rolled-back file said is legible on disk.
+    drop(session);
+    for sentence in SPOKEN_BY_THE_SECOND_ACCOUNT {
+        for (name, bytes) in files_in(&directory) {
+            assert!(
+                !contains(&bytes, sentence.as_bytes()),
+                "{sentence:?} is legible in {name}",
+            );
+        }
+    }
     drop(keep);
 }
 

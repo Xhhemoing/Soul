@@ -1,6 +1,6 @@
 //! Soul with no desktop attached.
 //!
-//! Three jobs, and the exit code is the whole interface for all of them:
+//! Four jobs, and the exit code is the whole interface for all of them:
 //!
 //! * `soul-headless` (no arguments) runs the AC-21 main flow — the entire
 //!   product against a scratch store, with this process's sockets watched from
@@ -17,10 +17,19 @@
 //!   between, which no runner can do. It collects only because the caller
 //!   passed `--i-consent`, into a scratch store it then deletes. See
 //!   [`soulcore::collect_probe`] and `scripts/author-manual-checklist.md`.
+//! * `soul-headless e1-watch` is the smoke's complement: the same socket
+//!   observation, taken over the one path that builds an HTTP client, against
+//!   an endpoint this process is itself running on loopback. See
+//!   [`soulcore::e1_watch`].
+//!
+//! The two instruments are deliberately separate commands rather than steps of
+//! the smoke. `smoke` is AC-21, and AC-21 is *the default configuration*: a run
+//! that configured an endpoint in order to have something to watch would be
+//! measuring a machine nobody ships.
 
 use std::time::Duration;
 
-use soulcore::{collect_probe, headless, Config};
+use soulcore::{collect_probe, e1_watch, headless, Config};
 
 const USAGE: &str = "\
 soul-headless — Soul without a desktop
@@ -40,6 +49,12 @@ COMMANDS:
               AC-09 and AC-10 against a real desktop. Collects application
               names into a temporary store for the duration and deletes it
               afterwards; --i-consent is how you say that is what you want.
+
+    e1-watch  Drive the one path that opens a socket — save an endpoint,
+              approve a draft, ask for a people summary, replay the approval —
+              against an endpoint this process runs on 127.0.0.1, with the
+              sockets watched throughout. Reports every peer it saw. Uses a
+              temporary store and deletes it afterwards.
 ";
 
 fn main() -> std::process::ExitCode {
@@ -48,6 +63,7 @@ fn main() -> std::process::ExitCode {
         None | Some("smoke") => smoke(),
         Some("config") => print_config(),
         Some("collect-probe") => probe(&args[1..]),
+        Some("e1-watch") => watch_the_endpoint_path(&args[1..]),
         Some("--help") | Some("-h") => {
             print!("{USAGE}");
             std::process::ExitCode::SUCCESS
@@ -147,6 +163,56 @@ fn probe(args: &[String]) -> std::process::ExitCode {
     eprintln!(
         "  {:<12} {} non-loopback connection(s) over {} sample(s)",
         "egress", report.egress.non_loopback_connections, report.egress.samples,
+    );
+    std::process::ExitCode::SUCCESS
+}
+
+/// The endpoint path, watched. Takes no arguments: everything it needs it
+/// starts itself, and there is nothing here for a caller to point somewhere
+/// else — an instrument that accepted a URL would be a way to make Soul open a
+/// socket to an address of somebody else's choosing.
+fn watch_the_endpoint_path(args: &[String]) -> std::process::ExitCode {
+    if let Some(unexpected) = args.first() {
+        eprint!("{USAGE}");
+        eprintln!("soul-headless: e1-watch does not take `{unexpected}`");
+        return std::process::ExitCode::FAILURE;
+    }
+
+    let report = match e1_watch::run() {
+        Ok(report) => report,
+        Err(error) => {
+            eprintln!("soul-headless: the endpoint watch failed at {error}");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+
+    match serde_json::to_string_pretty(&report) {
+        Ok(json) => println!("{json}"),
+        Err(error) => {
+            eprintln!("soul-headless: could not serialize the report: {error}");
+            return std::process::ExitCode::FAILURE;
+        }
+    }
+
+    for step in &report.steps {
+        eprintln!("  {:<9} {}", step.name, step.detail);
+    }
+    eprintln!(
+        "  {:<9} {} request(s) reached 127.0.0.1:{}",
+        "endpoint",
+        report.endpoint.requests.len(),
+        report.endpoint.port,
+    );
+    eprintln!(
+        "  {:<9} {} non-loopback and {} unexplained loopback peer(s) over {} sample(s){}",
+        "sockets",
+        report.sockets.non_loopback_connections,
+        report.sockets.unexpected_loopback_peers.len(),
+        report.sockets.samples,
+        match &report.sockets.observation_note {
+            Some(note) => format!("; sockets not observed here: {note}"),
+            None => String::new(),
+        },
     );
     std::process::ExitCode::SUCCESS
 }

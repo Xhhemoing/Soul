@@ -8,7 +8,7 @@
  * somebody in it still has no name on it.
  */
 
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -19,9 +19,13 @@ import {
   aPersonSummary,
   forbidNetwork,
   installFakeCore,
+  NOT_A_BAND_NOTICE,
   WORKING_HYPOTHESIS_NOTICE,
   type FakeCoreOptions,
 } from "../test/fakeCore";
+
+/** The tie `aPeopleGraph` carries, which every correction below is about. */
+const TIE_ID = "0192f000-0000-7000-8000-00000000000a";
 
 async function open(options: FakeCoreOptions = {}) {
   const core = installFakeCore(options);
@@ -47,8 +51,10 @@ describe("人脉图页", () => {
     expect(people).toHaveTextContent("往来 6 次");
 
     const ties = screen.getByTestId("ties-list");
+    expect(ties).toHaveTextContent("中等");
     expect(ties).toHaveTextContent("发出 3");
     expect(ties).toHaveTextContent("一对一说过话");
+    expect(ties.textContent ?? "").not.toMatch(/往来较少|往来较多/);
     expect(screen.getByTestId("tie-evidence")).toHaveTextContent("依据 2 条证据");
 
     // 这一行既要说清节点和边留在本机，也要说清同一页上的「看这个人的摘要」是一条出网路径：
@@ -71,6 +77,191 @@ describe("人脉图页", () => {
     expect(localOnly).not.toHaveTextContent(
       "别人的数据只留在本机：这些节点和边都不进任何出网请求，也不进研究预览。",
     );
+  });
+
+  /**
+   * The band under a tie is a working hypothesis, and a working hypothesis the
+   * user cannot overrule is the black box constraint 10 rules out. Pressing one
+   * of the three band words is the whole gesture: the core writes the
+   * correction and answers with the graph, and the screen renders what came
+   * back rather than patching the row it just pressed.
+   *
+   * What has to stay on screen afterwards is the machine's own reading. A lock
+   * that hid what it overruled would leave the user unable to tell what the
+   * counts say about the edge they pinned — which is the same page's promise
+   * read backwards.
+   */
+  it("按下一个档位就是一次纠正：档位改了、锁上了，机器那一读还在屏幕上", async () => {
+    const core = await open({ graph: aPeopleGraph() });
+    const user = userEvent.setup();
+    const tie = () => screen.getByTestId(`tie-${TIE_ID}`);
+
+    expect(within(tie()).queryByTestId(`tie-locked-${TIE_ID}`)).toBeNull();
+    await user.click(within(tie()).getByRole("button", { name: "强" }));
+
+    expect(core.callsTo("correct_tie")[0]?.payload).toEqual({
+      relationshipId: TIE_ID,
+      band: "strong",
+    });
+    expect(await screen.findByTestId(`tie-locked-${TIE_ID}`)).toHaveTextContent(
+      "你改过这一档，重算不再动它",
+    );
+    expect(tie()).toHaveTextContent("强：往来 6 次");
+    // The counts are what a correction does not touch: what was overruled is
+    // the one word derived from them.
+    expect(tie()).toHaveTextContent("发出 3");
+    expect(screen.getByTestId(`tie-machine-${TIE_ID}`)).toHaveTextContent(
+      "机器按这些计数算的是「中等」",
+    );
+    // The row that changed the band is evidence like any other, and the core
+    // hands it back resolved with the rest.
+    expect(screen.getByTestId("tie-evidence")).toHaveTextContent("依据 3 条证据");
+    expect(screen.getByTestId("tie-evidence")).toHaveTextContent("user_correction");
+  });
+
+  /**
+   * The way back out. A lock with no visible release is a lock whose support
+   * burden lands on the user, and the core has `release_tie` for exactly this;
+   * what this checks is that the screen offers it only where there is a lock,
+   * and that pressing it puts the counts back in charge.
+   */
+  it("锁住之后才有「按计数重新算」，按下去档位交回给计数", async () => {
+    const core = await open({ graph: aPeopleGraph() });
+    const user = userEvent.setup();
+    const tie = () => screen.getByTestId(`tie-${TIE_ID}`);
+
+    expect(within(tie()).queryByRole("button", { name: "按计数重新算" })).toBeNull();
+    await user.click(within(tie()).getByRole("button", { name: "弱" }));
+    await screen.findByTestId(`tie-locked-${TIE_ID}`);
+
+    await user.click(within(tie()).getByRole("button", { name: "按计数重新算" }));
+
+    expect(core.callsTo("release_tie")[0]?.payload).toEqual({ relationshipId: TIE_ID });
+    await waitFor(() => expect(screen.queryByTestId(`tie-locked-${TIE_ID}`)).toBeNull());
+    expect(screen.queryByTestId(`tie-machine-${TIE_ID}`)).toBeNull();
+    expect(tie()).toHaveTextContent("中等：往来 6 次");
+    expect(within(tie()).queryByRole("button", { name: "按计数重新算" })).toBeNull();
+  });
+
+  /**
+   * Three words and no fourth: COPY_ZH allows 弱 / 中等 / 强 for a 档位 and the
+   * core's `band_named` is a closed set of the same three.
+   *
+   * All three are live while the tie is unlocked, including the one already in
+   * force, because agreeing with the band is a thing the user may want to say
+   * and `soul_graph::correct_tie` writes the lock for whatever band it is
+   * handed. Greying that button used to be justified as 按下去也不改变什么,
+   * which was reading a correction as if the band were all it wrote: the lock
+   * is the other half, and it is what makes the next rebuild leave the word
+   * alone. With the button grey the only way to that lock was 改成别的再改回来,
+   * which puts a `UserCorrection` in the store asserting a band the user never
+   * held.
+   */
+  it("三个档位词都能按，当前这一档也能按——因为按下去是把它锁住", async () => {
+    await open({ graph: aPeopleGraph() });
+    const tie = screen.getByTestId(`tie-${TIE_ID}`);
+
+    const bands = within(tie)
+      .getAllByRole("button")
+      .map((button) => button.textContent);
+    expect(bands).toEqual(["弱", "中等", "强"]);
+    for (const band of bands) {
+      expect(within(tie).getByRole("button", { name: band ?? "" })).toBeEnabled();
+    }
+    const explanation = screen.getByTestId("ties-explanation");
+    expect(explanation).toHaveTextContent("工作假设");
+    // The gesture has to be on screen, or it is a lock only somebody who read
+    // the source would find.
+    expect(explanation).toHaveTextContent("按当前那一档把它锁住");
+  });
+
+  /**
+   * Pinning: the user reads the band, agrees with it, and does not want a
+   * later import to move it. `correct_tie` is handed the word already in force
+   * and the lock goes on — the screen has to send that word rather than the
+   * detour a grey button forced.
+   *
+   * Nothing disagrees afterwards, so the 机器按这些计数算的是 line stays away:
+   * `machine_band` and the effective band are the same word, and a line
+   * announcing a disagreement that does not exist would be this page inventing
+   * one. The badge and the way back out are both there, because what happened
+   * is a lock like any other.
+   */
+  it("按下当前这一档就是把它钉住：锁上了，机器那一读没有异议，也留着回头路", async () => {
+    const core = await open({ graph: aPeopleGraph() });
+    const user = userEvent.setup();
+    const tie = () => screen.getByTestId(`tie-${TIE_ID}`);
+
+    expect(tie()).toHaveTextContent("中等：往来 6 次");
+    await user.click(within(tie()).getByRole("button", { name: "中等" }));
+
+    expect(core.callsTo("correct_tie")[0]?.payload).toEqual({
+      relationshipId: TIE_ID,
+      band: "moderate",
+    });
+    expect(await screen.findByTestId(`tie-locked-${TIE_ID}`)).toHaveTextContent(
+      "你改过这一档，重算不再动它",
+    );
+    expect(tie()).toHaveTextContent("中等：往来 6 次");
+    expect(screen.queryByTestId(`tie-machine-${TIE_ID}`)).toBeNull();
+    expect(within(tie()).getByRole("button", { name: "按计数重新算" })).toBeEnabled();
+
+    // Now the old rationale is the true one: the verdict is recorded, so
+    // restating it is the one press that would change nothing.
+    expect(within(tie()).getByRole("button", { name: "中等" })).toBeDisabled();
+    expect(within(tie()).getByRole("button", { name: "强" })).toBeEnabled();
+    expect(within(tie()).getByRole("button", { name: "弱" })).toBeEnabled();
+  });
+
+  /**
+   * A summary is written from the counts as they stood when it was asked for,
+   * and the band is one of the things it states. A correction overrules that
+   * band, so a summary left on screen underneath a fresh lock is the machine's
+   * reading contradicting the user's with nothing on the page saying which one
+   * is current. It goes, and comes back when the user asks for it again.
+   */
+  it("改过档位之后，屏幕上那份旧摘要先撤掉，不留在锁下面顶嘴", async () => {
+    await open({ graph: aPeopleGraph() });
+    const user = userEvent.setup();
+
+    await user.click(screen.getAllByRole("button", { name: "看这个人的摘要" })[0]!);
+    await screen.findByTestId("summary-text");
+
+    await user.click(
+      within(screen.getByTestId(`tie-${TIE_ID}`)).getByRole("button", { name: "强" }),
+    );
+    await screen.findByTestId(`tie-locked-${TIE_ID}`);
+
+    expect(screen.queryByTestId("summary-text")).toBeNull();
+    expect(screen.queryByTestId("summary-source")).toBeNull();
+
+    await user.click(screen.getAllByRole("button", { name: "看这个人的摘要" })[0]!);
+    expect(await screen.findByTestId("summary-text")).toBeVisible();
+  });
+
+  /**
+   * A refused correction is a value with a reason code on it, and the graph
+   * the user was reading stays where it was. The core refuses a word that is
+   * not one of the three before it reaches the store, which is the case this
+   * fixture stands in for.
+   */
+  it("核心拒绝这次纠正的时候，屏幕给出理由码，图还是原来那张", async () => {
+    await open({
+      graph: aPeopleGraph(),
+      correctingTie: () => {
+        throw { reason_code: "ROUTINE", explanation: NOT_A_BAND_NOTICE };
+      },
+    });
+    const user = userEvent.setup();
+
+    await user.click(
+      within(screen.getByTestId(`tie-${TIE_ID}`)).getByRole("button", { name: "强" }),
+    );
+
+    expect(await screen.findByTestId("tie-refusal-code")).toHaveTextContent("ROUTINE");
+    expect(screen.getByRole("alert")).toHaveTextContent(NOT_A_BAND_NOTICE);
+    expect(screen.getByTestId(`tie-${TIE_ID}`)).toHaveTextContent("中等：往来 6 次");
+    expect(screen.queryByTestId(`tie-locked-${TIE_ID}`)).toBeNull();
   });
 
   /**
@@ -102,6 +293,143 @@ describe("人脉图页", () => {
     expect(screen.getByTestId("summary-notice")).toHaveTextContent(WORKING_HYPOTHESIS_NOTICE);
     expect(core.callsTo("person_summary")[0]?.payload).toEqual({
       contactId: "0192f000-0000-7000-8000-000000000002",
+    });
+  });
+
+  /**
+   * A tombstone has nothing citable left. Forgetting a contact destroys the
+   * keys their words were sealed under and leaves the derived rows standing,
+   * so the row still shows counts and the core still refuses the summary —
+   * `soul-draft` reads the node's forget state before it builds a point. This
+   * screen says the same thing where the user is looking, and that matters
+   * beyond tidiness: with an endpoint configured, this button is one click and
+   * one POST with no confirmation screen in between.
+   */
+  it("已被遗忘的那个人，摘要按钮按不下去，也没有请求出去", async () => {
+    const graph = aPeopleGraph();
+    const core = await open({
+      graph: {
+        ...graph,
+        people: graph.people.map((person) =>
+          person.is_you ? person : { ...person, forgotten: true },
+        ),
+      },
+    });
+    const user = userEvent.setup();
+
+    const people = screen.getByTestId("people-list");
+    expect(people).toHaveTextContent("已被遗忘，只剩下墓碑");
+    const button = within(people).getByRole("button", { name: "看这个人的摘要" });
+    expect(button).toBeDisabled();
+
+    await user.click(button);
+    expect(core.callsTo("person_summary")).toEqual([]);
+    expect(screen.queryByTestId("summary-text")).toBeNull();
+  });
+
+  /**
+   * The same tombstone, one section down. A forget leaves the relationship row
+   * and the evidence behind it standing — deleting them would take this page
+   * down, because the core resolves every id on every edge and fails rather
+   * than returning a short list — so the forgotten person's tie is still drawn
+   * with its counts, its band, and until now three live buttons under it.
+   *
+   * Pressing one of them wrote through: `soul_graph::correct_tie` never read
+   * the peer's forget state, so it filed a `UserCorrection` about somebody the
+   * user asked Soul to drop and put their orphaned tie inference back to live.
+   * The core refuses that now; this is the same fact where the user is
+   * looking, and it is asserted the way the summary button's is — grey, and no
+   * call made when it is pressed anyway.
+   */
+  it("这条边上的人已被遗忘的时候，档位按钮按不下去，也没有纠正发出去", async () => {
+    const graph = aPeopleGraph();
+    const core = await open({
+      graph: {
+        ...graph,
+        people: graph.people.map((person) =>
+          person.is_you ? person : { ...person, forgotten: true },
+        ),
+        // Locked, so the way back out to the counts is on screen too: a release
+        // is a write on the same edge and the core refuses it just the same.
+        ties: graph.ties.map((tie) => ({
+          ...tie,
+          band: "strong",
+          locked_by_user: true,
+          user_band: "strong",
+        })),
+      },
+    });
+    const user = userEvent.setup();
+    const tie = screen.getByTestId(`tie-${TIE_ID}`);
+
+    for (const band of ["弱", "中等", "强"]) {
+      expect(within(tie).getByRole("button", { name: band })).toBeDisabled();
+    }
+    expect(within(tie).getByRole("button", { name: "按计数重新算" })).toBeDisabled();
+    expect(screen.getByTestId(`tie-forgotten-${TIE_ID}`)).toHaveTextContent(
+      "已被遗忘，这一档不能再改",
+    );
+
+    await user.click(within(tie).getByRole("button", { name: "弱" }));
+    await user.click(within(tie).getByRole("button", { name: "按计数重新算" }));
+    expect(core.callsTo("correct_tie")).toEqual([]);
+    expect(core.callsTo("release_tie")).toEqual([]);
+    expect(screen.queryByTestId("tie-refusal-code")).toBeNull();
+
+    // The counts are still on screen. A tie that disappeared would read as the
+    // forget having deleted it, and a forget does not delete a derived row.
+    expect(tie).toHaveTextContent("往来 6 次");
+    expect(within(tie).getByTestId("tie-evidence")).toHaveTextContent("依据 2 条证据");
+  });
+
+  /**
+   * The control for the test above: one tombstone must not grey out anybody
+   * else's band. The set the screen builds is read per tie off both of its
+   * contact ids, so an edge neither end of which was forgotten is untouched.
+   */
+  it("只遗忘了一个人的时候，别人那条边上的档位照样能按", async () => {
+    const graph = aPeopleGraph();
+    const other = "0192f000-0000-7000-8000-000000000003";
+    const otherTie = "0192f000-0000-7000-8000-00000000000b";
+    const core = await open({
+      graph: {
+        ...graph,
+        people: [
+          ...graph.people.map((person) =>
+            person.is_you ? person : { ...person, forgotten: true },
+          ),
+          {
+            contact_id: other,
+            is_you: false,
+            identifier_hint: "cccccccc",
+            interaction_count: 4,
+            last_contact_utc: "2026-08-19T09:00:00Z",
+            tie_count: 1,
+            forgotten: false,
+          },
+        ],
+        ties: [
+          ...graph.ties,
+          {
+            ...graph.ties[0]!,
+            relationship_id: otherTie,
+            to_contact_id: other,
+          },
+        ],
+      },
+    });
+    const user = userEvent.setup();
+
+    expect(screen.queryByTestId(`tie-forgotten-${otherTie}`)).toBeNull();
+    const live = within(screen.getByTestId(`tie-${otherTie}`)).getByRole("button", {
+      name: "强",
+    });
+    expect(live).toBeEnabled();
+
+    await user.click(live);
+    expect(core.callsTo("correct_tie")[0]?.payload).toEqual({
+      relationshipId: otherTie,
+      band: "strong",
     });
   });
 
@@ -224,6 +552,10 @@ describe("人脉图页", () => {
 
     await user.click(screen.getAllByRole("button", { name: "看这个人的摘要" })[0]!);
     await screen.findByTestId("summary-text");
+    await user.click(
+      within(screen.getByTestId(`tie-${TIE_ID}`)).getByRole("button", { name: "强" }),
+    );
+    await screen.findByTestId(`tie-locked-${TIE_ID}`);
 
     expect(attempts).toEqual([]);
   });

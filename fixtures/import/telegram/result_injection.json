@@ -1,11 +1,11 @@
 {
-  "about": "Synthetic stand-in for a Telegram Desktop 4.x \"Export chat history -> Machine-readable JSON\" result.json, in the shape of `result_basic.json`, whose content tries to give instructions. Telegram splits a `text` into runs wherever an entity starts, so an export that carries an override phrase carries it in pieces; the adapter's `flatten_text` is what reassembles the sentence the user actually saw, and the scan that counts the attempt runs on the reassembled body. Nothing here is obeyed by anything: the addresses are unreachable and the phrases are data.",
+  "about": "Synthetic stand-in for a Telegram Desktop 4.x \"Settings -> Advanced -> Export Telegram data\" (Machine-readable JSON) result.json, in the shape of `result_basic.json`, whose content tries to give instructions. Telegram splits a `text` into runs wherever an entity starts, so an export that carries an override phrase carries it in pieces; the adapter's `flatten_text` is what reassembles the sentence the user actually saw, and the scan that counts the attempt runs on the reassembled body. Nothing here is obeyed by anything: the addresses are unreachable and the phrases are data.",
   "personal_information": {
     "user_id": 111111111,
     "first_name": "Roy",
     "last_name": "",
     "phone_number": "13800138001",
-    "username": "roy_soul",
+    "username": "@roy_soul",
     "bio": ""
   },
   "contacts": {

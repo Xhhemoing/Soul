@@ -7,6 +7,12 @@
 //! test that asserted against an in-process fake would be checking the same
 //! code twice.
 //!
+//! The response cap is checked against two shapes of answer. `MockLlm` covers
+//! the ordinary one — an endpoint that builds a body and sends it — and a
+//! socket written by hand covers the one the cap exists for, a body that keeps
+//! arriving and declares no length at all. The second is the only test that
+//! can tell a bounded read from a read that finishes and then complains.
+//!
 //! The redirect case is the one worth being careful about. A client that
 //! follows redirects by default turns a `302` from the user's endpoint into an
 //! outbound request to wherever the response pointed — an E0 connection nobody
@@ -16,7 +22,7 @@
 
 use uuid::Uuid;
 
-use soul_egress::{send, EgressError};
+use soul_egress::{send, EgressError, MAX_RESPONSE_BYTES};
 use soul_policy::e1::{E1RequestPlan, DRAFTING_INSTRUCTION, QUOTE_CLOSE, QUOTE_OPEN};
 use soul_policy::net_guard::{EgressClass, EgressConfig, NetGuard};
 use soul_policy::redactor::{
@@ -212,6 +218,200 @@ fn clearing_the_redirect_lets_the_same_request_through() {
     ))
     .expect("the same request succeeds once the endpoint stops redirecting");
     assert_eq!(response.status, 200);
+}
+
+/// The reply is untrusted in size, not only in content.
+///
+/// `REQUEST_TIMEOUT` bounds how long the endpoint has; it says nothing about
+/// how much a machine on the same LAN can send inside two minutes, and `send`
+/// runs with whatever the caller holds locked. So the cap has to be on the
+/// bytes, and the answer has to be a refusal rather than a body read in full.
+#[test]
+fn a_response_body_past_the_cap_is_refused_instead_of_read() {
+    let mock = MockLlm::start().expect("start the mock endpoint");
+    // The assistant message is the part of the answer the mock lets a test
+    // choose, and it is quoted into the JSON envelope verbatim, so a message
+    // this long is a response body over the cap by construction.
+    mock.set_reply("a".repeat(MAX_RESPONSE_BYTES as usize + 1));
+
+    let permit = guard_for(&mock)
+        .authorize_e1(&mock.chat_completions_url())
+        .expect("permit");
+    let error = refusal(&E1RequestPlan::chat_completions(
+        permit,
+        MODEL,
+        default_body(),
+    ));
+
+    assert!(
+        matches!(error, EgressError::ResponseTooLarge { limit } if limit == MAX_RESPONSE_BYTES),
+        "expected the read to be capped, got {error:?}",
+    );
+    assert_eq!(
+        error.reason_code(),
+        Some(ReasonCode::E1ResponseTooLarge),
+        "the refusal has to be auditable",
+    );
+    assert_eq!(mock.request_count(), 1, "one request, one refused answer");
+}
+
+/// The control for the cap: an answer of a size a real completion reaches
+/// still comes back, and comes back whole. A cap that refused everything
+/// large-ish, or truncated quietly, would pass the test above on its own.
+#[test]
+fn a_reply_under_the_cap_still_comes_back_whole() {
+    let mock = MockLlm::start().expect("start the mock endpoint");
+    let reply = "b".repeat(512 * 1024);
+    mock.set_reply(reply.as_str());
+
+    let permit = guard_for(&mock)
+        .authorize_e1(&mock.chat_completions_url())
+        .expect("permit");
+    let response = send(&E1RequestPlan::chat_completions(
+        permit,
+        MODEL,
+        default_body(),
+    ))
+    .expect("a reply under the cap is an ordinary answer");
+
+    assert_eq!(response.status, 200);
+    assert!(
+        response.body.contains(&reply),
+        "the body must arrive whole, not truncated at some earlier boundary",
+    );
+}
+
+/// The case the cap exists for, and the only one that tells a bounded read
+/// apart from a read that finishes and then complains about the size.
+///
+/// The endpoint here declares no length and keeps sending. With the read
+/// bounded it stops shortly past the cap and the socket closes under the
+/// endpoint; without it the client would go on accepting bytes for as long as
+/// this endpoint is willing to produce them, which is what the assertion on
+/// how much the endpoint managed to write is watching for.
+#[test]
+fn a_body_that_never_ends_stops_the_read_rather_than_the_endpoint() {
+    let ceiling = 16 * MAX_RESPONSE_BYTES as usize;
+    let endpoint = EndlessEndpoint::start(ceiling);
+
+    let guard = NetGuard::new(
+        EgressConfig::with_user_endpoint(&endpoint.base_url()).expect("the user's endpoint"),
+    );
+    let permit = guard
+        .authorize_e1(&format!("{}/v1/chat/completions", endpoint.base_url()))
+        .expect("permit");
+    let error = refusal(&E1RequestPlan::chat_completions(
+        permit,
+        MODEL,
+        default_body(),
+    ));
+
+    assert!(
+        matches!(error, EgressError::ResponseTooLarge { limit } if limit == MAX_RESPONSE_BYTES),
+        "expected the read to be capped, got {error:?}",
+    );
+    let written = endpoint.written();
+    assert!(
+        written < ceiling / 2,
+        "the client went on reading: the endpoint got {written} bytes out before it was hung up on",
+    );
+}
+
+/// `send` refused, and the refusal rather than the answer.
+///
+/// `expect_err` would print an `E1Response` on failure, and a body a hostile
+/// endpoint chose is the last thing that should end up in test output.
+fn refusal(plan: &E1RequestPlan) -> EgressError {
+    match send(plan) {
+        Err(error) => error,
+        Ok(response) => panic!(
+            "expected a refusal, got {} with {} bytes of body",
+            response.status,
+            response.body.len(),
+        ),
+    }
+}
+
+/// A loopback endpoint whose answer has no declared length and no end.
+///
+/// `MockLlm` cannot be this: axum answers with a body it has already built, so
+/// every answer it gives states its own size. Writing the response onto the
+/// socket by hand is what makes the unbounded case reachable, and HTTP/1.1
+/// allows it — a response with neither `content-length` nor a chunked encoding
+/// ends when the connection does.
+#[derive(Debug)]
+struct EndlessEndpoint {
+    addr: std::net::SocketAddr,
+    written: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+
+impl EndlessEndpoint {
+    /// `ceiling` is the point the endpoint gives up at. Without one, a client
+    /// that never stopped reading would leave this test running until someone
+    /// killed it rather than failing it.
+    fn start(ceiling: usize) -> EndlessEndpoint {
+        use std::io::{Read, Write};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind loopback");
+        let addr = listener.local_addr().expect("the bound address");
+        let written = std::sync::Arc::new(AtomicUsize::new(0));
+
+        let counter = std::sync::Arc::clone(&written);
+        let worker = std::thread::spawn(move || {
+            let Ok((mut socket, _)) = listener.accept() else {
+                return;
+            };
+            let timeout = Some(std::time::Duration::from_secs(10));
+            let _ = socket.set_read_timeout(timeout);
+            let _ = socket.set_write_timeout(timeout);
+
+            // Enough of the request to know it arrived. The body is small and
+            // sits in the kernel's buffer; nothing here reads it.
+            let mut head = [0u8; 1024];
+            if socket.read(&mut head).is_err() {
+                return;
+            }
+            if socket
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\r\n")
+                .is_err()
+            {
+                return;
+            }
+
+            let chunk = vec![b'a'; 64 * 1024];
+            while counter.load(Ordering::Relaxed) < ceiling {
+                if socket.write_all(&chunk).is_err() {
+                    return;
+                }
+                counter.fetch_add(chunk.len(), Ordering::Relaxed);
+            }
+        });
+
+        EndlessEndpoint {
+            addr,
+            written,
+            worker: Some(worker),
+        }
+    }
+
+    fn base_url(&self) -> String {
+        format!("http://127.0.0.1:{}", self.addr.port())
+    }
+
+    /// How many bytes of body the endpoint got onto the socket.
+    fn written(&self) -> usize {
+        self.written.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+impl Drop for EndlessEndpoint {
+    fn drop(&mut self) {
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
 }
 
 /// AC-21 and AC-17: with no endpoint configured, there is no permit, so there

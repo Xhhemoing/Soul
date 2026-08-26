@@ -25,6 +25,12 @@ pub enum GraphError {
     #[error("interaction evidence {evidence_id} has the same contact on both ends")]
     SelfLoop { evidence_id: Uuid },
 
+    /// An interaction carries an instant the build cannot turn into a UTC
+    /// second. Damaged evidence fails the rebuild rather than being folded in
+    /// under a timestamp nobody could read.
+    #[error("interaction evidence {evidence_id} carries a timestamp this build cannot read")]
+    UnreadableInteraction { evidence_id: Uuid },
+
     /// A stored edge carries `types` or `tie_strength` this build cannot read.
     /// The contract leaves both free-form, so an older or hand-edited row can
     /// legitimately end up here; the graph refuses rather than inventing a
@@ -34,6 +40,20 @@ pub enum GraphError {
         relationship_id: Uuid,
         field: &'static str,
     },
+
+    /// The user asked to move the band on an edge one end of which is a
+    /// tombstone. A forget leaves the relationship row and the evidence behind
+    /// it standing — deleting them would take the whole graph view down with
+    /// them — so the stale edge is still on screen with the band words under
+    /// it. Writing one would record a fresh `UserCorrection` about somebody the
+    /// user asked Soul to drop, and re-file their orphaned tie inference live.
+    ///
+    /// Written in Chinese, unlike the variants above it: this is the one
+    /// failure here a user can reach by pressing a button, and
+    /// `SessionRefusal` shows it verbatim. `soul_draft::DraftError::Forgotten`
+    /// is the same sentence on the summary side.
+    #[error("这个人已经被遗忘了，这一条关系的档位不能再改（关系 {relationship_id}）")]
+    Forgotten { relationship_id: Uuid },
 
     /// Two contacts are marked `self`. The graph is an ego network and would
     /// otherwise silently pick one.

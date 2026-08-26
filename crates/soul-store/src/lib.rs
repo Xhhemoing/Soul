@@ -14,8 +14,9 @@
 //!   per-forget-unit content key, with `row_id|field` as additional
 //!   authenticated data, and the content key itself is stored wrapped under the
 //!   KEK;
-//! * forgetting deletes that wrapped key, which is why it is irreversible
-//!   without claiming anything about SSD blocks;
+//! * forgetting deletes that wrapped key and records the id as destroyed, so
+//!   it can be neither unwrapped nor minted again, which is why it is
+//!   irreversible without claiming anything about SSD blocks;
 //! * the audit chain is written by the store, carries no prose, and is never
 //!   touched by a forget.
 //!
@@ -47,7 +48,9 @@ use soul_store_api::SoulStore;
 /// cannot drift.
 pub mod failpoints {
     /// Inside [`soul_store_api::EventStore::append_event`], after the row is
-    /// written and before the transaction commits.
+    /// written and before its savepoint is released. On a bare append that
+    /// release is the commit; inside [`SqlCipherStore::transact`] the commit is
+    /// the wrapping call's, so a crash here loses everything that call wrote.
     pub const STORE_EVENT_COMMIT_MID: &str = "soul::store::event::commit_mid";
 
     /// Inside [`soul_store_api::ForgetOps::execute_forget`], between destroying
@@ -66,7 +69,8 @@ pub mod failpoints {
 impl SoulStore for SqlCipherStore {
     /// Push the write-ahead log into the main file. Callers that are about to
     /// inspect the database bytes need this; ordinary writes are already
-    /// durable, because every one of them commits.
+    /// durable, because every one of them commits — writes made inside
+    /// [`SqlCipherStore::transact`] become durable when that call commits.
     fn flush(&mut self) -> StoreResult<()> {
         self.checkpoint()
     }

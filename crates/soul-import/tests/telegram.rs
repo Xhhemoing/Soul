@@ -1,8 +1,9 @@
 //! AC-05: Telegram Desktop's `result.json` becomes events and contacts, and a
 //! file with fields missing fails in a way somebody can act on.
 //!
-//! There is no schema for this format — it is somebody else's — so the adapter
-//! states what it needs and the tests here are the record of what that is.
+//! The format is somebody else's, and the description Telegram publishes for
+//! it promises nothing, so the adapter states what it needs and the tests here
+//! are the record of what that is.
 
 use soul_import::defect::Locator;
 use soul_import::model::ImportSource;
@@ -79,9 +80,65 @@ fn a_desktop_export_becomes_the_people_and_the_messages_it_describes() {
     );
 }
 
-/// Telegram's phone book has no user id and chat messages have no phone
-/// number, so there is no join key. Merging them would produce either
-/// duplicate people or wrong ones; v0.1 imports neither.
+/// Desktop writes `personal_information.username` through its own
+/// `FormatUsername`, so the `@` arrives in the file. Prepending another one
+/// files the user under `@@roy_soul`, a handle nothing else in the graph will
+/// ever match — and a fixture that spelled the username bare, as this one once
+/// did, could never have caught it. Both spellings are read, so a future
+/// Desktop that drops the sigil is not a second bug.
+#[test]
+fn a_username_becomes_one_handle_however_the_export_spelled_it() {
+    assert_eq!(
+        basic()["personal_information"]["username"],
+        "@roy_soul",
+        "the fixture has to carry the `@` a real export carries",
+    );
+
+    for spelling in ["@roy_soul", "roy_soul"] {
+        let mut document = basic();
+        document["personal_information"]["username"] = serde_json::json!(spelling);
+
+        let staged = soul_import::telegram::parse(&document).expect("valid");
+        let handles = owner_handles(&staged);
+        assert!(
+            handles.iter().any(|handle| handle == "@roy_soul"),
+            "`{spelling}` is the handle @roy_soul: {handles:?}",
+        );
+        assert!(
+            !handles.iter().any(|handle| handle.starts_with("@@")),
+            "`{spelling}` was given a second `@`: {handles:?}",
+        );
+    }
+
+    // A sigil with nothing behind it is not a name, and a handle of `@` would
+    // be one every such export shares.
+    for nothing in ["", "@"] {
+        let mut document = basic();
+        document["personal_information"]["username"] = serde_json::json!(nothing);
+
+        let staged = soul_import::telegram::parse(&document).expect("valid");
+        let handles = owner_handles(&staged);
+        assert_eq!(
+            handles,
+            vec!["user111111111".to_owned()],
+            "`{nothing}` names nobody, so the user id is the only handle",
+        );
+    }
+}
+
+fn owner_handles(staged: &soul_import::model::StagedImport) -> Vec<String> {
+    staged
+        .owner()
+        .expect("personal_information names the user")
+        .handles
+        .iter()
+        .map(|handle| handle.value.clone())
+        .collect()
+}
+
+/// Telegram's phone book can carry a resolved `user_id`, so the join back to
+/// the chats is sometimes there. Not importing it is a scope decision: v0.1's
+/// graph is people the user has talked to, not people they have a number for.
 #[test]
 fn the_phone_book_does_not_become_contacts() {
     let document = basic();
@@ -281,6 +338,105 @@ fn an_override_phrase_split_across_runs_is_reassembled_before_anything_reads_it(
     assert_eq!(attempts, 2, "the phrase and the address, one message each");
     assert_eq!(staged.participants.len(), 2, "the user and the one peer");
     assert_eq!(staged.conversation_count(), 1);
+}
+
+/// `date_unixtime` is somebody else's number and can be any `i64`. Rendering
+/// one produces a year with five digits, or a minus sign in front of it, and
+/// nothing downstream can read a year like that back: one such message would
+/// make every graph rebuild after the import fail, for good, on a row the user
+/// has no way to reach. An import is not a transaction, so the message is
+/// refused here rather than repaired later.
+#[test]
+fn a_unix_second_outside_the_representable_years_is_refused() {
+    // The render is happy to produce this, and the graph's reader is not.
+    let unreadable = soul_policy::clock::rfc3339_utc(i64::MAX);
+    assert_eq!(
+        soul_graph::InteractionInterner::default().adapt(&observation(&unreadable)),
+        Err(soul_graph::AdaptError::InvalidTimestamp {
+            timestamp: unreadable.clone(),
+        }),
+        "`{unreadable}` is what one unbounded `date_unixtime` would leave behind",
+    );
+
+    for seconds in [i64::MAX, i64::MIN, -1, 253_402_300_800, -62_167_219_200] {
+        let mut document = basic();
+        document["chats"]["list"][0]["messages"][0]["date_unixtime"] =
+            serde_json::json!(seconds.to_string());
+
+        let Err(failure) = soul_import::telegram::parse(&document) else {
+            panic!("{seconds} is not a year Soul can write");
+        };
+        assert!(
+            failure.mentions_field("date_unixtime"),
+            "the field that is wrong has to be named:\n{failure}",
+        );
+        assert_eq!(failure.defects.len(), 1, "only that one message is wrong");
+        assert!(
+            !failure.defects[0].reason.contains(&seconds.to_string()),
+            "a refusal says which field is wrong, not what was in it:\n{failure}",
+        );
+    }
+}
+
+/// One stored observation, made only to be handed to the graph's reader.
+fn observation(occurred_at: &str) -> soul_graph::InteractionRef {
+    soul_graph::InteractionRef::new(
+        uuid::Uuid::nil(),
+        uuid::Uuid::nil(),
+        uuid::Uuid::nil(),
+        soul_graph::conversation_ref("telegram-desktop", "c-1"),
+        soul_graph::Direction::Outgoing,
+        soul_schema::common::Timestamp::new(occurred_at.to_owned()),
+        soul_graph::Venue::Direct,
+    )
+}
+
+/// The bound is a bound, not a blanket refusal. Year 9999 is a legal RFC 3339
+/// year and a message dated then is imported; what a distant instant does to
+/// the graph's store-wide `as_of` is the graph's business, not the importer's.
+#[test]
+fn the_years_the_contract_allows_are_still_imported() {
+    for (seconds, expected) in [
+        (0i64, "1970-01-01T00:00:00Z"),
+        (253_402_300_799, "9999-12-31T23:59:59Z"),
+    ] {
+        let mut document = basic();
+        document["chats"]["list"][0]["messages"][0]["date_unixtime"] =
+            serde_json::json!(seconds.to_string());
+
+        let staged = soul_import::telegram::parse(&document).expect("a year in range");
+        assert!(
+            staged
+                .messages
+                .iter()
+                .any(|message| message.occurred_at.as_str() == expected),
+            "{seconds} is {expected} and belongs in the import",
+        );
+    }
+}
+
+/// The other half of the same promise: everything that does reach the store
+/// survives a rebuild. A timestamp the graph cannot read is a rebuild that
+/// fails every time it is run, so the importer's output is checked against the
+/// reader rather than against itself.
+#[test]
+fn every_instant_that_reaches_the_store_can_be_read_back() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut document = basic();
+    // Both ends of what the importer allows, in the same file.
+    document["chats"]["list"][0]["messages"][0]["date_unixtime"] = serde_json::json!("0");
+    document["chats"]["list"][0]["messages"][1]["date_unixtime"] =
+        serde_json::json!("253402300799");
+
+    let staged = soul_import::telegram::parse(&document).expect("both years are in range");
+    let mut store = SqlCipherStore::open(
+        dir.path().join("soul.db"),
+        &TestKeyProvider::from_seed(SEED),
+    )
+    .expect("open");
+    soul_import::commit::commit(&mut store, &staged).expect("commit");
+
+    soul_graph::rebuild(&mut store).expect("a rebuild reads every timestamp back");
 }
 
 /// Nothing about an import is decided by what a message says. A chat titled

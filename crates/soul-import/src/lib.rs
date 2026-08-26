@@ -2,8 +2,10 @@
 //! neither.
 //!
 //! PRODUCT_LOCK names exactly two importers — `soul-import-v1` JSONL and the
-//! `result.json` from Telegram Desktop's *Export chat history → Machine-readable
-//! JSON* — and one fallback, the questionnaire. There is no OAuth, no scraping,
+//! `result.json` from Telegram Desktop's *Settings → Advanced → Export Telegram
+//! data* (Machine-readable JSON; the per-chat *Export chat history* is a
+//! different document and is refused) — and one fallback, the questionnaire.
+//! There is no OAuth, no scraping,
 //! and no generic archive sniffing: a format Soul cannot name is a format Soul
 //! cannot promise anything about.
 //!

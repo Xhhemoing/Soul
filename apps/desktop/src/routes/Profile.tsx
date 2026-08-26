@@ -17,6 +17,13 @@
  * summary all move, and a screen that updated one of them itself would be
  * guessing at the other two.
  *
+ * Agreeing with an axis is a correction too. `soul_profile::correct_axis` locks
+ * whichever position it is handed, the current one included, while the intake
+ * path leaves the lock alone — so pressing the end an axis already leans is the
+ * only way to say 这一端就对了，别再推它 without first pinning an end the user
+ * does not hold. That end is grey once the axis is locked, and not before. Same
+ * rule as the band buttons on `Graph.tsx`, for the same reason.
+ *
  * ## 再答几题
  *
  * The wizard is a first run and nothing else: `wizard_completed` is written
@@ -39,6 +46,7 @@ import {
   questionnaire,
   setVoice,
   type AxisRow,
+  type IgnoredAnswer,
   type IntakeReceipt,
   type ProfileScreen,
   type Question,
@@ -69,8 +77,42 @@ const STATED: Record<string, string> = {
   value: "在乎的事",
 };
 
+/**
+ * Why an answer was recorded and not applied, in the words COPY_ZH §7 froze.
+ *
+ * Keyed by the core's token and never by it: `axis_locked_by_user` is a word
+ * for a machine to match on, and a user reading it on their own profile would
+ * be reading the machine's name for their correction instead of a sentence
+ * about it. A reason this build has no line for falls back to
+ * [`IGNORED_OTHER`] rather than printing the key, which is the whole reason
+ * this is a lookup and not [`words`].
+ */
+const IGNORED: Record<string, string> = {
+  axis_locked_by_user:
+    "你纠正过的轴还锁着：这几条已经记进证据里，但没有改动那几条轴的方向。想改方向，就在上面那条轴上直接按你要的那一端。",
+};
+
+/** COPY_ZH §7's fallback: what is true of any refused answer, and no token. */
+const IGNORED_OTHER = "这几条已经记进证据里，但档案没有跟着动。";
+
 function words(source: Record<string, string>, key: string): string {
   return source[key] ?? key;
+}
+
+/**
+ * The reasons behind one receipt's refused answers, each said once.
+ *
+ * Two answers stopped by the same lock are one sentence, not two: the count
+ * beside it is what says how many there were, and repeating the sentence
+ * would read as two different things having happened.
+ */
+function whyIgnored(ignored: readonly IgnoredAnswer[]): string {
+  const said: string[] = [];
+  for (const answer of ignored) {
+    const line = IGNORED[answer.reason] ?? IGNORED_OTHER;
+    if (!said.includes(line)) said.push(line);
+  }
+  return said.join("");
 }
 
 export function Profile(): React.JSX.Element {
@@ -146,6 +188,7 @@ export function Profile(): React.JSX.Element {
         <p className="muted" data-testid="axes-explanation">
           方向来自你答过的那些题，和你在这一页按下去的纠正：只有偏向，没有高低，也没有名次。
           你觉得哪一条不对就按下去改；改过之后这条轴就锁住了，以后机器再推出别的方向也不会覆盖你。
+          觉得现在这一端就对、不想让以后的推断动它，就按当前那一端把它锁住。
         </p>
         <ul className="facts" data-testid="axis-list">
           {screen.axes.map((axis) => (
@@ -221,6 +264,18 @@ interface AskAgainProps {
  * choice question with a position that inference moved would be this page
  * putting words in the user's mouth. So the boxes start empty every time, and
  * what is on screen above says what the core currently holds.
+ *
+ * ## What a re-answer does not do
+ *
+ * Answering again is last word wins on everything except an axis the user has
+ * already corrected: `soul-profile`'s intake records that answer and leaves
+ * the axis where the user put it (D46), which is the same lock AC-07 turns on
+ * one section up. So the section says so before the user answers, and the
+ * receipt says so afterwards — `IntakeReceipt.ignored` is what the core sends
+ * back, and a run that came back with refused answers and printed only
+ * 记下了 N 条 would be claiming an intake that did more than it did. When
+ * nothing was refused the line is absent rather than reassuring: an empty
+ * `ignored` is a run where the question never came up.
  */
 function AskAgain({ busy, onRecorded }: AskAgainProps): React.JSX.Element {
   const [questions, setQuestions] = useState<readonly Question[]>([]);
@@ -286,9 +341,11 @@ function AskAgain({ busy, onRecorded }: AskAgainProps): React.JSX.Element {
   return (
     <section className="panel" aria-labelledby="ask-again-heading">
       <h2 id="ask-again-heading">再答几题</h2>
-      <p className="muted">
-        向导里那 {questions.length} 道题在这里随时可以再答，答过的也可以改口，以你最后说的为准；
-        留空的还是留空，不会被猜。其中 {prose} 道填空题是边界和在乎的事唯一的入口，
+      <p className="muted" data-testid="ask-again-explanation">
+        向导里那 {questions.length} 道题在这里随时可以再答。没锁住的那些答过也可以改口，
+        以你最后说的为准；你在上面纠正过的轴已经锁住了，再答一次不会把它改回去——
+        那一条照样记进证据里，只是不动那条轴的方向。留空的还是留空，不会被猜。
+        其中 {prose} 道填空题是边界和在乎的事唯一的入口，
         写进去之后原话一样密封，这一页只拿得到问题和编号。
       </p>
 
@@ -356,6 +413,12 @@ function AskAgain({ busy, onRecorded }: AskAgainProps): React.JSX.Element {
         </p>
       )}
 
+      {receipt === null || receipt.ignored.length === 0 ? null : (
+        <p className="muted" data-testid="profile-ignored">
+          这一次有 {receipt.ignored.length} 条没有改动档案。{whyIgnored(receipt.ignored)}
+        </p>
+      )}
+
       {refusal === null ? null : (
         <Refused title="这几题没有过去" refusal={refusal} testId="profile-ask-refusal-code" />
       )}
@@ -395,7 +458,7 @@ function Axis({ axis, busy, onCorrect }: AxisProps): React.JSX.Element {
           <button
             key={choice.position}
             type="button"
-            disabled={busy || choice.position === axis.position}
+            disabled={busy || (axis.locked_by_user && choice.position === axis.position)}
             onClick={() => onCorrect(choice.position)}
           >
             {choice.reading}

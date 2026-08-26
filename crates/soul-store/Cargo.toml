@@ -23,6 +23,8 @@ chacha20poly1305 = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
 zeroize = { workspace = true }
+# Key-file claim lock, mirroring std 1.89's `File::lock`; drop at the MSRV bump.
+fs4 = { workspace = true }
 # WP01 settled the packaging question: SQLCipher, not plain SQLite. The feature
 # name must stay identical to crates/soul-store-api/tests/sqlcipher_smoke.rs, or
 # the smoke test stops covering what actually ships.

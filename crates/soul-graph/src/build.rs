@@ -25,23 +25,18 @@ use soul_schema::audit::{AuditAction, AuditCounts};
 use soul_schema::common::{NotAClinicalClaim, SchemaVersion, SupportedBand, Timestamp};
 use soul_schema::contact::ContactClass;
 use soul_schema::inference::{InferenceMethod, SoulInference, UserVerdict};
+use soul_schema::memory::ForgetState;
 use soul_schema::relationship::{EgressScope, SoulRelationship};
 use soul_store_api::{GraphStore, ProfileStore};
 
 use crate::error::{GraphError, GraphResult};
-use crate::interaction::{self, Direction, InteractionRef, Venue};
 use crate::model::{TieStrength, TieType};
+use crate::t4d_adapt::{tie_reading, InteractionInterner, TieReading};
+use crate::{interaction, interaction::Venue};
 
 /// Prefix every statement this module writes shares, so a rebuild can find the
 /// inferences it wrote last time without matching on the band.
 pub const TIE_STATEMENT_PREFIX: &str = "graph.tie.";
-
-/// Reciprocal contact from here on is more than an exchanged greeting.
-pub const MODERATE_MIN_INTERACTIONS: u64 = 3;
-/// A strong tie has to be both frequent and spread over several days: twenty
-/// messages in one afternoon is one conversation, not a habit.
-pub const STRONG_MIN_INTERACTIONS: u64 = 10;
-pub const STRONG_MIN_ACTIVE_DAYS: u64 = 3;
 
 /// What one rebuild did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -49,116 +44,142 @@ pub struct GraphBuild {
     pub interactions_read: u64,
     pub edges_written: Vec<Uuid>,
     pub inferences_written: Vec<Uuid>,
-    /// Peers whose evidence was skipped because their contact row is gone —
-    /// forgotten, most likely. Reported rather than silently dropped.
+    /// Peers whose evidence was skipped because their contact row is not one
+    /// this build may derive from: gone, or a tombstone a forget left behind.
+    /// Reported rather than silently dropped.
     pub peers_unresolved: u64,
     /// The entry the caller owes the chain. Built here, appended by whoever
     /// holds the open store, exactly as `soul-policy` does it.
     pub audit: Vec<AuditContent>,
 }
 
-/// Everything one peer's observations add up to.
+/// One peer's observations, gathered for the frozen rule.
+///
+/// The rule works in whole Unix seconds, but what an edge displays is the
+/// instant as it was stored. Both are kept: the adapted rows go to
+/// `soul_algo_tie`, the original RFC 3339 strings go on the edge.
 #[derive(Debug, Clone)]
-struct Tally {
-    outgoing: u64,
-    incoming: u64,
-    conversations: BTreeSet<String>,
-    active_days: BTreeSet<String>,
+struct PeerEvidence {
+    /// The interned id every row of this peer carries. Scratch, never stored.
+    interned_peer_id: u64,
+    /// This peer's adapted rows, in evidence order. Input to the rule.
+    rows: Vec<soul_algo_tie::Interaction>,
+    evidence_ids: BTreeSet<Uuid>,
+    /// RFC 3339 in UTC sorts lexicographically, which is why every writer in
+    /// this workspace normalizes to `Z` before storing a timestamp. Comparing
+    /// the stored strings keeps the exact instant a caller wrote, fractional
+    /// seconds included.
     first_contact: String,
     last_contact: String,
-    any_direct: bool,
-    evidence_ids: BTreeSet<Uuid>,
+    /// Newest one-to-one instant. `None` means the two have never spoken
+    /// privately.
+    last_direct_contact: Option<String>,
 }
 
-impl Tally {
-    fn new(occurred_at: &str) -> Tally {
-        Tally {
-            outgoing: 0,
-            incoming: 0,
-            conversations: BTreeSet::new(),
-            active_days: BTreeSet::new(),
+impl PeerEvidence {
+    fn new(interned_peer_id: u64, occurred_at: &str) -> PeerEvidence {
+        PeerEvidence {
+            interned_peer_id,
+            rows: Vec::new(),
+            evidence_ids: BTreeSet::new(),
             first_contact: occurred_at.to_owned(),
             last_contact: occurred_at.to_owned(),
-            any_direct: false,
-            evidence_ids: BTreeSet::new(),
+            last_direct_contact: None,
         }
     }
 
-    fn absorb(&mut self, evidence_id: Uuid, interaction: &InteractionRef) {
-        match interaction.direction {
-            Direction::Outgoing => self.outgoing += 1,
-            Direction::Incoming => self.incoming += 1,
-        }
-        self.any_direct |= interaction.venue == Venue::Direct;
-        self.conversations
-            .insert(interaction.conversation_ref.as_str().to_owned());
-
-        let at = interaction.occurred_at.as_str();
-        // RFC 3339 in UTC sorts lexicographically, which is why every writer in
-        // this workspace normalizes to `Z` before storing a timestamp.
-        if at < self.first_contact.as_str() {
-            self.first_contact = at.to_owned();
-        }
-        if at > self.last_contact.as_str() {
-            self.last_contact = at.to_owned();
-        }
-        self.active_days.insert(utc_date(at));
-
+    fn absorb(
+        &mut self,
+        evidence_id: Uuid,
+        row: soul_algo_tie::Interaction,
+        occurred_at: &str,
+        venue: Venue,
+    ) {
+        self.rows.push(row);
         self.evidence_ids.insert(evidence_id);
-    }
-
-    fn interaction_count(&self) -> u64 {
-        self.outgoing + self.incoming
-    }
-
-    fn is_reciprocal(&self) -> bool {
-        self.outgoing > 0 && self.incoming > 0
-    }
-
-    fn band(&self) -> SupportedBand {
-        let count = self.interaction_count();
-        let days = self.active_days.len() as u64;
-        if self.is_reciprocal()
-            && count >= STRONG_MIN_INTERACTIONS
-            && days >= STRONG_MIN_ACTIVE_DAYS
-        {
-            SupportedBand::Strong
-        } else if self.is_reciprocal() && count >= MODERATE_MIN_INTERACTIONS {
-            SupportedBand::Moderate
-        } else {
-            SupportedBand::Weak
+        if occurred_at < self.first_contact.as_str() {
+            self.first_contact = occurred_at.to_owned();
         }
-    }
-
-    fn types(&self) -> Vec<TieType> {
-        let mut types = vec![match self.any_direct {
-            true => TieType::Direct,
-            false => TieType::GroupOnly,
-        }];
-        types.push(match self.is_reciprocal() {
-            true => TieType::Reciprocal,
-            false => TieType::OneSided,
-        });
-        types
-    }
-
-    fn strength(&self) -> TieStrength {
-        TieStrength {
-            band: self.band(),
-            interaction_count: self.interaction_count(),
-            outgoing_count: self.outgoing,
-            incoming_count: self.incoming,
-            conversation_count: self.conversations.len() as u64,
-            active_day_count: self.active_days.len() as u64,
-            first_contact_utc: Timestamp::new(self.first_contact.clone()),
-            last_contact_utc: Timestamp::new(self.last_contact.clone()),
+        if occurred_at > self.last_contact.as_str() {
+            self.last_contact = occurred_at.to_owned();
+        }
+        if venue == Venue::Direct
+            && self
+                .last_direct_contact
+                .as_deref()
+                .is_none_or(|held| occurred_at > held)
+        {
+            self.last_direct_contact = Some(occurred_at.to_owned());
         }
     }
 }
 
-/// The date part of an RFC 3339 instant, for counting active days.
-fn utc_date(timestamp: &str) -> String {
-    timestamp.chars().take(10).collect()
+/// The band as the storage layer spells it.
+fn supported_band(band: soul_algo_tie::Band) -> SupportedBand {
+    match band {
+        soul_algo_tie::Band::Weak => SupportedBand::Weak,
+        soul_algo_tie::Band::Moderate => SupportedBand::Moderate,
+        soul_algo_tie::Band::Strong => SupportedBand::Strong,
+    }
+}
+
+/// The rule's reading, plus the display instants it never saw, as one stored
+/// object.
+///
+/// Every count comes from the reading: they are the numbers the band was
+/// decided on, and re-deriving any of them here would be a second opinion.
+fn tie_strength_of(
+    reading: &TieReading,
+    acc: &PeerEvidence,
+    locked: Option<&TieStrength>,
+) -> TieStrength {
+    let machine_band = supported_band(reading.band);
+    let locked = locked.filter(|held| held.is_locked_by_user());
+    TieStrength {
+        band: match locked.and_then(|held| held.user_band) {
+            Some(chosen) => chosen,
+            None => machine_band,
+        },
+        interaction_count: reading.interaction_count,
+        outgoing_count: reading.outgoing_count,
+        incoming_count: reading.incoming_count,
+        conversation_count: reading.conversation_count,
+        active_day_count: reading.active_day_count,
+        first_contact_utc: Timestamp::new(acc.first_contact.clone()),
+        last_contact_utc: Timestamp::new(acc.last_contact.clone()),
+        direct_out_count: reading.direct_out_count,
+        direct_in_count: reading.direct_in_count,
+        group_out_count: reading.group_out_count,
+        group_in_count: reading.group_in_count,
+        direct_active_day_count: reading.direct_active_day_count,
+        last_direct_contact_utc: acc.last_direct_contact.clone().map(Timestamp::new),
+        silent_days: reading.silent_days,
+        as_of_utc: Some(Timestamp::new(soul_policy::clock::rfc3339_utc(
+            reading.as_of_unix,
+        ))),
+        algorithm_id: reading.algorithm_id.to_owned(),
+        locked_by_user: locked.and_then(|held| held.locked_by_user),
+        user_band: locked.and_then(|held| held.user_band),
+        machine_band: Some(machine_band),
+    }
+}
+
+/// Observed shapes, which stay any-venue.
+///
+/// `Reciprocal` here means both sides wrote something, anywhere. The band is
+/// where the counting unit narrowed to one-to-one traffic; these two say what
+/// was seen, not how much it is worth.
+fn types_of(reading: &TieReading) -> Vec<TieType> {
+    vec![
+        match reading.any_direct() {
+            true => TieType::Direct,
+            false => TieType::GroupOnly,
+        },
+        match reading.is_reciprocal() {
+            true => TieType::Reciprocal,
+            false => TieType::OneSided,
+        },
+    ]
 }
 
 /// Rebuild every edge and tie inference from the evidence on hand.
@@ -182,13 +203,40 @@ where
         // of the graph and nothing to derive.
         return Ok(GraphBuild::default());
     };
-    let known: BTreeSet<Uuid> = contacts.iter().map(|contact| contact.contact_id).collect();
+    // Active contacts only. A forget tombstones the contact row and orphans
+    // the inferences that rested on their evidence, but the observations
+    // themselves stay — an edge cannot cite rows that are gone. Counting a
+    // tombstoned peer here would rebuild their edge and write a fresh tie
+    // inference for them, and `put_inference` files every inference it is
+    // handed as live, so the next import would quietly undo the forget. Their
+    // rows go to `peers_unresolved` instead, which is what that field is for.
+    let known: BTreeSet<Uuid> = contacts
+        .iter()
+        .filter(|contact| contact.forget_state == ForgetState::Active)
+        .map(|contact| contact.contact_id)
+        .collect();
 
-    let mut tallies: BTreeMap<Uuid, Tally> = BTreeMap::new();
+    let mut interner = InteractionInterner::default();
+    let mut peers: BTreeMap<Uuid, PeerEvidence> = BTreeMap::new();
     let mut interactions_read = 0u64;
     let mut peers_unresolved = 0u64;
+    // The one instant this rebuild scores against: the newest observation in
+    // the whole store. Never a clock, so the same evidence bands the same way
+    // tomorrow, and never per peer, which would make every dormant tie look
+    // current.
+    let mut as_of_unix: Option<i64> = None;
+    // The rows that say why an edge's band is what it is, gathered in the same
+    // pass. A correction is evidence, and an edge that cited only the messages
+    // would keep the user's band while dropping the one row explaining it.
+    let mut corrections: BTreeMap<Uuid, BTreeSet<Uuid>> = BTreeMap::new();
 
     for evidence in store.list_evidence()? {
+        if let Some(relationship_id) = crate::correct::corrected_relationship(&evidence) {
+            corrections
+                .entry(relationship_id)
+                .or_default()
+                .insert(evidence.evidence_id);
+        }
         for observation in interaction::interactions_in(&evidence) {
             if observation.peer_contact_id == observation.self_contact_id {
                 return Err(GraphError::SelfLoop {
@@ -202,14 +250,32 @@ where
                 });
             }
             interactions_read += 1;
+            let row =
+                interner
+                    .adapt(&observation)
+                    .map_err(|_| GraphError::UnreadableInteraction {
+                        evidence_id: evidence.evidence_id,
+                    })?;
+            // A row whose peer has been forgotten still moves `as_of`:
+            // forgetting a contact must not make everybody else look more
+            // recently in touch than they are.
+            as_of_unix = Some(match as_of_unix {
+                Some(held) => held.max(row.occurred_at_unix),
+                None => row.occurred_at_unix,
+            });
             if !known.contains(&observation.peer_contact_id) {
                 peers_unresolved += 1;
                 continue;
             }
-            tallies
+            peers
                 .entry(observation.peer_contact_id)
-                .or_insert_with(|| Tally::new(observation.occurred_at.as_str()))
-                .absorb(evidence.evidence_id, &observation);
+                .or_insert_with(|| PeerEvidence::new(row.peer_id, observation.occurred_at.as_str()))
+                .absorb(
+                    evidence.evidence_id,
+                    row,
+                    observation.occurred_at.as_str(),
+                    observation.venue,
+                );
         }
     }
 
@@ -222,23 +288,39 @@ where
         ..GraphBuild::default()
     };
 
-    for (peer_id, tally) in &tallies {
-        let relationship_id = existing_edges
+    let Some(as_of_unix) = as_of_unix else {
+        return Ok(build);
+    };
+
+    for (peer_id, acc) in &peers {
+        let existing_edge = existing_edges
             .iter()
-            .find(|edge| connects(edge, owner_id, *peer_id))
+            .find(|edge| connects(edge, owner_id, *peer_id));
+        let relationship_id = existing_edge
             .map(|edge| edge.relationship_id)
             .unwrap_or_else(Uuid::now_v7);
+        let held = existing_edge.map(read_strength).transpose()?.flatten();
 
-        let strength = tally.strength();
-        let evidence_ids: Vec<Uuid> = tally.evidence_ids.iter().copied().collect();
+        let reading = tie_reading(acc.interned_peer_id, &acc.rows, as_of_unix);
+        let strength = tie_strength_of(&reading, acc, held.as_ref());
+        // What the machine's reading rests on: the observations, and only
+        // those. A row where the user overruled the band is not support for the
+        // band the counts produced.
+        let observed: Vec<Uuid> = acc.evidence_ids.iter().copied().collect();
+        // What the edge rests on: those, plus every correction made to it. Both
+        // lists come out of a `BTreeSet`, so a rebuild that changes nothing
+        // writes the same bytes it wrote last time.
+        let mut cited = acc.evidence_ids.clone();
+        if let Some(rows) = corrections.get(&relationship_id) {
+            cited.extend(rows.iter().copied());
+        }
         let edge = SoulRelationship {
             schema_version: SchemaVersion,
             relationship_id,
             from_contact_id: owner_id,
             to_contact_id: *peer_id,
             types: Some(
-                tally
-                    .types()
+                types_of(&reading)
                     .into_iter()
                     .map(|kind| Value::String(kind.as_str().to_owned()))
                     .collect(),
@@ -246,15 +328,16 @@ where
             tie_strength: Some(
                 serde_json::to_value(&strength).expect("TieStrength serializes to an object"),
             ),
-            evidence_ids: evidence_ids.clone(),
+            evidence_ids: cited.into_iter().collect(),
             egress_scope: Some(EgressScope::LocalOnly),
         };
         store.put_relationship(edge)?;
         build.edges_written.push(relationship_id);
 
-        let inference_id = existing_inferences
+        let existing_inference = existing_inferences
             .iter()
-            .find(|inference| is_tie_statement_about(inference, relationship_id))
+            .find(|inference| is_tie_statement_about(inference, relationship_id));
+        let inference_id = existing_inference
             .map(|inference| inference.inference_id)
             .unwrap_or_else(Uuid::now_v7);
         store.put_inference(tie_inference(
@@ -262,7 +345,8 @@ where
             relationship_id,
             *peer_id,
             &strength,
-            &evidence_ids,
+            &observed,
+            existing_inference.and_then(|inference| inference.user_verdict),
         ))?;
         build.inferences_written.push(inference_id);
     }
@@ -280,12 +364,33 @@ where
     Ok(build)
 }
 
+/// What the last rebuild — or a correction since — left on this edge.
+///
+/// Refuses rather than guesses: an edge whose `tie_strength` cannot be read is
+/// an edge that may be carrying a band the user chose, and overwriting it
+/// would be the clobber the lock exists to prevent.
+fn read_strength(edge: &SoulRelationship) -> GraphResult<Option<TieStrength>> {
+    edge.tie_strength
+        .clone()
+        .map(|raw| {
+            serde_json::from_value(raw).map_err(|_| GraphError::UnreadableEdge {
+                relationship_id: edge.relationship_id,
+                field: "tie_strength",
+            })
+        })
+        .transpose()
+}
+
 fn connects(edge: &SoulRelationship, left: Uuid, right: Uuid) -> bool {
     (edge.from_contact_id == left && edge.to_contact_id == right)
         || (edge.from_contact_id == right && edge.to_contact_id == left)
 }
 
-fn is_tie_statement_about(inference: &SoulInference, relationship_id: Uuid) -> bool {
+/// Whether this inference is the tie statement about that edge.
+///
+/// `pub(crate)` for [`crate::correct`], which has to find the same inference a
+/// rebuild would in order to record the user's verdict on it.
+pub(crate) fn is_tie_statement_about(inference: &SoulInference, relationship_id: Uuid) -> bool {
     inference.statement_key.starts_with(TIE_STATEMENT_PREFIX)
         && inference
             .target
@@ -294,14 +399,24 @@ fn is_tie_statement_about(inference: &SoulInference, relationship_id: Uuid) -> b
             .is_some_and(|id| id == relationship_id.to_string())
 }
 
+/// The inference behind one edge.
+///
+/// `held_verdict` is whatever the user last said about this tie. A rebuild
+/// updates what the machine thinks and leaves that answer alone: an opinion
+/// the user already reviewed is not unreviewed again because new evidence
+/// arrived.
 fn tie_inference(
     inference_id: Uuid,
     relationship_id: Uuid,
     peer_id: Uuid,
     strength: &TieStrength,
     evidence_ids: &[Uuid],
+    held_verdict: Option<UserVerdict>,
 ) -> SoulInference {
-    let band = match strength.band {
+    // The machine's own reading, which keeps being written down even on an
+    // edge whose effective band the user has taken over.
+    let machine_band = strength.machine_band.unwrap_or(strength.band);
+    let band = match machine_band {
         SupportedBand::Weak => "weak",
         SupportedBand::Moderate => "moderate",
         SupportedBand::Strong => "strong",
@@ -316,10 +431,13 @@ fn tie_inference(
         }),
         statement_key: format!("{TIE_STATEMENT_PREFIX}{band}"),
         evidence_ids: evidence_ids.to_vec(),
-        evidence_band: strength.band,
-        // Thresholds, applied to counts. Nothing was asked of a model.
+        evidence_band: machine_band,
+        // Counts, run through the frozen rule. Nothing was asked of a model.
         method: Some(InferenceMethod::Rule),
-        user_verdict: Some(UserVerdict::Unreviewed),
+        user_verdict: Some(match held_verdict {
+            Some(held) if held != UserVerdict::Unreviewed => held,
+            _ => UserVerdict::Unreviewed,
+        }),
         clinical_claim: NotAClinicalClaim,
         falsifier: Some(
             "双方在更长的时间窗口内都没有新的往来，或用户直接改写这条关系，即推翻本判断".into(),

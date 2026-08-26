@@ -1,23 +1,38 @@
-//! Telegram Desktop 4.x, *Export chat history → Machine-readable JSON*.
+//! Telegram Desktop, *Settings → Advanced → Export Telegram data*, in
+//! machine-readable JSON.
 //!
-//! The file is `result.json`. There is no schema for it — it is somebody
-//! else's format — so this adapter states what it needs and refuses the file
-//! when it is not there, naming the chat and the message by id. Silently
-//! dropping a row would be worse than failing: the graph would come out
-//! thinner than the export and nothing would say so.
+//! The file is `result.json`, and it is the one the full-export menu writes.
+//! The per-chat *Export chat history* command writes a different document —
+//! one chat, no `personal_information` — which this adapter refuses like any
+//! other file it cannot read.
 //!
-//! Three decisions worth knowing about.
+//! Telegram does publish a description of the format now, at
+//! `core.telegram.org/import-export`. It guarantees nothing: it carries no
+//! version, Desktop is free to write something else in the next release, and
+//! nobody promises the two agree. So the adapter still states what it needs
+//! and refuses the file when it is not there, naming the chat and the message
+//! by id. Silently dropping a row would be worse than failing: the graph would
+//! come out thinner than the export and nothing would say so.
+//!
+//! Four decisions worth knowing about.
 //!
 //! **Time comes from `date_unixtime`.** The neighbouring `date` field is local
 //! wall-clock with no offset, so turning it into an instant means guessing a
 //! time zone. Every Desktop 4.x export writes `date_unixtime`; a file without
 //! it is refused rather than imported an unknown number of hours out.
 //!
-//! **`contacts.list` is not imported.** Telegram's phone book entries carry a
-//! name and a phone number but no user id, and chat messages carry a user id
-//! and no phone number. There is no join key, so merging them would produce
-//! either duplicate people or wrong ones. Only people who appear in a chat
-//! become contacts.
+//! **`contacts.list` is not imported.** A phone book entry can carry a
+//! resolved `user_id`, so the join key back to the chats is sometimes there
+//! and merging the two is sometimes possible. v0.1 still does not do it, as a
+//! scope decision rather than a technical one: the graph is about people the
+//! user has talked to, and a phone book holds people they have only stored a
+//! number for. Only people who appear in a chat become contacts.
+//!
+//! **A username already comes with its `@`.** Desktop writes
+//! `personal_information.username` through its own `FormatUsername`, so the
+//! sigil is in the file. Adding a second one would file the user under
+//! `@@name`, a handle nothing else in the graph will ever match, and the same
+//! person would arrive twice.
 //!
 //! **A chat title is never put in an error message.** `name` on a personal
 //! chat is the other person's name; the locator uses ids.
@@ -70,12 +85,12 @@ pub fn parse(document: &Value) -> Result<StagedImport, ImportFailure> {
         display_name(document.get("personal_information")).as_deref(),
         true,
     );
-    if let Some(username) = document
+    if let Some(handle) = document
         .pointer("/personal_information/username")
         .and_then(Value::as_str)
-        .filter(|name| !name.is_empty())
+        .and_then(username_handle)
     {
-        participants.alias(&owner, ParticipantHandle::handle(format!("@{username}")));
+        participants.alias(&owner, handle);
     }
 
     let Some(chats) = document.pointer("/chats/list").and_then(Value::as_array) else {
@@ -226,6 +241,19 @@ fn owner_handle(document: &Value, defects: &mut Vec<Defect>) -> Option<Participa
     }
 }
 
+/// `personal_information.username` as a handle written `@name` exactly once.
+///
+/// Desktop formats the field before writing it, so the `@` is normally already
+/// there; a file that spells the username bare is read the same way. What is
+/// left after the sigil has to be something, so `@` on its own is nobody.
+fn username_handle(username: &str) -> Option<ParticipantHandle> {
+    let name = username.strip_prefix('@').unwrap_or(username);
+    match name.is_empty() {
+        true => None,
+        false => Some(ParticipantHandle::handle(format!("@{name}"))),
+    }
+}
+
 fn display_name(personal: Option<&Value>) -> Option<String> {
     let personal = personal?;
     let first = personal
@@ -276,7 +304,19 @@ fn read_instant(
         _ => None,
     };
     match seconds {
-        Some(seconds) => Some(Timestamp::new(rfc3339_utc(seconds))),
+        Some(seconds) => match representable_instant(seconds) {
+            Some(instant) => Some(instant),
+            None => {
+                defects.push(Defect::field(
+                    locator.clone(),
+                    "date_unixtime",
+                    "is not a representable UTC year: only 1970 through 9999 can be written \
+                     as an instant the rest of Soul can read back"
+                        .to_owned(),
+                ));
+                None
+            }
+        },
         None => {
             defects.push(Defect::field(
                 locator.clone(),
@@ -287,6 +327,23 @@ fn read_instant(
             ));
             None
         }
+    }
+}
+
+/// A Unix second that renders as an instant every later reader accepts.
+///
+/// `rfc3339_utc` renders any `i64`, including years of five digits or more and
+/// years before the common era. Nothing downstream parses those: the graph
+/// wants a four-digit year, so one such message would make every rebuild after
+/// the import fail, for good, on a row nobody can edit. An import is not a
+/// transaction, so the check belongs here, before the value is staged.
+fn representable_instant(unix_seconds: i64) -> Option<Timestamp> {
+    let rendered = rfc3339_utc(unix_seconds);
+    let bytes = rendered.as_bytes();
+    let year = rendered.get(..4)?.parse::<u32>().ok()?;
+    match bytes.get(4) == Some(&b'-') && (1970..=9999).contains(&year) {
+        true => Some(Timestamp::new(rendered)),
+        false => None,
     }
 }
 

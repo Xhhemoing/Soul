@@ -384,17 +384,17 @@ fn this_repository_passes_the_e0_audit() {
 // ------------------------------------------------------ denylist-audit ---
 
 #[test]
-fn the_denylist_scanner_fails_on_a_forbidden_identifier() {
+fn the_denylist_scanner_fails_on_a_score_field_in_a_product_profile() {
     let terms = denylist::parse_terms("score\npercentile\n抑郁\n");
     let hits = denylist::scan_source(
-        Path::new("crates/pretend/src/lib.rs"),
-        "pub struct TraitAxis { pub score: u8 }\n",
+        Path::new("crates/soul-profile/src/profile.rs"),
+        "#[derive(serde::Serialize)]\npub struct ProductProfile { pub score: u8 }\n",
         &terms,
     );
     assert!(
         hits.iter()
             .any(|h| h.term == "score" && h.context == HitContext::Identifier),
-        "a field called `score` must be reported; got {hits:#?}",
+        "a product JSON field called `score` must be reported; got {hits:#?}",
     );
 }
 
@@ -461,9 +461,15 @@ fn multi_word_terms_match_across_identifier_words() {
 }
 
 #[test]
-fn xtask_and_fixtures_are_exempt_from_the_denylist() {
+fn tooling_algorithms_and_fixtures_are_exempt_from_the_denylist() {
     assert!(denylist::is_exempt(Path::new(
         "crates/xtask/src/denylist.rs"
+    )));
+    assert!(denylist::is_exempt(Path::new(
+        "crates/soul-algo-tie/src/types.rs"
+    )));
+    assert!(denylist::is_exempt(Path::new(
+        "crates/soul-algo-trait/src/a2.rs"
     )));
     assert!(denylist::is_exempt(Path::new(
         "crates/soul-schema/tests/roundtrip.rs"
@@ -474,6 +480,26 @@ fn xtask_and_fixtures_are_exempt_from_the_denylist() {
     assert!(!denylist::is_exempt(Path::new(
         "crates/soul-schema/src/profile.rs"
     )));
+}
+
+/// The adapter that reaches the frozen tie rule is exempt; the rest of the
+/// crate it lives in is not, which is the whole point of naming files rather
+/// than crates.
+#[test]
+fn only_the_named_adapter_file_is_exempt_within_a_product_crate() {
+    assert!(denylist::is_exempt(Path::new(
+        "crates/soul-graph/src/t4d_adapt.rs"
+    )));
+    assert!(denylist::is_exempt(Path::new(
+        "/somewhere/else/crates/soul-graph/src/t4d_adapt.rs"
+    )));
+    for scanned in [
+        "crates/soul-graph/src/build.rs",
+        "crates/soul-graph/src/model.rs",
+        "crates/soul-graph/src/view.rs",
+    ] {
+        assert!(!denylist::is_exempt(Path::new(scanned)), "{scanned}");
+    }
 }
 
 #[test]

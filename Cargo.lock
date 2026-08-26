@@ -405,6 +405,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs4"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e72ed92b67c146290f88e9c89d60ca163ea417a446f61ffd7b72df3e7f1dfd5"
+dependencies = [
+ "rustix",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1463,6 +1473,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "soul-algo-tie"
+version = "0.3.0"
+
+[[package]]
+name = "soul-algo-trait"
+version = "0.3.0"
+
+[[package]]
 name = "soul-collect"
 version = "0.1.0"
 dependencies = [
@@ -1484,6 +1502,8 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "soul-algo-tie",
+ "soul-algo-trait",
  "soul-egress",
  "soul-graph",
  "soul-policy",
@@ -1533,6 +1553,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "soul-algo-tie",
  "soul-policy",
  "soul-schema",
  "soul-store",
@@ -1604,6 +1625,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "soul-algo-trait",
  "soul-import",
  "soul-policy",
  "soul-schema",
@@ -1634,6 +1656,7 @@ version = "0.1.0"
 dependencies = [
  "chacha20poly1305",
  "fail",
+ "fs4",
  "hex",
  "rusqlite",
  "serde",
@@ -1692,6 +1715,7 @@ name = "soulcore"
 version = "0.1.0"
 dependencies = [
  "fail",
+ "rusqlite",
  "serde",
  "serde_json",
  "soul-collect",

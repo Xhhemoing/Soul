@@ -20,6 +20,16 @@
 
 DPAPI → KEK → DB DEK → 每单元 CK。正文字段 AEAD，AAD=行 id+字段名。遗忘销毁 CK，预览影响面。不承诺物理擦除。
 
+「销毁 CK」不止是 `DELETE` 掉 `content_keys` 那一行——被删的字节还在两处，而这两处都是 DEK 打得开的文件：页内被释放的空间（行只是进了空闲页），以及删除之前写下的 WAL 帧（它们带着 CK 还在页上时的那一页）。所以现在多做两件事：
+
+- 开库时 `PRAGMA secure_delete = ON`，释放的页内字节被清零而不是留着。SQLCipher 在 codec 挂上时本来就会把它打开，但那是依赖内部的行为，本仓库任何地方都没写过；现在是显式设置并**读回校验**，`SqlCipherStore::open` 读到的不是 1 就直接报错退出。
+- `execute_forget` 提交之后立刻 `wal_checkpoint(TRUNCATE)`，把日志折回主库并截到 0 字节。这一步此前没有，日志会一直留着旧页直到应用下次碰巧 flush。
+- 被销毁的 CK id 记进 `destroyed_content_keys`（只有裸 UUID，没有第二列；`SECURITY.md` 本来就允许被遗忘对象的 UUID 活在审计链里）。删掉那一行只是把 id 空了出来，而 `ensure_content_key` 对任何自己没有的 id 都会新铸一把——于是下一次以同一个 id 密封会成功，那些已经标成 `forgotten` 的墓碑行背后又有了活密钥。有了这张表，这种密封直接返回 `ContentKeyDestroyed`。`meta.schema_version` 因此升到 2：旧库下次开库自动建表，但**它记不住升级之前发生过的遗忘**，那之前销毁的 id 仍可被重铸。
+
+于是可测语义变成：CK 那一行没了，包裹字节在主库页与 WAL 里都不再是可读的形态，那个 id 也不会再有第二把密钥，正文解不出来。`crates/soul-store/tests/forget.rs` 断言 pragma 读回 1（关库重开后仍是 1，它是连接属性不是文件属性）、`execute_forget` 之后 `-wal` 是 0 字节（去掉 checkpoint 这条测试就红）、以及遗忘之后再拿同一个 CK id 密封被拒且重开库仍然被拒（去掉台账这条测试也红）。**没有**做解密后的逐页扫描：SQLite 唯一能做这件事的接口是 `sqlite_dbpage`，`libsqlite3-sys` 的 bundled 构建只开了 `SQLITE_ENABLE_DBSTAT_VTAB`，而且那张虚表可写，开它等于给任何拿到 DEK 的东西一条改原始页的路；测试里以「这个构建确实没有 `sqlite_dbpage`」的断言记着这件事，哪天有了就该把真扫描补上。同一个测试用明文库做对照，证明这个构建里关掉 pragma 删除的字节确实还在文件里、打开就没了。
+
+仍然不承诺 SSD 物理擦除：盘上更早的物理块可能仍带着旧密文，wear leveling 与 TRIM 不在本文件的承诺范围内。
+
 ## 加密落地（WP01 实测结论）
 
 结论：**走 SQLCipher 路线**，不需要回退。`ASSUMPTION` 中「若打包成本过高则退回 SQLite + 字段级 AEAD」这一条本 WP 未触发。
@@ -61,11 +71,11 @@ WP02 已落 `KeyProvider` 抽象，两个实现在 `crates/soul-store/src/keys.r
 
 `unsafe` 隔离在 `crates/soul-win-dpapi`：整个 crate 的公开面只有 `protect` / `unprotect` 两个函数，唯一的 `unsafe` 在 `src/sys.rs` 一个函数里（两个 `extern "system"` 声明加一次调用，输出缓冲复制后先擦零再 `LocalFree`），crate 根在 Windows 上是 `deny(unsafe_code)`、其它平台是 `forbid(unsafe_code)`。`soul-store` 因此仍然是 `#![forbid(unsafe_code)]`。这个 crate 在非 Windows 上照常编译并返回 `DpapiError::Unsupported`，所以 `DpapiKeyProvider` 里一个 `#[cfg]` 都没有，Linux 构建照样给 Windows 那条路做类型检查。
 
-`keys.dpapi` 只在首次使用时创建（先写 `.partial` 再 rename），之后**永不重写**。解析不了的 blob 报 `KeyError::Corrupt` 并原样留着：它是这台机器上唯一能打开 `soul.db` 的东西，一个会覆盖它的实现就是一个会把库扔掉的实现。删掉这个文件等于永久失去这个库。
+`keys.dpapi` 只在首次使用时创建，之后**永不重写**。「首次使用」这四个字对**同时发生的两次首次运行**也成立：创建走 `OpenOptions::create_new` 直接落最终文件名，只有一个进程建得了这个名字，其余进程收到 `AlreadyExists`，读回赢家的字节、用赢家的 DEK 开库。旧写法是先写 `.partial` 再 rename，两个进程各造一把 DEK，后 rename 的那个把前一个刚建好的库永久锁死——`TestKeyProvider` 的种子文件当时也是同一个形状的洞。被建出来却一个字节都没写进去的空文件是「首次运行中途断电」的唯一残留，它里面没有任何密钥材料，也就不可能有库是用它开的，所以下一次启动把它**就地填上**：拿到这个文件的 OS 独占锁（`fs4`，Windows 是 `LockFileEx`，Unix 是 `flock`），持锁看长度，为零就写、不为零就顺着这把锁读回别人刚写的字节。Soul 在任何情况下都不会删 `keys.dpapi`——先删再 `create_new` 重铸看着更直接，但那是把原来的竞态原样搬了回来：两个恢复者都删、都建，后建的那份才是磁盘上的文件，先建的那个带着一把谁也没有的密钥去开库；更糟的是这一删可能落在第三个进程已经把文件填好之后，删掉的就是某个库正在用的密钥。改读也走持锁的那个句柄，不再另开一次路径：Windows 锁的是字节区间，不持锁去读别人锁住的区间会直接失败，而 Unix 的 `flock` 只是劝告锁，另开一次读有可能读到写了一半的文件。解析不了的 blob 报 `KeyError::Corrupt` 并原样留着：它是这台机器上唯一能打开 `soul.db` 的东西，一个会覆盖它的实现就是一个会把库扔掉的实现。删掉这个文件等于永久失去这个库。
 
-测什么：`crates/soul-win-dpapi/tests/roundtrip.rs`（`cfg(windows)`：往返一致、blob 里搜不到明文密钥、两次保护结果不同、换 entropy 解不开、改一个字节解不开；`cfg(not(windows))`：两个方向都 `Unsupported`）；`crates/soul-store/src/keys.rs` 的单元测试（文件格式往返与九种坏 blob 全拒、DEK 在 KEK 下的包裹与换 KEK/换 AAD 都解不开）；`crates/soul-store/tests/dpapi_key_chain.rs`（开库 → 写一行 → 关库 → 新 provider 重开 → 读回来）。Linux 侧另有 `soulcore/tests/session_commands.rs` 断言这台机器上开库的是种子文件而不是 DPAPI。
+测什么：`crates/soul-win-dpapi/tests/roundtrip.rs`（`cfg(windows)`：往返一致、blob 里搜不到明文密钥、两次保护结果不同、换 entropy 解不开、改一个字节解不开；`cfg(not(windows))`：两个方向都 `Unsupported`）；`crates/soul-store/src/keys.rs` 的单元测试（文件格式往返与九种坏 blob 全拒、DEK 在 KEK 下的包裹与换 KEK/换 AAD 都解不开；八个「首次运行」抢一个不存在的名字，以及八个恢复者同时抢一个被遗弃的空文件——四轮，每轮所有人拿到的都必须是磁盘上那一份，目录里也只许剩这一个文件）；`crates/soul-store/tests/dpapi_key_chain.rs`（开库 → 写一行 → 关库 → 新 provider 重开 → 读回来）；`crates/soul-store/tests/key_blob_race.rs`（六次「首次运行」同时开库、各写一行，四轮；散场后只用幸存的密钥文件重开，六行都要读得回来）。抢文件名那一步没有平台，所以 `keys.rs` 里的抢锁单元测试与这个竞态测试在 Linux CI 上照跑，`windows-latest` 上跑的是同一份代码经由真 DPAPI 的那一路。Linux 侧另有 `soulcore/tests/session_commands.rs` 断言这台机器上开库的是种子文件而不是 DPAPI。
 
-不承诺：抵抗本机管理员、物理取证、内核恶意软件；不承诺 SSD 物理擦除。遗忘的可测语义是「CK 已销毁，正文不可解，派生推断降为 orphaned」，UI 必须照此如实写。
+不承诺：抵抗本机管理员、物理取证、内核恶意软件；不承诺 SSD 物理擦除。遗忘的可测语义是「CK 已销毁——那一行没了，包裹字节在主库页与 WAL 里也不再可读（见「密钥与遗忘」）——正文不可解，派生推断降为 orphaned」，UI 必须照此如实写。
 
 ## 审计
 

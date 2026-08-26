@@ -150,6 +150,104 @@ fn identifiers_stay_placeheld_inside_an_exempted_turn() {
     assert!(redacted.as_str().contains(ACCOUNT_PLACEHOLDER));
 }
 
+/// The same promise for the same number, written in groups.
+///
+/// [`identifiers_stay_placeheld_inside_an_exempted_turn`] hands the redactor
+/// `13800138000` and gets it back placeheld, which proves the identifier set is
+/// consulted. A paste rarely spells a number that way: `138 0013 8000` is how
+/// somebody writes one down for somebody else to read, it is not the string the
+/// contact card holds, and it is eleven digits in three groups none of which is
+/// long enough to be a number on its own.
+///
+/// The exempted turn is the one place a paste travels verbatim, so it is the
+/// one place that difference reaches an endpoint. The redactor below knows the
+/// number in its unspaced spelling only, so what covers the grouped one is the
+/// shape and nothing else — and the message the user confirmed twice for still
+/// has to come out the other side.
+#[test]
+fn a_grouped_phone_number_stays_placeheld_inside_an_exempted_turn() {
+    let redactor = redactor();
+
+    for grouped in ["138 0013 8000", "138-0013-8000"] {
+        let turn_id = Uuid::now_v7();
+        let turns = vec![Turn::new(
+            turn_id,
+            SealedSubject::ThirdParty,
+            format!("{ORIGINAL}，电话 {grouped}"),
+        )];
+
+        let exemption = ExemptionRequest::for_turn(turn_id)
+            .confirm(true)
+            .expect("the user confirmed twice");
+        let redacted = redactor.redact_for_e1_with_exemption(&turns, exemption);
+
+        assert_eq!(
+            redacted.as_str(),
+            format!("{ORIGINAL}，电话 {ACCOUNT_PLACEHOLDER}"),
+            "`{grouped}` reached the body the user confirmed",
+        );
+        assert!(
+            !redacted.as_str().contains("8000"),
+            "the tail of the number travelled beside the placeholder: {}",
+            redacted.as_str(),
+        );
+        assert!(redacted.carries_exempted_original());
+    }
+}
+
+/// The same promise again, for the spellings a keyboard produces rather than
+/// the ones a test author types.
+///
+/// The test above covers the ASCII hyphen and the ASCII space, which is what a
+/// contact card and an English layout give. A Chinese IME in fullwidth mode
+/// gives U+FF10–U+FF19 for the digits, U+FF0D for the dash and U+FF0E for the
+/// dot; a paste out of a document that has been autocorrected gives U+2013.
+/// None of them is the string the contact card holds, so what covers them is
+/// the shape, and the exempted turn is the one place a paste reaches an
+/// endpoint verbatim.
+///
+/// `138-0013–8000` and `138.0013．8000` are the cases that say why the whole
+/// run has to go rather than the first seven digits: with only the ASCII
+/// spelling joining, the run stopped at the separator it did not know and left
+/// `8000` standing beside the placeholder.
+#[test]
+fn a_phone_number_typed_on_an_ime_stays_placeheld_inside_an_exempted_turn() {
+    let redactor = redactor();
+
+    for typed in [
+        "１３８００１３８０００",
+        "１３８－００１３－８０００",
+        "１３８．００１３．８０００",
+        "138\u{2013}0013\u{2013}8000",
+        "138-0013\u{2013}8000",
+        "138.0013\u{FF0E}8000",
+    ] {
+        let turn_id = Uuid::now_v7();
+        let turns = vec![Turn::new(
+            turn_id,
+            SealedSubject::ThirdParty,
+            format!("{ORIGINAL}，电话 {typed}"),
+        )];
+
+        let exemption = ExemptionRequest::for_turn(turn_id)
+            .confirm(true)
+            .expect("the user confirmed twice");
+        let redacted = redactor.redact_for_e1_with_exemption(&turns, exemption);
+
+        assert_eq!(
+            redacted.as_str(),
+            format!("{ORIGINAL}，电话 {ACCOUNT_PLACEHOLDER}"),
+            "`{typed}` reached the body the user confirmed",
+        );
+        assert!(
+            !redacted.as_str().contains("8000") && !redacted.as_str().contains("８０００"),
+            "the tail of the number travelled beside the placeholder: {}",
+            redacted.as_str(),
+        );
+        assert!(redacted.carries_exempted_original());
+    }
+}
+
 /// The same promise for a name nobody registered, which is every name on a
 /// Soul that has imported nothing.
 ///
@@ -295,8 +393,14 @@ fn an_exempted_turn_placeholds_a_latin_display_label_in_front_of_a_verb_of_sayin
 /// The test asserts the current answer so that the hole is a fact somebody has
 /// to change a test to move, rather than something to rediscover. What closes
 /// it is the contact graph — [`KnownIdentifiers`], which `soulcore` fills from
-/// the contact rows and which covers every line below the moment anything is
-/// imported — or a step the user sees before the request leaves.
+/// the contact rows — or a step the user sees before the request leaves.
+///
+/// The second half of the test is that graph, and it registers `李 雷` with the
+/// space in it, because that is the string a Telegram export seals and the
+/// only spelling of that name `soulcore` ever hands the redactor. Handing it
+/// `李雷` instead would have proved the set is consulted and nothing about the
+/// product: the unspaced spelling is covered because `add_name` folds a spaced
+/// label, not because anybody registered it.
 #[test]
 fn the_names_the_shapes_still_cannot_see_are_written_down_here() {
     let redactor = Redactor::new(KnownIdentifiers::new());
@@ -329,7 +433,7 @@ fn the_names_the_shapes_still_cannot_see_are_written_down_here() {
     // And the same names, once anything at all has been imported.
     let knowing = Redactor::new(
         KnownIdentifiers::new()
-            .with_name("李雷")
+            .with_name(SPACED_LABEL)
             .with_name("小王")
             .with_name("张伟")
             .with_name("Wang Xiao"),
@@ -354,6 +458,114 @@ fn the_names_the_shapes_still_cannot_see_are_written_down_here() {
                 redacted.as_str(),
             );
         }
+    }
+}
+
+/// A label the graph learned is placeheld in the spelling a person writes, not
+/// only the spelling the export sealed.
+///
+/// This is the product's own path and it has no shape in it: the turn below is
+/// the user's own, so neither of the two shape rules runs, and a placeholder in
+/// these bytes can only have come from the identifier set. `李 雷` is what
+/// `soulcore` registers, because it is what the file said; `李雷` is what the
+/// paste says, because that is how the name is written everywhere that is not
+/// a contact card. Before the fold those were two different strings to a
+/// `String::replace`, and the second one travelled.
+#[test]
+fn a_spaced_label_the_graph_learned_covers_the_unspaced_spelling_too() {
+    let knowing = Redactor::new(KnownIdentifiers::new().with_name(SPACED_LABEL));
+
+    let turns = vec![Turn::new(
+        Uuid::now_v7(),
+        SealedSubject::Owner,
+        "周五的方案我下周交给李雷，你不用管",
+    )];
+    let redacted = knowing.redact_for_e1(&turns);
+
+    assert!(
+        !redacted.as_str().contains(NAME),
+        "the name this Soul imported travelled in the spelling everybody uses: {}",
+        redacted.as_str(),
+    );
+    assert!(
+        redacted.as_str().contains(NAME_PLACEHOLDER),
+        "the name was dropped rather than placeheld: {}",
+        redacted.as_str(),
+    );
+    assert!(
+        redacted.as_str().contains("方案"),
+        "the placeholder is supposed to be the name and not the sentence: {}",
+        redacted.as_str(),
+    );
+
+    // The spelling that was registered is of course still covered.
+    let spaced = vec![Turn::new(
+        Uuid::now_v7(),
+        SealedSubject::Owner,
+        format!("联系人卡片上写的是 {SPACED_LABEL}，别改"),
+    )];
+    assert!(
+        !knowing
+            .redact_for_e1(&spaced)
+            .as_str()
+            .contains(SPACED_LABEL),
+        "folding a label may not cost it the spelling it was registered in",
+    );
+}
+
+/// The fold stops where the label shape stops.
+///
+/// Taking the spaces out of a string is only safe while the string is shaped
+/// like a name, because what comes out is matched literally against every draft
+/// afterwards. Two things are deliberately outside the shape: a run longer than
+/// a person's name, which is what a group title looks like; and a label in a
+/// script that spaces its words anyway, where `WangXiao` is a spelling nobody
+/// has ever typed and matching it would buy nothing.
+///
+/// Both are asserted through the user's own turn, where no shape rule runs, so
+/// the answer is the identifier set's and nothing else's.
+#[test]
+fn a_label_that_is_not_shaped_like_a_name_is_registered_as_written_only() {
+    for (label, registered_in_prose, folded_in_prose) in [
+        // Four groups and seven characters: past the end of a name.
+        (
+            "项目 组 周会 通知",
+            "群名片上写着项目 组 周会 通知，别动",
+            "这次项目组周会通知发得有点晚",
+        ),
+        // A script that spaces every word carries no signal in the space.
+        (
+            "Wang Xiao",
+            "The card still says Wang Xiao, leave it",
+            "The WangXiao line in the sheet is a typo",
+        ),
+    ] {
+        let knowing = Redactor::new(KnownIdentifiers::new().with_name(label));
+        let folded: String = label.chars().filter(|c| *c != ' ').collect();
+
+        let as_written = knowing.redact_for_e1(&[Turn::new(
+            Uuid::now_v7(),
+            SealedSubject::Owner,
+            registered_in_prose,
+        )]);
+        assert!(
+            !as_written.as_str().contains(label),
+            "`{label}` was registered and did not travel as a placeholder: {}",
+            as_written.as_str(),
+        );
+
+        let as_folded = knowing.redact_for_e1(&[Turn::new(
+            Uuid::now_v7(),
+            SealedSubject::Owner,
+            folded_in_prose,
+        )]);
+        assert!(
+            as_folded.as_str().contains(folded.as_str()),
+            "`{folded}` is now placeheld, so the fold has grown past the label \
+             shape — check that `add_name` and the spaced-label scrub still \
+             agree on what a name looks like: {}",
+            as_folded.as_str(),
+        );
     }
 }
 

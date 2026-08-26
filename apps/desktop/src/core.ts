@@ -146,7 +146,13 @@ export interface TieEdge {
   readonly from_contact_id: string;
   readonly to_contact_id: string;
   readonly types: readonly string[];
+  /** The band in force: the user's own on a corrected tie, the machine's otherwise. */
   readonly band: string;
+  readonly locked_by_user: boolean;
+  /** Present exactly when `locked_by_user`. */
+  readonly user_band: string | null;
+  /** What the counts say, kept beside the effective band. */
+  readonly machine_band: string | null;
   readonly interaction_count: number;
   readonly outgoing_count: number;
   readonly incoming_count: number;
@@ -325,8 +331,21 @@ export interface GivenAnswer {
   readonly given: string;
 }
 
+/**
+ * One answer the core recorded and did not apply, and why.
+ *
+ * `reason` is a machine token — `axis_locked_by_user` — and not a sentence:
+ * the words a user reads belong to `COPY_ZH.md` §7, which the profile page
+ * looks the token up in rather than printing it.
+ */
+export interface IgnoredAnswer {
+  readonly question_id: string;
+  readonly reason: string;
+}
+
 /** What one questionnaire run left behind. AC-03 is `profile_is_empty`. */
 export interface IntakeReceipt {
+  /** Answers that moved something. An answer in `ignored` is not one. */
   readonly answered: number;
   readonly axes_known: number;
   /** Axes nobody answered for. They stay `unknown`; nothing is guessed. */
@@ -334,7 +353,10 @@ export interface IntakeReceipt {
   readonly voice_fields_user_set: number;
   readonly stated_entries: number;
   readonly profile_is_empty: boolean;
+  /** One per recorded answer, the refused ones included. */
   readonly evidence_ids: readonly string[];
+  /** Answers that reached an axis the user had already corrected. */
+  readonly ignored: readonly IgnoredAnswer[];
 }
 
 export interface InferenceRow {
@@ -511,6 +533,12 @@ export interface ResearchPreview {
   readonly third_party_rows: 0;
   readonly candidate_rows_total: number;
   readonly third_party_rows_excluded: number;
+  /**
+   * Candidates that are the owner's own and were still dropped, because what
+   * is stored on them says research may not count them by the hour. Imported
+   * messages and questionnaire answers are the ones this covers.
+   */
+  readonly deny_rows_excluded: number;
   readonly fields: readonly string[];
   readonly rows: readonly ResearchRow[];
   readonly third_party_body: string;
@@ -590,6 +618,8 @@ export const COMMANDS = {
   previewPlan: "preview_plan",
   peopleGraph: "people_graph",
   personSummary: "person_summary",
+  correctTie: "correct_tie",
+  releaseTie: "release_tie",
   draftReply: "draft_reply",
   draftNotices: "draft_notices",
   prepareDraft: "prepare_draft",
@@ -671,6 +701,23 @@ export function peopleGraph(): Promise<PeopleGraph> {
 /** Everything Soul will say about one person, and what each line rests on. */
 export function personSummary(contactId: string): Promise<PersonSummary> {
   return invoke<PersonSummary>(COMMANDS.personSummary, { contactId });
+}
+
+/**
+ * The user read a tie and said the band is wrong. The core pins it.
+ *
+ * `band` is one of the three words `TieEdge.band` is spelled with, and the
+ * core refuses anything else rather than the shell deciding what a fourth one
+ * would mean. What comes back is the whole graph: a correction moves the band,
+ * the lock and the evidence behind that edge at once.
+ */
+export function correctTie(relationshipId: string, band: string): Promise<PeopleGraph> {
+  return invoke<PeopleGraph>(COMMANDS.correctTie, { relationshipId, band });
+}
+
+/** The user handed the band back to the counts. */
+export function releaseTie(relationshipId: string): Promise<PeopleGraph> {
+  return invoke<PeopleGraph>(COMMANDS.releaseTie, { relationshipId });
 }
 
 /**

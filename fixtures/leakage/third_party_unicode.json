@@ -36,6 +36,16 @@
     { "id": "name_li_lei", "text": "李雷", "note": "2 scalar 中文名，任何长度都算泄漏。" },
     { "id": "handle_wang_xiao", "text": "@wang_xiao2" },
     { "id": "phone_cn", "text": "13800138000" },
+    {
+      "id": "phone_cn_spaced",
+      "text": "138 0013 8000",
+      "note": "同一个号码，写成人读的分组形式。每组都短于 7 位，只有把组加起来才够一个号码，所以连续数字规则看不见它。"
+    },
+    {
+      "id": "phone_cn_hyphenated",
+      "text": "138-0013-8000",
+      "note": "同一个号码，分隔符换成连字符。分隔符是单个空格、U+3000、点（U+002E 或全角 U+FF0E），或 U+002D/U+2010/U+2011/U+2012/U+2013/U+2014/U+2212/U+FF0D 里的任意一种破折号；两个分隔符或标点就断开。"
+    },
     { "id": "email_third_party", "text": "lilei@example.invalid" }
   ],
   "cases": [
@@ -103,6 +113,61 @@
       "text": "留的号码是 13800138000。",
       "leaks": true,
       "expect_kinds": ["known_identifier"]
+    },
+    {
+      "id": "phone_spaced_groups_only",
+      "text": "留的号码是 138 0013 8000。",
+      "leaks": true,
+      "expect_kinds": ["known_identifier"],
+      "note": "分组写法与 phone_only 是同一个号码，规则二不看长度也不看写法。"
+    },
+    {
+      "id": "phone_hyphenated_groups_only",
+      "text": "留的号码是 138-0013-8000。",
+      "leaks": true,
+      "expect_kinds": ["known_identifier"],
+      "note": "另一种分隔符，同上。"
+    },
+    {
+      "id": "phone_en_dash_groups_only",
+      "text": "留的号码是 138\u20130013\u20138000。",
+      "leaks": true,
+      "expect_kinds": ["known_identifier"],
+      "note": "分隔符是 U+2013 短破折号，粘贴或自动更正后最常见的一种。与 phone_cn 是同一个号码，语料只登记了 ASCII 连字符那一种写法，靠数字骨架命中。"
+    },
+    {
+      "id": "phone_fullwidth_digits_only",
+      "text": "留的号码是 １３８００１３８０００。",
+      "leaks": true,
+      "expect_kinds": ["known_identifier"],
+      "note": "全角数字 U+FF10–U+FF19，中文输入法全角模式打出来就是这样。与 phone_cn 是同一个号码，NFC 归一不会把两种宽度折到一起，所以检查器必须按数字骨架比对。"
+    },
+    {
+      "id": "phone_fullwidth_grouped_only",
+      "text": "留的号码是 １３８－００１３－８０００。",
+      "leaks": true,
+      "expect_kinds": ["known_identifier"],
+      "note": "全角数字加全角连字符 U+FF0D，两处都不是 ASCII。同上。"
+    },
+    {
+      "id": "phone_fullwidth_dotted_only",
+      "text": "留的号码是 １３８．００１３．８０００。",
+      "leaks": true,
+      "expect_kinds": ["known_identifier"],
+      "note": "全角数字加全角句点 U+FF0E。ASCII 的点早就是分隔符，全角模式下同一个键给出的是 U+FF0E，所以整串既没有 ASCII 数字也没有 ASCII 分隔符。与 phone_cn 是同一个号码。"
+    },
+    {
+      "id": "phone_mixed_width_dot_only",
+      "text": "留的号码是 138.0013．8000。",
+      "leaks": true,
+      "expect_kinds": ["known_identifier"],
+      "note": "一半 ASCII 点一半全角点，输入法切了一半的样子。只认 ASCII 点的话骨架在全角点处断开，末尾 8000 会被判成干净。"
+    },
+    {
+      "id": "separated_short_groups_are_not_a_number",
+      "text": "下午 3 点，第 2 会议室，预算 45000。",
+      "leaks": false,
+      "note": "三组数字加起来只有 7 位却互不相连：逗号和汉字把分组断开，所以这既不是号码也不该被占位。redactor 侧的 short_numbers_and_ordinary_words_are_left_alone 断言的是同一句。"
     },
     {
       "id": "email_only",

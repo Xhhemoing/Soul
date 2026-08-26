@@ -45,7 +45,7 @@ pwsh -File scripts/install-smoke.ps1 `
     -Headless  .\target\release\soul-headless.exe
 ```
 
-- [ ] 退出码是 0，末行是 `N check(s), 0 failed`。
+- [ ] 退出码是 0，末行是 `install-smoke: N check(s), 0 failed. Logs in <dir>`。
 - [ ] 安装期间**没有弹出 UAC 对话框**。（脚本测不到这个：UAC 弹窗是给人看的。屏幕暗一下就是失败。）
 - [ ] 安装期间没有任何窗口弹出来（`/S` 是静默）。
 - [ ] 卸载之后 `%LOCALAPPDATA%\Programs\Soul` 没有了，`程序和功能` 里也没有了。
@@ -55,10 +55,7 @@ pwsh -File scripts/install-smoke.ps1 `
 HEAD 打出来的包装到 `%LOCALAPPDATA%\Programs\Soul`，碰不到这条；碰到了说明手里的安装器是旧产物，
 换一个从 HEAD 打的包重来，别手动去删那个目录。
 
-脚本查的是：安装器返回 0、卸载项在 HKCU（不是 HKLM，说明是按用户装的）、
-装出来的可执行文件在 `%LOCALAPPDATA%\Programs\Soul\soul.exe` 且清单是 `asInvoker`、
-`soul-headless smoke` 退出 0 且报告干净、卸载返回 0 且安装目录里的 `soul.exe` 与注册项都消失
-（不删 `%LOCALAPPDATA%\Soul`）。失败会打印是哪一项。
+脚本实际断言的比上一句窄。它查安装器返回 0；**如果找到了**卸载注册项，才断言该项在 HKCU 而不是 HKLM——没有注册项时这一步静默跳过，第 4 阶段「不再注册」也会因此平凡通过。可执行文件是按顺序搜注册表 `InstallLocation`、`%LOCALAPPDATA%\Programs\Soul`、Program Files，再退回仓库里编出来的 `apps/desktop/src-tauri/target/release/soul.exe`；断言的是找到的那一个的**文件名**是 `soul.exe` 且清单是 `asInvoker`，**并不**断言安装器把它放进了 Programs 目录。作者刚打完包时那个回退路径几乎总在，所以一个什么都没装上的安装器仍可能过第 2 阶段，到卸载阶段才以「soul.exe 还在」（对着仓库那份）红掉。`soul-headless smoke` 退出 0 且报告干净、卸载返回 0 时，脚本再查它当时认定的那条 `soul.exe` 路径是否消失，以及注册项是否为空（不删 `%LOCALAPPDATA%\Soul`）。失败会打印是哪一项。安装位置与「必须有一条 HKCU 卸载项」要靠本清单上面的肉眼项和第 4 节任务管理器，不要把脚本读成已经证明了这两件事。
 
 **已知缺口**：安装包里没有 `soul-headless.exe`（Tauri bundle 只放 `mainBinaryName`），
 所以 `-Headless` 指的是同一个 commit 编出来的那个，不是安装器放上去的那个。
@@ -324,6 +321,10 @@ LM Studio、llama.cpp 的 `llama-server` 都行。**不要填云端厂商的地�
       两次都一样就是缺口——那说明档案页设的语气没有接到写字的地方。
 - [ ] 同一页按「再答几题」：出来的是向导里那十一道题（不是另外一套），答一两道边界
       或价值观，回执写着「你自己说的」；跳过的题不替你猜。答完档案上那几行跟着变。
+- [ ] 在同一页把某一条轴纠正一下（按一个别的方向，那条轴上出现「你纠正过」的徽章），
+      再按「再答几题」，把同一条轴答成另一个方向交上去：回执下面应当多一行
+      「这一次有 1 条没有改动档案」，并写着你纠正过的轴还锁着、这一条只记进了证据；
+      上面那条轴仍然是你按的那个方向。跟着问卷动了，或者屏幕上一个字都没说，就是缺口。
 - [ ] 关掉 Soul 再打开，起草同一段话：仍然是「克制」那一版（语气存在库里的档案上）。
 - [ ] 去「审计」页：上面有一行「生成草稿」（`draft.create` 在这一页写成中文），
       刚才起草几次就有几行。链的校验那句话是通过的。那几行上没有你贴进去的任何一个字，

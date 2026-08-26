@@ -121,10 +121,12 @@ impl Degradation {
             ReplyDefect::Clinical(_) => Degradation::ReplyClinical,
             // Drafting asks for prose rather than for something made out of
             // material Soul supplied, so it never calls
-            // `reply::read_grounded_in` and this cannot arrive here. It is
-            // mapped rather than left unreachable: a panic in a degradation
-            // label would be a crash an endpoint could ask for.
-            ReplyDefect::Ungrounded => Degradation::ReplyUnreadable,
+            // `reply::read_grounded_in` and neither of these can arrive here.
+            // A multi-line draft is in particular a fine draft: it is prose
+            // the user copies elsewhere, not a line shown under a label. They
+            // are mapped rather than left unreachable: a panic in a
+            // degradation label would be a crash an endpoint could ask for.
+            ReplyDefect::Ungrounded | ReplyDefect::NotOneLine => Degradation::ReplyUnreadable,
         }
     }
 }

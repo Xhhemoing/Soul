@@ -13,7 +13,9 @@ use std::path::{Path, PathBuf};
 
 use soulcore::commands::memory::{ForgetConfirmation, MemoryChange, NewMemory};
 use soulcore::commands::profile::GivenAnswer;
-use soulcore::commands::session::{Session, FORGET_NOT_PREVIEWED_NOTICE};
+use soulcore::commands::session::{
+    Session, FORGET_IMPACT_CHANGED_NOTICE, FORGET_NOT_PREVIEWED_NOTICE,
+};
 
 /// Something a person pasted, for the drafting tests below.
 const PASTED: &str = "周五那个方案你还改吗？我这边可以等到下午三点。";
@@ -561,8 +563,16 @@ fn three_memories_read_back_as_written_and_the_chain_holds_none_of_their_prose()
 
 /// The forget path, both halves. Reading the price destroys nothing, and the
 /// act refuses anything but the answer the user was actually shown.
+///
+/// Shown, and still true: the ids on a confirmation say which screen it came
+/// from and nothing about whether the store has moved since. The edit in the
+/// middle is the case that made the difference visible — same content key,
+/// same forget unit, both ids matching, and a cost the user never read.
 #[test]
 fn a_forget_only_runs_on_the_preview_the_user_read() {
+    /// The edit that lands between the preview and the confirmation below.
+    const REWRITTEN: &str = "钥匙是下午三点交的，房东没上来。";
+
     let (keep, directory) = scratch();
     let mut session = Session::open(&directory);
 
@@ -683,7 +693,75 @@ fn a_forget_only_runs_on_the_preview_the_user_read() {
     assert_eq!(entry.reason_code.as_deref(), Some("PLAN_HASH_MISMATCH"));
     assert!(entry.follows_previous);
 
+    // Matching the two ids says the confirmation came from a screen this
+    // session issued. It does not say the screen is still true. An edit
+    // reseals under the same content key, so the memory stays one forget unit
+    // and both halves of the confirmation still match — while the impact
+    // underneath moves, and the forget would run at a number nobody read.
+    let stale = session.preview_forget(&memory_id).expect("the price");
+    session
+        .edit_memory(
+            &memory_id,
+            &MemoryChange {
+                summary: Some(REWRITTEN.to_owned()),
+                ..MemoryChange::default()
+            },
+        )
+        .expect("an edit between reading the price and paying it");
+
+    let before = session.audit().expect("the chain").entries.len();
+    let refusal = session
+        .forget_memory(&ForgetConfirmation {
+            preview_id: stale.preview_id.clone(),
+            memory_id: memory_id.clone(),
+        })
+        .expect_err("the screen that was read is not the price any more");
+    assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+    assert_eq!(
+        refusal.explanation, FORGET_IMPACT_CHANGED_NOTICE,
+        "the id matched and the memory moved, and telling the user their \
+         confirmation missed the preview sends them looking for a stale \
+         window that is not there",
+    );
+
+    // Nothing was destroyed by the refusal: the memory still opens, and it
+    // opens on the edit that caused it.
+    let opened = session
+        .memory(&memory_id)
+        .expect("a refused forget destroyed something");
+    assert_eq!(opened.summary, REWRITTEN);
+    let chain = session.audit().expect("the chain");
+    assert!(chain.verified, "{:?}", chain.verification_problem);
+    assert_eq!(chain.entries.len(), before + 1);
+    let entry = chain.entries.last().expect("the third denial");
+    assert_eq!(entry.action, "hitl.deny");
+    assert_eq!(entry.decision, "denied");
+    assert_eq!(entry.reason_code.as_deref(), Some("PLAN_HASH_MISMATCH"));
+    assert!(entry.follows_previous);
+
+    // And this refusal did take the preview, unlike the ones above: the
+    // numbers on it are no longer true of anything, so pressing the same
+    // button again is a confirmation with nothing behind it rather than a
+    // second chance to spend a stale price.
+    let again = session
+        .forget_memory(&ForgetConfirmation {
+            preview_id: stale.preview_id.clone(),
+            memory_id: memory_id.clone(),
+        })
+        .expect_err("a stale price is not spendable twice either");
+    assert_eq!(again.explanation, FORGET_NOT_PREVIEWED_NOTICE);
+    assert!(session.memory(&memory_id).is_ok());
+
     let preview = session.preview_forget(&memory_id).expect("the price again");
+    assert_ne!(
+        (
+            preview.sealed_blobs_destroyed,
+            preview.audit_entries_retained,
+        ),
+        (stale.sealed_blobs_destroyed, stale.audit_entries_retained),
+        "the edit left the price where it was, so the refusal above proved \
+         nothing about the case it is named for",
+    );
     let receipt = session
         .forget_memory(&ForgetConfirmation {
             preview_id: preview.preview_id,
@@ -731,7 +809,7 @@ fn a_forget_only_runs_on_the_preview_the_user_read() {
 
     let played = serde_json::to_string(&chain).expect("serialize the chain");
     let debugged = format!("{chain:?}");
-    for prose in ["搬家那天", "交钥匙那天", "下午三点交的钥匙。"] {
+    for prose in ["搬家那天", "交钥匙那天", "下午三点交的钥匙。", REWRITTEN] {
         assert!(!played.contains(prose), "the chain carries `{prose}`");
         assert!(!debugged.contains(prose), "the chain carries `{prose}`");
     }

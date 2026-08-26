@@ -52,7 +52,7 @@ const FORMATS: readonly FormatChoice[] = [
     format: "telegram-desktop",
     label: "Telegram Desktop 的 result.json",
     detail:
-      "Telegram Desktop 桌面版里 Export chat history → Machine-readable JSON 导出的那份 result.json，直接选它就行。",
+      "Telegram Desktop：Settings → Advanced → Export Telegram data，选 Machine-readable JSON。导出目录里的 result.json 直接选它就行。单聊的 Export chat history 是另一形状，认不得。",
     accept: ".json",
   },
 ];

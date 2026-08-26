@@ -13,7 +13,20 @@ description = "Drafting that never sends, and people summaries that never claim 
 # a draft says about the user comes from `soul-profile`; everything a summary
 # says about a person comes from `soul-graph` edges and the evidence rows the
 # caller resolved.
+#
+# `soul-algo-trait` is the frozen A2 renderer and is a plain dependency because
+# the people summary's wording is its output, not this crate's (D40). The edge
+# is one way: the renderer takes counts and returns sentences, and knows nothing
+# about a store, a graph or a draft.
+#
+# `soul-algo-tie` is the frozen tie rule, and `src/projection.rs` reads two
+# constants out of it: the day a band comes down and the day it hits the floor
+# (AD-13). Nothing here calls the rule — the band and the counts still arrive on
+# the edge — but the projection has to name the same two days the rule acts on,
+# and D52 forbids a product crate spelling either of them out for itself.
 [dependencies]
+soul-algo-tie = { workspace = true }
+soul-algo-trait = { workspace = true }
 soul-schema = { workspace = true }
 soul-policy = { workspace = true }
 soul-profile = { workspace = true }

@@ -70,6 +70,12 @@ pub struct ResearchPreviewReport {
     /// with third-party data in it must make this non-zero, or the exclusion is
     /// untested.
     pub third_party_rows_excluded: u64,
+    /// Candidate rows about the owner that were dropped anyway, because the
+    /// disposition written on them is not `bucket`. Imported messages and
+    /// questionnaire answers are the owner's own data and are still stored
+    /// `research_export: deny`; without this number their absence would look
+    /// like a query that found nothing.
+    pub deny_rows_excluded: u64,
 }
 
 impl ResearchPreviewReport {

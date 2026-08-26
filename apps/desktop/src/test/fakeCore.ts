@@ -151,6 +151,9 @@ export function aPeopleGraph(overrides: Partial<PeopleGraph> = {}): PeopleGraph 
         to_contact_id: "0192f000-0000-7000-8000-000000000002",
         types: ["direct", "reciprocal"],
         band: "moderate",
+        locked_by_user: false,
+        user_band: null,
+        machine_band: "moderate",
         interaction_count: 6,
         outgoing_count: 3,
         incoming_count: 3,
@@ -168,6 +171,98 @@ export function aPeopleGraph(overrides: Partial<PeopleGraph> = {}): PeopleGraph 
     notice: WORKING_HYPOTHESIS_NOTICE,
     third_party_data_is_local_only: true,
     ...overrides,
+  };
+}
+
+/** The three words `soulcore::commands::graph::band_named` accepts. */
+const BAND_WORDS: readonly string[] = ["weak", "moderate", "strong"];
+
+/** What the core says when a correction names something that is not a band. */
+export const NOT_A_BAND_NOTICE = "一条关系只有弱、中等、强三档。";
+
+/**
+ * What `soul_graph::correct_tie` does to one edge, as far as the graph page
+ * can tell.
+ *
+ * The band moves and the lock goes on; the machine's own reading is kept
+ * rather than dropped, because the screen draws the disagreement out of it.
+ * The counts are left exactly as they were — a correction fixes the one
+ * summary word derived from them and nothing else — and the row that changed
+ * the band joins the evidence the edge cites, the way it does in the store.
+ */
+function tieCorrected(
+  current: PeopleGraph,
+  relationshipId: string,
+  band: string,
+  evidenceId: string,
+): PeopleGraph {
+  if (!BAND_WORDS.includes(band)) {
+    throw { reason_code: "ROUTINE", explanation: NOT_A_BAND_NOTICE };
+  }
+  return {
+    ...current,
+    ties: heldTies(current, relationshipId).map((tie) =>
+      tie.relationship_id !== relationshipId
+        ? tie
+        : {
+            ...tie,
+            band,
+            locked_by_user: true,
+            user_band: band,
+            machine_band: tie.machine_band ?? tie.band,
+            evidence: [...tie.evidence, aCorrectionRow(evidenceId)],
+          },
+    ),
+  };
+}
+
+/** And what a release does: the counts speak again, and the lock is gone. */
+function tieReleased(
+  current: PeopleGraph,
+  relationshipId: string,
+  evidenceId: string,
+): PeopleGraph {
+  return {
+    ...current,
+    ties: heldTies(current, relationshipId).map((tie) =>
+      tie.relationship_id !== relationshipId
+        ? tie
+        : {
+            ...tie,
+            band: tie.machine_band ?? tie.band,
+            locked_by_user: false,
+            user_band: null,
+            machine_band: null,
+            evidence: [...tie.evidence, aCorrectionRow(evidenceId)],
+          },
+    ),
+  };
+}
+
+/**
+ * The ties, or the refusal an edge nobody has gets.
+ *
+ * `soul_graph::correct_tie` reads the edge first and fails with the store's
+ * own `NotFound` rather than writing a correction to nothing, so a page that
+ * asked about a tie the core does not hold has to be told no.
+ */
+function heldTies(current: PeopleGraph, relationshipId: string): PeopleGraph["ties"] {
+  if (!current.ties.some((tie) => tie.relationship_id === relationshipId)) {
+    throw {
+      reason_code: "ROUTINE",
+      explanation: `这条关系不在库里：${relationshipId}`,
+    };
+  }
+  return current.ties;
+}
+
+/** The row a correction or a release writes. Ids and vocabulary, no prose. */
+function aCorrectionRow(evidenceId: string) {
+  return {
+    evidence_id: evidenceId,
+    kind: "user_correction",
+    method: "user_stated",
+    strength: "strong",
   };
 }
 
@@ -366,6 +461,7 @@ export function anIntakeReceipt(overrides: Partial<IntakeReceipt> = {}): IntakeR
     stated_entries: 0,
     profile_is_empty: false,
     evidence_ids: ["0192f000-0000-7000-8000-0000000000d1"],
+    ignored: [],
     ...overrides,
   };
 }
@@ -530,6 +626,23 @@ function profileAfter(
   return moved;
 }
 
+/**
+ * Whether an answer would land on an axis the user has already corrected.
+ *
+ * `soul-profile`'s intake records such an answer and leaves the axis where the
+ * user put it (D46), so the double has to know which of its two axis questions
+ * points at a locked row. A double that moved the axis anyway would let the
+ * profile page claim a re-answer overrode a correction and no test would
+ * notice.
+ */
+function answerHitsALockedAxis(
+  profile: ProfileScreen,
+  questionId: string,
+): boolean {
+  const axisId = AXIS_OF_QUESTION[questionId];
+  return profile.axes.some((axis) => axis.axis_id === axisId && axis.locked_by_user);
+}
+
 export const NO_MEMORIES: MemoryList = {
   memories: [],
   memory_types: ["episodic", "semantic", "procedural", "preference", "commitment"],
@@ -610,6 +723,7 @@ export function aResearchPreview(overrides: Partial<ResearchPreview> = {}): Rese
     third_party_rows: 0,
     candidate_rows_total: 4,
     third_party_rows_excluded: 2,
+    deny_rows_excluded: 0,
     fields: ["event_kind", "time_bucket_utc", "aggregate_count"],
     rows: [
       {
@@ -732,6 +846,10 @@ export const CLOSED_CLOUD: CloudNotice = {
 export const LLM_ENDPOINT_SESSION_ONLY_NOTICE =
   "地址只在这次运行里有效，退出 Soul 再打开需要重新填写。填写的时候不会访问这个地址，只有你在起草页确认生成、或在人脉图上看某个人的摘要时才会。";
 
+/** `soulcore::commands::shell::WIZARD_NOT_ACKNOWLEDGED_NOTICE`. */
+export const WIZARD_NOT_ACKNOWLEDGED_NOTICE =
+  "你还没勾上「我读过上面这几行」，向导就没有可以结束的东西。什么都没有写下，勾上之后再点一次就行。";
+
 /** `soulcore::commands::session::ENDPOINT_UNPARSABLE_NOTICE`. */
 export const ENDPOINT_UNPARSABLE_NOTICE =
   "这个地址不像一个端点：要 http:// 或 https:// 开头，后面跟主机名，端口不写就按 80 或 443 算，比如 http://127.0.0.1:11434/v1；地址里不能带用户名和密码。这一次什么都没有保存，端点还是没有填写。";
@@ -791,6 +909,15 @@ export interface FakeCoreOptions {
   readonly graph?: PeopleGraph;
   /** As `graph`, but able to throw the way a refusal arrives — as a value. */
   readonly graphing?: () => PeopleGraph;
+  /**
+   * How the double answers a correction on one tie.
+   *
+   * Stateful by default, because the page's subject is a band that changes:
+   * the fallback mirrors what `soul_graph::correct_tie` writes, and the next
+   * `people_graph` sees it. Both can throw, which is how a refusal arrives.
+   */
+  readonly correctingTie?: (relationshipId: string, band: string) => PeopleGraph;
+  readonly releasingTie?: (relationshipId: string) => PeopleGraph;
   readonly summarizing?: (contactId: string) => PersonSummary;
   /**
    * How the double answers 用你自己的模型端点写.
@@ -807,7 +934,12 @@ export interface FakeCoreOptions {
   readonly readingImport?: (format: string, text: string) => ImportPreview;
   readonly importing?: (format: string, text: string) => ImportReceipt;
   readonly questions?: readonly Question[];
-  /** Able to throw, because a questionnaire with nothing in it is refused. */
+  /**
+   * Able to throw, because a questionnaire with nothing in it is refused, and
+   * able to hand back a receipt whose `ignored` names answers the core wrote
+   * and did not apply — the double then leaves those axes alone, the way
+   * `soul-profile` leaves an axis the user corrected (D46).
+   */
   readonly recording?: (answers: readonly { question_id: string; given: string }[]) =>
     | IntakeReceipt
     | never;
@@ -964,6 +1096,9 @@ export function installFakeCore(
   let collect = options.collect ?? COLLECT_OFF;
   let configuration = snapshot;
   let profile: ProfileScreen | null = null;
+  /** The graph a correction writes to, and the next read sees. */
+  let graph: PeopleGraph | null = null;
+  let corrections = 0;
   /**
    * `Session::held_forget`, as far as this page can tell.
    *
@@ -982,6 +1117,18 @@ export function installFakeCore(
     return profile;
   };
 
+  /** The same for the graph, so a `graphing` option that refuses still does. */
+  const graphNow = (): PeopleGraph => {
+    graph ??= (options.graphing ?? (() => options.graph ?? EMPTY_GRAPH))();
+    return graph;
+  };
+
+  /** One row id per correction, so two of them are two rows. */
+  const nextCorrectionId = (): string => {
+    corrections += 1;
+    return `0192f000-0000-7000-8000-0000000000${(0xc0 + corrections).toString(16)}`;
+  };
+
   mockIPC((cmd, payload) => {
     calls.push({ cmd, payload });
     switch (cmd) {
@@ -993,7 +1140,10 @@ export function installFakeCore(
         const answers = (payload as { answers?: { acknowledged_defaults_are_off?: boolean } })
           .answers;
         if (answers?.acknowledged_defaults_are_off !== true) {
-          throw "the wizard was not acknowledged, so there is nothing to finish";
+          throw {
+            reason_code: "ROUTINE",
+            explanation: WIZARD_NOT_ACKNOWLEDGED_NOTICE,
+          };
         }
         return snapshot;
       }
@@ -1020,7 +1170,26 @@ export function installFakeCore(
           (payload as { path?: string }).path ?? "",
         );
       case "people_graph":
-        return (options.graphing ?? (() => options.graph ?? EMPTY_GRAPH))();
+        return graphNow();
+      case "correct_tie": {
+        const asked = payload as { relationshipId?: string; band?: string };
+        graph = (options.correctingTie ??
+          ((relationshipId: string, band: string) =>
+            tieCorrected(graphNow(), relationshipId, band, nextCorrectionId())))(
+          asked.relationshipId ?? "",
+          asked.band ?? "",
+        );
+        return graph;
+      }
+      case "release_tie": {
+        const asked = payload as { relationshipId?: string };
+        graph = (options.releasingTie ??
+          ((relationshipId: string) =>
+            tieReleased(graphNow(), relationshipId, nextCorrectionId())))(
+          asked.relationshipId ?? "",
+        );
+        return graph;
+      }
       case "person_summary":
         return (options.summarizing ?? (() => aPersonSummary()))(
           (payload as { contactId?: string }).contactId ?? "",
@@ -1078,7 +1247,14 @@ export function installFakeCore(
         if (options.recording !== undefined) {
           // May throw, which is how a refusal arrives; nothing moves then.
           const written = options.recording(answers);
-          profile = profileAfter(profileNow(), answers, questions);
+          // A receipt that reports an answer as ignored is a receipt from a
+          // core that did not apply it, so the double does not either.
+          const refused = new Set(written.ignored.map((one) => one.question_id));
+          profile = profileAfter(
+            profileNow(),
+            answers.filter((answer) => !refused.has(answer.question_id)),
+            questions,
+          );
           return written;
         }
         const kept = answers.filter((answer) => answer.given.trim() !== "");
@@ -1086,8 +1262,20 @@ export function installFakeCore(
         // reporting an intake that wrote no rows. The double has to as well,
         // or the wizard's handling of that refusal is never exercised.
         if (kept.length === 0) throw { reason_code: "ROUTINE", explanation: NO_ANSWERS_NOTICE };
-        profile = profileAfter(profileNow(), answers, questions);
-        return anIntakeReceipt({ answered: kept.length });
+        // An answer on a corrected axis is written and not applied, and comes
+        // back named in `ignored`; `answered` counts what moved (D46).
+        const ignored = kept.filter((answer) =>
+          answerHitsALockedAxis(profileNow(), answer.question_id),
+        );
+        const applied = kept.filter((answer) => !ignored.includes(answer));
+        profile = profileAfter(profileNow(), applied, questions);
+        return anIntakeReceipt({
+          answered: applied.length,
+          ignored: ignored.map((answer) => ({
+            question_id: answer.question_id,
+            reason: "axis_locked_by_user",
+          })),
+        });
       }
       case "profile_screen":
         return profileNow();

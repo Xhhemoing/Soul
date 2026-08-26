@@ -54,8 +54,15 @@ impl TieType {
 /// psychological model; the same instinct applies here, so the summary value a
 /// caller reads is [`SupportedBand`] and the numbers underneath are plain
 /// tallies a user could verify by counting messages themselves.
+///
+/// Every field below `last_contact_utc` arrived with the frozen tie-strength
+/// rule and carries `#[serde(default)]`, so an edge written before it still
+/// reads back through [`crate::view::load`] and is replaced whole by the next
+/// rebuild.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TieStrength {
+    /// The band in force: the user's own when the edge is locked, the
+    /// machine's otherwise.
     pub band: SupportedBand,
     pub interaction_count: u64,
     pub outgoing_count: u64,
@@ -66,6 +73,55 @@ pub struct TieStrength {
     pub active_day_count: u64,
     pub first_contact_utc: Timestamp,
     pub last_contact_utc: Timestamp,
+
+    /// One-to-one messages the user wrote.
+    #[serde(default)]
+    pub direct_out_count: u64,
+    /// One-to-one messages the peer wrote.
+    #[serde(default)]
+    pub direct_in_count: u64,
+    /// Messages the user wrote with other people in the room.
+    #[serde(default)]
+    pub group_out_count: u64,
+    /// Messages the peer wrote with other people in the room.
+    #[serde(default)]
+    pub group_in_count: u64,
+    /// Distinct UTC days with a one-to-one exchange. Never larger than
+    /// `active_day_count`.
+    #[serde(default)]
+    pub direct_active_day_count: u64,
+    /// The newest one-to-one exchange. `None` means there has never been one,
+    /// rather than a 1970 sentinel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_direct_contact_utc: Option<Timestamp>,
+    /// Whole UTC days between `last_contact_utc` — any venue — and `as_of`.
+    #[serde(default)]
+    pub silent_days: i64,
+    /// The one store-wide instant this rebuild scored against. `None` only on
+    /// a row written before the frozen rule landed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub as_of_utc: Option<Timestamp>,
+    /// Which rule produced the counts. Empty only on a legacy row.
+    #[serde(default)]
+    pub algorithm_id: String,
+
+    /// Set once the user has overruled the band on this edge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locked_by_user: Option<bool>,
+    /// The band the user chose. `Some` exactly when the edge is locked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_band: Option<SupportedBand>,
+    /// What the frozen rule made of the same counts, kept beside the effective
+    /// band so a locked edge can still show both.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine_band: Option<SupportedBand>,
+}
+
+impl TieStrength {
+    /// True once the user has overruled the machine on this edge.
+    pub fn is_locked_by_user(&self) -> bool {
+        self.locked_by_user == Some(true) && self.user_band.is_some()
+    }
 }
 
 /// A person.

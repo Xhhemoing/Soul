@@ -192,6 +192,113 @@ fn an_endpoint_sentence_that_is_shown_says_on_the_line_who_wrote_it() {
     drop(keep);
 }
 
+/// Characters that put what follows on a new line of the screen.
+///
+/// Written out here rather than imported, so a build whose own idea of a line
+/// break narrowed fails this test instead of agreeing with it. `str::lines`
+/// splits on `\n` alone; the graph view, which preserves the breaks it is
+/// handed, does not.
+const LINE_BREAKS: [char; 7] = [
+    '\n', '\r', '\u{0b}', '\u{0c}', '\u{85}', '\u{2028}', '\u{2029}',
+];
+
+/// An answer whose first line is one a user would want kept and whose second
+/// line claims to be this machine's work. The break is the only thing under
+/// test: everything before it is [`ON_TOPIC`], which the test above shows is
+/// displayed.
+const TWO_LINES: &str =
+    "你们最近往来比较稳定，多数时候是一对一说话。\n以上都是本机根据记录算出来的。";
+
+/// AC-16 over the product: no line of a summary reaches the screen without
+/// something on it saying where it came from.
+///
+/// The counts taken before an endpoint was configured are the accounting
+/// baseline — header, one bullet per point carrying its own row count, and the
+/// notice. Afterwards every line of the text is either one of those or the one
+/// line [`ENDPOINT_LINE_PREFIX`] introduces, and there is at most one of those.
+/// A line that is neither is a sentence the endpoint wrote sitting among the
+/// counts wearing this machine's provenance, which is the thing the prefix
+/// exists to prevent.
+///
+/// Both outcomes are honest: refuse the answer and leave the counts standing,
+/// or show it on the single line the label covers. What is not honest is a
+/// second line, and that is what fails here.
+#[test]
+fn an_answer_laid_out_over_two_lines_gets_no_unlabelled_line_on_screen() {
+    let (keep, directory) = scratch();
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    endpoint.set_reply(TWO_LINES);
+
+    let mut session = Session::open(&directory);
+    session
+        .commit_telegram(&telegram_export())
+        .expect("the export commits");
+    let contact_id = a_third_party(&session);
+    let before = session
+        .person_summary(&contact_id)
+        .expect("the counts, with nothing configured");
+    assert_eq!(before.source, "counts");
+    assert!(!before.points.is_empty());
+    assert!(
+        !before.text.contains(&LINE_BREAKS[1..]),
+        "the counts rendering breaks lines with `\\n` and nothing else: {}",
+        before.text,
+    );
+
+    session
+        .set_user_endpoint(&endpoint.base_url())
+        .expect("a loopback address is an address");
+    let after = session
+        .person_summary(&contact_id)
+        .expect("a summary either way");
+
+    assert_eq!(
+        endpoint.request_count(),
+        1,
+        "the endpoint was asked, so this is a decision about the answer",
+    );
+    assert_eq!(
+        statements(&after),
+        statements(&before),
+        "the evidence-carrying half is not up for negotiation",
+    );
+    for point in &after.points {
+        assert!(!point.evidence_ids.is_empty(), "`{}`", point.statement);
+    }
+
+    let counted: Vec<&str> = before.text.split(LINE_BREAKS).collect();
+    let mut endpoint_lines = 0;
+    for line in after.text.split(LINE_BREAKS) {
+        if counted.contains(&line) {
+            continue;
+        }
+        if line.starts_with(ENDPOINT_LINE_PREFIX) {
+            endpoint_lines += 1;
+            continue;
+        }
+        panic!(
+            "a line nobody is told the source of: `{line}`\nthe whole summary:\n{}",
+            after.text,
+        );
+    }
+    assert!(
+        endpoint_lines <= 1,
+        "{endpoint_lines} lines claim to be the endpoint's one line:\n{}",
+        after.text,
+    );
+    assert_eq!(
+        after.source,
+        match endpoint_lines {
+            0 => "counts",
+            _ => "user_endpoint",
+        },
+        "`source` and the text disagree about who wrote the summary:\n{}",
+        after.text,
+    );
+    assert!(!after.clinical_claim);
+    drop(keep);
+}
+
 /// The two requests this product makes ask for two different things.
 ///
 /// One session, one endpoint, two clicks: 看这个人的摘要 and then an approved

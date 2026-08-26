@@ -284,6 +284,17 @@ impl ForgetOps for SqlCipherStore {
             )
             .map_err(backend)?;
 
+            // Deleting the row frees the id. `ensure_content_key` mints a key
+            // for any id it does not already hold, so without this the next
+            // seal naming a forgotten id would quietly give the tombstones
+            // that name it a live key again. Same transaction as the delete,
+            // so a crash cannot leave one without the other.
+            tx.execute(
+                "INSERT OR IGNORE INTO destroyed_content_keys (content_key_id) VALUES (?1)",
+                [content_key_id.to_string()],
+            )
+            .map_err(backend)?;
+
             // AC-15 injects between one destruction and the next. The whole
             // forget runs in one transaction, so a crash here leaves every key
             // intact rather than half the unit readable and half not.
@@ -317,6 +328,18 @@ impl ForgetOps for SqlCipherStore {
 
         // The audit tables are deliberately untouched.
         tx.commit().map_err(backend)?;
+
+        // Zeroing the freed page, which `PRAGMA secure_delete` does, only
+        // settles the main database file. The write-ahead log still holds the
+        // frames written before the delete, and those carry the page as it was
+        // when the wrapped key was on it. Truncating the log is what discards
+        // them; until then the key sits next to a database the DEK opens.
+        self.checkpoint().map_err(|error| {
+            StoreError::Backend(format!(
+                "the content keys were destroyed, but folding the write-ahead log back in \
+                 failed, so it may still hold their wrapped bytes: {error}"
+            ))
+        })?;
 
         Ok(ForgetReceipt { unit, impact })
     }

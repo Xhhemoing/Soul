@@ -17,6 +17,8 @@ members = [
   "crates/soul-draft",
   "crates/soul-fileplan",
   "crates/soul-win-dpapi",
+  "crates/soul-algo-tie",
+  "crates/soul-algo-trait",
 ]
 
 [workspace.package]
@@ -46,6 +48,7 @@ walkdir = "2.5.0"
 axum = "0.7.9"
 tokio = "1.43.0"
 hex = "0.4.3"
+fs4 = "1.1.0"
 # No `derive` feature: zeroize_derive 1.5 needs edition 2024, and this
 # workspace is pinned to Rust 1.83. `Zeroize` for `[u8; N]` is enough.
 zeroize = "1.8.1"
@@ -75,6 +78,8 @@ soul-collect = { path = "crates/soul-collect", version = "0.1.0" }
 soul-draft = { path = "crates/soul-draft", version = "0.1.0" }
 soul-fileplan = { path = "crates/soul-fileplan", version = "0.1.0" }
 soul-win-dpapi = { path = "crates/soul-win-dpapi", version = "0.1.0" }
+soul-algo-tie = { path = "crates/soul-algo-tie", version = "0.3.0" }
+soul-algo-trait = { path = "crates/soul-algo-trait", version = "0.3.0" }
 
 [profile.test]
 opt-level = 1
