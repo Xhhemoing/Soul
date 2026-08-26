@@ -29,8 +29,8 @@ MODEL_SLUG: gpt-5.6-sol-xhigh-fast
 
 ### 所有远程分支快照
 
-- `git ls-remote --heads origin` 与刷新后的 remote refs 共 99 个 head。
-- 拓扑上只有 `main@a0ec14b` 与 `cursor/polish-project-plan-5280@a0ec14b` 是 `main` 的 ancestor（两者同尖端）；其余 97 个 head 均不是 `main` 的 ancestor。
+- 最终复核时，`git ls-remote --heads origin` 与刷新后的 remote refs 共 101 个 head；其中两个 Round 1 审计分支是在初始 99-head 快照之后并发推送的。
+- 拓扑上只有 `main@a0ec14b` 与 `cursor/polish-project-plan-5280@a0ec14b` 是 `main` 的 ancestor（两者同尖端）；其余 99 个 head 均不是 `main` 的 ancestor。
 - “不是 ancestor”不等于 PR 未合并：例如 PR #5 采用 GitHub 合并结果，原 head `d79c8ba` 不必成为 `main` 的祖先。PR 状态应以 GitHub 表为准。
 
 完整 head 清单：
@@ -123,8 +123,10 @@ cursor/port-t4d-4a8e@b9d2ec2
 cursor/predict-algo-survey-a073@ae8119d
 cursor/predict-session-pin-4a8e@1e3a881
 cursor/predict-slice-4a8e@b51a7a3
+cursor/project-status-audit-c49c@b7702bd
 cursor/projection-as-of-none-4a8e@4981c7d
 cursor/research-disposition-4a8e@a72e81b
+cursor/round1-opus-b-core-impl-audit-ab42@13b322e
 cursor/roundx-opus-b-poll-c71f@cb89814
 cursor/schema-version-guard-4a8e@59ded11
 cursor/soul-goal1-7b1c@6d1058b
@@ -242,7 +244,7 @@ crates/soul-algo-trait
 | P0 | 双实现线仍并存 | PR #4 仍 OPEN、冲突且三类检查失败；与 D49 直接冲突 |
 | P1 | 阻碍项权威文件不在 `main` | `docs/BLOCKERS.md` 只能跨分支读取；PR #6 尚未合入 |
 | P1 | `STATUS` / `SECURITY` 的 SHA 与分支自称陈旧 | `main`、Goal 1、PR #7 均已前移；会导致审计基线错误 |
-| P1 | 远程分支膨胀 | 99 个 head，97 个不是 `main` ancestor；另有大量 Bead 分支/PR 与 Soul 主线共存，增加误选基线风险 |
+| P1 | 远程分支膨胀 | 最终 101 个 head，99 个不是 `main` ancestor；另有大量 Bead 分支/PR 与 Soul 主线共存，增加误选基线风险 |
 | P2 | 6 个权威历史文档死链 | 三轮 synthesis 无法跳到原始 run |
 | P2 | 大量构建产物被跟踪 | `.agent_workspace` 508 文件；`target/` 191 文件；12 个零字节文件 |
 | P2 | 非权威快照有 16 个死链实例 | 虽非权威，直接浏览仍会误导 |
