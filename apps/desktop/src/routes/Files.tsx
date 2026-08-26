@@ -120,7 +120,8 @@ export function Files(): React.JSX.Element {
         <h2 id="roots-heading">已授权的目录</h2>
         {view === null || view.roots.length === 0 ? (
           <p className="muted" data-testid="no-roots">
-            还没有授权任何目录。授权之前，Soul 读不到你机器上的任何文件。
+            还没有授权任何目录。没有你的授权，Soul
+            不会自己去看你机器上的任何目录；它读得到的只有你亲手交给它的东西——比如导入页里你挑的那份导出文件——和它自己的数据。
           </p>
         ) : (
           <ul className="facts">
