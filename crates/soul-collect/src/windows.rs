@@ -126,3 +126,88 @@ mod ffi {
         pub fn CloseHandle(object: Handle) -> i32;
     }
 }
+
+/// The Win32 path with Windows actually underneath it.
+///
+/// Every other test of this source reads it rather than runs it: Linux CI
+/// drives the collector through [`crate::FakeForegroundSource`], and
+/// `tests/window_titles_are_not_collected.rs` checks which calls the file
+/// names. Neither executes one. These do, on the only machine where they can.
+///
+/// A hosted runner is usually logged out, so a null foreground window is a real
+/// answer here and not a broken one — it is the branch at the top of
+/// [`WindowsForegroundSource::sample`], and requiring a window instead would
+/// make the suite depend on somebody being at the keyboard. What is pinned is
+/// the shape of either answer: nothing, or an executable image name with the
+/// directory already gone.
+#[cfg(test)]
+mod runs_on_windows {
+    use super::WindowsForegroundSource;
+    use crate::source::{ForegroundSource, EXECUTABLE_SUFFIXES, MAX_APP_NAME_CHARS};
+
+    /// The label that reaches reports and logs, which is fixed and is not user
+    /// data.
+    #[test]
+    fn the_source_is_named_after_the_process_it_reads() {
+        assert_eq!(
+            WindowsForegroundSource::new().describe(),
+            "windows.foreground_process",
+        );
+    }
+
+    /// The one that runs the three calls.
+    #[test]
+    fn a_sample_is_an_executable_name_or_nothing_at_all() {
+        let mut source = WindowsForegroundSource::new();
+        let sampled = source.sample().unwrap_or_else(|error| {
+            panic!(
+                "no focused window and a process that cannot be opened are both \
+                 `Ok(None)` in this source, so an error is a platform failure \
+                 reaching the collector: {error}",
+            )
+        });
+
+        let Some(app) = sampled else {
+            // A logged-out or locked runner, which is the null branch.
+            return;
+        };
+
+        let name = app.as_str();
+        assert!(
+            EXECUTABLE_SUFFIXES
+                .iter()
+                .any(|suffix| name.ends_with(suffix)),
+            "the foreground sample `{name}` is not an executable image name",
+        );
+        assert!(
+            !name.contains(['\\', '/']),
+            "the foreground sample `{name}` still carries the directory it came from",
+        );
+        assert!(
+            name.chars().count() <= MAX_APP_NAME_CHARS,
+            "the foreground sample `{name}` is longer than a program name can be",
+        );
+        assert!(
+            !name.contains(" - "),
+            "the foreground sample `{name}` reads like a document line, not a program",
+        );
+        assert_eq!(
+            name,
+            name.to_lowercase(),
+            "`{name}` was not folded, so one application would be counted as two",
+        );
+    }
+
+    /// The collector samples once a second for as long as collection is on, so
+    /// one answer is not enough: the source has to keep answering, and keep
+    /// answering without an error, whatever the desktop is doing.
+    #[test]
+    fn sampling_again_and_again_keeps_returning_an_answer() {
+        let mut source = WindowsForegroundSource::new();
+        for attempt in 1..=5 {
+            source.sample().unwrap_or_else(|error| {
+                panic!("sample {attempt} failed instead of reporting nothing: {error}")
+            });
+        }
+    }
+}
