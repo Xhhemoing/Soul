@@ -1,7 +1,7 @@
 # 父代理终局综合：项目变更与不完善项
 
 调度器模型：cursor-grok-4.6-medium（本父代理）
-云端子代理：`claude-fable-5-thinking-xhigh`（environment=cloud，bc-58d7b669-c00e-548a-ba01-89a43414a737）
+云端子代理：`claude-fable-5-thinking-xhigh`（environment=cloud，[`Cloud fable SOTA audit`](bc-58d7b669-c00e-548a-ba01-89a43414a737)；报告 `.agent_workspace/orch-20260826/cloud-fable/REPORT.md` @ `fb17c39`）
 三轮本地并发：每轮 2×fable（claude-fable-5-thinking-xhigh）+ 2×opus-fast（claude-opus-5-thinking-high-fast）+ 2×gpt-sol（gpt-5.6-sol-xhigh-fast），共 18 路。
 核于：2026-08-26；`origin/main` = `a0ec14b`。权威仍以 `docs/` 为准；本文与 `.agent_workspace/**` 均为过程稿。
 
@@ -85,3 +85,13 @@
 5. `main` 上可做的低风险工事（另开 PR）：D52 等值测试、A2「中」→「中等」、墙钟扫描（剥注释）、scan-rounds 死链、停止跟踪 `target/`。
 
 Goal 2 在 Goal 1 关闭前不要打开。
+
+---
+
+## 5. 云端 fable 到货后的对齐
+
+[`Cloud fable SOTA audit`](bc-58d7b669-c00e-548a-ba01-89a43414a737) 独立复核了「已知事实属实但已过时」、十三片在 main / Goal1 主干 / 整合线的分布，以及 BeadFlow 不改 Soul 既有文件。与三轮本地结论同向。
+
+采信并补强一条先前交叉里偏软的事实：**Goal 1 主干相对 `main` 的 `tie_strength` 仍是裸 object**（云端 `git diff main origin/cursor/soul-goal1-7b1c -- docs/schemas/`）。合 PR #2 或从主干快进，会把 D59 已经类型化的契约打回去。schema 收敛必须在选定实现尖端上先演练 `xtask schema-freeze`，不能假设 Goal 1 已经带上 main 的锁。
+
+云端建议把 `soul-integration-4a8e` 提名为「经宣布的后继主干」。父代理**不代作者宣布**；只记录：整合线在切片 3/4/6 上比主干更完整（T4D 接线、边档纠正、A2 话术），但无 D 号改产品锁、与吸收线冲突面更大，宣布前仍须拓扑归一。
