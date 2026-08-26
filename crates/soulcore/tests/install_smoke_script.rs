@@ -208,6 +208,131 @@ fn the_script_finds_the_installer_under_programs_not_the_data_directory() {
     );
 }
 
+/// Finding that the fallback list is right is not the same as checking what
+/// was found. `$entry.InstallLocation` is searched before the Programs
+/// fallback, so a bundle that registered `%LOCALAPPDATA%\Soul` as its install
+/// location, which the `2e72ddf` NSIS bug did, hands the script a `soul.exe`
+/// out of the data directory. It passes the name and manifest checks, and
+/// then the uninstaller is aimed at `keys.dpapi`. The verify phase therefore
+/// asserts where the installed binary actually is.
+#[test]
+fn the_verify_phase_asserts_the_installed_soul_exe_is_in_programs_not_the_data_directory() {
+    // Only for a run that installed a bundle: CI's -SkipInstall points
+    // -AppExecutable at a built target/release/soul.exe, which is under
+    // neither directory and must not be required to be under Programs.
+    assert!(
+        SCRIPT.contains("if ($willInstall -and $AppExecutable) {"),
+        "the install-location checks are not gated on this run having installed something",
+    );
+
+    assert!(
+        SCRIPT.contains(
+            "$programsInstall = Join-Path (Join-Path $env:LOCALAPPDATA 'Programs') $script:ProductName"
+        ),
+        "the verify phase never builds %LOCALAPPDATA%\\Programs\\Soul to compare against",
+    );
+    assert!(
+        SCRIPT.contains("$dataDirectory = Join-Path $env:LOCALAPPDATA $script:ProductName"),
+        "the verify phase never builds %LOCALAPPDATA%\\Soul to compare against",
+    );
+
+    // Under Programs\Soul...
+    assert!(
+        SCRIPT.contains("'the installed soul.exe is under Programs'"),
+        "nothing records where the installed soul.exe came from",
+    );
+    assert!(
+        SCRIPT.contains(
+            "-Condition (Test-PathIsUnder -Path $AppExecutable -Directory $programsInstall)"
+        ),
+        "the Programs finding is recorded but not asserted on",
+    );
+
+    // ...and not under the data directory. The two are different questions:
+    // %LOCALAPPDATA%\Soul is not a prefix of %LOCALAPPDATA%\Programs\Soul.
+    assert!(
+        SCRIPT.contains("'the installed soul.exe is not in the data directory'"),
+        "nothing fails the run when soul.exe was installed into %LOCALAPPDATA%\\Soul",
+    );
+    assert!(
+        SCRIPT.contains(
+            "-Condition (-not (Test-PathIsUnder -Path $AppExecutable -Directory $dataDirectory))"
+        ),
+        "the data-directory finding is recorded but not asserted on",
+    );
+
+    // Both are Assert-Finding, which throws, rather than Add-Finding.
+    for check in [
+        "'the installed soul.exe is under Programs'",
+        "'the installed soul.exe is not in the data directory'",
+    ] {
+        assert!(
+            SCRIPT
+                .lines()
+                .any(|line| line.contains(check) && line.contains("Assert-Finding")),
+            "{check} does not fail the run",
+        );
+    }
+
+    // The comparison is a prefix match with a separator appended, so
+    // Programs\SoulSomething is not mistaken for Programs\Soul.
+    assert!(
+        SCRIPT.contains("$root + $separator"),
+        "Test-PathIsUnder matches a bare prefix, so Programs\\SoulSomething would pass",
+    );
+    assert!(
+        SCRIPT.contains("$separator = [System.IO.Path]::DirectorySeparatorChar"),
+        "Test-PathIsUnder does not use a directory separator at all",
+    );
+
+    // And what the registry says, since that is what phase 4 hands the
+    // uninstaller when it looks for uninstall.exe.
+    assert!(
+        SCRIPT.contains("'the registered InstallLocation is not the data directory'")
+            && SCRIPT
+                .contains("'the registered InstallLocation is the Programs install directory'"),
+        "InstallLocation is trusted to find uninstall.exe but never checked",
+    );
+    assert!(
+        SCRIPT.contains(
+            "-Condition (-not (Test-PathIsUnder -Path $entry.InstallLocation -Directory $dataDirectory))"
+        ),
+        "an InstallLocation pointing at the data directory would still be uninstalled from",
+    );
+}
+
+/// The uninstaller a bad install registered does not get to run: refusing is
+/// the difference between reporting that `keys.dpapi` was deleted and not
+/// deleting it.
+#[test]
+fn a_soul_exe_in_the_data_directory_stops_the_uninstaller_running() {
+    assert!(
+        SCRIPT.contains("$script:UninstallIsUnsafe = $true"),
+        "nothing marks an install that landed in the data directory as unsafe to uninstall",
+    );
+    for guard in [
+        "if (Test-PathIsUnder -Path $AppExecutable -Directory $dataDirectory) {",
+        "if (Test-PathIsUnder -Path $entry.InstallLocation -Directory $dataDirectory) {",
+    ] {
+        assert!(
+            SCRIPT.contains(guard),
+            "nothing checks `{guard}` before phase 4 runs an uninstaller",
+        );
+    }
+    assert!(
+        SCRIPT.contains("if ($installed -and $script:UninstallIsUnsafe) {"),
+        "phase 4 runs the uninstaller even when soul.exe came out of the data directory",
+    );
+    assert!(
+        SCRIPT.contains("'the uninstaller was not run'"),
+        "the skipped uninstall is not recorded as a finding",
+    );
+    assert!(
+        SCRIPT.contains("-Check 'the uninstaller was not run' -Passed $false"),
+        "a skipped uninstall has to fail the run, not pass it quietly",
+    );
+}
+
 /// Uninstall has to be shown to have spared the store, not assumed to have.
 ///
 /// The NSIS `PREUNINSTALL` hook refuses when `$INSTDIR` is the data directory,

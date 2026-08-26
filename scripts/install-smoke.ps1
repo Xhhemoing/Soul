@@ -23,7 +23,12 @@
          script's job to fetch one, and a smoke test that installs extra
          software is not testing what shipped.
       2. The installed soul.exe is inspected: it has to be named soul.exe and
-         its embedded manifest has to say asInvoker.
+         its embedded manifest has to say asInvoker. When this run did the
+         installing it also has to be under %LOCALAPPDATA%\Programs\Soul and
+         not under %LOCALAPPDATA%\Soul: an installer that wrote the program
+         into the data directory makes phase 4 point an uninstaller at
+         keys.dpapi, and a soul.exe found there fails the run before phase 4
+         gets the chance.
       3. soul-headless.exe runs the AC-21 main flow while this script watches
          the operating system's own TCP table for that process. Exit 0, a clean
          report, and zero non-loopback connections, or the run fails.
@@ -116,6 +121,12 @@ $script:LoopbackAddresses = @('127.0.0.1', '::1', '0.0.0.0', '::')
 
 $script:Findings = [System.Collections.Generic.List[object]]::new()
 
+# Set by phase 2 when the soul.exe this run installed turned up inside the
+# user data directory. Phase 4 then refuses to run that uninstaller at all:
+# pointing it at the directory holding keys.dpapi is the loss this script is
+# supposed to catch, not cause.
+$script:UninstallIsUnsafe = $false
+
 function Add-Finding {
     param(
         [Parameter(Mandatory)] [string] $Phase,
@@ -159,6 +170,24 @@ function Resolve-OptionalPath {
 
 function Get-RepositoryRoot {
     return (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+}
+
+# Is $Path that directory, or something inside it?
+#
+# The comparison appends a directory separator before matching the prefix, so
+# %LOCALAPPDATA%\Programs\SoulSomething is not read as living inside
+# %LOCALAPPDATA%\Programs\Soul. Ordinal-insensitive because Windows paths are.
+function Test-PathIsUnder {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $Directory
+    )
+
+    $separator = [System.IO.Path]::DirectorySeparatorChar
+    $full = [System.IO.Path]::GetFullPath($Path).TrimEnd($separator)
+    $root = [System.IO.Path]::GetFullPath($Directory).TrimEnd($separator)
+    if ($full.Equals($root, [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
+    return $full.StartsWith($root + $separator, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
 function Test-RunningElevated {
@@ -526,6 +555,53 @@ try {
         if ($candidates.Count -gt 0) { $AppExecutable = $candidates[0] }
     }
 
+    # Where the install put soul.exe, not just that it put one somewhere.
+    #
+    # The search above reads $entry.InstallLocation before it falls back to
+    # %LOCALAPPDATA%\Programs\Soul, so a bundle that registered the data
+    # directory as its install location hands this script a soul.exe out of
+    # %LOCALAPPDATA%\Soul. That binary passes the name and manifest checks,
+    # and then phase 4 aims an uninstaller at the directory holding
+    # keys.dpapi. Only this run's own install is judged: -SkipInstall in CI
+    # points -AppExecutable at target/release/soul.exe, which is a built
+    # binary rather than an installed one and lives under neither directory.
+    if ($willInstall -and $AppExecutable) {
+        $programsInstall = Join-Path (Join-Path $env:LOCALAPPDATA 'Programs') $script:ProductName
+        # %LOCALAPPDATA%\Soul. Note that this is not a prefix of
+        # %LOCALAPPDATA%\Programs\Soul - the segment after LOCALAPPDATA is
+        # Programs, not Soul - so an executable in the install tree cannot
+        # trip the data-directory check below.
+        $dataDirectory = Join-Path $env:LOCALAPPDATA $script:ProductName
+
+        if (Test-PathIsUnder -Path $AppExecutable -Directory $dataDirectory) {
+            $script:UninstallIsUnsafe = $true
+        }
+
+        Assert-Finding -Phase 'verify' -Check 'the installed soul.exe is not in the data directory' `
+            -Condition (-not (Test-PathIsUnder -Path $AppExecutable -Directory $dataDirectory)) `
+            -Detail "$AppExecutable is inside $dataDirectory, where keys.dpapi and soul.db live"
+
+        Assert-Finding -Phase 'verify' -Check 'the installed soul.exe is under Programs' `
+            -Condition (Test-PathIsUnder -Path $AppExecutable -Directory $programsInstall) `
+            -Detail "$AppExecutable is not under $programsInstall"
+
+        if ($null -ne $entry -and -not [string]::IsNullOrWhiteSpace($entry.InstallLocation)) {
+            # Phase 4 looks for uninstall.exe under this path first, so a
+            # registration pointing at the store is the same danger again.
+            if (Test-PathIsUnder -Path $entry.InstallLocation -Directory $dataDirectory) {
+                $script:UninstallIsUnsafe = $true
+            }
+
+            Assert-Finding -Phase 'verify' -Check 'the registered InstallLocation is not the data directory' `
+                -Condition (-not (Test-PathIsUnder -Path $entry.InstallLocation -Directory $dataDirectory)) `
+                -Detail "the uninstaller is looked up under $($entry.InstallLocation)"
+
+            Assert-Finding -Phase 'verify' -Check 'the registered InstallLocation is the Programs install directory' `
+                -Condition (Test-PathIsUnder -Path $entry.InstallLocation -Directory $programsInstall) `
+                -Detail "$($entry.InstallLocation) is not under $programsInstall"
+        }
+    }
+
     if ($AppExecutable -and (Test-Path -LiteralPath $AppExecutable)) {
         Assert-Finding -Phase 'verify' -Check 'the process is named soul.exe' `
             -Condition ([System.IO.Path]::GetFileName($AppExecutable) -ieq $script:ExecutableName) `
@@ -584,7 +660,12 @@ catch {
 }
 finally {
     # --- phase 4: uninstall, whatever happened above ------------------------
-    if ($installed) {
+    if ($installed -and $script:UninstallIsUnsafe) {
+        Add-Finding -Phase 'uninstall' -Check 'the uninstaller was not run' -Passed $false `
+            -Detail 'soul.exe was installed into the data directory, so its uninstaller would be aimed at keys.dpapi. Remove the install by hand.'
+        $exitCode = 1
+    }
+    elseif ($installed) {
         # Recorded before the uninstaller runs, and in its own try: a machine
         # that will not hold a witness still has to end this run uninstalled.
         $witnesses = @()
