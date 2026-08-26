@@ -1,0 +1,725 @@
+{
+  "sources": {
+    "acceptance_criteria": "docs/FORMAL_WORK_PROMPT.md",
+    "slice": "docs/PRODUCT_LOCK.md"
+  },
+  "extracted": {
+    "all_ac_ids": [
+      "AC-01",
+      "AC-02",
+      "AC-03",
+      "AC-04",
+      "AC-05",
+      "AC-06",
+      "AC-07",
+      "AC-08",
+      "AC-09",
+      "AC-10",
+      "AC-11",
+      "AC-12",
+      "AC-13",
+      "AC-14",
+      "AC-15",
+      "AC-16",
+      "AC-17",
+      "AC-18",
+      "AC-19",
+      "AC-20",
+      "AC-21",
+      "AC-22",
+      "AC-23",
+      "AC-24",
+      "AC-25",
+      "AC-26",
+      "AC-27"
+    ],
+    "goal1_matrix_ac_ids": [
+      "AC-01",
+      "AC-02",
+      "AC-03",
+      "AC-04",
+      "AC-05",
+      "AC-06",
+      "AC-07",
+      "AC-08",
+      "AC-09",
+      "AC-10",
+      "AC-11",
+      "AC-12",
+      "AC-13",
+      "AC-14",
+      "AC-15",
+      "AC-16",
+      "AC-17",
+      "AC-18",
+      "AC-19",
+      "AC-20",
+      "AC-21",
+      "AC-22",
+      "AC-23",
+      "AC-24",
+      "AC-25",
+      "AC-26"
+    ],
+    "deferred_ac_ids": [
+      "AC-27"
+    ],
+    "slice_count": 13
+  },
+  "slice_items": [
+    {
+      "slice_id": "SLICE-01",
+      "number": 1,
+      "text": "安装、托盘、灵魂向导（权限默认全关）。",
+      "backed_by": [
+        "AC-01",
+        "AC-02"
+      ],
+      "coverage": "full",
+      "assessment": "AC-01 covers install/tray/no elevation; AC-02 covers default-off configuration after onboarding."
+    },
+    {
+      "slice_id": "SLICE-02",
+      "number": 2,
+      "text": "问卷 + `soul-import-v1` JSONL（见 `docs/schemas/soul-import-v1.schema.json`）/ Telegram `result.json`。",
+      "backed_by": [
+        "AC-03",
+        "AC-04",
+        "AC-05",
+        "AC-25"
+      ],
+      "coverage": "full",
+      "assessment": "AC-03/04/05 cover questionnaire and both named imports; AC-25 is the cross-cutting hostile-import test."
+    },
+    {
+      "slice_id": "SLICE-03",
+      "number": 3,
+      "text": "可编辑档案（特质轴/偏好/边界）+ 人脉图 v0；推断带证据与证据档。",
+      "backed_by": [
+        "AC-03",
+        "AC-06",
+        "AC-08"
+      ],
+      "coverage": "partial",
+      "assessment": "AC-03/06/08 cover a nonempty profile, evidence-linked inferences, and a graph. No AC explicitly checks editing axes/preferences/boundaries, the evidence-band field, or frozen T4D direct/group/as_of behavior."
+    },
+    {
+      "slice_id": "SLICE-04",
+      "number": 4,
+      "text": "用户纠正锁定，后续推断不覆盖；起草语气立即改变。",
+      "backed_by": [
+        "AC-07"
+      ],
+      "coverage": "partial",
+      "assessment": "AC-07 proves a user-edited tone changes drafting and is not overwritten. It does not exercise an A0 axis correction followed by questionnaire intake/replay, and no AC names relationship correction/correct_tie."
+    },
+    {
+      "slice_id": "SLICE-05",
+      "number": 5,
+      "text": "自传记忆 CRUD + 遗忘（销毁内容密钥）+ 影响面预览。",
+      "backed_by": [
+        "AC-14",
+        "AC-15"
+      ],
+      "coverage": "full",
+      "assessment": "AC-14 covers memory CRUD and content-free audit; AC-15 covers impact preview, key destruction, restart, orphaning, and retained audit."
+    },
+    {
+      "slice_id": "SLICE-06",
+      "number": 6,
+      "text": "单人人事分析摘要（无 key 时统计降级，禁止诊断词）。",
+      "backed_by": [
+        "AC-16",
+        "AC-17"
+      ],
+      "coverage": "partial",
+      "assessment": "AC-16/17 cover evidence, no diagnosis, and no-key fallback. No AC pins A2 as a pure consumer of the T4D band or forbids a second threshold set."
+    },
+    {
+      "slice_id": "SLICE-07",
+      "number": 7,
+      "text": "可选前台应用采集；关闭后 1 秒内无新事件；未同意时事件数为 0。",
+      "backed_by": [
+        "AC-09",
+        "AC-10"
+      ],
+      "coverage": "full",
+      "assessment": "AC-09/10 cover default-off zero events and the one-second stop bound."
+    },
+    {
+      "slice_id": "SLICE-08",
+      "number": 8,
+      "text": "粘贴消息按档案语气起草，不发送；默认 E1 请求体第三人正文已占位。",
+      "backed_by": [
+        "AC-07",
+        "AC-11",
+        "AC-12",
+        "AC-13",
+        "AC-17",
+        "AC-25"
+      ],
+      "coverage": "full",
+      "assessment": "AC-11/12/13 cover no-send, E1 origin, default redaction, and one-shot exception; AC-07/17 cover tone and deterministic fallback."
+    },
+    {
+      "slice_id": "SLICE-09",
+      "number": 9,
+      "text": "授权目录后只读扫描并生成整理计划预览；v0.1 **不执行写**；未授权路径 100% 拒绝。",
+      "backed_by": [
+        "AC-18",
+        "AC-19",
+        "AC-25"
+      ],
+      "coverage": "full",
+      "assessment": "AC-18 covers read-only preview, disk invariance, and unauthorized rejection; AC-19/25 cover execution/refusal and hostile filenames."
+    },
+    {
+      "slice_id": "SLICE-10",
+      "number": 10,
+      "text": "研究导出只预览；第三人行数为 0；不写文件。",
+      "backed_by": [
+        "AC-20"
+      ],
+      "coverage": "full",
+      "assessment": "AC-20 directly covers zero third-party rows and written_to_disk=false."
+    },
+    {
+      "slice_id": "SLICE-11",
+      "number": 11,
+      "text": "云端开关「尚未启用」；零 E0。",
+      "backed_by": [
+        "AC-11",
+        "AC-17",
+        "AC-21",
+        "AC-22"
+      ],
+      "coverage": "full",
+      "assessment": "AC-21/22 cover zero E0 and the disabled cloud toggle; AC-11/17 delimit the separately allowed user-directed E1 path."
+    },
+    {
+      "slice_id": "SLICE-12",
+      "number": 12,
+      "text": "审计覆盖采集、导入、推断、纠正、记忆、遗忘、起草、E1、文件计划、拒绝。",
+      "backed_by": [
+        "AC-14",
+        "AC-15",
+        "AC-23",
+        "AC-24"
+      ],
+      "coverage": "partial",
+      "assessment": "AC-23 applies after matrix actions and AC-24 covers crash recovery; AC-14/15 name memory/forget audit. AC-23 does not enumerate and assert all ten PRODUCT_LOCK audit action kinds as separate expected records."
+    },
+    {
+      "slice_id": "SLICE-13",
+      "number": 13,
+      "text": "CI + 安装 smoke。",
+      "backed_by": [
+        "AC-01",
+        "AC-26"
+      ],
+      "coverage": "full",
+      "assessment": "AC-01 includes installation smoke and AC-26 is the repository CI gate."
+    }
+  ],
+  "ac_to_slice": {
+    "AC-01": [
+      "SLICE-01",
+      "SLICE-13"
+    ],
+    "AC-02": [
+      "SLICE-01"
+    ],
+    "AC-03": [
+      "SLICE-02",
+      "SLICE-03"
+    ],
+    "AC-04": [
+      "SLICE-02"
+    ],
+    "AC-05": [
+      "SLICE-02"
+    ],
+    "AC-06": [
+      "SLICE-03"
+    ],
+    "AC-07": [
+      "SLICE-04",
+      "SLICE-08"
+    ],
+    "AC-08": [
+      "SLICE-03"
+    ],
+    "AC-09": [
+      "SLICE-07"
+    ],
+    "AC-10": [
+      "SLICE-07"
+    ],
+    "AC-11": [
+      "SLICE-08",
+      "SLICE-11"
+    ],
+    "AC-12": [
+      "SLICE-08"
+    ],
+    "AC-13": [
+      "SLICE-08"
+    ],
+    "AC-14": [
+      "SLICE-05",
+      "SLICE-12"
+    ],
+    "AC-15": [
+      "SLICE-05",
+      "SLICE-12"
+    ],
+    "AC-16": [
+      "SLICE-06"
+    ],
+    "AC-17": [
+      "SLICE-06",
+      "SLICE-08",
+      "SLICE-11"
+    ],
+    "AC-18": [
+      "SLICE-09"
+    ],
+    "AC-19": [
+      "SLICE-09"
+    ],
+    "AC-20": [
+      "SLICE-10"
+    ],
+    "AC-21": [
+      "SLICE-11"
+    ],
+    "AC-22": [
+      "SLICE-11"
+    ],
+    "AC-23": [
+      "SLICE-12"
+    ],
+    "AC-24": [
+      "SLICE-12"
+    ],
+    "AC-25": [
+      "SLICE-02",
+      "SLICE-08",
+      "SLICE-09"
+    ],
+    "AC-26": [
+      "SLICE-13"
+    ],
+    "AC-27": []
+  },
+  "orphans": {
+    "slice_items_without_any_ac": [],
+    "goal1_matrix_acs_without_slice": [],
+    "deferred_acs_outside_13_item_slice": [
+      "AC-27"
+    ],
+    "note": "AC-27 is explicitly v0.1.1 and is not a Goal 1/v0.1 orphan defect."
+  },
+  "partial_slice_items": [
+    "SLICE-03",
+    "SLICE-04",
+    "SLICE-06",
+    "SLICE-12"
+  ],
+  "keyword_scan": {
+    "T4D": {
+      "matches": [
+        {
+          "file": "docs/algorithms/COPY_ZH.md",
+          "line": 5,
+          "text": "编制：Round 3 fable-a，承接 Round 2 冻结稿（`round2/fable-a/COPY_ZH.md`）。本文件只收**胜者模板**：**T4D**（发布默认）、**T4**（档内回退形态，随规范待命）、**A0**、**A2**。落选者（T3 / T3R）的模板随其墓碑归档于 Round 2 稿，不再随规范发布。渲染输出必须能匹配本文件模板结构且通过 `assert_non_clinical`；改模板先改本文件并留痕。"
+        },
+        {
+          "file": "docs/algorithms/COPY_ZH.md",
+          "line": 15,
+          "text": "7. **透明句**（每套边解释的首句）：「怎么算的：只统计次数和日期，不读聊天内容。」T4D 版在其后追加半句「判档只看你们一对一的往来。」"
+        },
+        {
+          "file": "docs/algorithms/COPY_ZH.md",
+          "line": 21,
+          "text": "## 1. T4D（发布默认：门槛全在一对一计数上，降档时钟读任一场地）"
+        },
+        {
+          "file": "docs/algorithms/COPY_ZH.md",
+          "line": 33,
+          "text": "复核路径说明（进规范附注，不进用户界面）：用户核对 T4D 只需要四件事——数一对一消息条数、数一对一日期个数、看最后一次往来（任何场合）的日期距截止日期差几天、确认双方在一对一里都发过。全程无乘法。降档句里的「最近一次往来」刻意含群聊：群里昨天还说过话的关系不会因一对一暂歇而降档（DECISION.md 第 4.3 节定价）。"
+        },
+        {
+          "file": "docs/algorithms/COPY_ZH.md",
+          "line": 62,
+          "text": "- **P1b 场合分列**（Round 3 新增，T4D 供数）：「其中一对一往来 {一对一次数} 次，群里同场 {群聊次数} 次。」——只渲染 T 族算好并随 `TieScore` 携带的两个数；任一数缺席则整句不出现。**A2 禁止自行从证据推导分列**（推导即第二意见）。"
+        },
+        {
+          "file": "docs/algorithms/COPY_ZH.md",
+          "line": 73,
+          "text": "约束重申：P5 的档位词来自 T4D 产出的 band，A2 不得自带第二套阈值；P4 的 180 天与降档常量是**同一个常量**（`DORMANT_NOTE_DAYS = DEMOTE_ONE_BAND_DAYS = 180`，单点定义见 DECISION.md 常量表）。T4D 的降档时钟与 P4 读同一个「任一场地最后往来」，因此不变式免费成立：出现「最近半年没有往来」句的边必然已降档，永远不是强。"
+        },
+        {
+          "file": "docs/algorithms/COPY_ZH.md",
+          "line": 82,
+          "text": "6. **T4D 门槛引用一致性**：凡判档消费的是一对一计数，模板句必须引用 {一对一次数}/{一对一天数}，不得引用总量冒充；总量只许出现在 A2 的 P1 与 T4D 的「保留展示」句。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 15,
+          "text": "| T4D 夹具（`group_heavy_plus_one_direct_each_way` + `lilei_12` 保全） | **已跑**，三方独立实现结论一致（本槽位 t4d-verify、gpt-sol-a、gpt-sol-b） |"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 24,
+          "text": "Round 3 冻结条件（R2-SYNTHESIS 边界风险 2）：**T4D 采纳，当且仅当 `lilei_12` 保持 Strong 且 `group_heavy_plus_one_direct_each_way` 非 Strong；否则留 T4。**"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 28,
+          "text": "| 决胜夹具 | 构造 | T4 | T4D | 判 |"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 33,
+          "text": "两个条件同时满足。**采纳 T4D，作为 T4 的最终形态发布。**"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 35,
+          "text": "同一验证还跑了 Round 2 绑定集全表与探针（empty / single_inbound / afternoon_20 / group_only_50 / one_sided_100 / steady_16 / dormant_2019 / F04b / F04c / 179‑180‑359‑360 边界 / 置换与时间平移不变式 / as_of 陷阱），T4D 相对 T4 的全部分歧只有两类，均记录在第 4 节。矩阵由代码打印，见 `.agent_workspace/round3/fable-a/REPORT.md`。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 39,
+          "text": "1. **T4D — 人脉关系强度（唯一权威）**：T3 门闩 + 180/360 整数降档，且互惠、次数、天数三道门全部改在**一对一计数**上。群聊行保留展示与近因，不参与判档。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 49,
+          "text": "| `MODERATE_MIN_INTERACTIONS` | 3 | Moderate 次数门（T4D：一对一次数） |"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 50,
+          "text": "| `STRONG_MIN_INTERACTIONS` | 10 | Strong 次数门（T4D：一对一次数） |"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 51,
+          "text": "| `STRONG_MIN_ACTIVE_DAYS` | 3 | Strong 自然日门（T4D：一对一自然日） |"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 55,
+          "text": "| `GROUP_ONLY_CEILING` | Moderate | **仅 T4 使用**。T4D 无此常量：仅群聊者一对一计数为 0，自然落 Weak（见 4.1） |"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 59,
+          "text": "**T4D 直连计数规则（冻结定义）**："
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 72,
+          "text": "时钟**刻意**读任一场地：T4D 拒绝用群聊行判档，但接受群聊行作为「此人没有从生活中消失」的近因证据。这保证 A2 的 P4 句（读任一场地 last_contact）与档位永不同屏矛盾——「最近半年没有往来」句一出现，降档必已发生。gpt-sol-b Round 3 的「direct-only 时钟」变体**作废**（会造成「最近一次是昨天」与「因久未联系而降档」同屏）。同理作废的历史漂移：Round 2 gpt-sol-b 的 1000× milliscale、Round 2 opus-a T3 的群聊 ≥5/≥2 附加门。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 78,
+          "text": "`group_only_50`（群聊互惠 50 次 / 50 天 / 从未一对一）：T4 判 Moderate，T4D 判 **Weak**。这是把门槛改在一对一计数上的直接后果，不是意外：Round 1「项目群同事不是陌生人」的论证让位于「群扇出不得制造档位」——同一机制也顺带消解了导入扇出债的放大面（200 人群刷全员 Moderate 不再可能）与「一句私聊解锁 Strong」漏洞。群聊往来的事实由 A2 场合句如实展示（「你们在群里同场往来 {群聊次数} 次」），只是不再决定档位。钉死期望「group-only ≤ Moderate」仍满足（Weak ⊂ ≤ Moderate）。自愈路径便宜：每方向各 3 条一对一即回 Moderate（实测 `group_heavy_plus_three_direct_each_way` → Moderate）。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 82,
+          "text": "七年休眠 + 昨天一来一回 → Strong（T4 与 T4D 同判）。v0.1 已知限制，**禁止**为此静默加第三道门（如「近 90 天 ≥3 次才免降」）——那是新候选，须重开消融。处置见第 5 节。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 90,
+          "text": "1. **档内回退 T4D → T4**：若 4.1 的群聊代价被产品裁定不可接受。只换计数口径，常量与模板结构不动（T4 模板已随 COPY_ZH.md 冻结待命）。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 96,
+          "text": "1. **替换判档**：Goal 1 `graph_build.rs` 的 `Tally::band()`（现为 T0：无场合门、无近因）整体替换为 `crates/soul-algo` 的 T4D 判档；3/10/3 常量从 soul-algo 常量模块导入，`graph_build.rs` 本地常量删除，防两处漂移。Goal 1 的 `Tally` 需补一对一分列计数（direct out/in/自然日）与任一场地 last_contact——均为已有字段的口径细分，不动存储 schema 语义。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 105,
+          "text": "- 交叉复现：`.agent_workspace/round3/gpt-sol-a/`（消融矩阵 + 性能：T4D ≈ 1.001× T0）、`.agent_workspace/round3/gpt-sol-b/`（对抗探针 13/13，含 as_of 陷阱与 direct<10 不可 Strong 性质测试）。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 106,
+          "text": "- 裁决程序：`.agent_workspace/round2/fable-a/ABLATION_PROTOCOL.md`；理论边界：C7 满分归 T3 门闩（Granovetter 操作化），T4/T4D 是产品补丁，靠 C8 净胜采纳，不吃理论分；**不验收预测准确率**。"
+        },
+        {
+          "file": "docs/algorithms/R3-SYNTHESIS.md",
+          "line": 3,
+          "text": "`ALGO_FROZEN`。保留 **T4D**（人脉）与 **A0**（档案纠正锁）。详见 `docs/algorithms/DECISION.md`。"
+        },
+        {
+          "file": "docs/algorithms/README.md",
+          "line": 7,
+          "text": "1. **T4D** — `crates/soul-algo-tie`（默认 `TieAlgo::T4D`）"
+        },
+        {
+          "file": "docs/algorithms/REJECTED.md",
+          "line": 7,
+          "text": "**不在本文件**（保留项，见 DECISION.md）：T4D（发布默认）、T4（档内回退形态）、A0（政策基底）、A2（渲染器）、A1（A0 内部规则，TwoKindsAcrossDays 形态保留，v0.1 空转是预期而非否决——它不是墓碑，是待命）。"
+        },
+        {
+          "file": "docs/algorithms/REJECTED.md",
+          "line": 21,
+          "text": "**保留的遗产**：互惠门闩、3/10/3 常量、跨日门全部存活于 T4/T4D 体内；opus-a `goal1_fidelity.rs` 的 6500 组等价比对作为历史行为的锚测试保留。杀的是「T0 作为规范」，不是它的部件。"
+        },
+        {
+          "file": "docs/algorithms/REJECTED.md",
+          "line": 37,
+          "text": "**保留的遗产**：近因问题本身（F04）被确认为真实缺陷，最终由 T4/T4D 的 180/360 整数降档解决——这两个常量正是 T1 分桶表的 2H/4H 边界（H=90）。"
+        },
+        {
+          "file": "docs/algorithms/REJECTED.md",
+          "line": 63,
+          "text": "**判决**：不发布。门闩逻辑（互惠 ∧ 场合 ∧ 3/10/3）作为 T4/T4D 的判档核心**全量存活**；杀的是「无近因的 T3 直接面向用户」。**判决轮次**：Round 2 消融（opus-a 扩展集实测）。"
+        },
+        {
+          "file": "docs/algorithms/REJECTED.md",
+          "line": 70,
+          "text": "**保留的遗产**：C7 理论分满分归 T3（Granovetter 操作化）；T4/T4D 是它的产品补丁，不吃理论分。参考实现保留为**无近因对照基线**（测试 oracle），永不接线上。"
+        },
+        {
+          "file": "docs/algorithms/REJECTED.md",
+          "line": 86,
+          "text": "**保留的遗产**：其桶边界 180/360（2H/4H，H=90）即 T4/T4D 的降档常量——两族共用一张常量表是刻意对齐。"
+        },
+        {
+          "file": "docs/algorithms/REJECTED.md",
+          "line": 111,
+          "text": "- **T4D direct-only 降档时钟**（Round 3 gpt-sol-b 变体）：降档时钟读一对一最后往来而非任一场地。作废理由：制造「最近一次是昨天」与「因久未联系降档」同屏矛盾，且模板需第二个日期概念，违反可数性纪律。冻结时钟见 DECISION.md 第 3 节。"
+        }
+      ],
+      "files": [
+        "docs/algorithms/COPY_ZH.md",
+        "docs/algorithms/DECISION.md",
+        "docs/algorithms/R3-SYNTHESIS.md",
+        "docs/algorithms/README.md",
+        "docs/algorithms/REJECTED.md"
+      ],
+      "legacy_context_plan_matches": [],
+      "core_plan_files": []
+    },
+    "T0": {
+      "matches": [
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 92,
+          "text": "3. **任何情况不回退 T0 / 裸 T3**：F03/F04 错档已被三轮钉死。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 96,
+          "text": "1. **替换判档**：Goal 1 `graph_build.rs` 的 `Tally::band()`（现为 T0：无场合门、无近因）整体替换为 `crates/soul-algo` 的 T4D 判档；3/10/3 常量从 soul-algo 常量模块导入，`graph_build.rs` 本地常量删除，防两处漂移。Goal 1 的 `Tally` 需补一对一分列计数（direct out/in/自然日）与任一场地 last_contact——均为已有字段的口径细分，不动存储 schema 语义。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 105,
+          "text": "- 交叉复现：`.agent_workspace/round3/gpt-sol-a/`（消融矩阵 + 性能：T4D ≈ 1.001× T0）、`.agent_workspace/round3/gpt-sol-b/`（对抗探针 13/13，含 as_of 陷阱与 direct<10 不可 Strong 性质测试）。"
+        },
+        {
+          "file": "docs/algorithms/R1-SYNTHESIS.md",
+          "line": 5,
+          "text": "**本轮结论：** 杀掉 T2 与 A3；T0 原样不作为规范；人脉算法在 T3 / T3R / T4 之间消融；档案侧保留 A0（补锁）+ A2（纯渲染）。"
+        },
+        {
+          "file": "docs/algorithms/REJECTED.md",
+          "line": 11,
+          "text": "## T0 — Count+Reciprocity+Span（原实现基线）"
+        },
+        {
+          "file": "docs/algorithms/REJECTED.md",
+          "line": 17,
+          "text": "- **F03 群聊重度**（opus-a `group_only_50`；gpt-sol-b 故意失败探针）：同一群聊 50 天 50 条、从无一对一，T0 判 Strong。全员共识错档；被场合门以零代价修正（严格支配）。"
+        },
+        {
+          "file": "docs/algorithms/REJECTED.md",
+          "line": 19,
+          "text": "- 叠加管道债后恶化（fable-b DEFECTS）：Goal 1 导入把群消息 N:1 扇出，T0 又忽略 `Venue`，200 人群聊发 10 条跨 3 天可把全员刷成 Strong——算法层无场合门是放大器。"
+        },
+        {
+          "file": "docs/algorithms/REJECTED.md",
+          "line": 21,
+          "text": "**保留的遗产**：互惠门闩、3/10/3 常量、跨日门全部存活于 T4/T4D 体内；opus-a `goal1_fidelity.rs` 的 6500 组等价比对作为历史行为的锚测试保留。杀的是「T0 作为规范」，不是它的部件。"
+        },
+        {
+          "file": "docs/algorithms/REJECTED.md",
+          "line": 23,
+          "text": "**复活条件**：无。R1-SYNTHESIS 明令「禁止回退到未打补丁的 T0」。任何回退诉求等价于重新接受 F03/F04 错档，须推翻这两个夹具的钉死期望（走 DECISIONS，预期不可能）。"
+        },
+        {
+          "file": "docs/algorithms/REJECTED.md",
+          "line": 57,
+          "text": "**复活条件**：无。绝对阈值化的「RFM」不是 T2，是 T0/T1 换皮，不得以复活之名重新入池。"
+        }
+      ],
+      "files": [
+        "docs/algorithms/DECISION.md",
+        "docs/algorithms/R1-SYNTHESIS.md",
+        "docs/algorithms/REJECTED.md"
+      ],
+      "legacy_context_plan_matches": [],
+      "core_plan_files": []
+    },
+    "as_of": {
+      "matches": [
+        {
+          "file": "docs/algorithms/COPY_ZH.md",
+          "line": 13,
+          "text": "5. **时间口径**：一切「距今」表述实为「距 {as_of 日期}」；as_of 来自数据（调用方传入或数据内最大时间戳），不读墙钟。模板里写「到 {截止日期}」，不写「到今天」。"
+        },
+        {
+          "file": "docs/algorithms/COPY_ZH.md",
+          "line": 17,
+          "text": "占位符约定：`{次数}`=全部往来条数，`{天数}`=全部活跃自然日数，`{一对一次数}`=一对一往来条数，`{一对一天数}`=一对一活跃自然日数，`{群聊次数}`=群里同场往来条数，`{最后日期}`=任一场地最后一次往来的日期，`{截止日期}`=as_of 的日期，`{沉寂天数}`=整数沉寂天数。"
+        },
+        {
+          "file": "docs/algorithms/COPY_ZH.md",
+          "line": 70,
+          "text": "- **P4 近因**：「最近一次是 {最后日期}。」；最后往来距 as_of 超过 180 天 → 追加「你们最近半年没有往来。」（只引最近一条证据。）"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 26,
+          "text": "实测（as_of = 2026-08-24T14:00:00Z，全库单值）："
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 35,
+          "text": "同一验证还跑了 Round 2 绑定集全表与探针（empty / single_inbound / afternoon_20 / group_only_50 / one_sided_100 / steady_16 / dormant_2019 / F04b / F04c / 179‑180‑359‑360 边界 / 置换与时间平移不变式 / as_of 陷阱），T4D 相对 T4 的全部分歧只有两类，均记录在第 4 节。矩阵由代码打印，见 `.agent_workspace/round3/fable-a/REPORT.md`。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 57,
+          "text": "**as_of 纪律**：一次 rebuild 全库**一个** as_of，由调用方传入（缺省 = 整个 store 的 `max(occurred_at)`）；禁止 per-peer 取该 peer 自己的最大时间戳——那会让休眠关系假 Strong（t4d-verify `peer_local_as_of_wrongly_revives_the_dormant_tie`：2019 年休眠关系在 per-peer as_of 下错判 Strong，在全库 as_of 下正确判 Weak，沉寂 2632 天）。judgement 一律不读墙钟。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 68,
+          "text": "降档时钟：沉寂天数 = max(0, as_of − 任一场地最后一次往来) / 86400（整数天，向下取整）"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 97,
+          "text": "2. **依赖方向**：`crates/soul-algo` 保持纯函数、零重依赖、`#![forbid(unsafe_code)]`、不读墙钟；**禁止把 SQLCipher（及任何存储、Tauri、HTTP 依赖）拉进该 crate**。依赖箭头永远是 Goal 1 → soul-algo，评分器只吃 `(peer 行, as_of)`，落库与取证留在 Goal 1。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 98,
+          "text": "3. **as_of 传递**：rebuild 调用方计算全库 `max(occurred_at)`（或显式传值）后传入；soul-algo 不提供缺省墙钟路径。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 99,
+          "text": "4. **渲染面**：`TieScore` 携带 band、原始计数、一对一/群聊分列、last_contact、沉寂天数与 as_of；A2 与图 UI 只消费该结构。中文模板绑定测试（COPY_ZH.md 第 6 节断言）随 soul-algo 落地，模板改动先改 COPY_ZH.md 再改代码。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 105,
+          "text": "- 交叉复现：`.agent_workspace/round3/gpt-sol-a/`（消融矩阵 + 性能：T4D ≈ 1.001× T0）、`.agent_workspace/round3/gpt-sol-b/`（对抗探针 13/13，含 as_of 陷阱与 direct<10 不可 Strong 性质测试）。"
+        },
+        {
+          "file": "docs/algorithms/REJECTED.md",
+          "line": 67,
+          "text": "- **休眠夹具全挂**（opus-a Round 2 扩展集，5 张）：`dormant_since_2019` / `quiet_180_days` / `quiet_200_days` / F04b / `dormant_360_days` 全部判 Strong——T3 不读 as_of，结构上没有「关系会冷」的概念。"
+        }
+      ],
+      "files": [
+        "docs/algorithms/COPY_ZH.md",
+        "docs/algorithms/DECISION.md",
+        "docs/algorithms/REJECTED.md"
+      ],
+      "legacy_context_plan_matches": [],
+      "core_plan_files": []
+    },
+    "DEMOTE_ONE_BAND_DAYS": {
+      "matches": [
+        {
+          "file": "docs/algorithms/COPY_ZH.md",
+          "line": 73,
+          "text": "约束重申：P5 的档位词来自 T4D 产出的 band，A2 不得自带第二套阈值；P4 的 180 天与降档常量是**同一个常量**（`DORMANT_NOTE_DAYS = DEMOTE_ONE_BAND_DAYS = 180`，单点定义见 DECISION.md 常量表）。T4D 的降档时钟与 P4 读同一个「任一场地最后往来」，因此不变式免费成立：出现「最近半年没有往来」句的边必然已降档，永远不是强。"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 52,
+          "text": "| `DEMOTE_ONE_BAND_DAYS` | 180 | 沉寂 ≥ 180 天降一档，**闭区间**（`>=`；任何 `>180` 写法作废） |"
+        },
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 54,
+          "text": "| `DORMANT_NOTE_DAYS` | = `DEMOTE_ONE_BAND_DAYS` | A2「最近半年没有往来」句阈值，与降档共用同一常量，不得分裂 |"
+        }
+      ],
+      "files": [
+        "docs/algorithms/COPY_ZH.md",
+        "docs/algorithms/DECISION.md"
+      ],
+      "legacy_context_plan_matches": [],
+      "core_plan_files": []
+    },
+    "soul-algo-tie": {
+      "matches": [
+        {
+          "file": "docs/algorithms/README.md",
+          "line": 7,
+          "text": "1. **T4D** — `crates/soul-algo-tie`（默认 `TieAlgo::T4D`）"
+        }
+      ],
+      "files": [
+        "docs/algorithms/README.md"
+      ],
+      "legacy_context_plan_matches": [],
+      "core_plan_files": []
+    },
+    "correct_tie": {
+      "matches": [],
+      "files": [],
+      "legacy_context_plan_matches": [],
+      "core_plan_files": []
+    },
+    "intake lock": {
+      "literal_matches": [],
+      "semantic_matches": [
+        {
+          "file": "docs/algorithms/DECISION.md",
+          "line": 40,
+          "text": "2. **A0 — 特质轴问卷 + 本人纠正锁定**：政策基底，不占算法名额；intake 不绕锁（Round 2 补丁，`apply_intake` 与 replay 全等）。"
+        }
+      ],
+      "files": [
+        "docs/algorithms/DECISION.md"
+      ],
+      "legacy_context_plan_literal_matches": [],
+      "legacy_context_plan_semantic_matches": [],
+      "core_plan_files": [],
+      "match_note": "Semantic scan accepts Chinese 锁 within 60 characters of intake."
+    }
+  },
+  "negative_scope": {
+    "scope": [
+      "README.md",
+      "docs/PRODUCT_LOCK.md",
+      "docs/DECISIONS.md",
+      "docs/FORMAL_WORK_PROMPT.md",
+      "docs/SECURITY.md",
+      "docs/STATUS.md"
+    ],
+    "checks": {
+      "file_write_execution_not_required_in_v0.1": true,
+      "oauth_not_required_in_v0.1": true,
+      "e0_http_not_required_in_v0.1": true
+    },
+    "all_passed": true,
+    "interpretation": "Mentions of these features are prohibitions, deferred roadmap items, or denial tests; none is a positive v0.1 implementation requirement."
+  }
+}

@@ -1,0 +1,56 @@
+Rust/toolchain verification
+===========================
+$ rustc --version --verbose
+rustc 1.83.0 (90b35a623 2024-11-26)
+binary: rustc
+commit-hash: 90b35a6239c3d8bdabc530a6a0816f7ff89a0aaf
+commit-date: 2024-11-26
+host: x86_64-unknown-linux-gnu
+release: 1.83.0
+LLVM version: 19.1.1
+
+$ cargo tree --locked
+soul-tie-ablation-probes v0.1.0 (/workspace/.agent_workspace/round2/gpt-sol-b/probes)
+
+Mandatory probes
+================
+$ cargo test --all-targets --locked
+   Compiling soul-tie-ablation-probes v0.1.0 (/workspace/.agent_workspace/round2/gpt-sol-b/probes)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.45s
+     Running unittests src/lib.rs (target/debug/deps/soul_tie_ablation_probes-2e054e48c6b13984)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/probes.rs (target/debug/deps/probes-f0c90e7587c89b1e)
+
+running 12 tests
+test dormant_2019_vs_2026_is_the_recency_ablation_contrast ... ok
+test active_days_use_utc_not_a_local_timezone ... ok
+test every_explanation_obeys_the_language_denylist ... ok
+test as_of_before_events_clamps_age_to_zero_without_panicking ... ok
+test group_only_50_over_10_days_is_never_strong ... ok
+test lilei_12_over_6_days_direct_is_strong_in_all_arms ... ok
+test negative_unix_instants_do_not_panic ... ok
+test one_afternoon_burst_is_never_strong ... ok
+test interaction_source_grep_rejects_message_body_fields ... ok
+test input_order_shuffle_is_invariant_for_every_arm ... ok
+test t3r_uses_exact_integer_milli_buckets ... ok
+test t4_integer_recency_boundaries_match_the_written_rule ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+Static checks
+=============
+$ cargo fmt --check
+PASS
+
+$ cargo clippy --all-targets --locked -- -D warnings
+    Checking soul-tie-ablation-probes v0.1.0 (/workspace/.agent_workspace/round2/gpt-sol-b/probes)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.18s
+
+Summary
+=======
+12 passed; 0 failed; 0 ignored.
+No SPEC_BUG.

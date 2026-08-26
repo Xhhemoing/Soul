@@ -1,0 +1,14 @@
+[package]
+name = "soul-algo-trait"
+version = "0.3.0"
+edition = "2021"
+rust-version = "1.83"
+description = "Round 3 reference implementation of the Soul trait-axis and personnel-summary algorithm family: A0 (retained), A2 (renderer), A1 (not retained), A3 (rejected)."
+publish = false
+
+# No SQLCipher, Tauri or HTTP. Zero runtime dependencies.
+
+[dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"

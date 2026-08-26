@@ -1,0 +1,100 @@
+{
+  "schema_directory": "/workspace/docs/schemas",
+  "parsed_count": 11,
+  "parsed": [
+    "_defs.schema.json",
+    "audit.schema.json",
+    "contact.schema.json",
+    "event.schema.json",
+    "evidence.schema.json",
+    "export-manifest.schema.json",
+    "inference.schema.json",
+    "memory.schema.json",
+    "profile.schema.json",
+    "relationship.schema.json",
+    "soul-import-v1.schema.json"
+  ],
+  "relationship": {
+    "relationship_required": [
+      "schema_version",
+      "relationship_id",
+      "from_contact_id",
+      "to_contact_id",
+      "evidence_ids"
+    ],
+    "tie_strength_required_at_root": false,
+    "tie_strength_schema": {
+      "type": "object"
+    },
+    "tie_strength_has_properties": false,
+    "tie_strength_has_required": false,
+    "tie_strength_closes_additional_properties": false,
+    "decision_tie_output_fields": [
+      "band",
+      "raw counts",
+      "direct/group split",
+      "last_contact",
+      "silent_days",
+      "as_of"
+    ],
+    "decision_constants": {
+      "MODERATE_MIN_INTERACTIONS": 3,
+      "STRONG_MIN_INTERACTIONS": 10,
+      "STRONG_MIN_ACTIVE_DAYS": 3,
+      "DEMOTE_ONE_BAND_DAYS": 180,
+      "FORCE_WEAK_DAYS": 360,
+      "DORMANT_NOTE_DAYS": "DEMOTE_ONE_BAND_DAYS"
+    },
+    "constants_are_data_fields_required_by_decision": false,
+    "note": "The constants belong in the algorithm's single definition, not as serialized fields. The schema nevertheless does not constrain the fields needed to audit their resulting TieScore."
+  },
+  "profile": {
+    "declares_score_property": false,
+    "declares_percentile_property": false,
+    "axis_additional_properties": false,
+    "axis_required": [
+      "axis_id",
+      "position",
+      "evidence_band",
+      "clinical_claim"
+    ],
+    "position_enum": [
+      "leans_low",
+      "mixed",
+      "leans_high",
+      "unknown"
+    ],
+    "matches_a0_position_enum": true,
+    "locked_by_user_required": false,
+    "evidence_ids_required": false,
+    "nested_looseness": "voice is a free object and values/boundaries are untyped arrays, so the schema does not globally forbid score/percentile keys in those containers even though trait-axis items forbid extra keys."
+  },
+  "jsonschema": {
+    "available": true,
+    "version": "4.26.0",
+    "compiled": [
+      "_defs.schema.json",
+      "audit.schema.json",
+      "contact.schema.json",
+      "event.schema.json",
+      "evidence.schema.json",
+      "export-manifest.schema.json",
+      "inference.schema.json",
+      "memory.schema.json",
+      "profile.schema.json",
+      "relationship.schema.json",
+      "soul-import-v1.schema.json"
+    ],
+    "focused_probes": {
+      "relationship_without_tie_strength_accepted": true,
+      "relationship_empty_tie_strength_accepted": true,
+      "relationship_arbitrary_tie_strength_accepted": true,
+      "profile_axis_without_lock_or_evidence_ids_accepted": true,
+      "profile_voice_with_score_accepted": true,
+      "profile_axis_score_rejected": true,
+      "profile_axis_score_error": "Additional properties are not allowed ('score' was unexpected)",
+      "profile_numeric_position_rejected": true,
+      "profile_numeric_position_error": "0.8 is not one of ['leans_low', 'mixed', 'leans_high', 'unknown']"
+    }
+  }
+}
