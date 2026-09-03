@@ -42,7 +42,7 @@ WP01 独占先行。其后 WP02–WP06、WP08 面向 `soul-store-api` 可并行�
 
 ## WP01 完成定义
 
-1. [x] `just ci` 本地绿（AC-26 骨架）。GitHub Actions `lint` / `test-linux` / `test-windows` 随本分支推送；Windows SQLCipher 是否绿要等第一次 CI。
+1. [x] `just ci` 本地绿（AC-26 骨架）。~~GitHub Actions `lint` / `test-linux` / `test-windows` 随本分支推送~~ D50 之后无 hosted CI：Linux 走 `just ci-full`（G-L），Windows 走 `scripts/gate-win.ps1`（G-W）。Windows SQLCipher 在 `2e72ddf` 的 windows-latest 上绿过一次，HEAD 上要等首份 G-W。
 2. [x] `schema_wiring` 证明九份 `$ref` 接到 `_defs`；`docs/schemas/schemas.lock.json` 已钉。
 3. [x] crash harness demo 绿（子进程真死）；leakage 检查器对 Unicode fixture 全过。
 4. [x] `SECURITY.md` 加密落地小节与 CI 实证一致。
@@ -75,7 +75,7 @@ WP01 禁止：产品定义文档、`apps/`、业务 crate、HTTP client 进 norm
 
 ## AC 映射
 
-权威矩阵在 `docs/FORMAL_WORK_PROMPT.md`。Linux CI 不能自证的仅 AC-01 托盘目视（windows-latest 安装 smoke + asInvoker 半自证；托盘 author-manual）。AC-09/10 真机行为进手动清单，CI 用 Fake 源走真管道。
+权威矩阵在 `docs/FORMAL_WORK_PROMPT.md`。「CI」一律读作本地门禁（D50）。G-L 不能自证的仅 AC-01 托盘目视（G-W 的 `gate-win.ps1` 做 asInvoker 与 `-SkipInstall` smoke 半自证；托盘 author-manual）。AC-09/10 真机行为进手动清单，CI 用 Fake 源走真管道。
 
 ## 红线
 

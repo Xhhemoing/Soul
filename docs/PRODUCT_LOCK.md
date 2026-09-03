@@ -149,4 +149,4 @@ v0.1 明确不做：自动发消息、常驻截屏、键鼠接管、任意 shell
 - `ASSUMPTION:` 加密库首选 SQLCipher；若打包成本过高则 SQLite + 字段级 AEAD，并在 SECURITY.md 如实说明。
 - `ASSUMPTION:` Telegram 适配器以 Desktop 4.x machine-readable JSON 为准；CI 用合成 fixture。
 - `ASSUMPTION:` 无 E1 时确定性语气模板足以通过起草验收。
-- `ASSUMPTION:` GitHub Actions `windows-latest` 跑 headless 核心；真实托盘/采集由作者手动 checklist。
+- `ASSUMPTION:` ~~GitHub Actions `windows-latest` 跑 headless 核心~~ **改（D50）**：没有 hosted CI；headless 核心与桌面壳在作者 Win11 上跑 `scripts/gate-win.ps1`（G-W），Linux 开发机跑 `just ci-full`（G-L）；真实托盘/采集仍由作者手动 checklist（G-M）。

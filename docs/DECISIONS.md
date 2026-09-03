@@ -35,3 +35,11 @@
 | D29 | 验收权威 | FORMAL 中 Given/When/Then 矩阵 | 散文不作门禁 |
 | D30 | 工作包增减 | R2 后只减不增 | 防回弹 |
 | D31 | 只读整理预览是否留在 Goal 1 | 留。执行仍在 v0.1.1。这是代理层只读证明，不是产品卖点 | 否决 R3-sol 删除 AC-18 的建议 |
+
+> D32–D49 已由 `main` 上的算法拍板占用（T4D / A0 / A2 / 导入口径），本分支不复用这些编号；合回 `main` 时两表直接拼接。
+
+| ID | 问题 | 决定 | 理由 |
+|---|---|---|---|
+| D50 | 门禁在哪跑 | **不用 hosted CI**。GitHub Actions 已在仓库设置里关闭（`actions/permissions.enabled=false`），`.github/workflows/ci.yml` 删除。GitHub 只做代码存储与同步。门禁 = G-L（Linux 开发机 `just ci-full`）+ G-W（作者 Win11 `scripts/gate-win.ps1`）+ G-M（`scripts/author-manual-checklist.md`），证据落 `docs/gates/<yyyymmdd>-<sha7>-<linux|win>.md` | 作者 2026-09-03 明令；私库账本不可控（8/25 起五门 0 step）；hosted 本来就证不了托盘 / UAC / DPAPI / WebView2 真机行为。AC-26 的「CI」自此读作本地门禁 |
+| D51 | Linux 门禁机 | Hermes 开发机（4 vCPU / 3.9 GB）。首份 G-L：`docs/gates/20260903-e2b4e48-linux.md`。这台机没有 webview 开发库也没有 sudo，桌面壳 mock-runtime 测试（`just desktop-shell-test`）不在 G-L 内，由 G-W 的 `desktop-test --all-targets` 覆盖 | 冷编 35 分钟可接受；装 GUI 栈要 root |
+| D52 | 没有门禁文件的提交能不能合 | 不能。合到 `main` 或 Goal 分支的每个 sha 必须在同一提交序列里带对应 G-L 记录；改到 `apps/desktop`、`soul-collect/windows.rs`、`soul-win-dpapi`、NSIS 的还要 G-W | 本地门禁唯一弱点是「谁跑的、跑了没」，用落盘记录堵上；D29 同一条纪律 |

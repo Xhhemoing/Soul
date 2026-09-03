@@ -6,14 +6,21 @@
 # stays usable, and CI stays reproducible, without installing `just`.
 #
 #   just              list the recipes
-#   just ci           everything CI runs on Linux
+#   just ci           the whole Linux gate (G-L); see docs/gates/README.md
 #
 # Installing just:  cargo install just --locked --version 1.46.0
 # (1.46 is the last release that builds on the pinned Rust 1.83 toolchain.)
+#
+# There is no hosted CI for this repository (DECISIONS D50). Every gate runs on
+# a machine the author controls and leaves its record under docs/gates/.
 
 set shell := ["bash", "-uc"]
 
 export CARGO_TERM_COLOR := "always"
+# `react-dom` does not export `act` under NODE_ENV=production, and a shell that
+# sets it globally would take every vitest file down with it. The gate must not
+# depend on the environment of whoever runs it.
+export NODE_ENV := "test"
 
 # Show the available recipes.
 default:
@@ -31,9 +38,13 @@ fmt:
     cargo fmt --all
 
 # cargo equivalent: cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings
+# No `--all-features`: no crate in this workspace declares a `[features]`
+# table, so the flag changes nothing except the fingerprint, and a fingerprint
+# that differs from `test` rebuilds vendored OpenSSL/SQLCipher from source
+# (measured: +18 min on the 4-core gate machine).
 lint:
     cargo fmt --all -- --check
-    cargo clippy --workspace --all-targets --all-features -- -D warnings
+    cargo clippy --workspace --all-targets -- -D warnings
 
 # cargo equivalent: cargo test --workspace --all-targets
 test:
@@ -67,9 +78,19 @@ fixtures-verify:
 # Third-party licences, advisories, and the HTTP client ban.
 # cargo equivalent: cargo deny check
 # Needs cargo-deny >= 0.18; older releases cannot parse the current advisory
-# database. See .github/workflows/ci.yml for the pinned install.
+# database. Install a prebuilt binary:
+#   cargo install cargo-deny --locked   (or a release tarball >= 0.18)
 deny:
     cargo deny check
+
+# The licence graph, in cargo-deny's own words, next to what `xtask sbom`
+# says ships. A disagreement between the two files is the thing to look at.
+# cargo equivalent: cargo deny list --layout crate --format json
+deny-list:
+    mkdir -p target/sbom
+    cargo deny list --layout crate --format json > target/sbom/licences.json
+    cargo deny list --layout license --format tsv > target/sbom/licences.tsv
+    @echo "deny-list: target/sbom/licences.json, target/sbom/licences.tsv"
 
 # The whole product, once, with this process's sockets watched. AC-21.
 # cargo equivalent: cargo run -p soulcore --bin soul-headless -- smoke
@@ -99,14 +120,21 @@ smoke-lint:
         echo "smoke-lint: no pwsh here, so only the Rust checks ran (see crates/soulcore/tests/install_smoke_script.rs)"; \
     fi
 
-# Everything the Linux test job runs, in the order it runs it.
-# `deny` is deliberately not chained here: it needs a cargo-deny binary that
-# the workflow installs in the separate lint job. Run `just deny` alongside
-# this locally to reproduce CI in full.
+# The Linux gate without cargo-deny, in the order the gate record lists it.
+# `deny` is not chained here so a checkout without the cargo-deny binary can
+# still run the documented entry point; `ci-full` adds it.
 ci: lint schema e0 denylist fixtures-verify test smoke-lint sbom ui-lint ui-test
 
-# Everything CI checks anywhere, including cargo-deny.
-ci-full: ci deny
+# G-L, the whole Linux gate (docs/gates/README.md). Record the result as
+# docs/gates/<yyyymmdd>-<sha7>-linux.md before merging.
+ci-full: ci deny deny-list
+
+# The desktop shell's mock-runtime tests, which need the webview dev libraries
+# (see the desktop section below). Not part of `ci-full`: the Linux gate
+# machine may not have them. Run this wherever they are installed and record
+# it in the gate file; on Windows `desktop-test` covers the same files.
+desktop-shell-test:
+    cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --test ipc_roundtrip --test command_surface --test no_egress_path
 
 # ---------------------------------------------------------------- UI ---
 # apps/desktop, landed by WP09. `ui-lint` and `ui-test` install first, so
@@ -121,8 +149,11 @@ ui-lint: ui-install
     pnpm --filter @soul/desktop lint
 
 # pnpm equivalent: pnpm --filter @soul/desktop test  (vitest run)
+# `--maxWorkers 2`: on a 4-core gate machine the jsdom suites contend for
+# CPU and the longest wizard flow occasionally trips the 5 s default; two
+# workers is the measured sweet spot, and the same file passes alone in 3 s.
 ui-test: ui-install
-    pnpm --filter @soul/desktop test
+    pnpm --filter @soul/desktop test -- --maxWorkers 2
 
 # The production frontend bundle, which `tauri build` embeds.
 # pnpm equivalent: pnpm --filter @soul/desktop build
@@ -140,12 +171,11 @@ ui-build: ui-install
 #                        librsvg2-dev libxdo-dev build-essential
 #
 # Not chained into `ci`: a Linux author without that GUI stack still has to be
-# able to run the documented entry point. CI installs it as a separate step —
-# the ubuntu job runs ipc_roundtrip, command_surface and no_egress_path against
-# Tauri's mock runtime, which needs no display, so the argument conversion the
-# WebView depends on is exercised there. The Windows job runs the rest of the
-# desktop tests and compiles ipc_roundtrip with `--no-run`, because that
-# runner's WebView2Loader cannot start the harness.
+# able to run the documented entry point. `desktop-shell-test` above runs
+# ipc_roundtrip, command_surface and no_egress_path against Tauri's mock
+# runtime, which needs no display, so the argument conversion the WebView
+# depends on is exercised wherever the libraries exist. The Windows gate
+# (G-W) runs `desktop-test` for the rest.
 
 # cargo equivalent: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets
 desktop-check:

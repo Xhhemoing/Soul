@@ -24,7 +24,7 @@ DPAPI → KEK → DB DEK → 每单元 CK。正文字段 AEAD，AAD=行 id+字�
 
 结论：**走 SQLCipher 路线**，不需要回退。`ASSUMPTION` 中「若打包成本过高则退回 SQLite + 字段级 AEAD」这一条本 WP 未触发。
 
-实测依据（`crates/soul-store-api/tests/sqlcipher_smoke.rs`，ubuntu 与 windows-latest 两个 CI job 都跑）：
+实测依据（`crates/soul-store-api/tests/sqlcipher_smoke.rs`；历史上 ubuntu 与 windows-latest 两个 hosted job 跑过，`2e72ddf` 五门绿；D50 之后在 G-L 与 G-W 两台本地门禁机上跑，见 `docs/gates/`）：
 `rusqlite` 开 `bundled-sqlcipher-vendored-openssl`，`PRAGMA cipher_version` 返回 SQLCipher 4.5.7；建表写行后关闭，带同一 key 重开可读回；不带 key 打开则第一次读失败；写错 key 同样第一次读失败；库文件字节里搜不到那行明文。
 
 两层加密，两层都不可省：
