@@ -97,6 +97,8 @@ sha7 是跑门禁时 `git rev-parse --short=7 HEAD`。工作区不干净就先�
 
 ## 已有记录
 
+- `20260904-6f6a259-linux.md` — G-L 绿（含 deny-list）；无 G-W
+
 | 文件 | sha | 门 | 结果 |
 |---|---|---|---|
 | [20260903-e2b4e48-linux.md](20260903-e2b4e48-linux.md) | e2b4e48 | G-L | 11/11 绿（`deny-list` 当时尚未入 `ci-full`；ui-test 全量并发下 1/161 偶发超时，单文件重跑过） |

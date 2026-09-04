@@ -6,7 +6,7 @@
 
 **`PLAN_FROZEN`**。Goal 1 **还不能关**。
 
-**2026-09-04 文档清理（作者指示，D64 / D65）。** 移除开发流程文档，验收矩阵迁至 `docs/ACCEPTANCE.md`，Goal 2 方向迁至 `docs/GOAL2_PLAN.md`，平台定位按作者澄清记入 D65。产品代码、schema、fixture、`justfile`、脚本零改动（`git diff --stat backup/pre-cleanup-20260904 -- crates apps fixtures Cargo.toml Cargo.lock justfile scripts deny.toml` 为空）。本次为 docs-only 提交，落在分支 `cleanup/planning-only`，尚未合入主干、尚无门禁记录。
+**2026-09-04 文档清理（作者指示，D64 / D65）。** 移除开发流程文档，验收矩阵迁至 `docs/ACCEPTANCE.md`，Goal 2 方向迁至 `docs/GOAL2_PLAN.md`，平台定位按作者澄清记入 D65。产品代码、schema、fixture、`justfile`、脚本零改动（`git diff --stat backup/pre-cleanup-20260904 -- crates apps fixtures Cargo.toml Cargo.lock justfile scripts deny.toml` 为空）。落在分支 `cleanup/planning-only`，尚未合入主干。`6f6a259` 有 G-L 记录（`docs/gates/20260904-6f6a259-linux.md`，全绿），无 G-W。
 
 **E1 准备绑定当时填的地址。** 起草确认句点名 prepare 时的 origin；`Pending` 带着那个 origin；`set_user_endpoint` / `clear_user_endpoint` 丢掉未批准的准备；generate 在当前 origin 缺失或不是当时那个时拒绝且零出站；对不上的 `plan_hash` 不再吃掉屏幕上的准备。对不上的遗忘确认也不再吃掉预览。`FORGET_NOTICE` 不再说「不写任何文件」（遗忘会改 `soul.db` 里的密钥、墓碑和审计行）。人脉图摘要说明列出实际发出的统计项，不只「往来次数」。e0 URL 扫描把 `http://127.0.0.1` / `http://localhost` 锚在主机上，`http://127.0.0.1.evil.com` 不再被当成回环。授权目录扫描碰到 `max_entries` 现在停住走访（含前后快照），不再把剩下的树继续列成跳过项。本机在产品 `97cd79a` 上 `just ci-full` 绿（lint / schema / e0 / denylist / fixtures-verify / `cargo test --workspace --all-targets` / smoke-lint / sbom / ui-lint / ui-test 14 文件 161 项；`cargo deny` advisories / bans / licenses / sources 四项 ok）；这不是 hosted 绿。导入姓名带空格时，起草里不带空格的写法也会占位（AC-12）。`COMMANDS` 仍 36，`config.json` 仍两字段。hosted AC-26 与 Win11 作者手动仍未证。
 
