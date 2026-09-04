@@ -4,7 +4,7 @@
 
 ```sh
 # STATUS 关闭行的固定写法：「Goal 1 已关闭 @ <sha7>」，sha7 = 通过验收的那个提交
-S=$(grep -oE 'Goal 1 已关闭 @ [0-9a-f]{7}' docs/STATUS.md | grep -oE '[0-9a-f]{7}$') || { echo "STATUS 无「Goal 1 已关闭 @ <sha7>」"; exit 1; }
+S=$(grep -oE 'Goal 1 已关闭 @ [0-9a-f]{7}' docs/STATUS.md | grep -oE '[0-9a-f]{7}$' | tail -1) || { echo "STATUS 无「Goal 1 已关闭 @ <sha7>」"; exit 1; }
 ls docs/gates/*-$S-linux.md >/dev/null 2>&1 && ls docs/gates/*-$S-win.md >/dev/null 2>&1 || { echo "缺 $S 的 G-L/G-W 记录"; exit 1; }
 grep -q 'ACCEPTANCE 全部 v0.1 行通过' docs/STATUS.md || { echo "STATUS 未记录验收矩阵通过"; exit 1; }
 ```
