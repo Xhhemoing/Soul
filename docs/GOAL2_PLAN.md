@@ -3,13 +3,13 @@
 ## 前置条件（三条都要能机械检查）
 
 ```sh
-S=$(git rev-parse --short=7 HEAD)
+# STATUS 关闭行的固定写法：「Goal 1 已关闭 @ <sha7>」，sha7 = 通过验收的那个提交
+S=$(grep -oE 'Goal 1 已关闭 @ [0-9a-f]{7}' docs/STATUS.md | grep -oE '[0-9a-f]{7}$') || { echo "STATUS 无「Goal 1 已关闭 @ <sha7>」"; exit 1; }
 ls docs/gates/*-$S-linux.md >/dev/null 2>&1 && ls docs/gates/*-$S-win.md >/dev/null 2>&1 || { echo "缺 $S 的 G-L/G-W 记录"; exit 1; }
-grep -q 'Goal 1 已关闭' docs/STATUS.md || { echo "STATUS 未记录 Goal 1 关闭"; exit 1; }
 grep -q 'ACCEPTANCE 全部 v0.1 行通过' docs/STATUS.md || { echo "STATUS 未记录验收矩阵通过"; exit 1; }
 ```
 
-三条任一失败即停，不启动 Goal 2。约定：关闭 Goal 1 时，`docs/STATUS.md` 必须逐字写入「Goal 1 已关闭」与「ACCEPTANCE 全部 v0.1 行通过」两句，否则上面的检查永远不会为真。
+三条任一失败即停，不启动 Goal 2。约定：关闭 Goal 1 时，`docs/STATUS.md` 必须逐字写入「Goal 1 已关闭 @ <sha7>」（sha7 为通过验收的提交）与「ACCEPTANCE 全部 v0.1 行通过」两句。不以 HEAD 取 sha，因为写门禁记录的提交本身会改变 HEAD。
 
 ## 方式
 
