@@ -1,7 +1,6 @@
 # Goal 1 实现规划
 
-来源：fable planner `claude-fable-5-thinking-xhigh`（bc-95047a81-e209-50af-858a-ebe34b721a8c）。
-父代理采纳。工作包只减不增。Goal 2 不要启动。文档 PR `#1` 不夹带应用代码；本文件随 Goal 1 分支落地。
+来源：2026-08 计划冻结后的实现规划。工作包只减不增。Goal 2 不要启动。本文件随 Goal 1 分支落地。
 
 ## 钉死
 
@@ -23,11 +22,11 @@ WP01 ──┬──▶ WP02 ──┬──────────────
        └──▶ WP09(壳) ──▶ WP09(功能视图) ──▶ WP13
 ```
 
-WP01 独占先行。其后 WP02–WP06、WP08 面向 `soul-store-api` 可并行（每批最多 2 名 opus；数据/权限面与 UI 面分人）。WP07 依赖 WP02+WP08。WP10/WP11 依赖 WP08。WP13 收尾。
+WP01 独占先行。其后 WP02–WP06、WP08 面向 `soul-store-api` 可并行（每批最多两条并行工作线；数据/权限面与 UI 面分开）。WP07 依赖 WP02+WP08。WP10/WP11 依赖 WP08。WP13 收尾。
 
 ## 批次
 
-| 批 | 人 | 包 | 面 |
+| 批 | 并行度 | 包 | 面 |
 |---|---|---|---|
 | 1 | 1 | WP01 | 基建 |
 | 2 | 2 | WP02；WP08 | 数据；权限 |
@@ -38,7 +37,7 @@ WP01 独占先行。其后 WP02–WP06、WP08 面向 `soul-store-api` 可并行�
 
 ## 仓库布局（目标态）
 
-见 planner 原文。关键 crate：`soul-schema`、`soul-store-api`、`soul-testkit`、`xtask`、`soulcore`（WP01）；`soul-store`（WP02）；`soul-profile` / `soul-memory` / `soul-graph` / `soul-import` / `soul-collect` / `soul-policy` / `soul-egress` / `soul-draft` / `soul-fileplan`；`apps/desktop`（WP09）。
+关键 crate：`soul-schema`、`soul-store-api`、`soul-testkit`、`xtask`、`soulcore`（WP01）；`soul-store`（WP02）；`soul-profile` / `soul-memory` / `soul-graph` / `soul-import` / `soul-collect` / `soul-policy` / `soul-egress` / `soul-draft` / `soul-fileplan`；`apps/desktop`（WP09）。
 
 ## WP01 完成定义
 
@@ -75,7 +74,7 @@ WP01 禁止：产品定义文档、`apps/`、业务 crate、HTTP client 进 norm
 
 ## AC 映射
 
-权威矩阵在 `docs/FORMAL_WORK_PROMPT.md`。「CI」一律读作本地门禁（D50）。G-L 不能自证的仅 AC-01 托盘目视（G-W 的 `gate-win.ps1` 做 asInvoker 与 `-SkipInstall` smoke 半自证；托盘 author-manual）。AC-09/10 真机行为进手动清单，CI 用 Fake 源走真管道。
+权威矩阵在 `docs/ACCEPTANCE.md`。「CI」一律读作本地门禁（D50）。G-L 不能自证的仅 AC-01 托盘目视（G-W 的 `gate-win.ps1` 做 asInvoker 与 `-SkipInstall` smoke 半自证；托盘 author-manual）。AC-09/10 真机行为进手动清单，CI 用 Fake 源走真管道。
 
 ## 红线
 

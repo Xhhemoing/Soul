@@ -8,7 +8,7 @@
 
 | 门 | 在哪跑 | 命令 | 覆盖 |
 |---|---|---|---|
-| **G-L** | Linux 开发机（D51：Hermes 开发机，4 vCPU / 3.9 GB） | `just ci-full` | lint / schema / e0 / denylist / fixtures-verify / `cargo test --workspace --all-targets` / smoke-lint / sbom / ui-lint / ui-test / `cargo deny check` / `cargo deny list` |
+| **G-L** | Linux 开发机（D51：本项目指定的 Linux 门禁机，4 vCPU / 3.9 GB） | `just ci-full` | lint / schema / e0 / denylist / fixtures-verify / `cargo test --workspace --all-targets` / smoke-lint / sbom / ui-lint / ui-test / `cargo deny check` / `cargo deny list` |
 | **G-W** | 作者 Win11 真机 | `pwsh -File scripts/gate-win.ps1` | `cargo test --workspace --all-targets`（含 SQLCipher、DPAPI）/ 桌面壳 `--all-targets` / 前端 bundle / release 二进制 / `soul.exe` 内嵌 `asInvoker` / `install-smoke.ps1 -SkipInstall` |
 | **G-M** | 作者 Win11 真机 | `scripts/author-manual-checklist.md` | `tauri build`、真装真卸、托盘、UAC、进程名、WebView2 抓包、真机采集（没有任何自动化能替） |
 
