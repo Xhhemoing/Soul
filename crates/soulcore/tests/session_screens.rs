@@ -617,6 +617,12 @@ fn a_forget_only_runs_on_the_preview_the_user_read() {
         "the notice does not say which kind of write this is not: {}",
         listed.forget_notice,
     );
+    assert!(
+        listed.forget_notice.contains("Soul 自己的加密库要写")
+            && listed.forget_notice.contains("数据目录以外的"),
+        "the notice does not say which storage a forget writes: {}",
+        listed.forget_notice,
+    );
 
     // A forget nobody previewed is refused, and nothing is destroyed by the
     // refusal — the memory is still readable afterwards.

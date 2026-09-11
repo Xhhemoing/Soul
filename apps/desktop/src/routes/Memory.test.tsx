@@ -60,9 +60,9 @@ describe("自传记忆页", () => {
     await open();
 
     const notice = screen.getByTestId("forget-notice");
-    expect(notice).toHaveTextContent("它改的只有加密库本身");
+    expect(notice).toHaveTextContent("数据目录以外的任何文件");
+    expect(notice).toHaveTextContent("Soul 自己的加密库要写");
     expect(notice).toHaveTextContent("审计记录");
-    expect(notice).toHaveTextContent("你授权过的那些目录里的文件一个都不会动");
     expect(notice.textContent).not.toContain("也不写任何文件");
   });
 

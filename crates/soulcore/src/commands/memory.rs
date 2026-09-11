@@ -87,22 +87,28 @@ pub const MEMORY_TYPES: [MemoryType; 5] = [
 /// content key goes and the row stays as a tombstone. Held on this side so the
 /// screen cannot soften it.
 ///
-/// The middle sentence is careful about which writes it denies, because a
-/// forget does write: it drops a wrapped key, leaves a tombstone and appends
-/// to the audit chain, and all three of those land in `soul.db`. The promise
-/// PRODUCT_LOCK makes is the other one — v0.1 executes no file plan — so what
-/// the notice says is that this button is not that missing `execute` and that
-/// no file under an authorized root moves.
+/// The middle sentence used to read 也不写任何文件, which was false of the one
+/// storage a forget cannot avoid: [`ForgetOps::execute_forget`] opens a
+/// transaction, deletes the content-key and sealed-blob rows, marks tombstones
+/// and orphans the inferences that cited them, and commits — and the service
+/// appends an audit record after it. Soul's own database and its journal are
+/// written every time. What the sentence can honestly promise is the scope:
+/// nothing outside Soul's data directory is touched, and this button is not
+/// the file-plan `execute` v0.1 does not ship.
 ///
 /// The last sentence is the second half of D15. PRODUCT_LOCK refuses to
 /// promise an SSD physical erase *and* requires the UI to write that honestly,
 /// so the limit travels with the notice instead of waiting for a screen to
-/// remember it: without it, "forgotten" reads as "the bits are gone".
+/// remember it: without it, "forgotten" reads as "the bits are gone". The two
+/// limits are different and both stay — one is which files change, the other
+/// is what stays behind in the blocks that already held the ciphertext.
+///
+/// [`ForgetOps::execute_forget`]: soul_store_api::forget::ForgetOps::execute_forget
 pub const FORGET_NOTICE: &str =
     "遗忘销毁的是这条记忆的内容密钥：正文从此打不开，行会留成一块墓碑，\
-    引用过它的推断会被标成失去依据。这一步不可撤销。它改的只有加密库本身——\
-    密钥、墓碑，以及追加一条不含正文的审计记录；它不是文件整理的执行，\
-    你授权过的那些目录里的文件一个都不会动。\
+    引用过它的推断会被标成失去依据。这一步不可撤销。它不动 Soul 数据目录以外的\
+    任何文件，但 Soul 自己的加密库要写：密钥行和密文行被删掉，墓碑、失据标记和\
+    一条审计记录被写进去，数据库文件和它的日志都会跟着变。它不是文件整理的执行。\
     这不是把磁盘块擦干净：SSD 上可能还留着旧密文，只是没有密钥再也打不开。";
 
 /// One memory in a list, with the prose left sealed.
