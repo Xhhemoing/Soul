@@ -664,8 +664,10 @@ fn the_session_says_which_key_material_opened_the_store() {
         assert_eq!(status.key_protection, "dpapi");
         assert!(status.store_opened, "{}", status.store_notice);
         assert!(
-            status.store_notice.contains("密钥"),
-            "a protected build has to say what protects it: {}",
+            status.store_notice.contains("密钥")
+                && status.store_notice.contains("永久打不开")
+                && status.store_notice.contains("没有恢复入口"),
+            "a protected build has to say what protects it and that losing the key is final: {}",
             status.store_notice,
         );
         assert!(

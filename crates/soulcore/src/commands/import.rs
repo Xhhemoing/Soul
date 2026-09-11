@@ -51,7 +51,7 @@ pub fn read_soul_import_v1(text: &str) -> Result<StagedImport, ImportFailure> {
 ///
 /// The caller supplies the parsed JSON. This crate does not open files, and
 /// v0.1 does not sniff archives: the user points at the `result.json` that
-/// Telegram's own *Export chat history* produced.
+/// Telegram's own *Settings → Advanced → Export Telegram data* produced.
 pub fn read_telegram(document: &Value) -> Result<StagedImport, ImportFailure> {
     soul_import::telegram::parse(document)
 }
@@ -111,7 +111,16 @@ pub struct ImportPreview {
     /// Whether the file says which participant is the user. A commit without
     /// one is refused: there would be no centre to the graph.
     pub owner_identified: bool,
-    /// Always false. Reading a file writes nothing.
+    /// Always false: reading a file seals no contact, no event and no piece of
+    /// evidence, and the counts above are the whole of what it produced.
+    ///
+    /// Not a claim that the database was left untouched. A preview whose file
+    /// carried injection markers has already appended one `injection.blocked`
+    /// row through `Session::note_injection` by the time this value is
+    /// returned, and abandoning the preview leaves that row standing — the
+    /// import channel was exercised and AC-25 wants that on the chain. A
+    /// screen that reads this field as "nothing has been written" would be
+    /// telling a hostile-export user something the audit table disagrees with.
     pub writes_anything: bool,
     pub notice: String,
 }

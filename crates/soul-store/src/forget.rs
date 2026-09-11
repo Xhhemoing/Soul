@@ -73,10 +73,21 @@ impl SqlCipherStore {
                  WHERE memory_id = ? ORDER BY content_key_id",
                 &[id.to_string()],
             ),
+            // A contact owns more than the key behind their display label. An
+            // import seals their message bodies under a content key of their
+            // own and anchors it against their row; when the export gave no
+            // display name — no `soul-import-v1` file does — that anchor is
+            // the only record the key was ever theirs. Reading the label
+            // column alone is how forgetting such a person became a no-op that
+            // still issued a receipt.
             ForgetUnit::Contact(id) => self.uuid_column(
-                "SELECT display_label_key_id FROM contacts
-                 WHERE contact_id = ? AND display_label_key_id IS NOT NULL",
-                &[id.to_string()],
+                "SELECT DISTINCT content_key_id FROM (
+                     SELECT display_label_key_id AS content_key_id FROM contacts
+                      WHERE contact_id = ? AND display_label_key_id IS NOT NULL
+                     UNION ALL
+                     SELECT content_key_id FROM sealed_blobs WHERE row_id = ?
+                 ) ORDER BY content_key_id",
+                &[id.to_string(), id.to_string()],
             ),
         }
     }
@@ -96,12 +107,20 @@ impl SqlCipherStore {
             ),
             &key_text,
         )?;
+        // The same two paths, read the other way round: a label-less contact
+        // is reachable from their key only through the blob anchored to their
+        // row, and without that the row would never become a tombstone.
+        let mut keys_twice = key_text.clone();
+        keys_twice.extend(key_text.clone());
         let contacts = self.uuid_column(
             &format!(
                 "SELECT contact_id FROM contacts
-                 WHERE display_label_key_id IN ({key_slots}) ORDER BY contact_id"
+                 WHERE display_label_key_id IN ({key_slots})
+                    OR contact_id IN (SELECT row_id FROM sealed_blobs
+                                      WHERE content_key_id IN ({key_slots}))
+                 ORDER BY contact_id"
             ),
-            &key_text,
+            &keys_twice,
         )?;
 
         // Evidence a memory cites directly, plus evidence carried by the graph
@@ -265,6 +284,17 @@ impl ForgetOps for SqlCipherStore {
             )
             .map_err(backend)?;
 
+            // Deleting the row frees the id. `ensure_content_key` mints a key
+            // for any id it does not already hold, so without this the next
+            // seal naming a forgotten id would quietly give the tombstones
+            // that name it a live key again. Same transaction as the delete,
+            // so a crash cannot leave one without the other.
+            tx.execute(
+                "INSERT OR IGNORE INTO destroyed_content_keys (content_key_id) VALUES (?1)",
+                [content_key_id.to_string()],
+            )
+            .map_err(backend)?;
+
             // AC-15 injects between one destruction and the next. The whole
             // forget runs in one transaction, so a crash here leaves every key
             // intact rather than half the unit readable and half not.
@@ -298,6 +328,18 @@ impl ForgetOps for SqlCipherStore {
 
         // The audit tables are deliberately untouched.
         tx.commit().map_err(backend)?;
+
+        // Zeroing the freed page, which `PRAGMA secure_delete` does, only
+        // settles the main database file. The write-ahead log still holds the
+        // frames written before the delete, and those carry the page as it was
+        // when the wrapped key was on it. Truncating the log is what discards
+        // them; until then the key sits next to a database the DEK opens.
+        self.checkpoint().map_err(|error| {
+            StoreError::Backend(format!(
+                "the content keys were destroyed, but folding the write-ahead log back in \
+                 failed, so it may still hold their wrapped bytes: {error}"
+            ))
+        })?;
 
         Ok(ForgetReceipt { unit, impact })
     }

@@ -119,6 +119,19 @@ impl KnownIdentifiers {
         self
     }
 
+    /// Registered as written, in one width only.
+    ///
+    /// A contact card holds `13800138000` and a paste may spell the same
+    /// number `１３８００１３８０００`, which is not this string and is not
+    /// replaced by name. What covers it is [`phone_shape_end`], which reads a
+    /// digit in [either width](is_phone_digit): a registered number is at
+    /// least seven digits, so the shape reaches it whichever way it was typed.
+    ///
+    /// Folding the widths here as well would be the tighter fix, and it is a
+    /// separate change: it belongs with the same fold on the leakage checker's
+    /// corpus side, and unlike the shape net it can only be got right by
+    /// deciding what an account that is not a phone number — a handle, an
+    /// address — should fold to.
     pub fn add_account(&mut self, account: &str) -> &mut Self {
         let normalized = normalize(account);
         if !normalized.is_empty() {
@@ -337,7 +350,8 @@ impl Redactor {
 }
 
 /// Replace the identifier shapes nobody had to register: e-mail addresses,
-/// `@handles`, and digit runs long enough to be a phone number.
+/// `@handles`, and digits — run together or grouped — in enough quantity to be
+/// a phone number. See [`phone_shape_end`] for what counts as grouped.
 ///
 /// Registered identifiers are handled before this; the shapes are the safety
 /// net for a contact the graph never learned about.
@@ -371,11 +385,8 @@ fn scrub_identifier_shapes(text: &str) -> String {
             }
         }
 
-        if c.is_ascii_digit() {
-            let end = run_end(&scalars, index, |c| c.is_ascii_digit());
-            // Seven digits is the shortest thing that is plausibly a phone
-            // number rather than a date, a count or a port.
-            if end - index >= 7 {
+        if is_phone_digit(c) {
+            if let Some(end) = phone_shape_end(&scalars, index) {
                 out.push_str(ACCOUNT_PLACEHOLDER);
                 index = end;
                 continue;
@@ -388,6 +399,140 @@ fn scrub_identifier_shapes(text: &str) -> String {
 
     out
 }
+
+/// Seven digits is the shortest thing that is plausibly a phone number rather
+/// than a date, a count or a port.
+const MIN_PHONE_DIGITS: usize = 7;
+
+/// Where the phone-number shape starting at `start` ends, if there is one.
+///
+/// A person writing a number down for another person to read groups it:
+/// `138 0013 8000` and `138-0013-8000` are the same number as `13800138000`,
+/// and a rule that counted only unbroken runs saw none of them, because every
+/// group on its own is shorter than a number. So the groups are counted
+/// instead of the run. A single [separator](is_group_separator) joins one
+/// group to the next, and it is the total that has to reach
+/// [`MIN_PHONE_DIGITS`].
+///
+/// A digit is [either width](is_phone_digit), because the layout the number
+/// was typed on is not something the person being protected chose.
+///
+/// Nothing else joins. Two separators in a row, a comma, a colon or a Han
+/// character ends the run, which is what leaves 下午 3 点，第 2 会议室，预算
+/// 45000 the sentence the user wrote: three groups that never touch.
+///
+/// What is replaced is the whole grouped run, separators included, rather than
+/// one group at a time. Stopping at the first seven digits would leave ` 8000`
+/// standing beside the placeholder, which is the last four digits of the
+/// number on the wire.
+///
+/// # The false positives this buys
+///
+/// `2026-08-25` is eight digits in three groups, so it is placeheld. It is a
+/// date and nobody can be reached on it, and a paste that quotes one loses it
+/// to a placeholder.
+///
+/// The widenings above each add one of the same kind. A year range,
+/// `2019–2026`, is eight digits in two groups joined by an en-dash, which is
+/// the punctuation a range is written with far more often than a number is.
+/// `２０２６－０８－２５` is that same ISO date, typed on an IME, and
+/// `２０２６．０８．２５` is it again with the dot that IME gives: a
+/// fullwidth-dotted digit run totalling seven digits or more is placeheld, on
+/// exactly the terms the ASCII-dotted `2026.08.25` already was.
+///
+/// The trade is deliberate and it is the same one-directional trade
+/// [`KnownIdentifiers::add_name`] makes: a placeholder too many is something
+/// the user can see and work around, and a number on the wire is not.
+/// Excusing the `\d{4}-\d{2}-\d{2}` shape by name would be a few lines, and it
+/// would excuse every number that happens to be punctuated 4-2-2 along with
+/// the dates; excusing the en-dash would put `138–0013–8000` back on the wire.
+/// Letting a number through because of how it was written is the wrong
+/// direction to be wrong in.
+fn phone_shape_end(scalars: &[char], start: usize) -> Option<usize> {
+    let mut index = start;
+    let mut digits = 0usize;
+    let mut end = start;
+
+    loop {
+        let group_end = run_end(scalars, index, is_phone_digit);
+        if group_end == index {
+            break;
+        }
+        digits += group_end - index;
+        end = group_end;
+        let separated = scalars
+            .get(group_end)
+            .is_some_and(|c| is_group_separator(*c))
+            && scalars
+                .get(group_end + 1)
+                .copied()
+                .is_some_and(is_phone_digit);
+        if !separated {
+            break;
+        }
+        index = group_end + 1;
+    }
+
+    (digits >= MIN_PHONE_DIGITS).then_some(end)
+}
+
+/// A digit of a phone number, in either of the two widths a keyboard produces.
+///
+/// U+FF10–U+FF19 are what a Chinese IME in fullwidth mode gives, and
+/// `１３８００１３８０００` is the same number as `13800138000` to every reader
+/// and every phone. `char::is_ascii_digit` is the whole reason it was not: the
+/// phone shape was written against ASCII, so a number typed on the layout most
+/// of this product's users have in front of them was not a number to it.
+///
+/// The two widths are folded here rather than by normalizing the text, because
+/// NFKC would also fold the fullwidth punctuation around them and hand the
+/// endpoint a message the user never wrote — and the message is the thing two
+/// confirmation screens were about.
+fn is_phone_digit(c: char) -> bool {
+    c.is_ascii_digit() || ('\u{FF10}'..='\u{FF19}').contains(&c)
+}
+
+/// The characters a written-out number is grouped by, and no others.
+///
+/// A comma groups digits too (`45,000`), and it is left out on purpose: it is
+/// also how a Chinese sentence separates its clauses, so joining across one
+/// would let a budget and a room number add up to a phone number.
+///
+/// The dash is whichever dash the keyboard produced. An IME on a Chinese
+/// layout gives U+FF0D, a document that has been through an autocorrect gives
+/// U+2013 or U+2014, a spreadsheet gives U+2212, and a typographer's hyphen is
+/// U+2010 or U+2011. They are one dash to the person reading the number, and a
+/// rule that knew only the ASCII one placeheld `138-0013-8000` and left
+/// `138–0013–8000` on the wire. Worse, it left `138-0013–8000` half done: the
+/// run stopped at the dash it did not know, and `8000` — the last four digits
+/// — stood beside the placeholder, which is the failure the whole-run
+/// replacement above exists to prevent.
+///
+/// The dot is likewise whichever width it was typed in. The same IME in
+/// fullwidth mode gives U+FF0E for the same key the ASCII dot is on, so
+/// `１３８．００１３．８０００` is a number with neither an ASCII digit nor an
+/// ASCII separator anywhere in it, and `138.0013．8000` is the half-corrected
+/// line that left the tail standing. The ASCII dot was already accepted here;
+/// U+FF0E is the same separator in the other width.
+fn is_group_separator(c: char) -> bool {
+    is_label_space(c)
+        || matches!(c, '.' | '\u{FF0E}')
+        || matches!(
+            c,
+            '-' | '\u{2010}'
+                | '\u{2011}'
+                | '\u{2012}'
+                | '\u{2013}'
+                | '\u{2014}'
+                | '\u{2212}'
+                | '\u{FF0D}'
+        )
+}
+
+fn is_label_space(c: char) -> bool {
+    c == ' ' || c == '\u{3000}'
+}
+
 
 fn run_end(scalars: &[char], from: usize, mut accept: impl FnMut(char) -> bool) -> usize {
     let mut end = from;

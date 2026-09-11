@@ -60,6 +60,7 @@ describe("导入页", () => {
 
     expect(screen.getByText(/soul-import-v1 JSONL/)).toBeVisible();
     expect(screen.getByText(/Telegram Desktop 的 result.json/)).toBeVisible();
+    expect(screen.getByText(/Export Telegram data/)).toBeVisible();
     expect(screen.getByText(/Machine-readable JSON/)).toBeVisible();
     expect(screen.getByLabelText("选择文件")).toHaveAttribute("type", "file");
   });
@@ -84,10 +85,32 @@ describe("导入页", () => {
 
     expect(await screen.findByTestId("preview-counts")).toHaveTextContent("4 个人，2 个会话，16 条消息");
     expect(screen.getByTestId("preview-source")).toHaveTextContent("soul-import-v1");
-    expect(screen.getByTestId("preview-writes")).toHaveTextContent("还什么都没有写进库里");
+    expect(screen.getByTestId("preview-writes")).toHaveTextContent(
+      "人、会话、消息一条都没有写进库里",
+    );
     expect(screen.getByTestId("preview-notice")).toHaveTextContent(IMPORT_LOCAL_ONLY_NOTICE);
     expect(renderedText()).not.toContain(A_SENTENCE);
     expect(renderedText()).not.toContain("u-lilei");
+  });
+
+  /**
+   * 「到这一步还什么都没有写进库里」 was false for exactly the user who most
+   * needed it to be true. Both preview commands call `Session::note_injection`
+   * before returning, so a file carrying injection markers has already
+   * appended an `injection.blocked` row to the audit chain by the time this
+   * panel renders, and 换一个文件 leaves that row standing. What the preview
+   * can promise is that none of the file's people, conversations or messages
+   * were sealed; the audit row is said out loud instead of covered over.
+   */
+  it("预览只保证这个文件的内容没入库，注入标记留下的审计行照直说", async () => {
+    await pick(JSONL, "valid_basic.jsonl", {
+      readingImport: (source) => anImportPreview({ source, messages_with_injection_markers: 2 }),
+    });
+
+    const writes = await screen.findByTestId("preview-writes");
+    expect(writes).toHaveTextContent("人、会话、消息一条都没有写进库里");
+    expect(writes).toHaveTextContent("审计链上留下了一行");
+    expect(writes.textContent).not.toContain("还什么都没有写进库里");
   });
 
   /** The whole file went to the core, and none of it came back onto the page. */
@@ -132,6 +155,28 @@ describe("导入页", () => {
     await user.click(screen.getByRole("button", { name: "确认导入" }));
 
     expect(await screen.findByTestId("receipt-injection")).toHaveTextContent("没有被执行");
+  });
+
+  /**
+   * v0.1 keeps no external-id index, so the same export committed twice writes
+   * its events twice and the graph counts every duplicate as a real
+   * interaction — a tie can cross a band on duplicate evidence alone. The
+   * scoping decision stands; what may not stand is a screen that never says
+   * so. Both the screen before the decision and the screen after it warn.
+   */
+  it("预览和回执都写明同一份文件再导一次会把往来记录再写一遍", async () => {
+    const { user } = await pick(JSONL, "valid_basic.jsonl");
+
+    const before = await screen.findByTestId("preview-reimport");
+    expect(before).toHaveTextContent("同一份文件再导一次");
+    expect(before).toHaveTextContent("往来次数和关系强度");
+
+    await user.click(screen.getByRole("button", { name: "确认导入" }));
+
+    const after = await screen.findByTestId("receipt-reimport");
+    expect(after).toHaveTextContent("再导一遍");
+    expect(after).toHaveTextContent("人会对上不会重复");
+    expect(after).toHaveTextContent("往来次数和关系强度");
   });
 
   it("挑 Telegram 的时候走的是 Telegram 那条命令", async () => {

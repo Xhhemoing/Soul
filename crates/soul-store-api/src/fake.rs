@@ -30,6 +30,10 @@ use crate::{AuditLog, BlobStore, EventStore, GraphStore, MemoryStore, ProfileSto
 #[derive(Debug, Clone)]
 struct SealedBlob {
     content_key_id: Uuid,
+    /// The row the field belongs to, kept for the same reason the encrypted
+    /// backend indexes it: it is the only record that a content key belongs to
+    /// a contact the export never named.
+    row_id: Uuid,
     nonce: Vec<u8>,
     ciphertext: Vec<u8>,
 }
@@ -110,12 +114,24 @@ impl FakeStore {
                     }
                 }
             }
+            // Both paths the encrypted backend reads, and for the same reason:
+            // a contact owns the key behind their display label, and also every
+            // key a blob was sealed under against their own row. An import of a
+            // file that gives no display name — `soul-import-v1` gives none —
+            // writes only the second, so a lookup that read the label alone
+            // would find nothing to destroy and still report a forget.
             ForgetUnit::Contact(id) => {
                 if let Some(contact) = self.contacts.get(&id) {
                     if let Some(sealed) = &contact.display_label_ref {
                         keys.insert(sealed.content_key_id);
                     }
                 }
+                keys.extend(
+                    self.blobs
+                        .values()
+                        .filter(|blob| blob.row_id == id)
+                        .map(|blob| blob.content_key_id),
+                );
             }
         }
         keys.into_iter().collect()
@@ -135,6 +151,9 @@ impl FakeStore {
             .collect()
     }
 
+    /// The same two paths read the other way round: without the anchored blob,
+    /// a label-less contact would never be reached from their own key and the
+    /// row would never become the tombstone the receipt claims it is.
     fn contacts_under(&self, keys: &[Uuid]) -> Vec<Uuid> {
         self.contacts
             .values()
@@ -143,6 +162,9 @@ impl FakeStore {
                     .display_label_ref
                     .as_ref()
                     .is_some_and(|sealed| keys.contains(&sealed.content_key_id))
+                    || self.blobs.values().any(|blob| {
+                        blob.row_id == contact.contact_id && keys.contains(&blob.content_key_id)
+                    })
             })
             .map(|contact| contact.contact_id)
             .collect()
@@ -442,6 +464,7 @@ impl BlobStore for FakeStore {
             blob_id,
             SealedBlob {
                 content_key_id: request.content_key_id,
+                row_id: request.row_id,
                 nonce: nonce.to_vec(),
                 ciphertext,
             },

@@ -5,8 +5,17 @@
 //! `soul-import-v1` line, a Telegram chat — an importer reduces it to
 //! [`InteractionRef`] values and stores them in the `source_refs` of an
 //! ordinary evidence row. Everything downstream reads evidence, so an edge can
-//! always answer "which observations put you here" with ids that resolve, and
-//! forgetting the underlying rows takes the edge's support with it.
+//! always answer "which observations put you here" with ids that resolve.
+//!
+//! Forgetting a contact does not take those rows away. It destroys the content
+//! keys their words were sealed under and tombstones the contact row, and it
+//! leaves the evidence and the edge exactly where they are — deleting them
+//! would leave every id the edge cites unresolvable, which is the one thing
+//! `crate::view::resolve_evidence` refuses. What tells a reader the person is
+//! gone is [`PersonNode::forget_state`](crate::model::PersonNode::forget_state),
+//! so anything that would speak about a person has to look there:
+//! `crate::build::rebuild` skips their observations, and `soul-draft` refuses
+//! their summary.
 //!
 //! Three things are deliberately absent from this record:
 //!

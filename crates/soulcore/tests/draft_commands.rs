@@ -162,6 +162,73 @@ fn approving_the_plan_sends_exactly_the_body_that_was_described() {
     }
 }
 
+/// The confirmation screen's promise, read against the bytes it approves.
+///
+/// The panel under the notice is counts, a plan hash and a preparation id, and
+/// none of those are in the request JSON; the owner's profile brief and a fixed
+/// system instruction are, and neither used to be named. A notice that says
+/// 只有下面这些内容 is therefore false in both directions at once, which is why
+/// the assertions below run against `endpoint.requests()` rather than against
+/// the sentence alone: each thing the notice claims travels is looked for on
+/// the wire, and the panel-only fields are required to be disclaimed.
+#[test]
+fn the_confirmation_notice_names_what_the_request_body_actually_carries() {
+    let endpoint = MockLlm::start().expect("the endpoint the user configured");
+    let mut policy = pointed_at(&endpoint);
+    let mut drafting = drafting();
+
+    let plan = drafting
+        .prepare(&mut policy, a_paste(), None, RequestOrigin::User, NOW_MS)
+        .expect("a plan the user can read");
+    assert_eq!(plan.notice, E1_PLAN_NOTICE);
+    assert!(
+        !plan.notice.contains("只有下面这些内容"),
+        "the notice still calls the panel the payload: {}",
+        plan.notice,
+    );
+    for named in ["模型", "系统指令", "档案摘要", "占位", "不会替你发送"] {
+        assert!(
+            plan.notice.contains(named),
+            "the notice does not mention `{named}`: {}",
+            plan.notice,
+        );
+    }
+    // The three fields the panel shows and the body does not carry.
+    assert!(
+        plan.notice.contains("不在发出去的内容里"),
+        "the notice does not say the counts, hash and id stay here: {}",
+        plan.notice,
+    );
+
+    drafting
+        .generate(&mut policy, &plan.approval(), NOW_MS)
+        .expect("the endpoint answers");
+
+    let sent = &endpoint.requests()[0].body;
+    for disclosed in [
+        MODEL,
+        soul_policy::e1::DRAFTING_INSTRUCTION,
+        soul_draft::brief::BRIEF_HEADING,
+        THIRD_PARTY_PLACEHOLDER,
+    ] {
+        assert!(
+            sent.contains(disclosed),
+            "the notice named something the body does not carry: `{disclosed}` not in {sent}",
+        );
+    }
+    // And the fields the notice says stay on screen really do.
+    for withheld in [
+        plan.plan_hash.as_str(),
+        plan.preparation_id.as_str(),
+        "third_party_turns",
+    ] {
+        assert!(
+            !sent.contains(withheld),
+            "`{withheld}` is in the body the notice says it is not: {sent}",
+        );
+    }
+}
+
 #[test]
 fn a_prepared_body_can_be_sent_once_and_not_twice() {
     let endpoint = MockLlm::start().expect("the endpoint");

@@ -114,6 +114,99 @@ fn zwj_emoji_sequences_do_not_split_the_window() {
     );
 }
 
+/// A registered number is the same number however it was typed, and the
+/// checker has to say so or the harness reports clean on a leak.
+///
+/// The corpus holds one spelling — whatever the contact card had. A body that
+/// carries the same digits in fullwidth, or grouped by a dash the corpus entry
+/// was not grouped by, is the number on the wire, and a checker that only
+/// compares NFC substrings sees a different string and passes it. That is not
+/// a checker being lenient, it is a checker that cannot fail on the leak the
+/// redactor's phone shape exists to prevent — so the two are widened together.
+#[test]
+fn a_registered_number_is_caught_in_every_width_and_grouping() {
+    let mut checker = LeakageChecker::new();
+    checker.add_known_identifier("phone_cn", "13800138000");
+
+    for spelling in [
+        "13800138000",
+        "138 0013 8000",
+        "138-0013-8000",
+        "138.0013.8000",
+        "138　0013　8000",
+        "138\u{2013}0013\u{2013}8000",
+        "138\u{FF0D}0013\u{FF0D}8000",
+        "138\u{FF0E}0013\u{FF0E}8000",
+        "138-0013\u{2013}8000",
+        "138.0013\u{FF0E}8000",
+        "１３８００１３８０００",
+        "１３８－００１３－８０００",
+        "１３８．００１３．８０００",
+        "１３８ ００１３ ８０００",
+        "138００１３8000",
+    ] {
+        let findings = checker.inspect(&format!("留的号码是 {spelling}。"));
+        assert_eq!(
+            findings.len(),
+            1,
+            "`{spelling}` is the registered number and was not reported: {findings:#?}",
+        );
+        assert_eq!(findings[0].kind, LeakageKind::KnownIdentifier);
+        assert_eq!(findings[0].source_id, "phone_cn");
+    }
+}
+
+/// The other half of the rule above: it must not turn every sentence with
+/// digits in it into a leak.
+///
+/// The digits are joined across a separator and nothing else, exactly as
+/// `soul_policy`'s phone shape joins them. A comma, a Han character or a
+/// second separator ends the run, which is what leaves the sentence the
+/// redactor's `short_numbers_and_ordinary_words_are_left_alone` pins — three
+/// groups adding to seven digits that never touch — reported clean.
+#[test]
+fn digits_that_do_not_add_up_to_the_registered_number_are_not_a_leak() {
+    let mut checker = LeakageChecker::new();
+    checker.add_known_identifier("phone_cn", "13800138000");
+
+    for clean in [
+        "下午 3 点，第 2 会议室，预算 45000。",
+        // The same digits, broken by prose rather than joined by a separator.
+        "先拨 138，再拨 0013，最后 8000。",
+        // Two separators in a row do not join, as in the redactor, in either
+        // width the separator was typed in.
+        "138 - 0013 - 8000",
+        "１３８ ．００１３．８０００",
+        // A different number that merely starts the same way.
+        "留的号码是 13800139999。",
+    ] {
+        assert!(
+            checker.is_clean(clean),
+            "`{clean}` is not the registered number: {:#?}",
+            checker.inspect(clean),
+        );
+    }
+}
+
+/// A short registered account keeps being matched as written.
+///
+/// The digit rule is for numbers long enough to be one. A handle with a digit
+/// in it must not be re-read as digits, or `@wang_xiao2` would match anything
+/// containing a `2`.
+#[test]
+fn the_digit_rule_does_not_loosen_short_identifiers() {
+    let mut checker = LeakageChecker::new();
+    checker.add_known_identifier("handle_wang_xiao", "@wang_xiao2");
+    checker.add_known_identifier("room", "45000");
+
+    assert!(checker.is_clean("会议室 2 号，预算 4500 元。"));
+    assert!(!checker.is_clean("需要时请联系 @wang_xiao2 确认时间。"));
+    assert!(
+        !checker.is_clean("预算 45000 元。"),
+        "a short identifier is still matched as the literal string it is",
+    );
+}
+
 #[test]
 fn an_empty_corpus_finds_nothing() {
     let checker = LeakageChecker::new();

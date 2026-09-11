@@ -228,15 +228,60 @@ impl ParticipantIndex {
     ///
     /// Telegram names the user twice — once in `personal_information`, once as
     /// a `from_id` on their own messages — and those have to be one contact.
+    /// There the second name has usually not been seen yet, so folding it is
+    /// one insertion.
+    ///
+    /// `soul-import-v1` reaches this the other way round: a file may write the
+    /// user's own messages under two `sender_id`s, and both are read before
+    /// anything knows they are the same person. Refusing to fold a handle that
+    /// is already known would leave two participants marked as the user, two
+    /// contacts of class `self` in the store, and every graph rebuild after
+    /// that import failing on `AmbiguousOwner` — for good, because the rows are
+    /// already written. So an `extra` that already has a participant of its own
+    /// is merged into `primary` rather than ignored.
     pub fn alias(&mut self, primary: &ParticipantHandle, extra: ParticipantHandle) {
         let Some(index) = self.by_handle.get(primary).copied() else {
             return;
         };
-        if self.by_handle.contains_key(&extra) {
-            return;
+        match self.by_handle.get(&extra).copied() {
+            None => {
+                self.participants[index].handles.push(extra.clone());
+                self.by_handle.insert(extra, index);
+            }
+            // Already the same person; saying so twice changes nothing.
+            Some(duplicate) if duplicate == index => {}
+            Some(duplicate) => self.fold(index, duplicate),
         }
-        self.participants[index].handles.push(extra.clone());
-        self.by_handle.insert(extra, index);
+    }
+
+    /// Move everything held at `duplicate` onto `keep` and drop the empty row.
+    ///
+    /// Removing from the middle of the vector shifts every later participant
+    /// down one, so the index map is rewritten in the same pass: nothing may
+    /// keep pointing at a slot that has moved.
+    fn fold(&mut self, keep: usize, duplicate: usize) {
+        let folded = self.participants.remove(duplicate);
+        let keep = match keep > duplicate {
+            true => keep - 1,
+            false => keep,
+        };
+        let target = &mut self.participants[keep];
+        for handle in folded.handles {
+            if !target.handles.contains(&handle) {
+                target.handles.push(handle);
+            }
+        }
+        target.is_owner |= folded.is_owner;
+        if target.display_label.is_none() {
+            target.display_label = folded.display_label;
+        }
+        for index in self.by_handle.values_mut() {
+            match (*index).cmp(&duplicate) {
+                std::cmp::Ordering::Equal => *index = keep,
+                std::cmp::Ordering::Greater => *index -= 1,
+                std::cmp::Ordering::Less => {}
+            }
+        }
     }
 
     pub fn contains(&self, handle: &ParticipantHandle) -> bool {
@@ -251,5 +296,111 @@ impl ParticipantIndex {
 
     pub fn into_participants(self) -> Vec<StagedParticipant> {
         self.participants
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Telegram's path: the second name for the user has not been seen before.
+    #[test]
+    fn a_name_nobody_has_used_yet_joins_the_participant_it_names() {
+        let mut index = ParticipantIndex::new();
+        let owner = ParticipantHandle::platform_uid("user42");
+        index.observe(owner.clone(), Some("Lin Wei"), true);
+        index.alias(&owner, ParticipantHandle::handle("@linwei"));
+
+        let participants = index.into_participants();
+        assert_eq!(participants.len(), 1);
+        assert_eq!(
+            participants[0].handles,
+            vec![owner, ParticipantHandle::handle("@linwei")],
+        );
+        assert!(participants[0].is_owner);
+        assert_eq!(
+            participants[0]
+                .display_label
+                .as_ref()
+                .map(|label| label.as_str()),
+            Some("Lin Wei"),
+        );
+    }
+
+    /// The v1 path: both names have already been observed as people of their
+    /// own, and the fold has to leave one participant, not two.
+    #[test]
+    fn two_participants_that_turn_out_to_be_one_person_become_one() {
+        let mut index = ParticipantIndex::new();
+        let first = ParticipantHandle::platform_uid("u-self");
+        let peer = ParticipantHandle::platform_uid("u-a");
+        let second = ParticipantHandle::platform_uid("u-self-old");
+        index.observe(first.clone(), None, true);
+        index.observe(peer.clone(), Some("A"), false);
+        index.observe(second.clone(), Some("me"), true);
+        index.alias(&first, second.clone());
+
+        assert!(index.is_owner(&first));
+        assert!(index.is_owner(&second));
+        assert!(!index.is_owner(&peer));
+
+        let participants = index.into_participants();
+        assert_eq!(participants.len(), 2);
+        assert_eq!(
+            participants
+                .iter()
+                .filter(|participant| participant.is_owner)
+                .count(),
+            1,
+            "one person, one participant",
+        );
+        let owner = participants
+            .iter()
+            .find(|participant| participant.is_owner)
+            .expect("the owner survives the fold");
+        assert_eq!(owner.handles, vec![first, second]);
+        assert_eq!(
+            owner.display_label.as_ref().map(|label| label.as_str()),
+            Some("me"),
+            "a name the folded row carried is not thrown away",
+        );
+        // The peer's row moved down one when the duplicate was removed, and
+        // the index has to have followed it.
+        let peer_row = participants
+            .iter()
+            .find(|participant| participant.handles.contains(&peer))
+            .expect("the peer is still there");
+        assert_eq!(
+            peer_row.display_label.as_ref().map(|label| label.as_str()),
+            Some("A"),
+        );
+    }
+
+    /// Folding the same pair twice, or a handle into itself, is a no-op.
+    #[test]
+    fn folding_a_participant_into_itself_changes_nothing() {
+        let mut index = ParticipantIndex::new();
+        let owner = ParticipantHandle::platform_uid("u-self");
+        let extra = ParticipantHandle::platform_uid("u-self-2");
+        index.observe(owner.clone(), None, true);
+        index.observe(extra.clone(), None, true);
+        index.alias(&owner, owner.clone());
+        index.alias(&owner, extra.clone());
+        index.alias(&owner, extra.clone());
+        index.alias(&extra, owner.clone());
+
+        let participants = index.into_participants();
+        assert_eq!(participants.len(), 1);
+        assert_eq!(participants[0].handles, vec![owner, extra]);
+    }
+
+    /// A handle nothing has observed cannot be a fold target: there is no
+    /// participant to fold into, and inventing one would invent a person.
+    #[test]
+    fn an_unknown_primary_is_not_a_place_to_fold_into() {
+        let mut index = ParticipantIndex::new();
+        let stranger = ParticipantHandle::platform_uid("u-never-seen");
+        index.alias(&stranger, ParticipantHandle::platform_uid("u-a"));
+        assert!(index.into_participants().is_empty());
     }
 }

@@ -52,7 +52,7 @@ const FORMATS: readonly FormatChoice[] = [
     format: "telegram-desktop",
     label: "Telegram Desktop 的 result.json",
     detail:
-      "Telegram Desktop 桌面版里 Export chat history → Machine-readable JSON 导出的那份 result.json，直接选它就行。",
+      "Telegram Desktop：Settings → Advanced → Export Telegram data，选 Machine-readable JSON。导出目录里的 result.json 直接选它就行。单聊的 Export chat history 是另一形状，认不得。",
     accept: ".json",
   },
 ];
@@ -195,12 +195,19 @@ interface PreviewProps {
 }
 
 /**
- * What the file turned out to contain, before anything is written.
+ * What the file turned out to contain, before it is imported.
  *
  * `writes_anything` is the literal `false` in both the Rust type and the
  * TypeScript one, so this panel cannot be reached by a path that already
  * imported: reading a file and importing it are two commands, and this is the
  * screen between them.
+ *
+ * That literal is about the *file's* contents and nothing wider. A preview
+ * whose export carried injection markers has already appended one
+ * `injection.blocked` row to the audit chain by the time this renders, and
+ * abandoning the preview leaves it there — so the line below says which rows
+ * are not written rather than claiming the database was not touched, and says
+ * the audit row out loud on the previews that produced one.
  */
 function Preview({ preview, busy, onCommit, onAbandon }: PreviewProps): React.JSX.Element {
   return (
@@ -224,7 +231,14 @@ function Preview({ preview, busy, onCommit, onAbandon }: PreviewProps): React.JS
             : `有 ${preview.messages_with_injection_markers} 条消息写成了命令的样子。它们会被数出来、照原样入库，Soul 不会照着做。`}
         </li>
         <li data-testid="preview-writes">
-          {preview.writes_anything ? "" : "到这一步还什么都没有写进库里。"}
+          {preview.writes_anything
+            ? ""
+            : preview.messages_with_injection_markers === 0
+              ? "到这一步，这个文件里的人、会话、消息一条都没有写进库里。"
+              : "到这一步，这个文件里的人、会话、消息一条都没有写进库里；但上面数出来的那几条已经在审计链上留下了一行「挡下了注入」，你现在换一个文件，那一行也还在。"}
+        </li>
+        <li data-testid="preview-reimport">
+          这一版不记得「这个文件我导过了」：同一份文件再导一次，人不会重复，但里面的往来记录会再写一遍，人脉图上的往来次数和关系强度也会跟着涨。
         </li>
       </ul>
       <div className="switch-row">
@@ -251,7 +265,16 @@ interface ReceiptProps {
   readonly receipt: ImportReceipt;
 }
 
-/** What the import wrote, in the same currency the preview quoted: counts. */
+/**
+ * What the import wrote, in the same currency the preview quoted: counts.
+ *
+ * The re-import line is here as well as on the preview because this is the
+ * screen a user is on when they wonder whether the last attempt went through.
+ * v0.1 keeps no external-id index, so committing the same export twice writes
+ * its events twice and the graph counts every duplicate as a real interaction:
+ * contacts match by identifier digest and do not clone, tie strength does.
+ * Saying so is the whole of it — nothing here deduplicates.
+ */
 function Receipt({ receipt }: ReceiptProps): React.JSX.Element {
   return (
     <section className="panel" aria-labelledby="import-receipt-heading">
@@ -273,6 +296,9 @@ function Receipt({ receipt }: ReceiptProps): React.JSX.Element {
           {receipt.messages_with_injection_markers === 0
             ? "没有哪一条消息写成了命令的样子。"
             : `有 ${receipt.messages_with_injection_markers} 条写成了命令的样子，已经当材料存下来，没有被执行。`}
+        </li>
+        <li data-testid="receipt-reimport">
+          这一版不记得哪份文件导过：把同一份文件再导一遍，人会对上不会重复，但上面这些往来记录和证据会再写一遍，人脉图的往来次数和关系强度也会跟着涨。
         </li>
       </ul>
       <p className="badge" data-testid="receipt-notice">

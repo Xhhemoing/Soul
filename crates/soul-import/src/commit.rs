@@ -6,8 +6,9 @@
 //!    already there by identifier digest so a second import of an overlapping
 //!    export does not clone everybody;
 //! 2. **sealed bodies**, one per message with text, under the sender's content
-//!    key — which is also the key behind their display label, so forgetting a
-//!    contact takes what they wrote with it;
+//!    key — the same key their display label sits under, and when the file
+//!    gives no display name, one anchored to their row instead, so that
+//!    forgetting a contact takes what they wrote with it either way;
 //! 3. **events**, one per message, carrying a pointer to the sealed body and
 //!    never the body;
 //! 4. **interaction evidence**, one per (message, person the user was talking
@@ -48,6 +49,10 @@ use soul_store_api::{BlobStore, EventStore, GraphStore, ProfileStore};
 
 use crate::model::{ImportSource, ParticipantHandle, StagedImport, StagedParticipant};
 
+/// Field name of the blob that records which content key a contact's message
+/// bodies were sealed under. See [`anchor_content_key`].
+const CONTENT_KEY_ANCHOR_FIELD: &str = "content_key_anchor";
+
 /// Anything that can go wrong once a file has already parsed.
 #[derive(Debug, thiserror::Error)]
 pub enum ImportError {
@@ -58,6 +63,15 @@ pub enum ImportError {
     /// and no way to say which messages are the user's own.
     #[error("the file names nobody as the account owner, so nothing can be attributed")]
     NoOwner,
+
+    /// More than one participant is the user. A parser is supposed to have
+    /// folded them into one; writing them would put two contacts of class
+    /// `self` in the store, which every later graph rebuild refuses.
+    #[error(
+        "the file resolves to {count} people who are all the account owner; \
+         the graph is an ego network and cannot be built around more than one"
+    )]
+    AmbiguousOwner { count: usize },
 
     /// A message names a sender the participant pass did not see. The parsers
     /// register every sender they read, so this means they disagree.
@@ -124,6 +138,20 @@ where
 {
     if staged.owner().is_none() {
         return Err(ImportError::NoOwner);
+    }
+    // Before anything is written, because there is no way back afterwards: a
+    // commit is not a transaction, and two contacts of class `self` in the
+    // store make `soul_graph::rebuild` and `soul_graph::load` fail from then
+    // on, on rows the user has no way to edit. A parser that has folded its
+    // owner identifiers never reaches this; one that has not is refused with
+    // the file intact.
+    let owners = staged
+        .participants
+        .iter()
+        .filter(|participant| participant.is_owner)
+        .count();
+    if owners > 1 {
+        return Err(ImportError::AmbiguousOwner { count: owners });
     }
 
     let mut receipt = ImportReceipt {
@@ -323,6 +351,9 @@ where
             content_key_id,
             matched.and_then(|contact| contact.display_label_ref.clone()),
         )?;
+        if display_label_ref.is_none() {
+            anchor_content_key(store, participant, contact_id, content_key_id)?;
+        }
 
         store.put_contact(SoulContact {
             schema_version: SchemaVersion,
@@ -400,6 +431,36 @@ fn seal_label<S: BlobStore>(
         request = request.with_placeholder(NAME_PLACEHOLDER);
     }
     Ok(Some(store.seal(request)?))
+}
+
+/// Tie a content key to the contact whose bodies are sealed under it.
+///
+/// A sealed display label already does this: it sits under the contact's key
+/// and is addressed to the contact's row, which is what lets a forget of that
+/// person find the key and destroy it. A file that gives no display name —
+/// `soul-import-v1` has no field for one — leaves nothing pointing at the key,
+/// and forgetting that person would then destroy nothing while reporting that
+/// it had. So the pointer is written anyway.
+///
+/// The plaintext is the contact's own id, which the row already carries in the
+/// clear: the blob exists to be found by `row_id`, not to be read.
+fn anchor_content_key<S: BlobStore>(
+    store: &mut S,
+    participant: &StagedParticipant,
+    contact_id: Uuid,
+    content_key_id: Uuid,
+) -> Result<(), ImportError> {
+    store.seal(SealRequest::new(
+        content_key_id,
+        contact_id,
+        CONTENT_KEY_ANCHOR_FIELD,
+        match participant.is_owner {
+            true => SealedSubject::Owner,
+            false => SealedSubject::ThirdParty,
+        },
+        contact_id.as_bytes().to_vec(),
+    ))?;
+    Ok(())
 }
 
 /// Who actually said something in each conversation, as contact ids.

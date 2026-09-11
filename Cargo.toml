@@ -48,6 +48,7 @@ walkdir = "2.5.0"
 axum = "0.7.9"
 tokio = "1.43.0"
 hex = "0.4.3"
+fs4 = "1.1.0"
 # No `derive` feature: zeroize_derive 1.5 needs edition 2024, and this
 # workspace is pinned to Rust 1.83. `Zeroize` for `[u8; N]` is enough.
 zeroize = "1.8.1"

@@ -292,3 +292,145 @@ fn a_decomposed_spelling_is_caught_by_the_composed_corpus() {
     let redacted = redactor.redact_for_e1(&[third_party(decomposed)]);
     checker.assert_clean("a decomposed third-party body", redacted.as_str());
 }
+
+
+/// The same number, written the way a person writes one down for another
+/// person: in groups.
+///
+/// `13800138000` has a shape the scrub has always seen. `138 0013 8000` is the
+/// same eleven digits and none of its groups is long enough to be a number on
+/// its own, so until the groups were counted rather than the run, the number a
+/// contact card would have had placeheld travelled verbatim out of the user's
+/// own turn — which is the one turn that is never replaced wholesale.
+///
+/// The identifier set is empty, so a placeholder in these bodies can only have
+/// come from the shape, and the whole grouped run has to go: a placeholder
+/// with `8000` left beside it is still the last four digits on the wire.
+///
+/// The dash a number is grouped by is whichever one the keyboard produced.
+/// An IME on a Chinese layout gives U+FF0D, a paste out of a document that has
+/// been through an autocorrect gives U+2013 or U+2014, and none of them is the
+/// ASCII hyphen the first version of this rule knew. They are all the same
+/// number written down for somebody to read, so they are all listed here.
+#[test]
+fn a_phone_number_written_in_groups_is_placeheld_on_the_default_path() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+
+    for grouped in [
+        "138 0013 8000",
+        "138-0013-8000",
+        "138.0013.8000",
+        "138　0013　8000",
+        "010-1234-5678",
+        // The dash family a paste or an IME actually produces.
+        "138\u{2010}0013\u{2010}8000",
+        "138\u{2011}0013\u{2011}8000",
+        "138\u{2012}0013\u{2012}8000",
+        "138\u{2013}0013\u{2013}8000",
+        "138\u{2014}0013\u{2014}8000",
+        "138\u{2212}0013\u{2212}8000",
+        "138\u{FF0D}0013\u{FF0D}8000",
+    ] {
+        let redacted = redactor.redact_for_e1(&[own(&format!("回头打 {grouped} 找他。"))]);
+        assert_eq!(
+            redacted.as_str(),
+            format!("回头打 {ACCOUNT_PLACEHOLDER} 找他。"),
+            "`{grouped}` did not go whole",
+        );
+        assert_eq!(
+            redacted.third_party_turns(),
+            0,
+            "the user's own turn is not third-party prose",
+        );
+    }
+}
+
+
+/// The same number again, typed on the layout most of this product's users
+/// have in front of them.
+///
+/// A Chinese IME in fullwidth mode gives U+FF10–U+FF19 rather than ASCII, and
+/// `１３８００１３８０００` is the same eleven digits as `13800138000` to every
+/// reader and to every phone. It is not the same string to `is_ascii_digit`,
+/// which is what the phone shape was written against, so the number a contact
+/// card would have had placeheld went out of the user's own turn verbatim —
+/// the one turn that is never replaced wholesale.
+///
+/// The same mode gives U+FF0E for the dot key, so a number grouped by dots on
+/// a fullwidth IME carries neither an ASCII digit nor an ASCII separator.
+///
+/// The identifier set is empty, so a placeholder here can only be the shape.
+#[test]
+fn a_phone_number_typed_in_fullwidth_digits_is_placeheld() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+
+    for typed in [
+        // Contiguous, the spelling an IME produces when nobody groups it.
+        "１３８００１３８０００",
+        // And grouped, by each separator the ASCII spelling is grouped by.
+        "１３８ ００１３ ８０００",
+        "１３８　００１３　８０００",
+        "１３８－００１３－８０００",
+        "１３８-００１３-８０００",
+        "１３８\u{2013}００１３\u{2013}８０００",
+        "１３８.００１３.８０００",
+        // The dot the same fullwidth mode gives for the same key: U+FF0E.
+        "１３８．００１３．８０００",
+        // Half typed in one mode and half in the other, which is what a
+        // partly-corrected line looks like.
+        "138００１３8000",
+        "１３８-0013－8000",
+        "138．0013．8000",
+    ] {
+        let redacted = redactor.redact_for_e1(&[own(&format!("回头打 {typed} 找他。"))]);
+        assert_eq!(
+            redacted.as_str(),
+            format!("回头打 {ACCOUNT_PLACEHOLDER} 找他。"),
+            "`{typed}` did not go whole",
+        );
+        assert!(
+            !redacted.as_str().contains('８') && !redacted.as_str().contains('8'),
+            "a digit of the number stood beside the placeholder: {}",
+            redacted.as_str(),
+        );
+    }
+}
+
+
+/// One number, two kinds of dash, and the tail that used to survive.
+///
+/// `138-0013–8000` is what a line looks like after somebody retyped part of it
+/// or a document autocorrected only the dash it thought was a range. When the
+/// ASCII hyphen joined groups and the en-dash did not, the run stopped at the
+/// en-dash: seven digits was already enough to place a placeholder, and
+/// `8000` — the last four digits of the number — stayed on the wire beside it.
+/// That is the exact failure [`soul_policy::redactor`]'s phone shape says it
+/// exists to prevent, so it is pinned here by the tail rather than by the
+/// whole string.
+#[test]
+fn a_number_grouped_by_two_different_dashes_leaves_no_tail() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+
+    for mixed in [
+        "138-0013\u{2013}8000",
+        "138\u{2013}0013-8000",
+        "138 0013\u{FF0D}8000",
+        "138\u{FF0D}0013 8000",
+        // The dot in both widths: the ASCII one joined and the fullwidth one
+        // did not, so the run stopped one group short of the tail.
+        "138.0013\u{FF0E}8000",
+        "138\u{FF0E}0013.8000",
+    ] {
+        let redacted = redactor.redact_for_e1(&[own(&format!("回头打 {mixed} 找他。"))]);
+        assert!(
+            !redacted.as_str().contains("8000"),
+            "the tail of the number travelled beside the placeholder: {}",
+            redacted.as_str(),
+        );
+        assert_eq!(
+            redacted.as_str(),
+            format!("回头打 {ACCOUNT_PLACEHOLDER} 找他。"),
+            "`{mixed}` did not go whole",
+        );
+    }
+}

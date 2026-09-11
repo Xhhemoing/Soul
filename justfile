@@ -99,6 +99,17 @@ deny-list:
 headless:
     cargo run -q -p soulcore --bin soul-headless -- smoke
 
+# The one path that opens a socket, with this process's sockets watched.
+# cargo equivalent: cargo run -p soulcore --bin soul-headless -- e1-watch
+# The complement of `headless`: that one watches a flow with no endpoint
+# configured, which is AC-21, and therefore never wakes the HTTP client. This
+# one saves an endpoint the process is itself serving on 127.0.0.1, approves a
+# draft, asks for a people summary and replays the approval, and reports every
+# peer the kernel says this process had. Not chained into `ci`: it is a
+# developer entry point onto what `soulcore/tests/e1_watch.rs` already runs.
+e1-watch:
+    cargo run -q -p soulcore --bin soul-headless -- e1-watch
+
 # A CycloneDX bill of materials per shipped workspace, into target/sbom.
 # cargo equivalent: cargo run -p xtask -- sbom
 # Offline and deterministic: it reads `cargo metadata` and Cargo.lock, and

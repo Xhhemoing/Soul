@@ -12,6 +12,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
+import { forgetMemory } from "../core";
 import { Memory } from "./Memory";
 import {
   aForgetPreview,
@@ -46,6 +47,23 @@ describe("自传记忆页", () => {
     // 不能声称什么都不写；它要说的是这不是 v0.1 砍掉的文件写执行。
     expect(screen.getByTestId("forget-notice")).not.toHaveTextContent("不写任何文件");
     expect(screen.getByTestId("forget-notice")).toHaveTextContent("不是文件整理的执行");
+  });
+
+  /**
+   * The other limit, which is not the SSD one: a forget writes. It deletes the
+   * content-key and sealed-blob rows, lays a tombstone, orphans the inferences
+   * and appends an audit record, all inside Soul's own encrypted database — so
+   * the notice may promise the scope of what it touches and may not promise
+   * that no file changes.
+   */
+  it("遗忘说明不声称零写入，而是写清楚动的是 Soul 自己的库", async () => {
+    await open();
+
+    const notice = screen.getByTestId("forget-notice");
+    expect(notice).toHaveTextContent("数据目录以外的任何文件");
+    expect(notice).toHaveTextContent("Soul 自己的加密库要写");
+    expect(notice).toHaveTextContent("审计记录");
+    expect(notice.textContent).not.toContain("也不写任何文件");
   });
 
   it("写一条会把用户填的原样交给核心", async () => {
@@ -154,8 +172,43 @@ describe("自传记忆页", () => {
     expect(core.callsTo("forget_memory")[0]?.payload).toEqual({
       confirmation: { preview_id: PREVIEW_ID, memory_id: MEMORY_ID },
     });
+    // One press, one forget. The core spends the preview it matched, so a
+    // second call would reach nothing — but a page that sent two would already
+    // have destroyed something by the time the second one was refused, and the
+    // user would be reading a denial for an act that ran.
+    expect(core.callsTo("forget_memory")).toHaveLength(1);
     expect(await screen.findByTestId("forget-receipt")).toHaveTextContent("销毁了 1 把内容密钥");
     expect(screen.getByTestId("receipt-matched")).toHaveTextContent("和你看过的那份预览一致");
+  });
+
+  /**
+   * The other half of the same contract, from the screen's side: once the
+   * forget has run there is nothing left to press, and the confirmation the
+   * page already spent buys nothing if it is sent again.
+   *
+   * The replay is sent through `core.ts` rather than through the page, because
+   * the page correctly offers no way to do it — which is exactly why the
+   * double has to refuse it on its own. A fake that answered a second receipt
+   * would let a future 记忆 page keep the panel up after a success and look
+   * right in every test here.
+   */
+  it("遗忘做完之后，同一份确认再交一次买不到第二次销毁", async () => {
+    const core = await open({ memories: () => aMemoryList() });
+    const user = userEvent.setup();
+
+    await user.click(within(screen.getByTestId(`memory-${MEMORY_ID}`)).getByRole("button", {
+      name: "看遗忘会影响什么",
+    }));
+    await screen.findByTestId("forget-preview");
+    await user.click(screen.getByRole("button", { name: "就按上面这些，遗忘它" }));
+    await screen.findByTestId("forget-receipt");
+
+    expect(screen.queryByTestId("forget-preview")).toBeNull();
+    expect(screen.queryByRole("button", { name: "就按上面这些，遗忘它" })).toBeNull();
+    await expect(
+      forgetMemory({ preview_id: PREVIEW_ID, memory_id: MEMORY_ID }),
+    ).rejects.toMatchObject({ reason_code: "PLAN_HASH_MISMATCH" });
+    expect(core.callsTo("preview_forget")).toHaveLength(1);
   });
 
   /**
@@ -164,7 +217,7 @@ describe("自传记忆页", () => {
    * rather than a receipt.
    */
   it("对不上预览的确认会被核心挡下来，屏幕上照实说", async () => {
-    await open({
+    const core = await open({
       memories: () => aMemoryList(),
       pricing: () => aForgetPreview({ preview_id: "0192f000-0000-7000-8000-0000000000ff" }),
     });
@@ -180,6 +233,46 @@ describe("自传记忆页", () => {
       "PLAN_HASH_MISMATCH",
     );
     expect(screen.queryByTestId("forget-receipt")).toBeNull();
+    expect(core.callsTo("forget_memory")).toHaveLength(1);
+  });
+
+  /**
+   * `Session::forget_memory` matches before it takes, so a refused
+   * confirmation costs the click and not the preview: the price the user read
+   * is still the one the core is holding, and the panel quoting it has to
+   * still be on screen. A page that cleared it would make one wrong id the
+   * reason to walk the irreversible screen a second time, and a second walk
+   * through a screen like this one gets clicked rather than read.
+   */
+  it("被挡下来之后，用户读过的那份预览还在屏幕上，核心也还留着它", async () => {
+    const core = await open({
+      memories: () => aMemoryList(),
+      pricing: () => aForgetPreview({ preview_id: "0192f000-0000-7000-8000-0000000000ff" }),
+    });
+    const user = userEvent.setup();
+
+    await user.click(within(screen.getByTestId(`memory-${MEMORY_ID}`)).getByRole("button", {
+      name: "看遗忘会影响什么",
+    }));
+    await screen.findByTestId("forget-preview");
+    await user.click(screen.getByRole("button", { name: "就按上面这些，遗忘它" }));
+    await screen.findByTestId("memory-refusal-code");
+
+    // The same panel, quoting the same numbers, with the same button under it.
+    expect(screen.getByTestId("forget-preview")).toHaveTextContent("要销毁 1 把内容密钥");
+    expect(screen.getByTestId("forget-preview-id")).toHaveTextContent(
+      "0192f000-0000-7000-8000-0000000000ff",
+    );
+    expect(screen.getByRole("button", { name: "就按上面这些，遗忘它" })).toBeEnabled();
+    // And the page did not quietly re-price it behind the refusal, which would
+    // be the second walk in everything but appearance.
+    expect(core.callsTo("preview_forget")).toHaveLength(1);
+
+    // The refusal spent nothing on the core's side either: the preview it
+    // issued is still there, and the confirmation the user meant to send goes
+    // through.
+    const receipt = await forgetMemory({ preview_id: PREVIEW_ID, memory_id: MEMORY_ID });
+    expect(receipt.matched_preview).toBe(true);
   });
 
   /** A tombstone can be read about and not reopened. */

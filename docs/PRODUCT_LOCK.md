@@ -48,7 +48,7 @@ Soul 是灵魂级个人软件：根据你授权的社交媒体档案、电脑（
 | 平台 | v0.1 仅 Windows 11 x64；Win10 22H2 尽力。Android 为 v0.3。不做 Linux 桌面。Linux 仅作 CI 宿主 |
 | 技术栈 | Tauri 2 + Rust 核心 + React/TypeScript UI；pnpm + Cargo + just |
 | 许可 | 私有期 All Rights Reserved |
-| v0.1 导入 | 仅两种：`soul-import-v1` JSONL；Telegram Desktop「Export chat history → Machine-readable JSON」的 `result.json`。无文件则问卷回退。OAuth 不在 v0.1。微信/QQ 不做非官方抓取 |
+| v0.1 导入 | 仅两种：`soul-import-v1` JSONL；Telegram Desktop「Settings → Advanced → Export Telegram data」全量导出的 `result.json`（Machine-readable JSON；单聊 Export chat history 是另一形状，拒收）。无文件则问卷回退。OAuth 不在 v0.1。微信/QQ 不做非官方抓取 |
 | 出站消息 | v0.1 只起草，不发送 |
 | 心理模型 | 可替换特质轴（默认五条类大五方向轴，不是分数、不是量表）。推断带证据与弱/中/强档。用户纠正锁定且优先 |
 | 人脉图 | 节点=人，边=互动强度/关系类型/最近接触/证据。第三人数据默认不出本机 |
@@ -175,6 +175,6 @@ v0.1 明确不做：自动发消息、常驻截屏、键鼠接管、任意 shell
 - `ASSUMPTION:` 作者可接受 Rust。
 - `ASSUMPTION:` 不承诺抵抗本机管理员或物理取证。
 - `ASSUMPTION:` 加密库首选 SQLCipher；若打包成本过高则 SQLite + 字段级 AEAD，并在 SECURITY.md 如实说明。
-- `ASSUMPTION:` Telegram 适配器以 Desktop 4.x machine-readable JSON 为准；CI 用合成 fixture。
+- `ASSUMPTION:` Telegram 适配器以官方导出 schema（core.telegram.org/import-export）与 Desktop ≥4.1 实际输出为准（`date_unixtime` 自 4.1 必写；形状经 7.1.x/2026-08 源码核验未变；入口是 Settings → Advanced → Export Telegram data 的全量导出，单聊 Export chat history 是另一形状，拒收）；`contacts.list` 现可带已解析的 `user_id`，不导入是 v0.1 范围决定；CI 用合成 fixture。
 - `ASSUMPTION:` 无 E1 时确定性语气模板足以通过起草验收。
 - `ASSUMPTION:` ~~GitHub Actions `windows-latest` 跑 headless 核心~~ **改（D50）**：没有 hosted CI；headless 核心与桌面壳在作者 Win11 上跑 `scripts/gate-win.ps1`（G-W），Linux 开发机跑 `just ci-full`（G-L）；真实托盘/采集仍由作者手动 checklist（G-M）。

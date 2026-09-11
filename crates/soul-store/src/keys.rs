@@ -22,11 +22,15 @@
 //! syscall itself is Windows-only, and that is tested in `soul-win-dpapi`.
 
 use std::fmt;
+use std::fs::OpenOptions;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use chacha20poly1305::aead::rand_core::RngCore;
 use chacha20poly1305::aead::{Aead, AeadCore, KeyInit, OsRng, Payload};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
+use fs4::FileExt;
 use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
 
@@ -191,23 +195,184 @@ impl KeyProvider for TestKeyProvider {
 fn read_or_create_key_file(path: &Path) -> KeyResult<Vec<u8>> {
     const SEED_LEN: usize = 64;
 
-    match std::fs::read(path) {
-        Ok(bytes) if bytes.len() == SEED_LEN => Ok(bytes),
-        Ok(bytes) => Err(KeyError::Malformed {
-            path: path.display().to_string(),
-            found: bytes.len(),
-            expected: SEED_LEN,
-        }),
+    let settled = match std::fs::read(path) {
+        Ok(bytes) if !bytes.is_empty() => bytes,
+        // An empty file is not a malformed seed, it is a first run another
+        // process is in the middle of. `mint_key_file` waits for it.
+        Ok(_) => mint_key_file(path, SEED_LEN)?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            let mut seed = vec![0u8; SEED_LEN];
-            OsRng.fill_bytes(&mut seed);
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| KeyError::Io(e.to_string()))?;
-            }
-            std::fs::write(path, &seed).map_err(|e| KeyError::Io(e.to_string()))?;
-            Ok(seed)
+            mint_key_file(path, SEED_LEN)?
         }
-        Err(error) => Err(KeyError::Io(error.to_string())),
+        Err(error) => return Err(KeyError::Io(error.to_string())),
+    };
+
+    if settled.len() != SEED_LEN {
+        return Err(KeyError::Malformed {
+            path: path.display().to_string(),
+            found: settled.len(),
+            expected: SEED_LEN,
+        });
+    }
+    Ok(settled)
+}
+
+/// Mint a seed for `path`, or read the one another process minted first.
+fn mint_key_file(path: &Path, len: usize) -> KeyResult<Vec<u8>> {
+    let mut seed = vec![0u8; len];
+    OsRng.fill_bytes(&mut seed);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| KeyError::Io(e.to_string()))?;
+    }
+    let settled = publish_once(path, &seed).map_err(|e| KeyError::Io(e.to_string()));
+    seed.zeroize();
+    settled
+}
+
+// ------------------------------------------------ claiming the key file ---
+//
+// Every file in this module is a root secret that a database is then built
+// against, so the first process to write one has to be the only process that
+// ever does. Writing a temporary file and renaming it over the final name
+// does not give that: two first runs both see no file, both mint, both
+// rename, and the one that renames second silently takes the database the
+// first one just created away from it — its DEK is gone and `soul.db` never
+// opens again.
+//
+// `create_new` settles half of that: exactly one caller creates the name,
+// everyone else is told `AlreadyExists` and reads what the winner wrote. It
+// says nothing about the other half — a name that was created by a process
+// that died before writing a byte into it. Somebody has to fill that empty
+// file, and the obvious repair, unlink it and `create_new` again, puts the
+// original race straight back: two recoverers both unlink and both create,
+// the second one's file is the one that survives, and the first walks off
+// with key material that is on nobody's disk. An unlink is worse than that
+// even, because it can land after a third process has already filled the
+// name, deleting a key some database is already open under.
+//
+// So the name is never unlinked. Nothing in this module deletes it, and
+// nothing may be added that does. An empty file is settled where it lies,
+// under an exclusive lock on the file itself: whoever takes the lock first
+// looks at the length, writes if it is zero, reads if it is not, and the next
+// holder of the lock therefore finds bytes rather than a decision to make.
+
+/// How long a caller that lost the race waits for the winner's bytes.
+///
+/// The window it covers is the moment between the winner creating the name
+/// and its single `write_all` landing — microseconds on a local disk. Running
+/// out of it is neither an error nor a wrong answer any more: it hands the
+/// question to the claim lock in [`fill_or_adopt`], which is slower and
+/// certain. Polling first is worth it because it is much the cheaper of the
+/// two on the ordinary second-launch path.
+const CLAIM_SETTLE_TIMEOUT: Duration = Duration::from_millis(250);
+
+/// Gap between looks at a file another process has claimed.
+const CLAIM_SETTLE_POLL: Duration = Duration::from_millis(2);
+
+/// Put `bytes` at `path` if and only if nothing is there yet, and hand back
+/// whatever ended up there — our bytes if we were the caller that filled the
+/// file, the winner's if somebody else was.
+///
+/// The caller must use the returned bytes and not the ones it passed in. That
+/// is the whole point: a process that lost the race has to open the database
+/// with the key that is on disk, not with the key it happened to mint.
+fn publish_once(path: &Path, bytes: &[u8]) -> std::io::Result<Vec<u8>> {
+    // The loop is not a retry of the claim — `fill_or_adopt` settles that in
+    // one pass. It bounds how many times the name may be seen to exist and
+    // then be gone again by the time it is opened. Nothing here unlinks it, so
+    // one turn is the whole story unless somebody is deleting the key file by
+    // hand while Soul starts, and eight turns of that is enough to say so.
+    for _ in 0..8 {
+        match OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(path)
+        {
+            Ok(file) => return fill_or_adopt(file, bytes),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                if let Some(existing) = settled_contents(path)? {
+                    return Ok(existing);
+                }
+                // Still empty. Somebody created the name and did not fill it,
+                // which is what an interrupted first run leaves behind. Open
+                // what is there and settle it under the lock.
+                match OpenOptions::new().read(true).write(true).open(path) {
+                    Ok(file) => return fill_or_adopt(file, bytes),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(error) => return Err(error),
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    Err(std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        format!("{} kept vanishing while being claimed", path.display()),
+    ))
+}
+
+/// Fill an already-created key file, or adopt what is already in it.
+///
+/// The exclusive lock is what makes the length check mean anything. Without
+/// it, two recoverers of the same abandoned empty name both see zero bytes
+/// and both write, and only one of those writes is the file anybody else will
+/// read. With it the second one blocks, wakes up looking at a non-zero
+/// length, and adopts.
+///
+/// The adopting read is issued on the locked handle rather than through a
+/// second open of the path, and that is not a convenience. Windows locks a
+/// byte range, so an unlocked read of a range a peer holds fails outright;
+/// Unix `flock` is only advisory, so an unlocked read is free to come back
+/// with half of a write that is still in progress. Neither is a hazard for a
+/// reader that is holding the lock itself.
+fn fill_or_adopt(mut file: std::fs::File, bytes: &[u8]) -> std::io::Result<Vec<u8>> {
+    FileExt::lock(&file)?;
+    let outcome = if file.metadata()?.len() == 0 {
+        file.write_all(bytes)
+            .and_then(|_| file.sync_all())
+            .map(|_| bytes.to_vec())
+    } else {
+        let mut existing = Vec::new();
+        file.seek(SeekFrom::Start(0))
+            .and_then(|_| file.read_to_end(&mut existing))
+            .map(|_| existing)
+    };
+    // Closing the handle would release the lock anyway; unlocking first keeps
+    // the window shut for exactly as long as the answer took to produce, and
+    // a failure to unlock is not something the caller can act on.
+    let _ = FileExt::unlock(&file);
+    outcome
+}
+
+/// Read a file somebody else claimed, waiting out the gap between the claim
+/// and the write that fills it.
+///
+/// `None` means the gap never closed: the file is still empty after
+/// [`CLAIM_SETTLE_TIMEOUT`], or it has gone away again. Both answers send the
+/// caller to [`fill_or_adopt`], which settles the question under the lock.
+fn settled_contents(path: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    let deadline = Instant::now() + CLAIM_SETTLE_TIMEOUT;
+    loop {
+        match std::fs::read(path) {
+            Ok(bytes) if !bytes.is_empty() => return Ok(Some(bytes)),
+            Ok(_) => {}
+            // A name that is not there is not a slow claim, so there is
+            // nothing to wait for.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            // Anything else is treated as the transient it usually is. This
+            // read is unlocked, and on Windows an unlocked read of a range a
+            // peer holds the claim lock over fails with a lock violation —
+            // which is precisely the moment this function exists to wait out.
+            // An error that outlives the deadline is not swallowed: the
+            // caller's next move is to open the same path, and a real
+            // failure is reported from there.
+            Err(_) => {}
+        }
+        if Instant::now() >= deadline {
+            return Ok(None);
+        }
+        std::thread::sleep(CLAIM_SETTLE_POLL);
     }
 }
 
@@ -249,7 +414,8 @@ const DEK_WRAP_AAD: &str = DEK_DOMAIN;
 /// file is created on first use and never rewritten afterwards: it is the only
 /// thing on the machine that can open `soul.db`, so a provider that replaced a
 /// blob it could not read would be a provider that could throw the database
-/// away.
+/// away. "Created on first use" is enforced against two first runs happening
+/// at once, not just against the second launch — see [`publish_once`].
 ///
 /// Off Windows every accessor returns [`KeyError::Unsupported`] and no file is
 /// written. That is not a placeholder — it is the honest answer, and it is why
@@ -300,15 +466,15 @@ impl DpapiKeyProvider {
         }
 
         match std::fs::read(&self.blob_path) {
-            Ok(bytes) => self.open_blob(&bytes),
+            Ok(bytes) if !bytes.is_empty() => self.open_blob(&bytes),
+            // An empty blob is a first run another process is part-way
+            // through, not a blob; `create_blob` waits for it.
+            Ok(_) => {
+                let bytes = self.create_blob()?;
+                self.open_blob(&bytes)
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                self.create_blob()?;
-                let bytes = std::fs::read(&self.blob_path).map_err(|error| {
-                    KeyError::Io(format!(
-                        "{} was written and could not be read back: {error}",
-                        self.blob_path.display(),
-                    ))
-                })?;
+                let bytes = self.create_blob()?;
                 self.open_blob(&bytes)
             }
             Err(error) => Err(KeyError::Io(format!(
@@ -320,11 +486,14 @@ impl DpapiKeyProvider {
 
     /// First run on this machine: mint both keys and hand the KEK to Windows.
     ///
-    /// Written through a `.partial` file and a rename, so a machine that loses
-    /// power here comes back with no blob rather than half of one. The
-    /// database does not exist yet at this point either, so "no blob" is a
-    /// state the next launch can start from.
-    fn create_blob(&self) -> KeyResult<()> {
+    /// Returns the bytes that are *on disk* afterwards, which are not always
+    /// the ones minted here. Two first runs at once — the installer's launch
+    /// and the user's double-click, say — both find no blob and both mint a
+    /// KEK and a DEK. Only one of them may end up in the file, and the other
+    /// has to adopt it rather than open the database under a DEK that is about
+    /// to be overwritten. [`publish_once`] decides which one that is; the
+    /// keys minted by the loser fall out of scope here and are wiped.
+    fn create_blob(&self) -> KeyResult<Vec<u8>> {
         let kek = SecretKey::random();
         let dek = SecretKey::random();
 
@@ -340,13 +509,8 @@ impl DpapiKeyProvider {
             std::fs::create_dir_all(parent)
                 .map_err(|error| KeyError::Io(format!("{}: {error}", parent.display())))?;
         }
-        let partial = self.blob_path.with_extension("partial");
-        std::fs::write(&partial, &encoded)
-            .map_err(|error| KeyError::Io(format!("{}: {error}", partial.display())))?;
-        std::fs::rename(&partial, &self.blob_path).map_err(|error| {
-            let _ = std::fs::remove_file(&partial);
-            KeyError::Io(format!("{}: {error}", self.blob_path.display()))
-        })
+        publish_once(&self.blob_path, &encoded)
+            .map_err(|error| KeyError::Io(format!("{}: {error}", self.blob_path.display())))
     }
 
     fn open_blob(&self, bytes: &[u8]) -> KeyResult<RootKeys> {
@@ -568,6 +732,193 @@ mod tests {
 
     fn scratch() -> tempfile::TempDir {
         tempfile::tempdir().expect("temporary directory")
+    }
+
+    // ------------------------------------------------- one first run wins ---
+    //
+    // The claim is platform-independent — it is `create_new` and nothing else
+    // — so it is tested wherever the suite runs, including the Linux CI host
+    // that has no DPAPI to mint a blob with.
+
+    /// Eight processes mint eight different keys at once. Seven of them must
+    /// come back with the eighth one's bytes.
+    ///
+    /// The failure this pins is not "the file is torn". It is that a caller
+    /// which lost the race used to be handed the key material it minted
+    /// itself, build a database against it, and lose that database the moment
+    /// the winner's rename landed on top.
+    #[test]
+    fn only_one_of_many_first_runs_writes_the_key_file_and_the_rest_adopt_it() {
+        let directory = scratch();
+        let path = directory.path().join("keys.dpapi");
+        let racers = 8;
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(racers));
+
+        let settled: Vec<Vec<u8>> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..racers)
+                .map(|index| {
+                    let barrier = std::sync::Arc::clone(&barrier);
+                    let path = path.clone();
+                    scope.spawn(move || {
+                        // Distinct payloads, so the answer names its author.
+                        let mine = vec![index as u8 + 1; 128];
+                        barrier.wait();
+                        publish_once(&path, &mine).expect("claim the key file")
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().expect("racer"))
+                .collect()
+        });
+
+        let on_disk = std::fs::read(&path).expect("the key file");
+        assert!(!on_disk.is_empty());
+        for (index, answer) in settled.iter().enumerate() {
+            assert_eq!(
+                answer, &on_disk,
+                "racer {index} was handed key material that is not the one on disk",
+            );
+        }
+        assert_eq!(
+            std::fs::read_dir(directory.path())
+                .expect("read the directory")
+                .count(),
+            1,
+            "the race left something behind beside the key file",
+        );
+    }
+
+    /// A second call is a second launch, and it must not mint anything.
+    #[test]
+    fn a_published_key_file_is_never_rewritten() {
+        let directory = scratch();
+        let path = directory.path().join("keys.dpapi");
+
+        assert_eq!(publish_once(&path, b"first").expect("first"), b"first");
+        assert_eq!(
+            publish_once(&path, b"second").expect("second"),
+            b"first",
+            "the second caller overwrote key material that was already in use",
+        );
+        assert_eq!(std::fs::read(&path).expect("the file"), b"first");
+    }
+
+    /// The one state the claim can leave behind: a name created by a process
+    /// that died before it wrote. Nothing was ever opened with those zero
+    /// bytes, so the next run may fill them in place and mint for real —
+    /// without the name ever leaving the filesystem.
+    #[test]
+    fn a_name_claimed_and_left_empty_is_reclaimed_rather_than_reported() {
+        let directory = scratch();
+        let path = directory.path().join("keys.dpapi");
+        std::fs::write(&path, b"").expect("an interrupted first run");
+
+        assert_eq!(publish_once(&path, b"minted").expect("mint"), b"minted");
+        assert_eq!(std::fs::read(&path).expect("the file"), b"minted");
+    }
+
+    /// The same recovery, but with eight processes attempting it at once.
+    ///
+    /// This is the harder half of the empty-file case and the one that used to
+    /// be wrong. Every racer sees the same abandoned name, so every racer is a
+    /// recoverer; the file has to end up holding exactly one of their keys and
+    /// all eight have to be handed that one. A recovery that unlinks the name
+    /// before minting cannot promise that — two recoverers both unlink it and
+    /// both create it, and the loser walks away with key material that is not
+    /// on disk. Four rounds because the divergence is a timing window and one
+    /// round can miss it.
+    #[test]
+    fn racing_recoverers_of_an_abandoned_empty_file_agree_on_one_key() {
+        let racers = 8;
+
+        for round in 0..4 {
+            let directory = scratch();
+            let path = directory.path().join("keys.dpapi");
+            std::fs::write(&path, b"").expect("an interrupted first run");
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(racers));
+
+            let settled: Vec<Vec<u8>> = std::thread::scope(|scope| {
+                let handles: Vec<_> = (0..racers)
+                    .map(|index| {
+                        let barrier = std::sync::Arc::clone(&barrier);
+                        let path = path.clone();
+                        scope.spawn(move || {
+                            // Distinct payloads, so the answer names its author.
+                            let mine = vec![index as u8 + 1; 128];
+                            barrier.wait();
+                            publish_once(&path, &mine).expect("reclaim the key file")
+                        })
+                    })
+                    .collect();
+                handles
+                    .into_iter()
+                    .map(|handle| handle.join().expect("racer"))
+                    .collect()
+            });
+
+            let on_disk = std::fs::read(&path).expect("the key file");
+            assert!(
+                !on_disk.is_empty(),
+                "round {round} left the abandoned name still empty",
+            );
+            for (index, answer) in settled.iter().enumerate() {
+                assert_eq!(
+                    answer, &on_disk,
+                    "round {round}: recoverer {index} was handed key material that is not the \
+                     one on disk",
+                );
+            }
+            assert_eq!(
+                std::fs::read_dir(directory.path())
+                    .expect("read the directory")
+                    .count(),
+                1,
+                "round {round} left something behind beside the key file",
+            );
+        }
+    }
+
+    /// The same race through the provider that Linux CI actually uses.
+    #[test]
+    fn racing_test_providers_in_one_directory_agree_on_both_root_secrets() {
+        let directory = scratch();
+        let racers = 8;
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(racers));
+
+        let keys: Vec<(String, String)> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..racers)
+                .map(|_| {
+                    let barrier = std::sync::Arc::clone(&barrier);
+                    let provider = TestKeyProvider::in_dir(directory.path());
+                    scope.spawn(move || {
+                        barrier.wait();
+                        (
+                            provider.database_key().expect("dek").to_hex(),
+                            provider.key_encryption_key().expect("kek").to_hex(),
+                        )
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().expect("racer"))
+                .collect()
+        });
+
+        let next_launch = TestKeyProvider::in_dir(directory.path());
+        let expected = (
+            next_launch.database_key().expect("dek").to_hex(),
+            next_launch.key_encryption_key().expect("kek").to_hex(),
+        );
+        for (index, pair) in keys.iter().enumerate() {
+            assert_eq!(
+                pair, &expected,
+                "racer {index} would have built a database against a key nobody else has",
+            );
+        }
+        assert_ne!(expected.0, expected.1);
     }
 
     // ------------------------------------------------- the blob, anywhere ---

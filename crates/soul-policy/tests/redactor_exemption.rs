@@ -230,3 +230,103 @@ fn the_research_path_has_no_exemption_entry_point() {
         .expect("the parameter belongs to some function");
     assert_eq!(owner, &"pub fn redact_for_e1_with_exemption(");
 }
+
+
+/// The same promise for the same number, written in groups.
+///
+/// [`identifiers_stay_placeheld_inside_an_exempted_turn`] hands the redactor
+/// `13800138000` and gets it back placeheld, which proves the identifier set is
+/// consulted. A paste rarely spells a number that way: `138 0013 8000` is how
+/// somebody writes one down for somebody else to read, it is not the string the
+/// contact card holds, and it is eleven digits in three groups none of which is
+/// long enough to be a number on its own.
+///
+/// The exempted turn is the one place a paste travels verbatim, so it is the
+/// one place that difference reaches an endpoint. The redactor below knows the
+/// number in its unspaced spelling only, so what covers the grouped one is the
+/// shape and nothing else — and the message the user confirmed twice for still
+/// has to come out the other side.
+#[test]
+fn a_grouped_phone_number_stays_placeheld_inside_an_exempted_turn() {
+    let redactor = redactor();
+
+    for grouped in ["138 0013 8000", "138-0013-8000"] {
+        let turn_id = Uuid::now_v7();
+        let turns = vec![Turn::new(
+            turn_id,
+            SealedSubject::ThirdParty,
+            format!("{ORIGINAL}，电话 {grouped}"),
+        )];
+
+        let exemption = ExemptionRequest::for_turn(turn_id)
+            .confirm(true)
+            .expect("the user confirmed twice");
+        let redacted = redactor.redact_for_e1_with_exemption(&turns, exemption);
+
+        assert_eq!(
+            redacted.as_str(),
+            format!("{ORIGINAL}，电话 {ACCOUNT_PLACEHOLDER}"),
+            "`{grouped}` reached the body the user confirmed",
+        );
+        assert!(
+            !redacted.as_str().contains("8000"),
+            "the tail of the number travelled beside the placeholder: {}",
+            redacted.as_str(),
+        );
+        assert!(redacted.carries_exempted_original());
+    }
+}
+
+
+/// The same promise again, for the spellings a keyboard produces rather than
+/// the ones a test author types.
+///
+/// The test above covers the ASCII hyphen and the ASCII space, which is what a
+/// contact card and an English layout give. A Chinese IME in fullwidth mode
+/// gives U+FF10–U+FF19 for the digits, U+FF0D for the dash and U+FF0E for the
+/// dot; a paste out of a document that has been autocorrected gives U+2013.
+/// None of them is the string the contact card holds, so what covers them is
+/// the shape, and the exempted turn is the one place a paste reaches an
+/// endpoint verbatim.
+///
+/// `138-0013–8000` and `138.0013．8000` are the cases that say why the whole
+/// run has to go rather than the first seven digits: with only the ASCII
+/// spelling joining, the run stopped at the separator it did not know and left
+/// `8000` standing beside the placeholder.
+#[test]
+fn a_phone_number_typed_on_an_ime_stays_placeheld_inside_an_exempted_turn() {
+    let redactor = redactor();
+
+    for typed in [
+        "１３８００１３８０００",
+        "１３８－００１３－８０００",
+        "１３８．００１３．８０００",
+        "138\u{2013}0013\u{2013}8000",
+        "138-0013\u{2013}8000",
+        "138.0013\u{FF0E}8000",
+    ] {
+        let turn_id = Uuid::now_v7();
+        let turns = vec![Turn::new(
+            turn_id,
+            SealedSubject::ThirdParty,
+            format!("{ORIGINAL}，电话 {typed}"),
+        )];
+
+        let exemption = ExemptionRequest::for_turn(turn_id)
+            .confirm(true)
+            .expect("the user confirmed twice");
+        let redacted = redactor.redact_for_e1_with_exemption(&turns, exemption);
+
+        assert_eq!(
+            redacted.as_str(),
+            format!("{ORIGINAL}，电话 {ACCOUNT_PLACEHOLDER}"),
+            "`{typed}` reached the body the user confirmed",
+        );
+        assert!(
+            !redacted.as_str().contains("8000") && !redacted.as_str().contains("８０００"),
+            "the tail of the number travelled beside the placeholder: {}",
+            redacted.as_str(),
+        );
+        assert!(redacted.carries_exempted_original());
+    }
+}

@@ -62,7 +62,7 @@ use crate::config::Config;
 use crate::netwatch::{self, WatchReport};
 
 /// The import corpus, compiled in. See the module docs.
-const IMPORT_CORPUS: &str =
+pub(crate) const IMPORT_CORPUS: &str =
     include_str!("../../../fixtures/import/soul-import-v1/three_partners.jsonl");
 
 /// A completed questionnaire, compiled in for the same reason.
@@ -545,10 +545,40 @@ fn flow(scratch: &Path) -> Flow<FlowOutcome> {
             && !summary.clinical_claim,
         "a summary point with no evidence, or a clinical claim, reached the surface",
     )?;
+    // AD-13's forecast, on the one edge in this corpus that warrants one. It is
+    // checked here rather than left to `soul-draft`'s own tests because the
+    // question the smoke can answer is whether the sentence survives the whole
+    // stack — a rebuild that stopped recording `as_of_utc`, or a summary that
+    // dropped the bullets `soul_graph` did not produce, would leave every
+    // per-crate test green and this line silently absent from the product.
+    //
+    // It does not put a clock in the smoke. `soul_graph::rebuild` scores
+    // against the newest observation in the store rather than against now, and
+    // both instants the projection reads — that one and the edge's last
+    // contact — come out of the frozen corpus. The tie is Moderate with three
+    // days of silence whatever day this runs on, so the sentence is
+    // `personnel.projection.moderate_to_weak` every time.
+    let projected = summary
+        .points
+        .iter()
+        .filter(|point| {
+            point
+                .statement
+                .ends_with(soul_draft::projection::WORKING_HYPOTHESIS_CLOSER)
+        })
+        .count();
+    require(
+        "summary",
+        projected == 1,
+        format!(
+            "AD-13: {projected} projected sentence(s) on an edge the corpus leaves \
+             three days silent at Moderate, where the demotion clock has one thing to say",
+        ),
+    )?;
     step(
         "summary",
         format!(
-            "{} point(s), each citing evidence, source {}",
+            "{} point(s), each citing evidence, {projected} of them the demotion clock, source {}",
             summary.points.len(),
             summary.source,
         ),
@@ -636,6 +666,20 @@ fn flow(scratch: &Path) -> Flow<FlowOutcome> {
         research.third_party_rows_excluded > 0,
         "no third-party row was excluded, so the exclusion is untested on this corpus",
     )?;
+    // Nothing has been collected in this flow and the import stores its rows
+    // `research_export: deny`, so what is left is the trait axes. An
+    // `import.item` row here would mean the disposition on the row was not
+    // read: those messages are the owner's own, so the subject filter lets
+    // every one of them through.
+    require(
+        "research",
+        research
+            .manifest
+            .rows
+            .iter()
+            .all(|row| row.event_kind.as_deref() != Some("import.item")),
+        "an imported row reached the research preview",
+    )?;
     require(
         "research",
         directory_listing(scratch)? == files_before,
@@ -644,9 +688,11 @@ fn flow(scratch: &Path) -> Flow<FlowOutcome> {
     step(
         "research",
         format!(
-            "{} row(s) published, {} third-party row(s) excluded, written_to_disk=false",
+            "{} row(s) published, {} third-party row(s) excluded, {} owner row(s) withheld by \
+             their own disposition, written_to_disk=false",
             research.row_count(),
             research.third_party_rows_excluded,
+            research.deny_rows_excluded,
         ),
     );
 

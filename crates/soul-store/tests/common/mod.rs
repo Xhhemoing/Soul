@@ -11,8 +11,9 @@ use uuid::Uuid;
 
 use soul_schema::audit::{AuditAction, AuditDecision, SoulAuditEntry};
 use soul_schema::common::{
-    ActorSubject, Derivation, EgressPolicy, NotAClinicalClaim, Privacy, Purpose, Retention,
-    SchemaVersion, SealedSubject, Sha256Hex, Subject, SupportedBand, Timestamp,
+    ActorSubject, Derivation, E0Deny, E1Disposition, EgressPolicy, NotAClinicalClaim, Privacy,
+    Purpose, ResearchDisposition, Retention, SchemaVersion, SealedSubject, Sha256Hex, Subject,
+    SupportedBand, Timestamp,
 };
 use soul_schema::contact::{ContactClass, SoulContact};
 use soul_schema::event::{EventKind, EventSource, SoulEvent};
@@ -41,6 +42,24 @@ pub fn privacy(subject: Subject) -> Privacy {
     }
 }
 
+/// The same privacy with the research disposition spelled out.
+///
+/// [`EgressPolicy::default`] is `research_export: deny`, which is what most of
+/// the store's rows really carry. A fixture that wants a row the research
+/// rollup may publish has to say so, because the rollup reads the field rather
+/// than the subject alone.
+pub fn privacy_for_research(subject: Subject, research_export: ResearchDisposition) -> Privacy {
+    Privacy {
+        egress: EgressPolicy {
+            e0: E0Deny,
+            e1: E1Disposition::Deny,
+            research_export,
+        },
+        ..privacy(subject)
+    }
+}
+
+/// An event whose stored disposition is `deny`, as most of them are.
 pub fn event(event_id: Uuid, ts: &str, kind: EventKind, subject: Subject) -> SoulEvent {
     SoulEvent {
         schema_version: SchemaVersion,
@@ -60,6 +79,15 @@ pub fn event(event_id: Uuid, ts: &str, kind: EventKind, subject: Subject) -> Sou
         consent_id: None,
         privacy: privacy(subject),
         body_ref: None,
+    }
+}
+
+/// An event marked `research_export: bucket`, the way the collector writes
+/// one. The only shape the research rollup publishes.
+pub fn bucketed_event(event_id: Uuid, ts: &str, kind: EventKind, subject: Subject) -> SoulEvent {
+    SoulEvent {
+        privacy: privacy_for_research(subject, ResearchDisposition::Bucket),
+        ..event(event_id, ts, kind, subject)
     }
 }
 
