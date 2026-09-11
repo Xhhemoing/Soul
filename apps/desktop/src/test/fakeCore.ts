@@ -537,6 +537,22 @@ function profileAfter(
   return moved;
 }
 
+
+/**
+ * Whether an answer would land on an axis the user has already corrected.
+ *
+ * `soul-profile`'s intake records such an answer and leaves the axis where the
+ * user put it (D46), so the double has to know which of its two axis questions
+ * points at a locked row.
+ */
+function answerHitsALockedAxis(
+  profile: ProfileScreen,
+  questionId: string,
+): boolean {
+  const axisId = AXIS_OF_QUESTION[questionId];
+  return profile.axes.some((axis) => axis.axis_id === axisId && axis.locked_by_user);
+}
+
 export const NO_MEMORIES: MemoryList = {
   memories: [],
   memory_types: ["episodic", "semantic", "procedural", "preference", "commitment"],
@@ -981,6 +997,7 @@ export function installFakeCore(
   let configuration = snapshot;
   let profile: ProfileScreen | null = null;
   let graphHeld: PeopleGraph = options.graph ?? EMPTY_GRAPH;
+  const spentForgetPreviews = new Set<string>();
 
   /** Read on demand, so a `profile` option that refuses still refuses. */
   const profileNow = (): ProfileScreen => {
@@ -1040,6 +1057,7 @@ export function installFakeCore(
           throw { reason_code: "ROUTINE", explanation: NOT_A_BAND_NOTICE };
         }
         const current = graphHeld;
+        const evidenceId = `0192f000-0000-7000-8000-c0r${String(current.ties.reduce((n, t) => n + t.evidence.length, 0)).padStart(3, "0")}`;
         const next: PeopleGraph = {
           ...current,
           ties: current.ties.map((tie) =>
@@ -1050,6 +1068,10 @@ export function installFakeCore(
                   locked_by_user: true,
                   user_band: asked.band ?? tie.band,
                   machine_band: tie.machine_band ?? tie.band,
+                  evidence: [
+                    ...tie.evidence,
+                    { evidence_id: evidenceId, kind: "user_correction", method: "user_stated", strength: "strong" },
+                  ],
                 }
               : tie,
           ),
@@ -1133,7 +1155,14 @@ export function installFakeCore(
         if (options.recording !== undefined) {
           // May throw, which is how a refusal arrives; nothing moves then.
           const written = options.recording(answers);
-          profile = profileAfter(profileNow(), answers, questions);
+          // A receipt that reports an answer as ignored is a receipt from a
+          // core that did not apply it, so the double does not either.
+          const refused = new Set(written.ignored.map((one) => one.question_id));
+          profile = profileAfter(
+            profileNow(),
+            answers.filter((answer) => !refused.has(answer.question_id)),
+            questions,
+          );
           return written;
         }
         const kept = answers.filter((answer) => answer.given.trim() !== "");
@@ -1141,8 +1170,20 @@ export function installFakeCore(
         // reporting an intake that wrote no rows. The double has to as well,
         // or the wizard's handling of that refusal is never exercised.
         if (kept.length === 0) throw { reason_code: "ROUTINE", explanation: NO_ANSWERS_NOTICE };
-        profile = profileAfter(profileNow(), answers, questions);
-        return anIntakeReceipt({ answered: kept.length });
+        // An answer on a corrected axis is written and not applied, and comes
+        // back named in `ignored`; `answered` counts what moved (D46).
+        const ignored = kept.filter((answer) =>
+          answerHitsALockedAxis(profileNow(), answer.question_id),
+        );
+        const applied = kept.filter((answer) => !ignored.includes(answer));
+        profile = profileAfter(profileNow(), applied, questions);
+        return anIntakeReceipt({
+          answered: applied.length,
+          ignored: ignored.map((answer) => ({
+            question_id: answer.question_id,
+            reason: "axis_locked_by_user",
+          })),
+        });
       }
       case "profile_screen":
         return profileNow();
@@ -1203,12 +1244,13 @@ export function installFakeCore(
         }).confirmation;
         if (options.forgetting !== undefined) return options.forgetting(confirmation);
         // The core holds the preview it issued and refuses anything else.
-        if (confirmation.preview_id !== PREVIEW_ID) {
+        if (confirmation.preview_id !== PREVIEW_ID || spentForgetPreviews.has(confirmation.preview_id)) {
           throw {
             reason_code: "PLAN_HASH_MISMATCH",
             explanation: "这次遗忘对不上你刚才看过的那份影响面预览。什么都没有销毁。",
           };
         }
+        spentForgetPreviews.add(confirmation.preview_id);
         return aForgetReceipt({ memory_id: confirmation.memory_id });
       }
       case "research_preview":

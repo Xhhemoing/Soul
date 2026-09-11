@@ -407,8 +407,9 @@ describe("在档案页上再答几题", () => {
     await user.click(screen.getByRole("button", { name: "写进档案" }));
 
     const ignored = await screen.findByTestId("profile-ignored");
-    expect(ignored).toHaveTextContent("q.axis.orderliness");
-    expect(ignored).toHaveTextContent("axis_locked_by_user");
+    expect(ignored).toHaveTextContent("这一次有 1 条没有改动档案");
+    expect(ignored).toHaveTextContent(LOCKED_LINE);
+    expect(renderedText()).not.toContain("axis_locked_by_user");
     expect(core.callsTo("answer_questionnaire")).toHaveLength(1);
   });
 

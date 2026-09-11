@@ -412,15 +412,6 @@ function AskAgain({ busy, onRecorded }: AskAgainProps): React.JSX.Element {
             记下了 {receipt.answered} 条，都是「你自己说的」。
             {receipt.axes_known} 条轴有了方向，{receipt.axes_unknown} 条留成还看不出方向。
           </p>
-          {receipt.ignored.length === 0 ? null : (
-            <ul data-testid="profile-ignored">
-              {receipt.ignored.map((row) => (
-                <li key={`${row.question_id}:${row.reason}`}>
-                  {row.question_id} 已跳过（{row.reason}）
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
       )}
 
