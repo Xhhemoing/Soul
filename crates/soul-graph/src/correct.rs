@@ -29,11 +29,12 @@ use soul_schema::audit::AuditAction;
 use soul_schema::common::{Privacy, Purpose, SchemaVersion, Subject, SupportedBand};
 use soul_schema::evidence::{EvidenceKind, EvidenceMethod, SoulEvidence};
 use soul_schema::inference::UserVerdict;
+use soul_schema::memory::ForgetState;
 use soul_schema::relationship::SoulRelationship;
 use soul_store_api::{AuditLog, GraphStore, ProfileStore};
 
 use crate::build::is_tie_statement_about;
-use crate::error::GraphResult;
+use crate::error::{GraphError, GraphResult};
 use crate::model::TieStrength;
 use crate::view::read_strength;
 
@@ -96,6 +97,7 @@ where
     S: GraphStore + ProfileStore + AuditLog,
 {
     let stored = store.get_relationship(relationship_id)?;
+    refuse_a_forgotten_peer(store, &stored)?;
     let mut strength = read_strength(&stored)?;
     let machine_band = machine_reading(&strength);
 
@@ -142,6 +144,7 @@ where
     S: GraphStore + ProfileStore + AuditLog,
 {
     let stored = store.get_relationship(relationship_id)?;
+    refuse_a_forgotten_peer(store, &stored)?;
     let mut strength = read_strength(&stored)?;
     let machine_band = machine_reading(&strength);
 
@@ -193,6 +196,40 @@ pub fn corrected_relationship(evidence: &SoulEvidence) -> Option<Uuid> {
 }
 
 // ------------------------------------------------------------- internals ---
+
+/// Refuse to move the band on an edge either end of which has been forgotten.
+///
+/// A forget tombstones the contact row, destroys the keys their words were
+/// sealed under and demotes the inferences resting on their evidence to
+/// `orphaned` — and deliberately leaves the relationship row and the evidence
+/// ids alone, because `resolve_evidence` fails rather than returning a short
+/// list and the graph view runs it over every edge. `rebuild` then skips the
+/// tombstoned peer, so their edge stays exactly as the last live rebuild wrote
+/// it: on screen, with the three band words under it.
+///
+/// Pressing one of them wrote through. Nothing on this path read the peer's
+/// [`ForgetState`]: [`set_verdict`] finds the tie inference with
+/// `list_inferences`, which does not filter on state, and `put_inference`
+/// files whatever it is handed as live — so a correction on a tombstone's
+/// stale tie put the forgotten person's inference back and added a
+/// `UserCorrection` row about them. Refusing here is the whole fix; the row
+/// itself stays where the forget left it.
+///
+/// Both ends are checked rather than "the peer", because an edge is a pair of
+/// contact ids and nothing in the contract says which of them is the owner.
+fn refuse_a_forgotten_peer<S>(store: &S, stored: &SoulRelationship) -> GraphResult<()>
+where
+    S: GraphStore,
+{
+    for contact_id in [stored.from_contact_id, stored.to_contact_id] {
+        if store.get_contact(contact_id)?.forget_state != ForgetState::Active {
+            return Err(GraphError::Forgotten {
+                relationship_id: stored.relationship_id,
+            });
+        }
+    }
+    Ok(())
+}
 
 /// What the counts say, whether or not the user has overruled it.
 ///
