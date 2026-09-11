@@ -162,6 +162,7 @@ pub struct DirectorySnapshot {
     hash: String,
     entries: usize,
     bytes: u64,
+    truncated: bool,
 }
 
 impl DirectorySnapshot {
@@ -174,17 +175,19 @@ impl DirectorySnapshot {
     ///
     /// The entry cap ends this walk exactly as it ends the scan's, and both
     /// walks take each directory in name order, so a snapshot of an unchanged
-    /// tree stops at the same name twice. The hash then states what was looked
-    /// at, which is the honest claim for a capped preview: it proves nothing
-    /// about the part nobody visited, and does not pretend to.
+    /// tree stops at the same name twice. When the cap bites the snapshot says
+    /// so — in [`DirectorySnapshot::truncated`] and inside the hash — so a
+    /// partial view can never hash equal to the complete one it is a prefix of.
     pub fn of(root: &Path, limits: ScanLimits) -> DirectorySnapshot {
         let mut lines: Vec<String> = Vec::new();
         let mut bytes = 0u64;
+        let mut truncated = false;
         let mut pending = vec![(root.to_path_buf(), String::new(), 0usize)];
 
         'walk: while let Some((directory, prefix, depth)) = pending.pop() {
             if lines.len() >= limits.max_entries {
-                break;
+                truncated = true;
+                break 'walk;
             }
             let Some(listing) = read_in_name_order(&directory) else {
                 lines.push(format!("{prefix}\u{0}unreadable-dir"));
@@ -192,12 +195,14 @@ impl DirectorySnapshot {
             };
             for _ in 0..listing.unreadable_entries {
                 if lines.len() >= limits.max_entries {
+                    truncated = true;
                     break 'walk;
                 }
                 lines.push(format!("{prefix}\u{0}unreadable-entry"));
             }
             for (name, path) in listing.named {
                 if lines.len() >= limits.max_entries {
+                    truncated = true;
                     break 'walk;
                 }
                 let relative = join_relative(&prefix, &name);
@@ -243,10 +248,14 @@ impl DirectorySnapshot {
             digest.update(line.as_bytes());
             digest.update([b'\n']);
         }
+        if truncated {
+            digest.update("\u{0}truncated\n".as_bytes());
+        }
         DirectorySnapshot {
             hash: hex::encode(digest.finalize()),
             entries,
             bytes,
+            truncated,
         }
     }
 
@@ -260,6 +269,14 @@ impl DirectorySnapshot {
 
     pub fn bytes(&self) -> u64 {
         self.bytes
+    }
+
+    /// Whether [`ScanLimits::max_entries`] cut this snapshot short. A truncated
+    /// snapshot still compares equal to another truncated snapshot of the same
+    /// unchanged directory; what it cannot say is anything about what lies past
+    /// the limit.
+    pub fn truncated(&self) -> bool {
+        self.truncated
     }
 }
 
@@ -476,6 +493,10 @@ pub fn scan(
     skipped.sort_by(|a, b| (&a.shown, a.reason.as_str()).cmp(&(&b.shown, b.reason.as_str())));
 
     let after = DirectorySnapshot::of(&root, limits);
+
+    // A walk whose proof of read-only covers part of the directory is a truncated
+    // preview even if the listing itself stayed under the cap.
+    let truncated = truncated || before.truncated() || after.truncated();
 
     Ok(DirectoryScan {
         root_display: root.to_string_lossy().into_owned(),
