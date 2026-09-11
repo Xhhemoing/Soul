@@ -134,6 +134,13 @@ fn files_the_tie(text: &str) -> bool {
         .all(|fragment| text.contains(fragment))
 }
 
+/// AD-13 projection lines. They speak for the machine's demotion clock, so a
+/// band the user locked must not keep forecasting it.
+fn projects_the_clock(text: &str) -> bool {
+    text.contains("如果你们一直没有新的往来")
+}
+
+
 /// The control: on an edge nobody has corrected, the filing sentence is exactly
 /// where it has always been. Without this the suppression would pass just as
 /// well against a summary that never files anything.
@@ -183,20 +190,30 @@ fn a_corrected_edge_is_not_filed_and_no_variant_replaces_the_sentence() {
     );
 }
 
-/// A count is unaffected by who chose the word for it, so every other line of
+/// A count is unaffected by who chose the word for it, so every count line of
 /// the summary survives the correction character for character.
+///
+/// Two sentences do go away on purpose: the filing line (GC-9a) and the
+/// demotion-clock projection (AD-13 / COPY_ZH §6), both of which speak for the
+/// machine's reading of the band. Filtering them out of `before` is what keeps
+/// this test about the counts rather than about those two suppressions.
 #[test]
 fn correcting_the_band_changes_no_other_line_of_the_summary() {
     let mut store = store_with_one_partner();
     let relationship_id = tie(&store);
     let before: Vec<String> = lines_of(&rendered(&store))
         .into_iter()
-        .filter(|line| !files_the_tie(line))
+        .filter(|line| !files_the_tie(line) && !projects_the_clock(line))
         .collect();
 
     correct_tie(&mut store, relationship_id, SupportedBand::Weak, NOW).expect("the user rules");
 
-    assert_eq!(before, lines_of(&rendered(&store)));
+    let after = rendered(&store);
+    assert!(
+        !lines_of(&after).iter().any(|line| projects_the_clock(line)),
+        "a locked edge does not forecast the machine demotion clock:\n{after}",
+    );
+    assert_eq!(before, lines_of(&after));
 }
 
 /// GC-3's half of the promise, seen from the summary: releasing hands the band
