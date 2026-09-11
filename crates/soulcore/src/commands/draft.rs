@@ -87,9 +87,20 @@ pub use soul_policy::redactor::KnownIdentifiers as DraftIdentifiers;
 /// reason WP09 made the cloud notice one: it is a promise about what the
 /// build does, and a promise kept in TypeScript is one the Rust tests cannot
 /// check.
-pub const E1_PLAN_NOTICE: &str = "确认之后，只有下面这些内容会发到你自己配置的模型端点，\
-     用来生成草稿。第三人正文默认已占位。草稿生成之后仍然由你自己决定要不要发出去，\
-     Soul 不会替你发送。";
+///
+/// It names the request body rather than the panel. The earlier wording said
+/// 只有下面这些内容 while the list underneath it is counts, a plan hash and a
+/// preparation id — none of which are in the JSON — and said nothing about the
+/// owner's profile brief, which is. `soul_policy::e1::E1RequestPlan::json_body`
+/// and `soul_draft::draft` are the two places to check this against: a model
+/// name, one fixed system instruction, and one user-material message holding
+/// the rendered [`ProfileBrief`] and the pasted turn.
+pub const E1_PLAN_NOTICE: &str = "确认之后，会发到你自己配置的模型端点的是这些：模型名、\
+     一段固定的系统指令，以及一段引用材料——里面是你自己的档案摘要（口吻、口吻来源、\
+     有证据支持的要点，和「工作假设，非临床结论」那句），加上你粘贴的这一段。\
+     第三人正文默认已占位，只有你二次确认「这一条按原文带上」时才按原文发出，而且只这一次；\
+     姓名与账号两种情况下都占位。下面的段数、计划哈希与准备编号是给你核对用的，\
+     不在发出去的内容里。草稿生成之后仍然由你自己决定要不要发出去，Soul 不会替你发送。";
 
 /// The first half of the sentence that names where this preparation goes.
 ///

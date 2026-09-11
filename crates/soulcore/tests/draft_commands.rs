@@ -180,7 +180,14 @@ fn the_confirmation_notice_names_what_the_request_body_actually_carries() {
     let plan = drafting
         .prepare(&mut policy, a_paste(), None, RequestOrigin::User, NOW_MS)
         .expect("a plan the user can read");
-    assert_eq!(plan.notice, E1_PLAN_NOTICE);
+    // plan_notice appends the endpoint sentence after E1_PLAN_NOTICE; the
+    // body-disclosure promise is the prefix, and the address is checked by
+    // preparing_describes_a_request_without_making_one.
+    assert!(
+        plan.notice.starts_with(E1_PLAN_NOTICE),
+        "confirmation notice lost the body-disclosure prefix: {}",
+        plan.notice,
+    );
     assert!(
         !plan.notice.contains("只有下面这些内容"),
         "the notice still calls the panel the payload: {}",
