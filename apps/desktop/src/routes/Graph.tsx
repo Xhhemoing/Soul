@@ -211,7 +211,7 @@ function Tie({ tie, onLock, onUnlock }: TieProps): React.JSX.Element {
         {tie.incoming_count}）
         {tie.venue_split_measured
           ? `，一对一 ${tie.direct_count} 次，群里 ${tie.group_count} 次`
-          : ""}
+          : "（含群/过渡）"}
         ，{tie.conversation_count} 个会话，{tie.active_day_count} 天有往来，最近一次{" "}
         {tie.last_contact_utc}。
       </span>

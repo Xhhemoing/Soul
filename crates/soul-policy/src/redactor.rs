@@ -533,7 +533,6 @@ fn is_label_space(c: char) -> bool {
     c == ' ' || c == '\u{3000}'
 }
 
-
 fn run_end(scalars: &[char], from: usize, mut accept: impl FnMut(char) -> bool) -> usize {
     let mut end = from;
     while end < scalars.len() && accept(scalars[end]) {

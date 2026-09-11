@@ -231,7 +231,6 @@ fn the_research_path_has_no_exemption_entry_point() {
     assert_eq!(owner, &"pub fn redact_for_e1_with_exemption(");
 }
 
-
 /// The same promise for the same number, written in groups.
 ///
 /// [`identifiers_stay_placeheld_inside_an_exempted_turn`] hands the redactor
@@ -276,7 +275,6 @@ fn a_grouped_phone_number_stays_placeheld_inside_an_exempted_turn() {
         assert!(redacted.carries_exempted_original());
     }
 }
-
 
 /// The same promise again, for the spellings a keyboard produces rather than
 /// the ones a test author types.

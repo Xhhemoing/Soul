@@ -293,7 +293,6 @@ fn a_decomposed_spelling_is_caught_by_the_composed_corpus() {
     checker.assert_clean("a decomposed third-party body", redacted.as_str());
 }
 
-
 /// The same number, written the way a person writes one down for another
 /// person: in groups.
 ///
@@ -345,7 +344,6 @@ fn a_phone_number_written_in_groups_is_placeheld_on_the_default_path() {
     }
 }
 
-
 /// The same number again, typed on the layout most of this product's users
 /// have in front of them.
 ///
@@ -396,7 +394,6 @@ fn a_phone_number_typed_in_fullwidth_digits_is_placeheld() {
     }
 }
 
-
 /// One number, two kinds of dash, and the tail that used to survive.
 ///
 /// `138-0013–8000` is what a line looks like after somebody retyped part of it
@@ -433,4 +430,118 @@ fn a_number_grouped_by_two_different_dashes_leaves_no_tail() {
             "`{mixed}` did not go whole",
         );
     }
+}
+
+/// The rule the grouped shape was added beside, still doing its job.
+///
+/// A contiguous run of seven digits or more was the whole of the phone shape
+/// before the groups were counted, and it is the spelling an export and a
+/// contact card use. Widening a rule is the easiest way to lose the case it
+/// started as, so the original one is pinned here on its own.
+#[test]
+fn a_contiguous_run_of_digits_is_still_placeheld() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+
+    let redacted = redactor.redact_for_e1(&[own("回头打 13800138000 找他。")]);
+    assert_eq!(
+        redacted.as_str(),
+        format!("回头打 {ACCOUNT_PLACEHOLDER} 找他。"),
+    );
+
+    // The boundary the number 7 draws, from both sides.
+    assert_eq!(
+        redactor
+            .redact_for_e1(&[own("单号 1234567 和房间 123456")])
+            .as_str(),
+        format!("单号 {ACCOUNT_PLACEHOLDER} 和房间 123456"),
+    );
+}
+
+/// The deliberate false positive, written down so it is a fact somebody has to
+/// change a test to move.
+///
+/// `2026-08-25` is eight digits in three groups joined by single hyphens, so
+/// the grouped shape reads it as a number and replaces it. It is a date, and
+/// prose that quotes one comes back with a placeholder where the date was.
+///
+/// The alternative was to excuse the `\d{4}-\d{2}-\d{2}` shape by name, which
+/// would also excuse any number punctuated 4-2-2. The trade taken here is the
+/// same one-directional one `KnownIdentifiers::add_name` takes: a placeholder
+/// too many is something the user can see and work around, and a number on the
+/// wire is not.
+#[test]
+fn an_iso_date_is_placeheld_too_and_that_is_the_trade() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+
+    let redacted = redactor.redact_for_e1(&[own("合同签在 2026-08-25，别记错。")]);
+    assert_eq!(
+        redacted.as_str(),
+        format!("合同签在 {ACCOUNT_PLACEHOLDER}，别记错。"),
+        "if the ISO date now survives, the shape has been narrowed — say so \
+         here and in `phone_shape_end`, and check a 4-2-2 number still goes",
+    );
+
+    // A date written the way Chinese prose writes one has Han characters
+    // between its groups, so nothing joins them and it is left alone.
+    assert_eq!(
+        redactor
+            .redact_for_e1(&[own("合同签在 2026 年 8 月 25 日，别记错。")])
+            .as_str(),
+        "合同签在 2026 年 8 月 25 日，别记错。",
+    );
+}
+
+/// The false positives the dash family, the fullwidth digits and the
+/// fullwidth dot add, in the same place and on the same terms as the ISO date
+/// above.
+///
+/// A year range is the one thing an en-dash is used for far more often than a
+/// phone number, and `2019–2026` is eight digits in two groups joined by one,
+/// so it reads as a number and goes. `２０２６－０８－２５` is the ISO date
+/// again, typed on an IME, and `２０２６．０８．２５` is that date with the dot
+/// the same IME gives — a fullwidth-dotted digit run adding to seven digits or
+/// more is placeheld exactly as the ASCII-dotted `2026.08.25` already was.
+/// Each is the price of one widening, and each is the same one-directional
+/// trade `phone_shape_end` already documents: a placeholder too many is
+/// something the user can see and work around, and the last four digits of
+/// somebody's number on the wire are not.
+///
+/// Naming the year-range and date shapes to excuse them would excuse every
+/// number punctuated the same way along with them, which is letting a number
+/// through because of how it was written.
+#[test]
+fn a_year_range_and_a_fullwidth_date_are_placeheld_too_and_that_is_the_trade() {
+    let redactor = Redactor::new(KnownIdentifiers::new());
+
+    for (body, expected) in [
+        (
+            "这份材料覆盖 2019\u{2013}2026，别记错。",
+            format!("这份材料覆盖 {ACCOUNT_PLACEHOLDER}，别记错。"),
+        ),
+        (
+            "合同签在 ２０２６－０８－２５，别记错。",
+            format!("合同签在 {ACCOUNT_PLACEHOLDER}，别记错。"),
+        ),
+        (
+            "合同签在 ２０２６．０８．２５，别记错。",
+            format!("合同签在 {ACCOUNT_PLACEHOLDER}，别记错。"),
+        ),
+    ] {
+        assert_eq!(
+            redactor.redact_for_e1(&[own(body)]).as_str(),
+            expected,
+            "if this now survives, the shape has been narrowed — say so here \
+             and in `phone_shape_end`, and check the number spellings it was \
+             widened for still go",
+        );
+    }
+
+    // Seven digits is still the floor, whichever way the range is punctuated:
+    // a two-group range of six digits is not a number.
+    assert_eq!(
+        redactor
+            .redact_for_e1(&[own("这份材料覆盖 201\u{2013}206，别记错。")])
+            .as_str(),
+        "这份材料覆盖 201\u{2013}206，别记错。",
+    );
 }

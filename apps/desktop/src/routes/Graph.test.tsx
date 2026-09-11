@@ -106,6 +106,7 @@ describe("人脉图页", () => {
     const ties = screen.getByTestId("ties-list");
     expect(ties).toHaveTextContent("往来 6 次");
     expect(ties).not.toHaveTextContent("一对一 0 次");
+    expect(ties).toHaveTextContent("含群/过渡");
     expect(ties).not.toHaveTextContent("群里 0 次");
   });
 
