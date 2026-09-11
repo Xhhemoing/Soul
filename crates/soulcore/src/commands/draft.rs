@@ -51,6 +51,7 @@ use soul_draft::draft::{BodyFacts, Draft, DraftRequest, Drafter, ReplyGenerator}
 use soul_draft::error::{DraftError, GenerationRefused};
 use soul_graph::GraphError;
 use soul_policy::audit::AuditContent;
+use soul_policy::e1::E1Purpose;
 use soul_policy::hitl::{
     ActionKind, ActionRequest, CapabilityScope, HitlDenial, PlanHash, RequestOrigin,
 };
@@ -721,6 +722,10 @@ const REPHRASING_REFUSED: &str = "the summary rephrasing did not come back";
 
 /// One rephrasing request against the endpoint the user configured.
 ///
+/// The purpose is [`E1Purpose::PersonSummary`], which is the whole of what
+/// separates this from a draft: the body is counts and the system instruction
+/// asks for a rewrite of them. Drafting keeps using [`PolicySession::e1_generate`].
+///
 /// A [`ReplyGenerator`] rather than a free function because
 /// [`analysis::phrase_with`] is what builds the body, and the capability token
 /// has to be minted against the body that is actually going out rather than
@@ -757,10 +762,13 @@ impl ReplyGenerator for Rephraser<'_> {
             Ok(token) => token.token_id(),
             Err(refused) => return Err(self.refused(DraftRefusal::Token(refused))),
         };
-        match self
-            .policy
-            .e1_generate(&self.model, body, token_id, self.now_ms)
-        {
+        match self.policy.e1_generate_for(
+            E1Purpose::PersonSummary,
+            &self.model,
+            body,
+            token_id,
+            self.now_ms,
+        ) {
             Ok(outcome) => {
                 self.audit.push(outcome.audit());
                 Ok(outcome.body)
