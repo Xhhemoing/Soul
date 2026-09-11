@@ -248,7 +248,11 @@ impl DraftSession {
 
         let body = self.drafter.redact(&request, exemption)?;
         let facts = BodyFacts::of(&body);
-        let plan_hash = PlanHash::of(&e1_plan(self.drafter.model(), &body));
+        let plan_hash = PlanHash::of(&e1_plan(
+            self.drafter.model(),
+            policy.guard().config().e1_endpoint(),
+            &body,
+        ));
         let id = Uuid::now_v7();
         let endpoint = policy.guard().config().e1_endpoint().cloned();
         let notice = plan_notice(endpoint.as_ref());
@@ -732,7 +736,11 @@ impl Rephraser<'_> {
 
 impl ReplyGenerator for Rephraser<'_> {
     fn generate(&mut self, body: RedactedBody) -> Result<String, GenerationRefused> {
-        let plan = PlanHash::of(&e1_plan(&self.model, &body));
+        let plan = PlanHash::of(&e1_plan(
+            &self.model,
+            self.policy.guard().config().e1_endpoint(),
+            &body,
+        ));
         let scope = CapabilityScope::E1Generate;
         let token_id = match self.policy.issue_token(scope, plan, self.now_ms) {
             Ok(token) => token.token_id(),
