@@ -296,9 +296,10 @@ fn the_counts_in_the_summary_are_the_counts_in_the_graph() {
 /// Nothing in the summary is a threshold this crate owns.
 ///
 /// D40's whole point: the band word, the dormancy line and every count
-/// sentence come out of the frozen renderer. If a second copy of a rule grew
-/// here, the fastest way to see it would be a sentence in the rendered summary
-/// that A2 cannot produce from the same edge, so that is what this checks.
+/// sentence come out of the frozen A2 renderer. AD-13 adds the demotion-clock
+/// projection beside them (same day constants from `soul-algo-tie`). A sentence
+/// that neither A2 nor the projection can produce from this edge is the drift
+/// this test is meant to catch.
 #[test]
 fn every_sentence_in_the_summary_is_one_the_frozen_renderer_wrote() {
     let store = store_with_one_partner();
@@ -318,18 +319,32 @@ fn every_sentence_in_the_summary_is_one_the_frozen_renderer_wrote() {
                 })
         })
         .map(|row| row.evidence_id);
-    let bullets = soul_draft::a2_adapt::bullets_for(edge, &counted, last_contact);
+    let a2: Vec<String> = soul_draft::a2_adapt::bullets_for(edge, &counted, last_contact)
+        .into_iter()
+        .map(|bullet| bullet.text_zh)
+        .collect();
 
     let said: Vec<&str> = summary
         .points
         .iter()
         .map(|point| point.statement())
         .collect();
-    let rendered: Vec<&str> = bullets
-        .iter()
-        .map(|bullet| bullet.text_zh.as_str())
-        .collect();
-    assert_eq!(said, rendered);
+    assert!(
+        said.len() >= a2.len(),
+        "summary shorter than A2: said={said:?} a2={a2:?}",
+    );
+    assert_eq!(
+        &said[..a2.len()],
+        a2.iter().map(String::as_str).collect::<Vec<_>>().as_slice()
+    );
+
+    // Trailing points are AD-13 projection sentences (COPY_ZH §6 closer).
+    for statement in &said[a2.len()..] {
+        assert!(
+            statement.contains("这是工作假设，你可以直接改"),
+            "trailing sentence is not a demotion-clock projection: {statement}",
+        );
+    }
 }
 
 /// A rebuilt edge carries the per-venue tallies the frozen rule banded on, and
