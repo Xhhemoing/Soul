@@ -18,7 +18,14 @@ description = "Drafting that never sends, and people summaries that never claim 
 # the people summary's wording is its output, not this crate's (D40). The edge
 # is one way: the renderer takes counts and returns sentences, and knows nothing
 # about a store, a graph or a draft.
+#
+# `soul-algo-tie` is the frozen tie rule, and `src/projection.rs` reads two
+# constants out of it: the day a band comes down and the day it hits the floor
+# (AD-13). Nothing here calls the rule — the band and the counts still arrive on
+# the edge — but the projection has to name the same two days the rule acts on,
+# and D52 forbids a product crate spelling either of them out for itself.
 [dependencies]
+soul-algo-tie = { workspace = true }
 soul-algo-trait = { workspace = true }
 soul-schema = { workspace = true }
 soul-policy = { workspace = true }
@@ -35,7 +42,6 @@ uuid = { workspace = true }
 # rather than against a re-serialization of it. `xtask e0-audit` does not
 # follow dev edges, so this does not make the crate an egress path.
 [dev-dependencies]
-soul-algo-tie = { workspace = true }
 soul-egress = { workspace = true }
 soul-store-api = { workspace = true }
 soul-testkit = { workspace = true }
