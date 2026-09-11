@@ -140,7 +140,6 @@ fn projects_the_clock(text: &str) -> bool {
     text.contains("如果你们一直没有新的往来")
 }
 
-
 /// The control: on an edge nobody has corrected, the filing sentence is exactly
 /// where it has always been. Without this the suppression would pass just as
 /// well against a summary that never files anything.
