@@ -52,8 +52,8 @@ pub use questionnaire::{
 };
 pub use service::{
     axis_is_locked, blank_profile, correct_axis, intake, read_profile, read_voice,
-    record_axis_inference, set_voice, suggest_voice, AxisProposal, AxisUpdate, InferenceOutcome,
-    IntakeOutcome,
+    record_axis_inference, set_voice, suggest_voice, AxisProposal, AxisUpdate, IgnoredAnswer,
+    InferenceOutcome, IntakeOutcome, IntakeSkip,
 };
 pub use sink::{ProfileSink, StagedAnswer, StagedValue};
 pub use view::{

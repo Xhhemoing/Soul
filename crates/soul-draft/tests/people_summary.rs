@@ -261,6 +261,13 @@ fn a_person_the_graph_has_never_seen_gets_no_summary() {
     );
 }
 
+/// The numbers the user reads are the numbers the graph filed the edge on, in
+/// the frozen renderer's words.
+///
+/// The wording is `soul_algo_trait::a2_render`'s and is asserted as fragments
+/// rather than whole sentences: what this test is for is that the counts
+/// survive the trip through the adapter, not that a frozen template still says
+/// what its own tests say it says.
 #[test]
 fn the_counts_in_the_summary_are_the_counts_in_the_graph() {
     let store = store_with_one_partner();
@@ -274,12 +281,166 @@ fn the_counts_in_the_summary_are_the_counts_in_the_graph() {
     assert_eq!(strength.active_day_count, 3);
 
     let rendered = analysis::render(&summary).expect("renders");
-    assert!(rendered.contains("6 次往来"), "{rendered}");
-    assert!(rendered.contains("3 个自然日"), "{rendered}");
+    assert!(rendered.contains("有记录的往来 6 次"), "{rendered}");
+    assert!(rendered.contains("3 个不同的日子"), "{rendered}");
     assert!(
-        rendered.contains("两边说得差不多"),
+        rendered.contains("往来是双向的"),
         "three each is not a one-sided tie: {rendered}",
     );
+    assert!(
+        rendered.contains("你发出过 3 次") && rendered.contains("对方发来过 3 次"),
+        "the direction sentence carries both counts: {rendered}",
+    );
+}
+
+/// Nothing in the summary is a threshold this crate owns.
+///
+/// D40's whole point: the band word, the dormancy line and every count
+/// sentence come out of the frozen renderer. If a second copy of a rule grew
+/// here, the fastest way to see it would be a sentence in the rendered summary
+/// that A2 cannot produce from the same edge, so that is what this checks.
+#[test]
+fn every_sentence_in_the_summary_is_one_the_frozen_renderer_wrote() {
+    let store = store_with_one_partner();
+    let (summary, _) = summarize(&store);
+    let graph = soul_graph::load(&store).expect("the graph loads");
+    let edge = &graph.edges_for(peer())[0];
+    let resolved = soul_graph::resolve_evidence(&store, edge).expect("the evidence resolves");
+
+    let counted: Vec<_> = edge.evidence_ids.clone();
+    let last_contact = resolved
+        .iter()
+        .find(|row| {
+            soul_graph::interaction::interactions_in(row)
+                .iter()
+                .any(|seen| {
+                    seen.occurred_at.as_str() == edge.tie_strength.last_contact_utc.as_str()
+                })
+        })
+        .map(|row| row.evidence_id);
+    let bullets = soul_draft::a2_adapt::bullets_for(edge, &counted, last_contact);
+
+    let said: Vec<&str> = summary
+        .points
+        .iter()
+        .map(|point| point.statement())
+        .collect();
+    let rendered: Vec<&str> = bullets
+        .iter()
+        .map(|bullet| bullet.text_zh.as_str())
+        .collect();
+    assert_eq!(said, rendered);
+}
+
+/// A rebuilt edge carries the per-venue tallies the frozen rule banded on, and
+/// the summary reads them off it rather than counting the evidence again.
+#[test]
+fn a_rebuilt_edge_says_the_split_the_rule_banded_on() {
+    let store = store_with_one_partner();
+    let (summary, _) = summarize(&store);
+    let rendered = analysis::render(&summary).expect("renders");
+
+    assert!(
+        rendered.contains("其中一对一往来 6 次，群里同场 0 次。"),
+        "the split the rebuild persisted is the split the summary reports: {rendered}",
+    );
+    assert!(rendered.contains("有记录的往来 6 次"), "{rendered}");
+    assert!(rendered.contains("往来是双向的"), "{rendered}");
+}
+
+/// An edge that carries no per-venue tallies says nothing about them, and is
+/// not read as "zero one-to-one, zero in a group".
+///
+/// The distinction is the whole of P1b: a field that was never written is not
+/// a measured zero, so the sentence that would describe it is absent rather
+/// than wrong. `as_of_utc` is what tells the two apart — the rebuild that
+/// wrote the tallies wrote it in the same object — so the fixture here is an
+/// edge from before the frozen rule, with the whole group stripped off it.
+/// Everything the counts do support is still said.
+#[test]
+fn an_edge_that_carries_no_venue_split_claims_none() {
+    let mut store = store_with_one_partner();
+    let graph = soul_graph::load(&store).expect("the graph loads");
+    let relationship_id = graph.edges_for(peer())[0].relationship_id;
+
+    let mut stored = store.get_relationship(relationship_id).expect("the edge");
+    let strength = stored.tie_strength.as_mut().expect("a strength object");
+    for written_with_the_rule in [
+        "direct_out_count",
+        "direct_in_count",
+        "group_out_count",
+        "group_in_count",
+        "direct_active_day_count",
+        "last_direct_contact_utc",
+        "silent_days",
+        "as_of_utc",
+        "algorithm_id",
+        "machine_band",
+    ] {
+        strength
+            .as_object_mut()
+            .expect("an object")
+            .remove(written_with_the_rule);
+    }
+    store.put_relationship(stored).expect("a pre-rule edge");
+
+    let (summary, _) = summarize(&store);
+    let rendered = analysis::render(&summary).expect("renders");
+
+    assert!(
+        !rendered.contains("一对一往来") && !rendered.contains("群里同场"),
+        "a field that was never written is not a zero: {rendered}",
+    );
+    assert!(rendered.contains("有记录的往来 6 次"), "{rendered}");
+    assert!(rendered.contains("往来是双向的"), "{rendered}");
+}
+
+/// AC-28 on the screen: the decisive fixture's summary reports both numbers.
+///
+/// A colleague the user is in a loud project channel with, plus one private
+/// message each way. The band is decided on the private pair, so a user who
+/// thinks the tie was filed too low is owed the sight of both counts on the
+/// same screen — otherwise the only visible evidence is thirty exchanges and a
+/// verdict that seems to ignore them. The fixture is imported from
+/// `soul-algo-tie` rather than rebuilt here, so this and the graph's own gate
+/// are arguing about the same rows.
+#[test]
+fn the_decisive_fixture_reports_both_venues_on_one_screen() {
+    let fixture = soul_algo_tie::testing::group_heavy_plus_one_direct_each_way();
+
+    let mut store = FakeStore::new();
+    store
+        .put_contact(contact(owner(), ContactClass::Owner))
+        .expect("the owner");
+    store
+        .put_contact(contact(peer(), ContactClass::ThirdParty))
+        .expect("the colleague");
+    for (index, row) in fixture.log.iter().enumerate() {
+        observe(
+            &mut store,
+            id(&(200 + index).to_string()),
+            &format!("conversation-{}", row.conversation_id),
+            match row.outgoing {
+                true => Direction::Outgoing,
+                false => Direction::Incoming,
+            },
+            &soul_policy::clock::rfc3339_utc(row.occurred_at_unix),
+            match row.venue_direct {
+                true => Venue::Direct,
+                false => Venue::Group,
+            },
+        );
+    }
+    soul_graph::rebuild(&mut store).expect("the graph derives");
+
+    let (summary, _) = summarize(&store);
+    let rendered = analysis::render(&summary).expect("renders");
+
+    assert!(
+        rendered.contains("其中一对一往来 2 次，群里同场 30 次。"),
+        "both counts, and the one the band turned on first: {rendered}",
+    );
+    assert!(rendered.contains("有记录的往来 32 次"), "{rendered}");
 }
 
 #[test]

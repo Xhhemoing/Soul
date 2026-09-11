@@ -15,8 +15,10 @@
 import { useEffect, useState } from "react";
 
 import {
+  correctTie,
   peopleGraph,
   personSummary,
+  releaseTie,
   type PeopleGraph,
   type PersonNode,
   type PersonSummary,
@@ -74,6 +76,22 @@ export function Graph(): React.JSX.Element {
     };
   }, []);
 
+  const lock = (relationshipId: string, band: string): void => {
+    setRefusal(null);
+    correctTie(relationshipId, band).then(
+      (value) => setGraph(value),
+      (error: unknown) => setRefusal(asRefusal(error)),
+    );
+  };
+
+  const unlock = (relationshipId: string): void => {
+    setRefusal(null);
+    releaseTie(relationshipId).then(
+      (value) => setGraph(value),
+      (error: unknown) => setRefusal(asRefusal(error)),
+    );
+  };
+
   const summarize = (contactId: string): void => {
     setSummary(null);
     setSummaryRefusal(null);
@@ -124,7 +142,12 @@ export function Graph(): React.JSX.Element {
           <h2 id="ties-heading">关系与证据（{graph.ties.length}）</h2>
           <ul className="facts" data-testid="ties-list">
             {graph.ties.map((tie) => (
-              <Tie key={tie.relationship_id} tie={tie} />
+              <Tie
+                key={tie.relationship_id}
+                tie={tie}
+                onLock={lock}
+                onUnlock={unlock}
+              />
             ))}
           </ul>
           <p className="muted" data-testid="local-only">
@@ -176,15 +199,21 @@ function Person({ person, onSummarize }: PersonProps): React.JSX.Element {
 
 interface TieProps {
   readonly tie: TieEdge;
+  readonly onLock: (relationshipId: string, band: string) => void;
+  readonly onUnlock: (relationshipId: string) => void;
 }
 
-function Tie({ tie }: TieProps): React.JSX.Element {
+function Tie({ tie, onLock, onUnlock }: TieProps): React.JSX.Element {
   return (
     <li>
       <span>
         {words(BAND, tie.band)}：往来 {tie.interaction_count} 次（发出 {tie.outgoing_count}，收到{" "}
-        {tie.incoming_count}），{tie.conversation_count} 个会话，{tie.active_day_count} 天有往来，
-        最近一次 {tie.last_contact_utc}。
+        {tie.incoming_count}）
+        {tie.venue_split_measured
+          ? `，一对一 ${tie.direct_count} 次，群里 ${tie.group_count} 次`
+          : ""}
+        ，{tie.conversation_count} 个会话，{tie.active_day_count} 天有往来，最近一次{" "}
+        {tie.last_contact_utc}。
       </span>
       <span className="muted">
         {" "}
@@ -194,6 +223,27 @@ function Tie({ tie }: TieProps): React.JSX.Element {
         {" "}
         依据 {tie.evidence.length} 条证据（{tie.evidence.map((row) => row.kind).join("、")}）
       </span>
+      {tie.locked_by_user ? (
+        <p className="muted" data-testid="tie-lock">
+          生效档按你锁定的来
+          {tie.machine_band === null ? null : `；计数仍判成${words(BAND, tie.machine_band)}`}。
+          <button type="button" onClick={() => onUnlock(tie.relationship_id)}>
+            解除锁定
+          </button>
+        </p>
+      ) : (
+        <p data-testid="tie-lock-actions">
+          <button type="button" onClick={() => onLock(tie.relationship_id, "weak")}>
+            锁定为往来较少
+          </button>
+          <button type="button" onClick={() => onLock(tie.relationship_id, "moderate")}>
+            锁定为往来中等
+          </button>
+          <button type="button" onClick={() => onLock(tie.relationship_id, "strong")}>
+            锁定为往来较多
+          </button>
+        </p>
+      )}
     </li>
   );
 }

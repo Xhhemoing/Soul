@@ -430,9 +430,15 @@ fn multi_word_terms_match_across_identifier_words() {
 }
 
 #[test]
-fn xtask_and_fixtures_are_exempt_from_the_denylist() {
+fn tooling_algorithms_and_fixtures_are_exempt_from_the_denylist() {
     assert!(denylist::is_exempt(Path::new(
         "crates/xtask/src/denylist.rs"
+    )));
+    assert!(denylist::is_exempt(Path::new(
+        "crates/soul-algo-tie/src/types.rs"
+    )));
+    assert!(denylist::is_exempt(Path::new(
+        "crates/soul-algo-trait/src/a2.rs"
     )));
     assert!(denylist::is_exempt(Path::new(
         "crates/soul-schema/tests/roundtrip.rs"
@@ -443,6 +449,27 @@ fn xtask_and_fixtures_are_exempt_from_the_denylist() {
     assert!(!denylist::is_exempt(Path::new(
         "crates/soul-schema/src/profile.rs"
     )));
+}
+
+/// The adapter that reaches the frozen tie rule is exempt; the rest of the
+/// crate it lives in is not, which is the whole point of naming files rather
+/// than crates.
+#[test]
+fn only_the_named_adapter_file_is_exempt_within_a_product_crate() {
+    assert!(denylist::is_exempt(Path::new(
+        "crates/soul-graph/src/t4d_adapt.rs"
+    )));
+    assert!(denylist::is_exempt(Path::new(
+        "/somewhere/else/crates/soul-graph/src/t4d_adapt.rs"
+    )));
+    for scanned in [
+        "crates/soul-graph/src/build.rs",
+        "crates/soul-graph/src/correct.rs",
+        "crates/soul-graph/src/model.rs",
+        "crates/soul-graph/src/view.rs",
+    ] {
+        assert!(!denylist::is_exempt(Path::new(scanned)), "{scanned}");
+    }
 }
 
 #[test]

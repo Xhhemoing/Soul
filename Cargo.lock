@@ -1463,6 +1463,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "soul-algo-tie"
+version = "0.3.0"
+
+[[package]]
+name = "soul-algo-trait"
+version = "0.3.0"
+
+[[package]]
 name = "soul-collect"
 version = "0.1.0"
 dependencies = [
@@ -1484,6 +1492,8 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "soul-algo-tie",
+ "soul-algo-trait",
  "soul-egress",
  "soul-graph",
  "soul-policy",
@@ -1533,6 +1543,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "soul-algo-tie",
  "soul-policy",
  "soul-schema",
  "soul-store",
@@ -1604,6 +1615,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "soul-algo-trait",
  "soul-import",
  "soul-policy",
  "soul-schema",

@@ -61,6 +61,8 @@ pub fn configure<R: tauri::Runtime>(
             commands::preview_plan,
             commands::people_graph,
             commands::person_summary,
+            commands::correct_tie,
+            commands::release_tie,
             commands::draft_reply,
             commands::draft_notices,
             commands::prepare_draft,

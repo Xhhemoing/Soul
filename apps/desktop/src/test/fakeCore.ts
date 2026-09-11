@@ -151,11 +151,17 @@ export function aPeopleGraph(overrides: Partial<PeopleGraph> = {}): PeopleGraph 
         to_contact_id: "0192f000-0000-7000-8000-000000000002",
         types: ["direct", "reciprocal"],
         band: "moderate",
+        locked_by_user: false,
+        user_band: null,
+        machine_band: "moderate",
         interaction_count: 6,
         outgoing_count: 3,
         incoming_count: 3,
         conversation_count: 2,
         active_day_count: 4,
+        venue_split_measured: true,
+        direct_count: 6,
+        group_count: 0,
         first_contact_utc: "2026-07-01T08:00:00Z",
         last_contact_utc: "2026-08-20T09:00:00Z",
         local_only: true,
@@ -366,6 +372,7 @@ export function anIntakeReceipt(overrides: Partial<IntakeReceipt> = {}): IntakeR
     stated_entries: 0,
     profile_is_empty: false,
     evidence_ids: ["0192f000-0000-7000-8000-0000000000d1"],
+    ignored: [],
     ...overrides,
   };
 }
@@ -963,6 +970,7 @@ export function installFakeCore(
   let collect = options.collect ?? COLLECT_OFF;
   let configuration = snapshot;
   let profile: ProfileScreen | null = null;
+  let graphHeld: PeopleGraph = options.graph ?? EMPTY_GRAPH;
 
   /** Read on demand, so a `profile` option that refuses still refuses. */
   const profileNow = (): ProfileScreen => {
@@ -1008,7 +1016,46 @@ export function installFakeCore(
           (payload as { path?: string }).path ?? "",
         );
       case "people_graph":
-        return (options.graphing ?? (() => options.graph ?? EMPTY_GRAPH))();
+        return (options.graphing ?? (() => graphHeld))();
+      case "correct_tie": {
+        const asked = payload as { relationshipId?: string; band?: string };
+        const current = graphHeld;
+        const next: PeopleGraph = {
+          ...current,
+          ties: current.ties.map((tie) =>
+            tie.relationship_id === asked.relationshipId
+              ? {
+                  ...tie,
+                  band: asked.band ?? tie.band,
+                  locked_by_user: true,
+                  user_band: asked.band ?? tie.band,
+                  machine_band: tie.machine_band ?? tie.band,
+                }
+              : tie,
+          ),
+        };
+        graphHeld = next;
+        return next;
+      }
+      case "release_tie": {
+        const asked = payload as { relationshipId?: string };
+        const current = graphHeld;
+        const next: PeopleGraph = {
+          ...current,
+          ties: current.ties.map((tie) =>
+            tie.relationship_id === asked.relationshipId
+              ? {
+                  ...tie,
+                  band: tie.machine_band ?? tie.band,
+                  locked_by_user: false,
+                  user_band: null,
+                }
+              : tie,
+          ),
+        };
+        graphHeld = next;
+        return next;
+      }
       case "person_summary":
         return (options.summarizing ?? (() => aPersonSummary()))(
           (payload as { contactId?: string }).contactId ?? "",

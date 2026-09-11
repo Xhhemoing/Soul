@@ -18,6 +18,13 @@
 //! how many days — things the user could verify by counting messages — and the
 //! only summary value is [`SupportedBand`], which is three words.
 //!
+//! *How* they say it is not this module's business. D40 puts the wording in the
+//! frozen renderer `soul_algo_trait::a2_render`, which is handed the counts the
+//! graph persisted and hands back sentences; [`crate::a2_adapt`] is the whole
+//! of the conversion. What is left here is the two things the renderer cannot
+//! know: which evidence rows a point may cite, and that a band the user set is
+//! not a band the counts explain (GC-9a).
+//!
 //! What the points never say is a name. A [`PersonNode`](soul_graph::model::PersonNode)
 //! has no field holding one; the label is a sealed pointer and the identifiers
 //! are hashes. So a summary refers to its subject by `contact_id` and the
@@ -29,13 +36,14 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use soul_graph::interaction::{self, InteractionRef, Venue};
-use soul_graph::model::{SoulGraph, TieEdge, TieStrength, TieType};
+use soul_graph::interaction;
+use soul_graph::model::{SoulGraph, TieEdge, TieStrength};
 use soul_policy::clinical::{assert_non_clinical, WORKING_HYPOTHESIS_NOTICE};
 use soul_policy::redactor::{RedactedBody, Redactor, Turn};
 use soul_schema::common::{NotAClinicalClaim, SealedSubject, SupportedBand};
 use soul_schema::evidence::SoulEvidence;
 
+use crate::a2_adapt;
 use crate::draft::ReplyGenerator;
 use crate::error::{DraftError, DraftResult};
 use crate::reply;
@@ -238,138 +246,95 @@ const SUMMARY_TURN_ID: Uuid = Uuid::from_u128(0x0192b0c0_5020_7a20_8b20_00000000
 
 // ------------------------------------------------------------- internals ---
 
-/// Five things counts can support, each citing the rows that produced it.
+/// The things counts can support, each citing the rows that produced it.
+///
+/// The sentences are the frozen renderer's, one point per bullet. The band on
+/// every point is the edge's, because that is the band the renderer was handed
+/// and a per-point adjustment here would be a second opinion.
+///
+/// The one bullet that does not survive the trip is the filing sentence on an
+/// edge the user has corrected. It says two things that stop being true the
+/// moment the user has ruled: that the band follows from the counts above it,
+/// and that it is the machine's reading of the record. On a corrected edge the
+/// band came from the user and is a verdict, so the sentence would be false
+/// twice over. Rewording it is not this crate's to do —
+/// `docs/algorithms/COPY_ZH.md` is frozen and holds no variant for a user-set
+/// band, and inventing one here would be a second source of user-facing copy
+/// beside the frozen one. So the summary says nothing about filing until
+/// COPY_ZH gains the key. Nothing is hidden by the silence: the band, who set
+/// it and what the machine makes of the counts all reach the interface through
+/// the graph view.
 fn points_for(edge: &TieEdge, resolved: &[SoulEvidence]) -> DraftResult<Vec<SummaryPoint>> {
     let strength = &edge.tie_strength;
     let band = strength.band;
-    let all: Vec<Uuid> = edge.evidence_ids.clone();
+    let counted = counted_rows(edge, resolved);
+    let last_contact = last_contact_row(strength, resolved, &counted);
 
-    let mut points = vec![
-        SummaryPoint::new(
-            format!(
-                "你和这个人一共有 {} 次往来，分布在 {} 个自然日、{} 个会话里。",
-                strength.interaction_count, strength.active_day_count, strength.conversation_count,
-            ),
+    let mut points = Vec::new();
+    for bullet in a2_adapt::bullets_for(edge, &counted, last_contact) {
+        if a2_adapt::is_locked_by_user(strength) && bullet.statement_key == a2_adapt::FILED_BAND_KEY
+        {
+            continue;
+        }
+        points.push(SummaryPoint::new(
+            bullet.text_zh,
             band,
-            all.clone(),
-        )?,
-        SummaryPoint::new(direction_statement(strength), band, all.clone())?,
-    ];
-
-    if let Some(point) = venue_point(edge, resolved)? {
-        points.push(point);
+            bullet.evidence_ids,
+        )?);
     }
-    if let Some(point) = recency_point(strength, resolved)? {
-        points.push(point);
-    }
-
-    points.push(SummaryPoint::new(
-        format!(
-            "按上面的计数，这段往来归在「{}」一档；这是一个工作假设，不是对这个人的判断。",
-            band_word(band),
-        ),
-        band,
-        all,
-    )?);
     Ok(points)
 }
 
-fn direction_statement(strength: &TieStrength) -> String {
-    let shape = match (strength.outgoing_count, strength.incoming_count) {
-        (0, _) => "到目前为止都是对方在说。",
-        (_, 0) => "到目前为止都是你在说。",
-        (out, inc) if out > inc * 2 => "多数时候是你先开口。",
-        (out, inc) if inc > out * 2 => "多数时候是对方先开口。",
-        _ => "两边说得差不多。",
-    };
-    format!(
-        "你发出 {} 条，对方发出 {} 条，{shape}",
-        strength.outgoing_count, strength.incoming_count,
-    )
+/// The rows a count rests on: everything the edge cites, minus the user's own
+/// corrections.
+///
+/// A correction row is a verdict about the band, not an exchange anybody had,
+/// so counting it would make 「六次往来（依据七条记录）」 — a line whose own
+/// arithmetic does not add up, and the summary's whole claim is that the user
+/// can check it.
+///
+/// An edge whose observations have all been forgotten and whose correction is
+/// the only row left keeps citing what is actually there, rather than being
+/// left with nothing it may say at all.
+fn counted_rows(edge: &TieEdge, resolved: &[SoulEvidence]) -> Vec<Uuid> {
+    let observations: Vec<Uuid> = edge
+        .evidence_ids
+        .iter()
+        .copied()
+        .filter(|cited| {
+            resolved
+                .iter()
+                .find(|row| row.evidence_id == *cited)
+                .is_none_or(|row| soul_graph::corrected_relationship(row).is_none())
+        })
+        .collect();
+    match observations.is_empty() {
+        true => edge.evidence_ids.clone(),
+        false => observations,
+    }
 }
 
-/// Which rows show a one-to-one exchange, and which only a group one.
-fn venue_point(edge: &TieEdge, resolved: &[SoulEvidence]) -> DraftResult<Option<SummaryPoint>> {
-    let direct: Vec<Uuid> = rows_where(edge, resolved, |observation| {
-        observation.venue == Venue::Direct
-    });
-    if !direct.is_empty() {
-        return SummaryPoint::new(
-            "你们有过一对一的交流，不只是在群里碰见。",
-            SupportedBand::Weak,
-            direct,
-        )
-        .map(Some);
-    }
-
-    let group: Vec<Uuid> = rows_where(edge, resolved, |observation| {
-        observation.venue == Venue::Group
-    });
-    if group.is_empty() {
-        return Ok(None);
-    }
-    if !edge.types.contains(&TieType::GroupOnly) {
-        return Ok(None);
-    }
-    SummaryPoint::new(
-        "目前只在群聊里见过对方发言，没有一对一的记录。",
-        SupportedBand::Weak,
-        group,
-    )
-    .map(Some)
-}
-
-/// The single row holding the most recent exchange.
+/// The single row holding the most recent exchange, if it is one the summary
+/// may cite.
 ///
 /// One row, not all of them: "the last contact was on this date" is supported
 /// by the observation that happened on that date and by nothing else, and a
-/// point that cited the whole edge here would be padding its own support.
-fn recency_point(
+/// recency point that cited the whole edge would be padding its own support.
+/// A row outside `counted` is not offered — the renderer cites what it is
+/// given, and what it may be given is what the counts rest on.
+fn last_contact_row(
     strength: &TieStrength,
     resolved: &[SoulEvidence],
-) -> DraftResult<Option<SummaryPoint>> {
+    counted: &[Uuid],
+) -> Option<Uuid> {
     let last = strength.last_contact_utc.as_str();
-    let Some(evidence_id) = resolved
-        .iter()
-        .find(|row| {
-            interaction::interactions_in(row)
-                .iter()
-                .any(|observation| observation.occurred_at.as_str() == last)
-        })
-        .map(|row| row.evidence_id)
-    else {
-        return Ok(None);
-    };
-
-    SummaryPoint::new(
-        format!("最近一次往来在 {}（UTC）。", utc_date(last)),
-        SupportedBand::Weak,
-        vec![evidence_id],
-    )
-    .map(Some)
-}
-
-fn rows_where(
-    edge: &TieEdge,
-    resolved: &[SoulEvidence],
-    mut accept: impl FnMut(&InteractionRef) -> bool,
-) -> Vec<Uuid> {
     resolved
         .iter()
-        .filter(|row| edge.evidence_ids.contains(&row.evidence_id))
-        .filter(|row| interaction::interactions_in(row).iter().any(&mut accept))
+        .find(|row| {
+            counted.contains(&row.evidence_id)
+                && interaction::interactions_in(row)
+                    .iter()
+                    .any(|observation| observation.occurred_at.as_str() == last)
+        })
         .map(|row| row.evidence_id)
-        .collect()
-}
-
-fn utc_date(timestamp: &str) -> String {
-    timestamp.chars().take(10).collect()
-}
-
-fn band_word(band: SupportedBand) -> &'static str {
-    match band {
-        SupportedBand::Weak => "往来不多",
-        SupportedBand::Moderate => "往来中等",
-        SupportedBand::Strong => "往来密集",
-    }
 }

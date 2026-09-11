@@ -147,11 +147,17 @@ export interface TieEdge {
   readonly to_contact_id: string;
   readonly types: readonly string[];
   readonly band: string;
+  readonly locked_by_user: boolean;
+  readonly user_band: string | null;
+  readonly machine_band: string | null;
   readonly interaction_count: number;
   readonly outgoing_count: number;
   readonly incoming_count: number;
   readonly conversation_count: number;
   readonly active_day_count: number;
+  readonly venue_split_measured: boolean;
+  readonly direct_count: number;
+  readonly group_count: number;
   readonly first_contact_utc: string;
   readonly last_contact_utc: string;
   readonly local_only: boolean;
@@ -321,6 +327,11 @@ export interface GivenAnswer {
 }
 
 /** What one questionnaire run left behind. AC-03 is `profile_is_empty`. */
+export interface IgnoredAnswer {
+  readonly question_id: string;
+  readonly reason: string;
+}
+
 export interface IntakeReceipt {
   readonly answered: number;
   readonly axes_known: number;
@@ -330,6 +341,7 @@ export interface IntakeReceipt {
   readonly stated_entries: number;
   readonly profile_is_empty: boolean;
   readonly evidence_ids: readonly string[];
+  readonly ignored: readonly IgnoredAnswer[];
 }
 
 export interface InferenceRow {
@@ -585,6 +597,8 @@ export const COMMANDS = {
   previewPlan: "preview_plan",
   peopleGraph: "people_graph",
   personSummary: "person_summary",
+  correctTie: "correct_tie",
+  releaseTie: "release_tie",
   draftReply: "draft_reply",
   draftNotices: "draft_notices",
   prepareDraft: "prepare_draft",
@@ -666,6 +680,14 @@ export function peopleGraph(): Promise<PeopleGraph> {
 /** Everything Soul will say about one person, and what each line rests on. */
 export function personSummary(contactId: string): Promise<PersonSummary> {
   return invoke<PersonSummary>(COMMANDS.personSummary, { contactId });
+}
+
+export function correctTie(relationshipId: string, band: string): Promise<PeopleGraph> {
+  return invoke<PeopleGraph>(COMMANDS.correctTie, { relationshipId, band });
+}
+
+export function releaseTie(relationshipId: string): Promise<PeopleGraph> {
+  return invoke<PeopleGraph>(COMMANDS.releaseTie, { relationshipId });
 }
 
 /**

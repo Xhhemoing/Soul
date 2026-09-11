@@ -10,7 +10,7 @@ use soul_policy::injection::UntrustedText;
 use soul_schema::event::{EventKind, EventSource};
 use soul_schema::soul_import_v1::SenderScope;
 use soul_store::{SqlCipherStore, TestKeyProvider};
-use soul_store_api::{BlobStore, EventStore, GraphStore};
+use soul_store_api::{BlobStore, EventStore, GraphStore, ProfileStore};
 use soul_testkit::fixtures;
 
 const SEED: &str = "wp06 telegram";
@@ -293,4 +293,95 @@ fn a_hostile_chat_title_changes_nothing_about_the_import() {
     let staged = soul_import::telegram::parse(&document).expect("still a valid export");
     assert_eq!(staged.messages.len(), 6);
     assert_eq!(staged.participants.len(), 3);
+}
+
+/// AC-34 on the Telegram adapter: the user's one line in a group does not
+/// become Outgoing rows to A and B, and does not refresh their last contact.
+#[test]
+fn an_owner_group_message_does_not_fan_out_to_historical_speakers() {
+    use soul_graph::interaction;
+    use soul_graph::Direction;
+
+    let document = serde_json::json!({
+        "personal_information": {
+            "user_id": 111111111,
+            "first_name": "Roy",
+            "last_name": "",
+            "username": "roy_soul"
+        },
+        "chats": {
+            "list": [{
+                "id": 9001,
+                "type": "private_group",
+                "name": "project",
+                "messages": [
+                    {
+                        "id": 1,
+                        "type": "message",
+                        "date": "2026-08-20T09:01:00",
+                        "date_unixtime": "1787302860",
+                        "from": "A",
+                        "from_id": "user222",
+                        "text": "先看文档"
+                    },
+                    {
+                        "id": 2,
+                        "type": "message",
+                        "date": "2026-08-20T09:02:00",
+                        "date_unixtime": "1787302920",
+                        "from": "B",
+                        "from_id": "user333",
+                        "text": "收到"
+                    },
+                    {
+                        "id": 3,
+                        "type": "message",
+                        "date": "2026-08-20T10:00:00",
+                        "date_unixtime": "1787306400",
+                        "from": "Roy",
+                        "from_id": "user111111111",
+                        "text": "那就按这个来"
+                    }
+                ]
+            }]
+        }
+    });
+
+    let staged = soul_import::telegram::parse(&document).expect("valid");
+    assert!(staged.messages.iter().all(|message| message.group));
+
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut store = SqlCipherStore::open(
+        dir.path().join("soul.db"),
+        &TestKeyProvider::from_seed(SEED),
+    )
+    .expect("open");
+    soul_import::commit::commit(&mut store, &staged).expect("commit");
+
+    let observations: Vec<_> = store
+        .list_evidence()
+        .expect("evidence")
+        .iter()
+        .flat_map(interaction::interactions_in)
+        .collect();
+    assert_eq!(
+        observations
+            .iter()
+            .filter(|observation| observation.direction == Direction::Outgoing)
+            .count(),
+        0,
+        "the owner's group line names nobody",
+    );
+
+    soul_graph::rebuild(&mut store).expect("rebuild");
+    let graph = soul_graph::load(&store).expect("load");
+    assert_eq!(graph.edges.len(), 2);
+    for edge in &graph.edges {
+        assert_eq!(edge.tie_strength.outgoing_count, 0);
+        assert_ne!(
+            edge.tie_strength.last_contact_utc.as_str(),
+            "2026-08-20T10:00:00Z",
+            "A and B were last heard when they spoke, not when the owner typed",
+        );
+    }
 }
