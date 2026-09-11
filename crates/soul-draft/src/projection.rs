@@ -270,8 +270,8 @@ mod tests {
     fn the_projected_day_is_the_day_the_count_reaches_the_threshold() {
         let clock = reading(SupportedBand::Strong, 0);
         let bullets = project(&clock, &rows());
-        // The last exchange is on 2026-08-24, so the demotion lands 180 days
-        // later and the floor 180 days after that.
+        // The last exchange is on 2026-08-24, so the demotion lands
+        // DEMOTE_ONE_BAND_DAYS later and the floor WEAK_AFTER_SILENT_DAYS after that.
         assert!(
             bullets[0].text_zh.contains("2027 年 2 月 20 日"),
             "{:?}",
