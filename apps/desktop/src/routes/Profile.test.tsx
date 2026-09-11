@@ -26,7 +26,6 @@ import { denylistHits, diagnosticTerms, renderedText } from "../test/denylist";
 import {
   anIntakeReceipt,
   aProfileScreen,
-  anIntakeReceipt,
   forbidNetwork,
   installFakeCore,
   QUESTIONS,

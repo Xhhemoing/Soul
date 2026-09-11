@@ -617,6 +617,7 @@ export function aResearchPreview(overrides: Partial<ResearchPreview> = {}): Rese
     third_party_rows: 0,
     candidate_rows_total: 4,
     third_party_rows_excluded: 2,
+    deny_rows_excluded: 0,
     fields: ["event_kind", "time_bucket_utc", "aggregate_count"],
     rows: [
       {
@@ -739,6 +740,13 @@ export const CLOSED_CLOUD: CloudNotice = {
 export const LLM_ENDPOINT_SESSION_ONLY_NOTICE =
   "地址只在这次运行里有效，退出 Soul 再打开需要重新填写。填写的时候不会访问这个地址，只有你在起草页确认生成、或在人脉图上看某个人的摘要时才会。";
 
+/** `soulcore::commands::shell::WIZARD_NOT_ACKNOWLEDGED_NOTICE`. */
+export const WIZARD_NOT_ACKNOWLEDGED_NOTICE =
+  "你还没勾上「我读过上面这几行」，向导就没有可以结束的东西。什么都没有写下，勾上之后再点一次就行。";
+
+/** What the core says when a correction names something that is not a band. */
+export const NOT_A_BAND_NOTICE = "一条关系只有弱、中等、强三档。";
+
 /** `soulcore::commands::session::ENDPOINT_UNPARSABLE_NOTICE`. */
 export const ENDPOINT_UNPARSABLE_NOTICE =
   "这个地址不像一个端点：要 http:// 或 https:// 开头，后面跟主机名，端口不写就按 80 或 443 算，比如 http://127.0.0.1:11434/v1；地址里不能带用户名和密码。这一次什么都没有保存，端点还是没有填写。";
@@ -798,6 +806,8 @@ export interface FakeCoreOptions {
   readonly graph?: PeopleGraph;
   /** As `graph`, but able to throw the way a refusal arrives — as a value. */
   readonly graphing?: () => PeopleGraph;
+  /** Able to throw, because an invalid band arrives as a refusal value. */
+  readonly correctingTie?: (relationshipId: string, band: string) => PeopleGraph;
   readonly summarizing?: (contactId: string) => PersonSummary;
   /**
    * How the double answers 用你自己的模型端点写.
@@ -989,7 +999,10 @@ export function installFakeCore(
         const answers = (payload as { answers?: { acknowledged_defaults_are_off?: boolean } })
           .answers;
         if (answers?.acknowledged_defaults_are_off !== true) {
-          throw "the wizard was not acknowledged, so there is nothing to finish";
+          throw {
+            reason_code: "ROUTINE",
+            explanation: WIZARD_NOT_ACKNOWLEDGED_NOTICE,
+          };
         }
         return snapshot;
       }
@@ -1019,6 +1032,13 @@ export function installFakeCore(
         return (options.graphing ?? (() => graphHeld))();
       case "correct_tie": {
         const asked = payload as { relationshipId?: string; band?: string };
+        if (options.correctingTie !== undefined) {
+          graphHeld = options.correctingTie(asked.relationshipId ?? "", asked.band ?? "");
+          return graphHeld;
+        }
+        if (!["weak", "moderate", "strong"].includes(asked.band ?? "")) {
+          throw { reason_code: "ROUTINE", explanation: NOT_A_BAND_NOTICE };
+        }
         const current = graphHeld;
         const next: PeopleGraph = {
           ...current,
