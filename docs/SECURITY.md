@@ -24,7 +24,8 @@ DPAPI → KEK → DB DEK → 每单元 CK。正文字段 AEAD，AAD=行 id+字�
 
 本文件是**规范**：写清要做到什么、拿什么测。**它不记录任何一条已经跑过的实测结论。** 上面那条密钥链在本树是设计约束，不是已验收事实——`main` 上没有应用代码。
 
-已经落地并跑过的那部分在 `cursor/soul-goal1-7b1c`（PR #2，核于 2026-08-25，尖端 `df5d2dd`）。该分支的同名文件比本文件多两节：
+实测依据（`crates/soul-store-api/tests/sqlcipher_smoke.rs`；历史上 ubuntu 与 windows-latest 两个 hosted job 跑过，`2e72ddf` 五门绿；D50 之后在 G-L 与 G-W 两台本地门禁机上跑，见 `docs/gates/`）：
+`rusqlite` 开 `bundled-sqlcipher-vendored-openssl`，`PRAGMA cipher_version` 返回 SQLCipher 4.5.7；建表写行后关闭，带同一 key 重开可读回；不带 key 打开则第一次读失败；写错 key 同样第一次读失败；库文件字节里搜不到那行明文。
 
 | 那边多出的节 | 记的是什么 | 本树能不能引用为已完成 |
 |---|---|---|

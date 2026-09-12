@@ -1,0 +1,138 @@
+{
+  "about": "Synthetic stand-in for a Telegram Desktop 4.x \"Settings -> Advanced -> Export Telegram data\" (Machine-readable JSON) result.json. Field names follow the real export so the WP06 adapter is written against the shape it will meet; the content is invented.",
+  "personal_information": {
+    "user_id": 111111111,
+    "first_name": "Roy",
+    "last_name": "",
+    "phone_number": "13800138001",
+    "username": "@roy_soul",
+    "bio": ""
+  },
+  "contacts": {
+    "about": "Telegram stores contacts on its servers so they can be shown on any device.",
+    "list": [
+      {
+        "first_name": "李",
+        "last_name": "雷",
+        "phone_number": "13800138000",
+        "date": "2025-11-02T18:20:11",
+        "date_unixtime": "1762093211"
+      },
+      {
+        "first_name": "Wang",
+        "last_name": "Xiao",
+        "phone_number": "13800138002",
+        "date": "2026-01-14T09:05:00",
+        "date_unixtime": "1768381500"
+      }
+    ]
+  },
+  "chats": {
+    "about": "This page lists all chats from this export.",
+    "list": [
+      {
+        "name": "李 雷",
+        "type": "personal_chat",
+        "id": 222222222,
+        "messages": [
+          {
+            "id": 1,
+            "type": "message",
+            "date": "2026-08-20T09:12:00",
+            "date_unixtime": "1787303520",
+            "from": "Roy",
+            "from_id": "user111111111",
+            "text": "明天上午十点在公司门口见",
+            "text_entities": [{ "type": "plain", "text": "明天上午十点在公司门口见" }]
+          },
+          {
+            "id": 2,
+            "type": "message",
+            "date": "2026-08-20T09:13:05",
+            "date_unixtime": "1787303585",
+            "from": "李 雷",
+            "from_id": "user333333333",
+            "reply_to_message_id": 1,
+            "text": "好的没问题",
+            "text_entities": [{ "type": "plain", "text": "好的没问题" }]
+          },
+          {
+            "id": 3,
+            "type": "message",
+            "date": "2026-08-20T09:15:40",
+            "date_unixtime": "1787303740",
+            "from": "李 雷",
+            "from_id": "user333333333",
+            "text": [
+              "今晚在 café 见面聊一下，联系方式 ",
+              { "type": "mention", "text": "@wang_xiao2" }
+            ],
+            "text_entities": [
+              { "type": "plain", "text": "今晚在 café 见面聊一下，联系方式 " },
+              { "type": "mention", "text": "@wang_xiao2" }
+            ]
+          },
+          {
+            "id": 4,
+            "type": "service",
+            "date": "2026-08-20T09:30:00",
+            "date_unixtime": "1787304600",
+            "actor": "Roy",
+            "actor_id": "user111111111",
+            "action": "phone_call",
+            "duration_seconds": 96,
+            "discard_reason": "hangup",
+            "text": "",
+            "text_entities": []
+          }
+        ]
+      },
+      {
+        "name": "方案讨论组",
+        "type": "private_group",
+        "id": 444444444,
+        "messages": [
+          {
+            "id": 11,
+            "type": "message",
+            "date": "2026-08-21T20:02:00",
+            "date_unixtime": "1787400120",
+            "from": "Roy",
+            "from_id": "user111111111",
+            "text": "这周先把方案定下来，别拖到下周",
+            "text_entities": [{ "type": "plain", "text": "这周先把方案定下来，别拖到下周" }]
+          },
+          {
+            "id": 12,
+            "type": "message",
+            "date": "2026-08-21T20:04:11",
+            "date_unixtime": "1787400251",
+            "from": "Wang Xiao",
+            "from_id": "user555555555",
+            "text": "团队里那位 👩‍💻 很靠谱",
+            "text_entities": [{ "type": "plain", "text": "团队里那位 👩‍💻 很靠谱" }]
+          },
+          {
+            "id": 13,
+            "type": "message",
+            "date": "2026-08-21T20:06:00",
+            "date_unixtime": "1787400360",
+            "from": "Wang Xiao",
+            "from_id": "user555555555",
+            "file": "files/plan.pdf",
+            "thumbnail": "files/plan_thumb.jpg",
+            "mime_type": "application/pdf",
+            "text": "",
+            "text_entities": []
+          }
+        ]
+      }
+    ]
+  },
+  "frequent_contacts": {
+    "about": "Telegram keeps a list of people you message most often.",
+    "list": [
+      { "id": 333333333, "category": "People", "type": "user", "name": "李 雷", "rating": 12.5 }
+    ]
+  }
+}

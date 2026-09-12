@@ -1,0 +1,153 @@
+//! The IPC surface, from both ends.
+//!
+//! `apps/desktop/src/core.ts` is the only place the WebView names a command,
+//! and `src/commands.rs` is the only place the shell answers one. Neither can
+//! check the other at compile time, so the check is here: the two lists have
+//! to be the same list.
+
+use soul_desktop::commands::COMMAND_NAMES;
+
+const COMMANDS_RS: &str = include_str!("../src/commands.rs");
+const CORE_TS: &str = include_str!("../../src/core.ts");
+const LIB_RS: &str = include_str!("../src/lib.rs");
+
+/// Command names as `core.ts` spells them, read out of the `COMMANDS` object.
+fn names_the_webview_uses() -> Vec<String> {
+    let start = CORE_TS
+        .find("export const COMMANDS")
+        .expect("core.ts declares COMMANDS");
+    let body = &CORE_TS[start..];
+    let end = body.find("} as const;").expect("the object is closed");
+    body[..end]
+        .lines()
+        .filter_map(|line| {
+            let (_, rest) = line.split_once(": \"")?;
+            let (name, _) = rest.split_once('"')?;
+            Some(name.to_owned())
+        })
+        .collect()
+}
+
+#[test]
+fn both_sides_name_the_same_commands() {
+    let mut webview = names_the_webview_uses();
+    webview.sort();
+    assert!(!webview.is_empty(), "core.ts names no commands at all");
+
+    let mut shell: Vec<String> = COMMAND_NAMES
+        .iter()
+        .map(|name| (*name).to_owned())
+        .collect();
+    shell.sort();
+
+    assert_eq!(webview, shell);
+}
+
+/// `COMMAND_NAMES` is a list a human maintains, so it has to be checked
+/// against the attributes rather than trusted.
+#[test]
+fn every_named_command_is_actually_a_command() {
+    for name in COMMAND_NAMES {
+        let declaration = format!("pub fn {name}(");
+        let position = COMMANDS_RS
+            .find(&declaration)
+            .unwrap_or_else(|| panic!("{name} is listed but not defined"));
+        let before = &COMMANDS_RS[..position];
+        assert!(
+            before.trim_end().ends_with("#[tauri::command]"),
+            "{name} is defined but not exposed over the IPC",
+        );
+        assert!(
+            LIB_RS.contains(&format!("commands::{name}")),
+            "{name} is defined but not registered with the builder",
+        );
+    }
+}
+
+/// The other direction: a command that exists but is not on the list would be
+/// callable from the WebView without appearing in either inventory.
+#[test]
+fn no_command_exists_outside_the_list() {
+    let declared: Vec<&str> = COMMANDS_RS
+        .match_indices("#[tauri::command]")
+        .filter_map(|(at, _)| {
+            let rest = &COMMANDS_RS[at..];
+            let start = rest.find("pub fn ")? + "pub fn ".len();
+            let end = rest[start..].find('(')? + start;
+            Some(rest[start..end].trim())
+        })
+        .collect();
+
+    for name in &declared {
+        assert!(
+            COMMAND_NAMES.contains(name),
+            "{name} is a command but is not in COMMAND_NAMES",
+        );
+    }
+    assert_eq!(declared.len(), COMMAND_NAMES.len());
+}
+
+/// `Session::grant_collect_consent_with_source` exists so AC-09 and AC-10 can
+/// be proven on a host with no desktop. It is a way to hand the collector a
+/// foreground source of the caller's choosing, and the shipped shell must not
+/// have one: a build that could substitute the source could collect from
+/// somewhere the user was never told about.
+#[test]
+fn the_shell_never_hands_the_collector_a_source_of_its_own() {
+    for (name, source) in [("commands.rs", COMMANDS_RS), ("lib.rs", LIB_RS)] {
+        assert!(
+            !source.contains("_with_source"),
+            "{name} injects a foreground source; only tests may do that",
+        );
+        assert!(
+            !source.contains("ForegroundSource"),
+            "{name} names a foreground source, which is the core's business",
+        );
+    }
+}
+
+/// The address the user types is parsed in one place, and it is not here.
+///
+/// `soul-policy`'s `Origin::parse` is what the whole egress promise rests on:
+/// it decides what counts as the configured endpoint, and the redirect check
+/// inside `soul-egress` has to mean the same thing by it. A shell that
+/// normalized, defaulted or pre-validated an address before forwarding it would
+/// be a second parser, and the two would agree right up until they did not —
+/// at which point the origin the user approved and the origin that is contacted
+/// would be different strings.
+#[test]
+fn the_shell_never_reads_an_endpoint_address_itself() {
+    for (name, source) in [("commands.rs", COMMANDS_RS), ("lib.rs", LIB_RS)] {
+        for parser in ["Origin", "EgressConfig", "NetGuard", "with_user_endpoint"] {
+            assert!(
+                !source.contains(parser),
+                "{name} names {parser}; deciding what an address means is the core's business",
+            );
+        }
+    }
+}
+
+/// WP09's brief: the shell forwards, it does not decide. A command body long
+/// enough to hold a decision is the signal that something moved into the UI
+/// layer that belongs in `soulcore`.
+#[test]
+fn the_command_layer_stays_thin() {
+    for name in COMMAND_NAMES {
+        let position = COMMANDS_RS
+            .find(&format!("pub fn {name}("))
+            .expect("the command is defined");
+        let body = &COMMANDS_RS[position..];
+        let open = body.find('{').expect("a body");
+        let close = body[open..].find('}').expect("the body ends") + open;
+        let statements = body[open + 1..close]
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with("//"))
+            .count();
+        assert!(
+            statements <= 1,
+            "{name} has {statements} statements; a command that does more than forward \
+             is business logic in the shell",
+        );
+    }
+}

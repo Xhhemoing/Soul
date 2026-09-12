@@ -1,0 +1,6 @@
+{"type":"header","format":"soul-import-v1","version":1,"exported_at":"2026-08-24T08:00:00Z"}
+{"type":"message","id":"m-0001","occurred_at":"2026-08-20T09:12:00Z","sender_scope":"self","conversation_id":"c-01","sender_id":"u-self","text":"明天上午十点在公司门口见"}
+{"type":"message","id":"m-0002","occurred_at":"2026-08-20T09:13:05Z","sender_scope":"third_party","conversation_id":"c-01","sender_id":"u-lilei","text":"好的没问题"}
+{"type":"message","id":"m-0003","occurred_at":"2026-08-20T09:15:40Z","sender_scope":"third_party","conversation_id":"c-01","sender_id":"u-lilei","text":"今晚在 café 见面聊一下"}
+{"type":"message","id":"m-0004","occurred_at":"2026-08-21T20:02:00Z","sender_scope":"self","conversation_id":"c-02","sender_id":"u-self","text":"这周先把方案定下来，别拖到下周"}
+{"type":"message","id":"m-0005","occurred_at":"2026-08-21T20:04:11Z","sender_scope":"third_party","conversation_id":"c-02","sender_id":"u-wangxiao","text":"团队里那位 👩‍💻 很靠谱"}

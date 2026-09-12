@@ -1,0 +1,57 @@
+[package]
+name = "soul-desktop"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83"
+license = "LicenseRef-Soul-Proprietary"
+publish = false
+description = "Soul's desktop shell. Hosts the WebView, owns the tray, and forwards to soulcore."
+
+# Its own workspace on purpose. `cargo test --workspace` at the repository root
+# runs on a Linux CI host that has no WebKitGTK, and a member here would make
+# every Rust check in the repository depend on the GUI stack of a platform this
+# product does not target. `just desktop-check` builds it, and the Windows CI
+# job — the platform v0.1 actually ships on — builds it on every push.
+[workspace]
+
+[lib]
+name = "soul_desktop"
+path = "src/lib.rs"
+
+# PRODUCT_LOCK names the process `soul.exe`; `soulcore::commands::shell`
+# carries the same name as a constant and `tests/command_surface.rs` compares
+# the two.
+[[bin]]
+name = "soul"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+# No `tauri-plugin-updater` and no `tauri-plugin-http`: both are on xtask's
+# banned list because they open an egress path the permit check cannot see.
+# `tests/no_egress_path.rs` walks Cargo.lock and fails if either appears.
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+soulcore = { path = "../../../crates/soulcore" }
+
+# `tauri/test` brings the mock runtime, which has no window and no WebView.
+# It is how `tests/ipc_roundtrip.rs` calls the commands the way the WebView
+# calls them, on a CI host with no display.
+#
+# `soul-testkit` holds the loopback endpoint AC-11/AC-12 need on the wire. It
+# is a development edge and nothing else: `tests/no_egress_path.rs` walks the
+# normal and build edges only, which is the same exemption `xtask e0-audit`
+# grants it upstream, so the HTTP stack inside it is not reachable from the
+# shipped `soul.exe`.
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
+soul-testkit = { path = "../../../crates/soul-testkit" }
+
+[features]
+# Embeds `../dist` into the executable. `tauri build` turns it on; a plain
+# `cargo check` leaves it off so the Rust side stays buildable on a machine
+# that has not run the frontend build yet.
+custom-protocol = ["tauri/custom-protocol"]

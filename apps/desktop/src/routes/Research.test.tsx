@@ -1,0 +1,201 @@
+/**
+ * 研究预览: AC-20 on the screen a person reads it on.
+ *
+ * Three claims, and none of them is "the button is hidden". Nothing was
+ * written to disk, no row is about anybody else, and there is no command on
+ * this page that could produce a file — the last one is checked against
+ * `core.ts`'s own list, which is the only place the shell names a command.
+ */
+
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+
+import { Research } from "./Research";
+import { COMMANDS } from "../core";
+import { denylistHits, diagnosticTerms, renderedText } from "../test/denylist";
+import {
+  aResearchPreview,
+  forbidNetwork,
+  installFakeCore,
+  RESEARCH_PREVIEW_NOTICE,
+  type FakeCoreOptions,
+} from "../test/fakeCore";
+
+async function open(options: FakeCoreOptions = {}) {
+  const core = installFakeCore(options);
+  render(<Research />);
+  await screen.findByRole("heading", { name: "这一份预览是什么" });
+  return core;
+}
+
+describe("研究预览页", () => {
+  it("屏幕上写着没有落盘，并且说清楚关掉就没了", async () => {
+    await open();
+
+    expect(screen.getByTestId("research-on-screen-only")).toHaveTextContent("没有落盘");
+    expect(screen.getByTestId("research-notice")).toHaveTextContent(RESEARCH_PREVIEW_NOTICE);
+  });
+
+  /**
+   * 0 is not a number this screen writes: the manifest carries it, and
+   * `ZeroThirdPartyRows` refuses to deserialize anything else. The excluded
+   * count beside it is what shows the exclusion actually ran.
+   */
+  it("别人的数据是 0 行，而且看得见排除掉了几行", async () => {
+    await open();
+
+    expect(screen.getByTestId("research-third-party")).toHaveTextContent("别人的数据 0 行");
+    expect(screen.getByTestId("research-third-party")).toHaveTextContent("排除掉了 2 行");
+    expect(screen.getByTestId("research-third-party")).toHaveTextContent("excluded");
+  });
+
+  /**
+   * Being the owner's is not what gets a row published: the row also has to
+   * say research may count it by the hour, and imported messages and
+   * questionnaire answers say the opposite. Without this number on screen the
+   * page would show two counts that do not add up to the候选 above it.
+   */
+  it("自己的数据里被口径挡下的那些也报出来，不算进别人那一行", async () => {
+    await open({
+      research: () =>
+        aResearchPreview({
+          candidate_rows_total: 9,
+          third_party_rows_excluded: 2,
+          deny_rows_excluded: 6,
+        }),
+    });
+
+    expect(screen.getByTestId("research-own-withheld")).toHaveTextContent("排除掉了 6 行");
+    expect(screen.getByTestId("research-third-party")).toHaveTextContent("排除掉了 2 行");
+    expect(screen.getByTestId("research-third-party")).not.toHaveTextContent("6 行");
+  });
+
+  /**
+   * The other empty state. Everything found was the owner's own and none of it
+   * was stored countable, so saying 全部是别人的数据 would be the same lie the
+   * empty state above was written to avoid, pointed the other way.
+   */
+  it("候选全是自己的、但口径不让计数的时候，不说成是别人的数据", async () => {
+    await open({
+      research: () =>
+        aResearchPreview({
+          rows: [],
+          candidate_rows_total: 4,
+          third_party_rows_excluded: 0,
+          deny_rows_excluded: 4,
+        }),
+    });
+
+    const empty = screen.getByTestId("no-research-rows");
+    expect(empty).toHaveTextContent("查询找到了 4 行");
+    expect(empty).toHaveTextContent("你自己的数据里有 4 行");
+    expect(empty).not.toHaveTextContent("别人的数据");
+    expect(empty).not.toHaveTextContent("没有导入");
+    expect(screen.queryByTestId("research-table")).toBeNull();
+  });
+
+  it("行是计数和桶，没有一列能放正文或姓名", async () => {
+    await open();
+
+    expect(screen.getByTestId("research-fields")).toHaveTextContent("事件类型");
+    expect(screen.getByTestId("research-fields")).toHaveTextContent("聚合计数");
+    const table = screen.getByTestId("research-table");
+    expect(table).toHaveTextContent("app_usage");
+    expect(table).toHaveTextContent("2026-08-20T09:00:00Z");
+  });
+
+  /**
+   * The page only calls `research_preview`, so the empty state may not say
+   * anything about collection or about imports: 采集 can be running and
+   * granted while this query still has nothing to aggregate, and `/collect`
+   * would be saying 正在采集 on the next screen over.
+   */
+  it("一行候选都没有的时候，只说查询是空的，不替采集和导入下结论", async () => {
+    await open({
+      research: () =>
+        aResearchPreview({ rows: [], candidate_rows_total: 0, third_party_rows_excluded: 0 }),
+    });
+
+    const empty = screen.getByTestId("no-research-rows");
+    expect(empty).toHaveTextContent("查询没有找到可以聚合的事件。");
+    expect(empty).not.toHaveTextContent("采集没有打开");
+    expect(empty).not.toHaveTextContent("没有导入");
+    expect(screen.queryByTestId("research-table")).toBeNull();
+  });
+
+  /**
+   * Candidates that are all somebody else's rows: the exclusion is the reason
+   * the table is empty, and the same screen already prints 排除掉了 N 行 two
+   * lines above. Claiming nothing was imported here would contradict it.
+   */
+  it("候选全被排除掉的时候，说的是排除，不是没有导入过", async () => {
+    await open({
+      research: () =>
+        aResearchPreview({ rows: [], candidate_rows_total: 3, third_party_rows_excluded: 3 }),
+    });
+
+    const empty = screen.getByTestId("no-research-rows");
+    expect(empty).toHaveTextContent("查询找到了 3 行");
+    expect(empty).toHaveTextContent("排除掉了 3 行");
+    expect(empty).not.toHaveTextContent("采集没有打开");
+    expect(empty).not.toHaveTextContent("没有导入");
+    expect(screen.queryByTestId("research-table")).toBeNull();
+  });
+
+  /**
+   * The absence of an export is a fact about the command list rather than
+   * about this component's layout: `core.ts` is the only place the shell names
+   * a command, and none of them writes anything.
+   */
+  it("界面上没有导出按钮，能调用的命令里也没有一个会写文件", async () => {
+    const attempts = forbidNetwork();
+    await open();
+
+    expect(screen.queryAllByRole("button")).toEqual([]);
+    for (const command of Object.values(COMMANDS)) {
+      expect(command).not.toMatch(/export|write_|save|download|upload/);
+    }
+    expect(attempts).toEqual([]);
+  });
+
+  it("渲染出来的预览里没有一个诊断词或量表词", async () => {
+    const terms = diagnosticTerms();
+    expect(terms.length).toBeGreaterThan(50);
+
+    await open({
+      research: () =>
+        aResearchPreview({
+          fields: ["self_trait_axis", "self_trait_band", "aggregate_count"],
+          rows: [
+            {
+              event_kind: null,
+              time_bucket_utc: null,
+              duration_bucket: null,
+              self_trait_axis: "curiosity",
+              self_trait_band: "moderate",
+              aggregate_count: 3,
+            },
+          ],
+        }),
+    });
+
+    expect(denylistHits(renderedText(), terms)).toEqual([]);
+  });
+
+  it("读不到库的时候给出理由码，而不是一张空表", async () => {
+    installFakeCore({
+      research: () => {
+        throw {
+          reason_code: "STORE_UNAVAILABLE",
+          explanation: "数据库这次没有打开，所以算不出预览。",
+        };
+      },
+    });
+    render(<Research />);
+
+    expect(await screen.findByTestId("research-refusal-code")).toHaveTextContent(
+      "STORE_UNAVAILABLE",
+    );
+    expect(screen.queryByTestId("research-table")).toBeNull();
+  });
+});

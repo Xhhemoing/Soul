@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "profile_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a40",
+  "voice": { "register": "plain", "length_preference": "short", "source": "user_stated" },
+  "trait_axes": [
+    {
+      "axis_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a30",
+      "label": "直接 ↔ 委婉",
+      "position": "leans_high",
+      "evidence_band": "moderate",
+      "evidence_ids": ["0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a10"],
+      "locked_by_user": true,
+      "clinical_claim": false
+    },
+    {
+      "axis_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a31",
+      "label": "计划 ↔ 随性",
+      "position": "unknown",
+      "evidence_band": "none",
+      "evidence_ids": [],
+      "locked_by_user": false,
+      "clinical_claim": false
+    }
+  ],
+  "values": [],
+  "boundaries": [],
+  "clinical_claim": false
+}

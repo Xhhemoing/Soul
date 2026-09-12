@@ -1,9 +1,0 @@
-[package]
-name = "t4d-verify"
-version = "0.1.0"
-edition = "2021"
-rust-version = "1.83"
-description = "Round 3 fable-a: independent T4 vs T4D verification for the ALGO_FROZEN decision. Dependency-free on purpose."
-publish = false
-
-[workspace]

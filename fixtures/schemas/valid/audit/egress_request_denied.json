@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "seq": 18,
+  "entry_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a81",
+  "ts": "2026-08-24T11:00:05Z",
+  "prev_hash": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+  "entry_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+  "action": "egress.request",
+  "decision": "denied",
+  "reason_code": "CROSS_ORIGIN_REDIRECT",
+  "egress_class": "E1"
+}

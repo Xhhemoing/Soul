@@ -1,0 +1,26 @@
+[package]
+name = "soul-fileplan"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Read-only directory scan and file-organisation plan preview. v0.1 proposes; the write half is v0.1.1."
+
+# There is no storage dependency on purpose. A crate that cannot reach
+# `soul-store` cannot persist file metadata either, and PRODUCT_LOCK defers
+# directory metadata collection to v0.1.1 along with the writes. What this
+# crate produces lives in memory until the caller renders it.
+[dependencies]
+soul-policy = { workspace = true }
+soul-schema = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+soul-testkit = { workspace = true }
+tempfile = { workspace = true }
+uuid = { workspace = true }

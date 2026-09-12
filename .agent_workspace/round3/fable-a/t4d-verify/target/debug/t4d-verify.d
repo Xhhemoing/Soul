@@ -1,1 +1,0 @@
-/workspace/.agent_workspace/round3/fable-a/t4d-verify/target/debug/t4d-verify: /workspace/.agent_workspace/round3/fable-a/t4d-verify/src/lib.rs /workspace/.agent_workspace/round3/fable-a/t4d-verify/src/main.rs

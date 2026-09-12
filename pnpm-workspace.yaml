@@ -1,0 +1,4 @@
+# apps/desktop is the shell WP09 landed. The glob was already here, so adding
+# it needed no config change.
+packages:
+  - "apps/*"

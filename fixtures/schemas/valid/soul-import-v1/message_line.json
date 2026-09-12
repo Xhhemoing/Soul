@@ -1,0 +1,9 @@
+{
+  "type": "message",
+  "id": "m-0001",
+  "occurred_at": "2026-08-20T09:12:00Z",
+  "sender_scope": "third_party",
+  "conversation_id": "c-01",
+  "sender_id": "u-lilei",
+  "text": "好的没问题，明天见"
+}

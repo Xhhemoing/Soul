@@ -1,7 +1,0 @@
-{"id":"F_LILEI","n_interactions":12,"expected_t0_band":"strong","notes":"12 reciprocal direct messages over 6 UTC days; Goal 1 strong case"}
-{"id":"F_BURST","n_interactions":20,"expected_t0_band":"moderate","notes":"20 reciprocal direct messages within 2 hours on one UTC day"}
-{"id":"F_OLD","n_interactions":12,"expected_t0_band":"strong","notes":"12 reciprocal direct messages over 6 days in Jan 2019; T0 has no recency"}
-{"id":"F_GROUP","n_interactions":50,"expected_t0_band":"strong","notes":"50 reciprocal group messages over 10 UTC days; T0 does not downweight groups"}
-{"id":"F_ONESIDE","n_interactions":100,"expected_t0_band":"weak","notes":"100 outbound direct messages and no inbound message"}
-{"id":"F_EMPTY","n_interactions":0,"expected_t0_band":"weak","notes":"No interactions"}
-{"id":"F_SCALE","n_interactions":10000,"expected_t0_band":"strong","notes":"10000 direct interactions across 200 peers; each peer is reciprocal and strong"}

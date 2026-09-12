@@ -1,0 +1,40 @@
+[package]
+name = "soul-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Soul's encrypted main database: SQLCipher pages, XChaCha20-Poly1305 fields, forgetting by content-key destruction."
+
+[dependencies]
+soul-schema = { workspace = true }
+soul-store-api = { workspace = true }
+# The two Win32 calls behind `DpapiKeyProvider`, in the one crate in this
+# workspace that is allowed an `unsafe` block on the key path. It compiles on
+# every platform and refuses on the ones without DPAPI, which is what keeps
+# this crate free of `#[cfg]` and free of `unsafe`.
+soul-win-dpapi = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chacha20poly1305 = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+zeroize = { workspace = true }
+# Key-file claim lock, mirroring std 1.89's `File::lock`; drop at the MSRV bump.
+fs4 = { workspace = true }
+# WP01 settled the packaging question: SQLCipher, not plain SQLite. The feature
+# name must stay identical to crates/soul-store-api/tests/sqlcipher_smoke.rs, or
+# the smoke test stops covering what actually ships.
+rusqlite = { workspace = true, features = ["bundled-sqlcipher-vendored-openssl"] }
+# The crash sites AC-24 and AC-15 inject at. Without the `failpoints` feature
+# `fail_point!` expands to nothing, so a shipped build carries no injection
+# points at all; the dev-dependency below turns them on for tests.
+fail = { workspace = true }
+
+[dev-dependencies]
+soul-testkit = { workspace = true }
+tempfile = { workspace = true }
+fail = { workspace = true, features = ["failpoints"] }

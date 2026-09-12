@@ -1,0 +1,15 @@
+[package]
+name = "soul-win-dpapi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Windows DPAPI, and nothing else: two calls into crypt32 behind a safe function pair, so the crates that hold key material can keep forbidding unsafe code."
+
+# No third-party dependency for the Win32 declarations. Two entry points are
+# cheaper to audit than a binding crate, and the workspace pins every version
+# centrally — see `src/sys.rs` for the whole of the platform surface.
+[dependencies]
+thiserror = { workspace = true }
+zeroize = { workspace = true }

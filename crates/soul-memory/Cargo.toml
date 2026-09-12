@@ -1,0 +1,26 @@
+[package]
+name = "soul-memory"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Autobiographical memory: titles and summaries sealed under a per-memory content key, and forgetting that destroys the key."
+
+# No storage engine of its own. `soul-store` already owns encryption, the
+# content-key lifecycle and the forget transaction; this crate is the shape of
+# a memory on top of that boundary, which is why it depends on
+# `soul-store-api` rather than on the database.
+[dependencies]
+soul-schema = { workspace = true }
+soul-store-api = { workspace = true }
+soul-policy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+soul-store = { workspace = true }
+soul-testkit = { workspace = true }
+tempfile = { workspace = true }
