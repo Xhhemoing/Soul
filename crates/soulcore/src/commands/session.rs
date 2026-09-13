@@ -271,7 +271,9 @@ impl KeyProtection {
     /// What the user is told about this machine's key material.
     pub const fn notice(self) -> &'static str {
         match self {
-            KeyProtection::Dpapi => "数据库密钥由 Windows 的用户级密钥保护接管。密钥丢了就永久打不开，没有恢复入口。",
+            KeyProtection::Dpapi => {
+                "数据库密钥由 Windows 的用户级密钥保护接管。密钥丢了就永久打不开，没有恢复入口。"
+            }
             KeyProtection::DeveloperKeyFile => {
                 "这是开发构建：数据库密钥放在库旁边的种子文件里，没有平台密钥保护。"
             }
