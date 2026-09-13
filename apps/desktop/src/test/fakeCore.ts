@@ -1057,7 +1057,7 @@ export function installFakeCore(
           throw { reason_code: "ROUTINE", explanation: NOT_A_BAND_NOTICE };
         }
         const current = graphHeld;
-        const evidenceId = `0192f000-0000-7000-8000-c0r${String(current.ties.reduce((n, t) => n + t.evidence.length, 0)).padStart(3, "0")}`;
+        const evidenceId = `0192f000-0000-7000-8000-${(0xc0e000 + current.ties.reduce((n, t) => n + t.evidence.length, 0)).toString(16).padStart(12, "0")}`;
         const next: PeopleGraph = {
           ...current,
           ties: current.ties.map((tie) =>

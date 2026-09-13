@@ -1,4 +1,4 @@
-# G-W: the Windows gate, on the author's Windows 11 machine.
+﻿# G-W: the Windows gate, on the author's Windows 11 machine.
 #
 # There is no hosted CI for this repository (DECISIONS D50). This script is
 # what the old `test-windows` and `package` jobs did, minus the runner: it
@@ -11,11 +11,14 @@
 # scripts/author-manual-checklist.md, done by hand after this passes.
 #
 # Usage, from the repository root:
-#   pwsh -NoProfile -File scripts/gate-win.ps1
-#   pwsh -NoProfile -File scripts/gate-win.ps1 -SkipWorkspaceTests   # rerun only the shell + package half
+#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/gate-win.ps1
+#   ... -SkipWorkspaceTests   # rerun only the shell + package half
 #
 # Write the result to docs/gates/<yyyymmdd>-<sha7>-win.md (template in
 # docs/gates/README.md). The script prints the table rows it can fill in.
+#
+# Failure classes (so operators know which env layer broke):
+#   MSVC/SDK | Perl/OpenSSL | Cargo lock | Rust (business compile/test)
 
 [CmdletBinding()]
 param(
@@ -42,41 +45,122 @@ function Step {
         if ($LASTEXITCODE -ne $null -and $LASTEXITCODE -ne 0) {
             throw "exit code $LASTEXITCODE"
         }
-        $rows.Add("| $Name | ✅ | $([int]$t.Elapsed.TotalSeconds)s |")
+        $rows.Add("| $Name | OK | $([int]$t.Elapsed.TotalSeconds)s |")
     } catch {
-        $rows.Add("| $Name | ❌ | $($_.Exception.Message) |")
-        Write-Host "" 
+        $rows.Add("| $Name | FAIL | $($_.Exception.Message) |")
+        Write-Host ""
         Write-Host ($rows -join "`n")
         throw "G-W failed at: $Name"
     }
+}
+
+function FailClass {
+    param([ValidateSet('MSVC/SDK','Perl/OpenSSL','Cargo lock','Rust')]$Class, [string]$Message)
+    throw "[$Class] $Message"
 }
 
 Write-Host "G-W on $branch @ $sha ($env:COMPUTERNAME)"
 Write-Host ("rustc: " + (rustc -V))
 Write-Host ("node:  " + (node -v) + "  pnpm: " + (pnpm -v))
 
-# Build prerequisites for the vendored OpenSSL/SQLCipher build.
-Step 'prerequisites (perl, nasm)' {
-    perl --version | Select-Object -First 2 | Out-Host
+Step 'prerequisites (MSVC/SDK)' {
+    $linkCmd = Get-Command link.exe -ErrorAction SilentlyContinue
+    if (-not $linkCmd) {
+        FailClass MSVC/SDK "link.exe not found. Install VS 2022 Build Tools (Desktop C++) and put MSVC Hostx64\x64 ahead of Git usr\bin on PATH."
+    }
+    $linkPath = $linkCmd.Source
+    Write-Host "link: $linkPath"
+    if ($linkPath -match '[\\/]Git[\\/]usr[\\/]bin[\\/]link\.exe$') {
+        FailClass MSVC/SDK "PATH resolves link.exe to Git usr\bin (GNU). Put MSVC VC\Tools\MSVC\...\bin\Hostx64\x64 before Git\usr\bin."
+    }
+    if ($linkPath -match '[\\/]Go[\\/]') {
+        FailClass MSVC/SDK "PATH resolves link.exe to Go's linker, not MSVC."
+    }
+    $kitRoots = @(
+        "${env:ProgramFiles(x86)}\Windows Kits\10\Lib",
+        "${env:ProgramFiles}\Windows Kits\10\Lib"
+    ) | Where-Object { Test-Path $_ }
+    $kernel = $null
+    foreach ($root in $kitRoots) {
+        $x64 = Get-ChildItem -Path $root -Filter kernel32.lib -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '[\\/]um[\\/]x64[\\/]kernel32\.lib$' } |
+            Select-Object -First 1
+        if ($x64) { $kernel = $x64; break }
+    }
+    if (-not $kernel) {
+        $kernel = $kitRoots | ForEach-Object {
+            Get-ChildItem -Path $_ -Filter kernel32.lib -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        } | Select-Object -First 1
+    }
+    if (-not $kernel) {
+        FailClass MSVC/SDK "Windows SDK import libs missing (kernel32.lib)."
+    }
+    Write-Host "kernel32.lib: $($kernel.FullName)"
+}
+
+Step 'prerequisites (Perl/OpenSSL smoke)' {
+    $perlCmd = Get-Command perl.exe -ErrorAction SilentlyContinue
+    if (-not $perlCmd) {
+        FailClass 'Perl/OpenSSL' "perl.exe not found (needed for vendored OpenSSL/SQLCipher Configure)."
+    }
+    Write-Host "perl: $($perlCmd.Source)"
+    perl --version 2>&1 | Select-Object -First 2 | Out-Host
+    # Locale::Maketext::Simple is required by OpenSSL's Configure on Windows.
+    $lms = & perl -MLocale::Maketext::Simple -e "print 'LMS_OK'" 2>&1
+    if ($LASTEXITCODE -ne 0 -or "$lms" -notmatch 'LMS_OK') {
+        FailClass 'Perl/OpenSSL' "perl -MLocale::Maketext::Simple failed. Install Strawberry Perl (or add LMS); Git usr\bin perl alone is not enough. Output: $lms"
+    }
+    Write-Host "Locale::Maketext::Simple: OK"
+    $nasmCmd = Get-Command nasm.exe -ErrorAction SilentlyContinue
+    if (-not $nasmCmd) {
+        FailClass 'Perl/OpenSSL' "nasm.exe not found (OpenSSL assembly)."
+    }
     nasm -v | Out-Host
 }
 
+Step 'prerequisites (Cargo lock)' {
+    $desktopLock = 'apps/desktop/src-tauri/Cargo.lock'
+    $desktopToml = 'apps/desktop/src-tauri/Cargo.toml'
+    if (-not (Test-Path $desktopLock)) {
+        FailClass 'Cargo lock' "missing $desktopLock"
+    }
+    if (-not (Test-Path $desktopToml)) {
+        FailClass 'Cargo lock' "missing $desktopToml"
+    }
+    # Native cargo may print MSRV-resolver warnings on stderr under 1.83; do not
+    # treat those as failures under $ErrorActionPreference Stop.
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & cargo metadata --locked --format-version 1 --no-deps 1>$null 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            FailClass 'Cargo lock' "workspace Cargo.lock rejects --locked (regenerate and audit the diff)."
+        }
+        Push-Location 'apps/desktop/src-tauri'
+        try {
+            & cargo metadata --locked --format-version 1 --no-deps 1>$null 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                FailClass 'Cargo lock' "apps/desktop/src-tauri/Cargo.lock rejects --locked (cargo +stable generate-lockfile, audit diff)."
+            }
+        } finally {
+            Pop-Location
+        }
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+    Write-Host "Cargo.lock --locked: workspace + desktop OK"
+}
+
 if (-not $SkipWorkspaceTests) {
-    # The target platform, so the whole workspace runs here, including
-    # crates/soul-store-api/tests/sqlcipher_smoke.rs and the cfg(windows)
-    # DPAPI arm.
-    Step 'cargo test --workspace --all-targets' {
-        cargo test --workspace --all-targets
+    Step 'cargo test --workspace --all-targets --locked' {
+        cargo test --workspace --all-targets --locked
+        if ($LASTEXITCODE -ne 0) { FailClass Rust "workspace tests failed" }
     }
 }
 
-# The desktop shell is its own cargo workspace. `--all-targets` is what the
-# G-W definition asks for: on a real Windows 11 machine WebView2Loader is the
-# system one, so ipc_roundtrip loads. If it fails to start with
-# STATUS_ENTRYPOINT_NOT_FOUND here too, that is a finding for the gate file,
-# not something to skip silently.
-Step 'cargo test (desktop shell, --all-targets)' {
-    cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets
+Step 'cargo test (desktop shell, --all-targets --locked)' {
+    cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --locked
+    if ($LASTEXITCODE -ne 0) { FailClass Rust "desktop shell tests failed" }
 }
 
 Step 'pnpm install --frozen-lockfile' {
@@ -87,12 +171,13 @@ Step 'frontend bundle' {
     pnpm --filter '@soul/desktop' build
 }
 
-Step 'release binaries' {
-    cargo build --release --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol
-    cargo build --release -p soulcore --bin soul-headless
+Step 'release binaries (--locked)' {
+    cargo build --release --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --locked
+    if ($LASTEXITCODE -ne 0) { FailClass Rust "desktop release build failed" }
+    cargo build --release -p soulcore --bin soul-headless --locked
+    if ($LASTEXITCODE -ne 0) { FailClass Rust "soul-headless release build failed" }
 }
 
-# AC-01: the manifest in the binary, not in the config.
 Step 'soul.exe manifest is asInvoker' {
     $exe = 'apps/desktop/src-tauri/target/release/soul.exe'
     if (-not (Test-Path $exe)) { throw "the release build produced no $exe" }
@@ -105,8 +190,6 @@ Step 'soul.exe manifest is asInvoker' {
     Write-Host 'soul.exe: asInvoker, no elevation requested'
 }
 
-# AC-21 on the platform it ships on, against a release build, without
-# installing: the install/uninstall half is the manual checklist.
 Step 'headless smoke (release, -SkipInstall)' {
     & ./scripts/install-smoke.ps1 -SkipInstall `
         -Headless ./target/release/soul-headless.exe `
@@ -117,8 +200,9 @@ $elapsed = [int]((Get-Date) - $started).TotalMinutes
 Write-Host ""
 Write-Host "G-W green on $branch @ $sha in ${elapsed} min. Paste into docs/gates/$(Get-Date -Format yyyyMMdd)-$sha-win.md:" -ForegroundColor Green
 Write-Host ""
-Write-Host "| 门 | 结果 | 耗时 |"
-Write-Host "|---|---|---|"
+Write-Host "| step | result | duration |"
+Write-Host '|---|---|---|'
 Write-Host ($rows -join "`n")
 Write-Host ""
 Write-Host "Next: scripts/author-manual-checklist.md section 0 (tauri build) and 1 (install / smoke / uninstall)."
+Write-Host "Do not claim Goal1 / G-W closed until this paste is frozen and Reviewer PASS."

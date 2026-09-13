@@ -419,6 +419,9 @@ function Invoke-HeadlessSmoke {
     $seen = [System.Collections.Generic.HashSet[string]]::new()
     $samples = 0
 
+    # Refresh each poll: HasExited can stay stale on PS 5.1, and without it
+    # WaitForExit returns immediately with ExitCode still $null even though
+    # the child wrote a full ok:true report (run11 @ 983df57).
     while (-not $process.HasExited) {
         if ($canWatch) {
             $samples++
@@ -429,19 +432,29 @@ function Invoke-HeadlessSmoke {
             }
         }
         Start-Sleep -Milliseconds 20
+        $process.Refresh()
     }
     $process.WaitForExit()
+    $process.Refresh()
 
     $report = $null
     if (Test-Path -LiteralPath $stdout) {
-        $text = Get-Content -LiteralPath $stdout -Raw
+        $text = Get-Content -LiteralPath $stdout -Raw -Encoding UTF8
         if (-not [string]::IsNullOrWhiteSpace($text)) {
             $report = $text | ConvertFrom-Json
         }
     }
 
+    $exitCode = $process.ExitCode
+    if ($null -eq $exitCode) {
+        # Start-Process -PassThru + RedirectStandard* quirk: HasExited true,
+        # stdout complete, ExitCode still unset. Prefer a defined code so the
+        # assert does not print "exit code ;" and fail a green product run.
+        $exitCode = if ($null -ne $report -and [bool]$report.ok) { 0 } else { 1 }
+    }
+
     return [pscustomobject]@{
-        ExitCode            = $process.ExitCode
+        ExitCode            = $exitCode
         Report              = $report
         StdoutPath          = $stdout
         StderrPath          = $stderr
