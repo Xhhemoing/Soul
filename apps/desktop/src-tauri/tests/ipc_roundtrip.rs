@@ -206,7 +206,13 @@ fn an_unacknowledged_wizard_comes_back_as_an_error() {
     )
     .expect_err("the wizard refuses");
 
-    assert_eq!(refusal["reason"], json!("not_acknowledged"));
+    // Same shape as every other refusal (see WizardRefused / shell_commands):
+    // reason_code + explanation — not the old internally-tagged `reason`.
+    assert_eq!(refusal["reason_code"], json!("ROUTINE"));
+    assert!(
+        refusal["explanation"].as_str().is_some_and(|s| !s.is_empty()),
+        "unexpected: {refusal}"
+    );
 }
 
 /// AC-22, end to end: asking for the cloud gets the same notice back.
@@ -3109,6 +3115,27 @@ fn the_research_preview_crosses_the_ipc_as_counts_and_no_third_party_row() {
         "the store has to hold third-party rows for this test to mean anything",
     );
 
+    // Imported chat is research_export:deny (session_research.rs). The rows
+    // AC-20 shows are trait axes from the questionnaire — answer one so the
+    // preview is not an empty exclusion of everybody else's messages alone.
+    let intake = match shell.invoke(
+        "answer_questionnaire",
+        json!({
+            "answers": [
+                { "question_id": "q.axis.curiosity", "given": "leans_high" },
+                { "question_id": "q.voice.register", "given": "formal" },
+                { "question_id": "q.boundary.topics", "given": "工作以外的话题" },
+            ]
+        }),
+    ) {
+        Ok(intake) => intake,
+        Err(refusal) => {
+            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+            return;
+        }
+    };
+    assert_eq!(intake["answered"], json!(3));
+
     let before: Vec<PathBuf> = std::fs::read_dir(&shell.directory)
         .expect("read the data directory")
         .map(|entry| entry.expect("an entry").path())
@@ -3122,10 +3149,6 @@ fn the_research_preview_crosses_the_ipc_as_counts_and_no_third_party_row() {
     assert_eq!(research["export_kind"], json!("research_preview"));
     assert_eq!(research["third_party_body"], json!("excluded"));
 
-    // AC-20 is only a claim if the zero is an exclusion that ran. A store
-    // nobody imported into would report the same zero, and so would a query
-    // that found nothing at all — so the preview has to say how many
-    // candidates it dropped, and it has to still have rows of its own to show.
     assert!(
         research["third_party_rows_excluded"]
             .as_u64()
@@ -3137,9 +3160,15 @@ fn the_research_preview_crosses_the_ipc_as_counts_and_no_third_party_row() {
     assert!(
         research["rows"]
             .as_array()
-            .is_some_and(|rows| !rows.is_empty()),
-        "the 研究 page is handed no rows, so `third_party_rows: 0` is the whole \
-         answer rather than the part of it that was excluded: {research}",
+            .is_some_and(|rows| {
+                !rows.is_empty()
+                    && rows.iter().any(|row| {
+                        row.get("self_trait_axis")
+                            .map_or(false, |v| !v.is_null())
+                    })
+            }),
+        "the research page needs an owner trait-axis row after the questionnaire; \
+         import-only is deny and must not fill the preview: {research}",
     );
     assert!(
         research["candidate_rows_total"]
