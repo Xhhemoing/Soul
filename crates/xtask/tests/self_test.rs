@@ -577,7 +577,12 @@ fn a_crlf_checkout_still_matches_the_lock() {
         if entry.file_name() == std::ffi::OsStr::new("schemas.lock.json") {
             continue;
         }
-        let lf = std::fs::read_to_string(&dest).expect("read");
+        // Normalize first: a Windows checkout may already be CRLF, and
+        // `replace('\n', "\r\n")` on CRLF produces `\r\r\n`, which no longer
+        // matches the lock (digest collapses only one `\r\n` pair).
+        let lf = std::fs::read_to_string(&dest)
+            .expect("read")
+            .replace("\r\n", "\n");
         let crlf = lf.replace('\n', "\r\n");
         std::fs::write(&dest, crlf).expect("write crlf");
     }
