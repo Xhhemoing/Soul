@@ -12,7 +12,7 @@
 | **G-W** | 作者 Win11 真机 | `pwsh -File scripts/gate-win.ps1` | `cargo test --workspace --all-targets`（含 SQLCipher、DPAPI）/ 桌面壳 `--all-targets` / 前端 bundle / release 二进制 / `soul.exe` 内嵌 `asInvoker` / `install-smoke.ps1 -SkipInstall` |
 | **G-M** | 作者 Win11 真机 | `scripts/author-manual-checklist.md` | `tauri build`、真装真卸、托盘、UAC、进程名、WebView2 抓包、真机采集（没有任何自动化能替） |
 
-G-W 的 Windows TCP 观察必须记录至少 1 次采样且未观察到非回环连接。`0 sample(s)` 不是观察通过；旧脚本即使打印 green，也不能用该行补齐 AC-21。TCP 表轮询不覆盖 UDP，也不替代 G-M 的 WebView2 出网观察。
+G-W 的 Windows TCP 观察必须记录至少 1 次成功查询且未观察到该子进程的非回环连接；监测器缺失或任一次查询报错必须失败，不能记成 skipped success。`0 sample(s)` 不是观察通过；旧脚本即使打印 green，也不能用该行补齐 AC-21。TCP 表轮询不覆盖 UDP，也不替代 G-M 的 WebView2 出网观察。
 
 不在 G-L 里的：桌面壳 mock-runtime 测试（`just desktop-shell-test`：`ipc_roundtrip` / `command_surface` / `no_egress_path`）需要 webkit2gtk 开发库，门禁机没有也装不了（无 sudo）。G-W 的 `desktop-test --all-targets` 覆盖同一批文件；有 GUI 栈的 Linux 机器跑了也写进记录。
 
@@ -98,6 +98,8 @@ sha7 是跑门禁时 `git rev-parse --short=7 HEAD`。工作区不干净就先�
 ```
 
 ## 已有记录
+
+- [20260924-e2fdf16-win.md](20260924-e2fdf16-win.md) — 当前收尾源码 G-W 通过，独立审查 PASS；NSIS / 打包后 smoke 通过，G-M 未完成，G-L 按用户指示暂缓。
 
 - `20260904-6f6a259-linux.md` — G-L 绿（含 deny-list）；无 G-W
 

@@ -1,25 +1,30 @@
 # 作者手动清单
 
-CI 到此为止。下面每一条都要在一台 **Windows 11 x64、非管理员账户** 上由作者亲手过一遍，
+> 当前产物（2026-09-24）：固定源码 `e2fdf16` 的 G-W、NSIS 打包、打包后 smoke 已通过，见 [正式记录](../docs/gates/20260924-e2fdf16-win.md)。本清单人工项尚未完成。旧便携 Soul GUI 仍在运行；请先正常退出并确认无 `soul.exe`，再开始安装/卸载。NSIS `/S` 会结束当前用户的同名进程。本轮没有代替作者勾选人工观察。
+
+本地自动化门禁到此为止。下面每一条都要在一台 **Windows 11 x64、非管理员账户** 上由作者亲手过一遍，
 过完把结果写回 `docs/STATUS.md` 的对应工作单段落——写「过了」没有用，要写看到了什么。
 
 这份清单不是「顺便测一下」。AC-01（安装启动、托盘出现、不提权）与 AC-09 / AC-10（真机采集）
-在验收矩阵里就写着「作者手动」；AC-21 与 AC-22 的机器证据在 CI 里已经有了，这里补的是
+在验收矩阵里就写着「作者手动」；AC-21 与 AC-22 的机器证据由本地门禁提供，这里补的是
 「操作系统层面也没有流量」那一半。凡是这份清单里过不去的，正确的做法是**记成缺口**，
 不是把安装器改成会去下载点什么。
 
 ## 0. 先准备好产物
 
-打包在作者机器上做，不在 CI 上做：`tauri build` 会去取 NSIS，那是出网，
-CI 不允许（见 `docs/STATUS.md` WP13「Windows 手动缺口」）。
-从 **HEAD of `cursor/soul-goal1-7b1c`**打。不要用 `2e72ddf` 的 `windows-binaries` 做卸载：
+打包在作者机器上单独执行，不属于 G-W 脚本；首次准备 NSIS 工具可能需要网络。本轮命令、日志与产物以顶部的固定提交记录为准。
+从本页顶部所指的固定源码提交构建，并把源码 SHA 和产物哈希记入门禁记录。不要用 `2e72ddf` 的 `windows-binaries` 做卸载：
 那次构建还把 `soul.exe` 装进 `%LOCALAPPDATA%\Soul`，卸载会碰到 `keys.dpapi`。
 
 ```powershell
+$ErrorActionPreference = 'Stop'
 pnpm install --frozen-lockfile
 pnpm --filter @soul/desktop build
-pnpm --filter @soul/desktop tauri build
-cargo build --release -p soulcore --bin soul-headless
+Push-Location apps/desktop
+try {
+    node ./node_modules/@tauri-apps/cli/tauri.js build --ci --bundles nsis -- --locked
+} finally { Pop-Location }
+cargo build --release -p soulcore --bin soul-headless --locked
 ```
 
 产物：
@@ -38,7 +43,8 @@ cargo build --release -p soulcore --bin soul-headless
 「不需要管理员」正是要测的东西，脚本自己会检查，发现自己被提权了会直接失败。
 
 ```powershell
-pwsh -File scripts/install-smoke.ps1 `
+$ErrorActionPreference = 'Stop'
+pwsh -NoProfile -File scripts/install-smoke.ps1 `
     -Installer .\apps\desktop\src-tauri\target\release\bundle\nsis\Soul_0.1.0_x64-setup.exe `
     -Headless  .\target\release\soul-headless.exe
 ```
