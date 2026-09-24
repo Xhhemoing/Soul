@@ -541,3 +541,52 @@ fn an_owner_group_message_does_not_fan_out_to_historical_speakers() {
         );
     }
 }
+
+#[test]
+fn malformed_message_text_is_refused_instead_of_silently_lost() {
+    use serde_json::json;
+    for text in [
+        json!(null),
+        json!(42),
+        json!({"private": "不能出现在报错里的原始正文"}),
+        json!(["完整片段", null]),
+        json!(["完整片段", {"type": "bold"}]),
+        json!(["完整片段", {"type": "bold", "text": 42}]),
+    ] {
+        let mut document = basic();
+        document["chats"]["list"][0]["messages"][1]["text"] = text;
+        let failure = soul_import::telegram::parse(&document)
+            .expect_err("a damaged message body must refuse the entire import");
+        assert!(failure.mentions_field("text"));
+        let rendered = failure.to_string();
+        assert!(rendered.contains("message_id=2"));
+        assert!(!rendered.contains("不能出现在报错里的原始正文"));
+        assert!(!rendered.contains("完整片段"));
+    }
+    let mut document = basic();
+    document["chats"]["list"][0]["messages"][1]
+        .as_object_mut()
+        .expect("message")
+        .remove("text");
+    assert!(soul_import::telegram::parse(&document)
+        .expect_err("an absent body is not an explicitly empty caption")
+        .mentions_field("text"));
+}
+
+#[test]
+fn empty_captions_and_unknown_text_entity_types_remain_readable() {
+    use serde_json::json;
+    for (text, expected) in [
+        (json!(""), ""),
+        (json!([]), ""),
+        (
+            json!(["前缀", {"type": "future_entity", "text": "正文"}, "后缀"]),
+            "前缀正文后缀",
+        ),
+    ] {
+        let mut document = basic();
+        document["chats"]["list"][0]["messages"][1]["text"] = text;
+        let staged = soul_import::telegram::parse(&document).expect("valid caption");
+        assert_eq!(staged.messages[1].body.as_str(), expected);
+    }
+}

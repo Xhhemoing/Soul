@@ -42,7 +42,7 @@ fn refusable(tree: &Tree) -> Vec<(&'static str, String)> {
     let bravo = tree.bravo();
     let base = tree.base().to_string_lossy().into_owned();
 
-    let mut corpus = vec![
+    let corpus = vec![
         ("the unauthorized directory itself", bravo.clone()),
         ("a file in it", format!("{bravo}/secret.txt")),
         ("a file below it", format!("{bravo}/nested/deep.txt")),
@@ -98,7 +98,8 @@ fn refusable(tree: &Tree) -> Vec<(&'static str, String)> {
     ];
 
     #[cfg(unix)]
-    {
+    let corpus = {
+        let mut corpus = corpus;
         corpus.push(("a sibling that was never named", tree.lower_alpha()));
         corpus.push((
             "a file in that sibling",
@@ -113,7 +114,8 @@ fn refusable(tree: &Tree) -> Vec<(&'static str, String)> {
             "a link that stays inside it",
             format!("{alpha}/loopback/inner.md"),
         ));
-    }
+        corpus
+    };
 
     corpus
 }

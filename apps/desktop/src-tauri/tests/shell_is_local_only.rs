@@ -677,10 +677,9 @@ fn the_uninstall_refuses_to_run_in_the_data_directory() {
 
     for spelling in [r"$LOCALAPPDATA\Soul", r"$LOCALAPPDATA\${PRODUCTNAME}"] {
         assert!(
-            body.iter()
-                .any(|line| line.starts_with("StrCmp")
-                    && line.contains("$INSTDIR")
-                    && line.contains(spelling)),
+            body.iter().any(|line| line.starts_with("StrCmp")
+                && line.contains("$INSTDIR")
+                && line.contains(spelling)),
             "PREUNINSTALL never compares $INSTDIR against {spelling}: {body:?}",
         );
     }

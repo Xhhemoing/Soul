@@ -180,6 +180,16 @@ pub fn parse(document: &Value) -> Result<StagedImport, ImportFailure> {
                 continue;
             };
 
+            let Some(body) = flatten_text(message.get("text")) else {
+                defects.push(Defect::field(
+                    locator,
+                    "text",
+                    "must be a string or an array of strings and objects with string `text`; \
+                     use an empty string or array for an empty caption",
+                ));
+                continue;
+            };
+
             let sender = ParticipantHandle::platform_uid(from_id);
             let is_owner = sender == owner;
             participants.observe(
@@ -198,7 +208,7 @@ pub fn parse(document: &Value) -> Result<StagedImport, ImportFailure> {
                     true => SenderScope::Owner,
                     false => SenderScope::ThirdParty,
                 },
-                body: UntrustedText::new(flatten_text(message.get("text"))),
+                body: UntrustedText::new(body),
             });
         }
     }
@@ -350,17 +360,18 @@ fn representable_instant(unix_seconds: i64) -> Option<Timestamp> {
 /// Telegram writes `text` either as a string or as a list of runs, where a run
 /// is a bare string or `{"type": …, "text": …}`. Both flatten to the same
 /// thing, which is what the user actually saw on screen.
-fn flatten_text(value: Option<&Value>) -> String {
+/// Refuse malformed runs instead of silently losing part of the message.
+fn flatten_text(value: Option<&Value>) -> Option<String> {
     match value {
-        Some(Value::String(text)) => text.clone(),
+        Some(Value::String(text)) => Some(text.clone()),
         Some(Value::Array(runs)) => runs
             .iter()
-            .filter_map(|run| match run {
+            .map(|run| match run {
                 Value::String(text) => Some(text.as_str()),
                 Value::Object(_) => run.get("text").and_then(Value::as_str),
                 _ => None,
             })
             .collect(),
-        _ => String::new(),
+        _ => None,
     }
 }

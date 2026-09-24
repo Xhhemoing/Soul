@@ -1,16 +1,18 @@
 # docs/gates/ — 本地门禁记录
 
-> 依据 DECISIONS **D50–D52**：本项目没有 hosted CI（GitHub Actions 已关闭，`ci.yml` 已删）。
+> 依据 DECISIONS **D61–D63**：本项目没有 hosted CI（GitHub Actions 已关闭，`ci.yml` 已删）。
 > 所有质量门禁在作者控制的机器上本地运行，证据落在这个目录。
-> 合到 `main` 或 Goal 分支的每个 sha 都必须有对应记录；没有记录的提交不合（D52）。
+> 合到 `main` 或 Goal 分支的每个 sha 都必须有对应记录；没有记录的提交不合（D63）。
 
 ## 三道门
 
 | 门 | 在哪跑 | 命令 | 覆盖 |
 |---|---|---|---|
-| **G-L** | Linux 开发机（D51：本项目指定的 Linux 门禁机，4 vCPU / 3.9 GB） | `just ci-full` | lint / schema / e0 / denylist / fixtures-verify / `cargo test --workspace --all-targets` / smoke-lint / sbom / ui-lint / ui-test / `cargo deny check` / `cargo deny list` |
+| **G-L** | Linux 开发机（D62：本项目指定的 Linux 门禁机，4 vCPU / 3.9 GB） | `just ci-full` | lint / schema / e0 / denylist / fixtures-verify / `cargo test --workspace --all-targets` / smoke-lint / sbom / ui-lint / ui-test / `cargo deny check` / `cargo deny list` |
 | **G-W** | 作者 Win11 真机 | `pwsh -File scripts/gate-win.ps1` | `cargo test --workspace --all-targets`（含 SQLCipher、DPAPI）/ 桌面壳 `--all-targets` / 前端 bundle / release 二进制 / `soul.exe` 内嵌 `asInvoker` / `install-smoke.ps1 -SkipInstall` |
 | **G-M** | 作者 Win11 真机 | `scripts/author-manual-checklist.md` | `tauri build`、真装真卸、托盘、UAC、进程名、WebView2 抓包、真机采集（没有任何自动化能替） |
+
+G-W 的 Windows TCP 观察必须记录至少 1 次采样且未观察到非回环连接。`0 sample(s)` 不是观察通过；旧脚本即使打印 green，也不能用该行补齐 AC-21。TCP 表轮询不覆盖 UDP，也不替代 G-M 的 WebView2 出网观察。
 
 不在 G-L 里的：桌面壳 mock-runtime 测试（`just desktop-shell-test`：`ipc_roundtrip` / `command_surface` / `no_egress_path`）需要 webkit2gtk 开发库，门禁机没有也装不了（无 sudo）。G-W 的 `desktop-test --all-targets` 覆盖同一批文件；有 GUI 栈的 Linux 机器跑了也写进记录。
 

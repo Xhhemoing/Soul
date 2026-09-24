@@ -189,8 +189,10 @@ fn the_script_looks_for_the_binaries_this_build_makes() {
         SCRIPT.contains(&format!("'{headless}.exe'")),
         "the script does not look for {headless}.exe",
     );
+    // F1: Invoke-HeadlessSmoke uses ProcessStartInfo so ExitCode is real on
+    // PS 5.1; Start-Process -ArgumentList @('smoke') was the old form.
     assert!(
-        SCRIPT.contains("-ArgumentList @('smoke')"),
+        SCRIPT.contains("-ArgumentList @('smoke')") || SCRIPT.contains("Arguments = 'smoke'"),
         "the script does not ask for the main flow by name",
     );
 }
@@ -413,4 +415,44 @@ fn the_script_does_not_delete_the_data_directory() {
             );
         }
     }
+}
+
+/// A JSON success claim must never replace the real child-process status.
+/// Runs the actual PowerShell watcher with synthetic executables, including
+/// invalid JSON and large UTF-8 stdout/stderr.
+#[cfg(windows)]
+#[test]
+fn the_process_watcher_preserves_exit_status_and_captures_both_streams() {
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../scripts/test-install-smoke-process.ps1");
+    let output = std::process::Command::new("pwsh")
+        .args(["-NoProfile", "-File"])
+        .arg(script)
+        .output()
+        .expect("pwsh is required by the Windows gate");
+    assert!(
+        output.status.success(),
+        "process watcher regression failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+}
+
+/// No TCP sample is missing evidence, not a clean observation.
+#[cfg(windows)]
+#[test]
+fn the_tcp_watch_requires_observation_before_it_can_pass() {
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../scripts/test-install-smoke-watch.ps1");
+    let output = std::process::Command::new("pwsh")
+        .args(["-NoProfile", "-File"])
+        .arg(script)
+        .output()
+        .expect("pwsh is required by the Windows gate");
+    assert!(
+        output.status.success(),
+        "TCP evidence regression failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
 }

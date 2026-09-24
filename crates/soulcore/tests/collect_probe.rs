@@ -8,6 +8,7 @@
 //! the store the user's life is in.
 
 use std::process::Command;
+#[cfg(not(windows))]
 use std::time::Duration;
 
 const SOURCE: &str = include_str!("../src/collect_probe.rs");

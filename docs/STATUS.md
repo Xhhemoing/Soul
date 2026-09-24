@@ -2,6 +2,26 @@
 
 单一事实来源。每项工作完工必须更新本文件。
 
+## 当前状态（2026-09-24）
+
+- **质量复查（2026-09-24，续验完成）：** 目录扫描预算/深度、Telegram 损坏正文与 Windows 条件编译修复已补齐验证；另修复 TCP 零采样仍判通过的问题。最终根工作区 1041 项、桌面壳 88 项、前端 191 项测试通过；根工作区编译告警 0，前端 lint、两套 Cargo 格式、schema/E0/禁词检查通过。TCP 判定 4 项、真实子进程 5 项回归通过；现有 debug 产物 smoke 15 项通过并记录 1 次 TCP 采样。结果针对当前工作树，不等于完整 G-W 或 Goal 1 通过。证据与范围见 [质量复查记录](reviews/2026-09-24-quality-engineering-audit.md)。
+
+**Goal 1 未关闭；Goal 2 不启动。** 以下当前状态优先于后文的历史分支、hosted CI 和旧版本测试说明。
+
+- 本地主干记录 `8aae8f3` 已包含 M0-2 收敛。当前收尾分支为 `codex/m0-3-closeout-20260924`，从 M0-3 基线 `9700949` 及原有未提交修复继续；原始改动已备份。
+- WP01–WP11、WP13 与 DPAPI 的产品实现已落地。文件整理仍为只读计划预览，执行与撤销仍属 v0.1.1。
+- F1–F3 修复已完成独立源码审查。新增真实子进程回归覆盖 OS 退出码与 JSON 成功标志独立、无效 JSON、双流大体积 UTF-8 输出；恢复了测试中的编码乱码，并修正桌面壳遗留格式差异。局部验证不代替整套门禁。
+- **G-W：当前质量修复版本尚未记为通过。** 根工作区与桌面壳测试已通过；仍需把本工作树质量修复纳入固定提交，重新完成对应 release / manifest / smoke 门禁。独立工作树 `2973ad1` 的旧日志不包含这些修复，且其 TCP 零采样成功行不能作为观察证据。环境为 Win11 build 26200、非提权账户、Rust 1.83.0、PowerShell 7.6.5；核心与桌面是两个独立 Cargo workspace。
+- **G-L：按用户 2026-09-24 指示暂时跳过。** 本机无已安装 WSL，已有 SSH 入口免交互认证失败。未生成当前修复版本的 Linux 通过记录；旧 `633469e` 记录不覆盖本轮修复。
+- **G-M：尚未完成。** 新版本安装、桌面观察与作者手动清单应分别如实记录，不以源码审查或自动化测试代替作者观察。
+- PLAN_INDEX 已指向当前存在的 ACCEPTANCE、GOAL1_PLAN、GOAL2_PLAN 与门禁记录；本地门禁决策编号为 D61–D63。
+
+下一步：固定经复验的代码提交，完成 G-W 与可执行的 Windows 安装/桌面检查，记录实际结果和未完成项。Linux 暂时跳过不改变 [Goal 1 关闭条件](ACCEPTANCE.md#goal-1-关闭条件)。
+
+## 历史实施记录
+
+以下保留原日期、原分支与当时的验证数字用于追溯，不能据此判断当前 HEAD 已通过或仍受 hosted CI 账单阻塞。
+
 核于 2026-08-26。本树是 Goal 1 关闭线 `cursor/goal1-closeout-c49c`，已 merge `origin/main` @ `a0ec14b`（M2）。T4D/A0/A2 已走产品路径：`TieEdgeView` 带 `venue_split_measured` / `direct_count` / `group_count`，图上同屏报一对一与群里两个数（分列缺席则整句不出）。`Session::correct_tie` 锁边后 A2 只消费生效档。AC-34 Telegram owner 群消息不扇出。`COMMANDS` 含 `correct_tie` / `release_tie`。本机 `cargo test --workspace --all-targets` 与 `pnpm --filter @soul/desktop test`（164）绿。**作者 Win11 清单与 hosted AC-26（私库 Billing）仍未过，不在代理解的范围内。** 不要启动 Goal 2，不要做 AC-27。
 
 ## 当前里程碑

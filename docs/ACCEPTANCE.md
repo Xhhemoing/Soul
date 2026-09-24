@@ -1,6 +1,6 @@
 # Goal 1 验收矩阵与红线
 
-本文件是 Goal 1 的**验收权威**（DECISIONS D29）。内容自 2026-08 冻结的开工合同原样迁出（2026-09-04，按作者指示移除开发流程文档，见 DECISIONS D64），Given / When / Then 三列逐字未改（已与移除前文件 diff 校验）；仅「谁跑」列 24 处由 `CI` 改为「本地门禁（G-L，Windows 特有项由 G-W 覆盖）」（D50）。
+本文件是 Goal 1 的**验收权威**（DECISIONS D29）。内容自 2026-08 冻结的开工合同原样迁出（2026-09-04，按作者指示移除开发流程文档，见 DECISIONS D64），Given / When / Then 三列逐字未改（已与移除前文件 diff 校验）；仅「谁跑」列 24 处由 `CI` 改为「本地门禁（G-L，Windows 特有项由 G-W 覆盖）」（D61）。
 
 ## v0.1 代理层边界
 
@@ -65,7 +65,7 @@ WP12 已删除。并行：WP01 冻结后 WP02–WP06、WP08 可并行。
 | AC-23 | 矩阵所列动作后 | 审计回放 | 链通过且无正文/姓名 | 本地门禁（G-L，Windows 特有项由 G-W 覆盖） |
 | AC-24 | 写入中注入崩溃 | 重启 | 链通过；未提交最多丢 1 条 | 本地门禁（G-L，Windows 特有项由 G-W 覆盖） |
 | AC-25 | 注入串出现在导入、粘贴或文件名 | 档案与起草 | 无工具计划；无外连该 URL | 本地门禁（G-L，Windows 特有项由 G-W 覆盖） |
-| AC-26 | 仓库 | 本地门禁（D50） | G-L `just ci-full` 绿 + G-W `scripts/gate-win.ps1` 绿，记录在 `docs/gates/<日期>-<sha7>-*.md` | G-L + G-W |
+| AC-26 | 仓库 | 本地门禁（D61） | G-L `just ci-full` 绿 + G-W `scripts/gate-win.ps1` 绿，记录在 `docs/gates/<日期>-<sha7>-*.md` | G-L + G-W |
 
 AC-27 文件执行与撤销标 **v0.1.1**，不是 Goal 1。
 

@@ -21,9 +21,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use soulcore::commands::collect::{CollectorConfig, FakeForegroundSource};
-use soulcore::commands::session::{
-    read_stored_config, Session, StoredConfig, CONFIG_FILE_NAME, NO_FOREGROUND_SOURCE,
-};
+#[cfg(not(windows))]
+use soulcore::commands::session::NO_FOREGROUND_SOURCE;
+use soulcore::commands::session::{read_stored_config, Session, StoredConfig, CONFIG_FILE_NAME};
 use soulcore::commands::shell::WizardAnswers;
 
 /// Fast enough that the test does not spend its life asleep, slow enough that

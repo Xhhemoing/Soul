@@ -46,10 +46,9 @@ use crate::screen::{screen_segment, shorten};
 /// preview that takes ten minutes on a home directory is a hang. When a limit
 /// is reached the scan says so instead of quietly showing less.
 ///
-/// [`ScanLimits::max_entries`] stops the walk rather than filtering it. Listing
-/// the rest of a home directory as a hundred thousand skip records is the same
-/// ten minutes with a longer answer at the end, so once the cap is reached no
-/// further directory is opened and no further name is read.
+/// [`ScanLimits::max_entries`] counts examined entries, including skipped names.
+/// Enumeration retains at most the remaining budget and reads one extra entry
+/// only to detect truncation. No later directory is opened at the limit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScanLimits {
     pub max_depth: usize,
@@ -129,7 +128,7 @@ pub enum SkipReason {
     /// Below [`ScanLimits::max_depth`].
     DepthLimit,
     /// Where [`ScanLimits::max_entries`] ended the walk. Recorded once, for the
-    /// first name that did not fit; what lies past it was never read.
+    /// directory or entry at the cap; the rest was not enumerated.
     EntryLimit,
     /// The name itself is one no plan may repeat; see [`crate::screen`].
     UnplannableName,
@@ -173,11 +172,11 @@ impl DirectorySnapshot {
     /// hash as unreadable, so a directory that becomes unreadable during a scan
     /// changes the snapshot rather than disappearing from it.
     ///
-    /// The entry cap ends this walk exactly as it ends the scan's, and both
-    /// walks take each directory in name order, so a snapshot of an unchanged
-    /// tree stops at the same name twice. When the cap bites the snapshot says
-    /// so — in [`DirectorySnapshot::truncated`] and inside the hash — so a
-    /// partial view can never hash equal to the complete one it is a prefix of.
+    /// Entry and depth caps match the scan's. Each bounded directory sample is
+    /// sorted before hashing. If the filesystem changes the sampled names,
+    /// the hash changes conservatively even if their metadata is unchanged.
+    /// Limits are recorded in both [`DirectorySnapshot::truncated`] and the
+    /// hash, so a partial view never claims to be a complete one.
     pub fn of(root: &Path, limits: ScanLimits) -> DirectorySnapshot {
         let mut lines: Vec<String> = Vec::new();
         let mut bytes = 0u64;
@@ -185,14 +184,16 @@ impl DirectorySnapshot {
         let mut pending = vec![(root.to_path_buf(), String::new(), 0usize)];
 
         'walk: while let Some((directory, prefix, depth)) = pending.pop() {
-            if lines.len() >= limits.max_entries {
+            if lines.len() >= limits.max_entries || depth >= limits.max_depth {
                 truncated = true;
                 break 'walk;
             }
-            let Some(listing) = read_in_name_order(&directory) else {
+            let Some(listing) = read_in_name_order(&directory, limits.max_entries - lines.len())
+            else {
                 lines.push(format!("{prefix}\u{0}unreadable-dir"));
                 continue;
             };
+            truncated |= listing.truncated;
             for _ in 0..listing.unreadable_entries {
                 if lines.len() >= limits.max_entries {
                     truncated = true;
@@ -231,9 +232,12 @@ impl DirectorySnapshot {
                         if file_type.is_file() {
                             bytes = bytes.saturating_add(metadata.len());
                         }
-                        if file_type.is_dir() && !file_type.is_symlink() && depth < limits.max_depth
-                        {
-                            pending.push((path, relative, depth + 1));
+                        if file_type.is_dir() && !file_type.is_symlink() {
+                            if depth + 1 < limits.max_depth {
+                                pending.push((path, relative, depth + 1));
+                            } else {
+                                truncated = true;
+                            }
                         }
                     }
                     Err(_) => lines.push(format!("{relative}\u{0}unreadable")),
@@ -271,7 +275,7 @@ impl DirectorySnapshot {
         self.bytes
     }
 
-    /// Whether [`ScanLimits::max_entries`] cut this snapshot short. A truncated
+    /// Whether an entry or depth limit cut this snapshot short. A truncated
     /// snapshot still compares equal to another truncated snapshot of the same
     /// unchanged directory; what it cannot say is anything about what lies past
     /// the limit.
@@ -313,8 +317,8 @@ impl DirectoryScan {
         &self.after
     }
 
-    /// Whether the directory is byte for byte, timestamp for timestamp, what it
-    /// was when the scan started.
+    /// Whether the sampled names, types, sizes and timestamps still agree.
+    /// A truncated snapshot makes no claim about entries it did not examine.
     pub fn disk_unchanged(&self) -> bool {
         self.before == self.after
     }
@@ -379,26 +383,34 @@ pub fn scan(
     let mut entries: Vec<ScannedEntry> = Vec::new();
     let mut skipped: Vec<SkippedEntry> = Vec::new();
     let mut injection_signals = 0usize;
+    let mut examined = 0usize;
     let mut truncated = false;
     let mut pending = vec![(root.clone(), String::new(), 0usize)];
 
     'walk: while let Some((directory, prefix, depth)) = pending.pop() {
-        if entries.len() >= limits.max_entries {
+        if examined >= limits.max_entries || depth >= limits.max_depth {
             truncated = true;
             skipped.push(SkippedEntry {
                 shown: shorten(&prefix),
-                reason: SkipReason::EntryLimit,
+                reason: if examined >= limits.max_entries {
+                    SkipReason::EntryLimit
+                } else {
+                    SkipReason::DepthLimit
+                },
             });
             break;
         }
-        let Some(listing) = read_in_name_order(&directory) else {
+        let Some(listing) = read_in_name_order(&directory, limits.max_entries - examined) else {
+            examined += 1;
             skipped.push(SkippedEntry {
                 shown: shorten(&prefix),
                 reason: SkipReason::Unreadable,
             });
             continue;
         };
+        let listing_truncated = listing.truncated;
         for _ in 0..listing.unreadable_entries {
+            examined += 1;
             skipped.push(SkippedEntry {
                 shown: shorten(&prefix),
                 reason: SkipReason::Unreadable,
@@ -407,7 +419,7 @@ pub fn scan(
         for (name, path) in listing.named {
             let relative = join_relative(&prefix, &name);
 
-            if entries.len() >= limits.max_entries {
+            if examined >= limits.max_entries {
                 truncated = true;
                 skipped.push(SkippedEntry {
                     shown: shorten(&relative),
@@ -415,6 +427,7 @@ pub fn scan(
                 });
                 break 'walk;
             }
+            examined += 1;
 
             let untrusted = UntrustedText::new(name.clone());
             if !injection::scan(&untrusted).is_empty() {
@@ -487,6 +500,14 @@ pub fn scan(
                 }
             }
         }
+        if listing_truncated {
+            truncated = true;
+            skipped.push(SkippedEntry {
+                shown: shorten(&prefix),
+                reason: SkipReason::EntryLimit,
+            });
+            break 'walk;
+        }
     }
 
     entries.sort_by(|a, b| a.relative.cmp(&b.relative));
@@ -515,35 +536,54 @@ struct DirectoryListing {
     named: Vec<(String, PathBuf)>,
     /// Entries the directory offered but would not describe.
     unreadable_entries: usize,
+    truncated: bool,
 }
 
 /// Read one directory, sorted by name; `None` if the directory itself will not
 /// open.
 ///
-/// The order the filesystem hands entries back in is its own business, and a
-/// walk that stops at a cap turns that order into part of the answer. Sorting
-/// first means the before and after snapshots of an unchanged tree cover the
-/// same names, so a truncated preview still reports "nothing moved" rather than
-/// a change that never happened.
-fn read_in_name_order(directory: &Path) -> Option<DirectoryListing> {
+/// Bound enumeration before sorting: sorting the entire directory would make
+/// the entry cap meaningless for memory and work. The sampled prefix depends
+/// on filesystem order; a changed sample changes the snapshot conservatively.
+fn read_in_name_order(directory: &Path, remaining: usize) -> Option<DirectoryListing> {
     let read = std::fs::read_dir(directory).ok()?;
+    Some(collect_in_name_order(
+        read.map(|entry| {
+            entry.map(|entry| {
+                (
+                    entry.file_name().to_string_lossy().into_owned(),
+                    entry.path(),
+                )
+            })
+        }),
+        remaining,
+    ))
+}
+
+fn collect_in_name_order(
+    mut read: impl Iterator<Item = std::io::Result<(String, PathBuf)>>,
+    remaining: usize,
+) -> DirectoryListing {
     let mut named: Vec<(String, PathBuf)> = Vec::new();
     let mut unreadable_entries = 0usize;
-    for entry in read {
+    for entry in read.by_ref().take(remaining) {
         match entry {
-            Ok(entry) => named.push((
-                entry.file_name().to_string_lossy().into_owned(),
-                entry.path(),
-            )),
+            Ok(entry) => named.push(entry),
             Err(_) => unreadable_entries += 1,
         }
     }
+    let truncated = read.next().is_some();
     named.sort();
-    Some(DirectoryListing {
+    DirectoryListing {
         named,
         unreadable_entries,
-    })
+        truncated,
+    }
 }
+
+#[cfg(test)]
+#[path = "../tests/scan_support/listing_budget.rs"]
+mod listing_budget;
 
 fn join_relative(prefix: &str, name: &str) -> String {
     match prefix.is_empty() {

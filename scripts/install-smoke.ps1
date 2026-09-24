@@ -412,16 +412,35 @@ function Invoke-HeadlessSmoke {
     $stdout = Join-Path $LogDirectory 'headless-stdout.json'
     $stderr = Join-Path $LogDirectory 'headless-stderr.txt'
 
-    $process = Start-Process -FilePath $Path -ArgumentList @('smoke') -NoNewWindow -PassThru `
-        -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    # Start-Process -PassThru + RedirectStandard* on PS 5.1 often leaves
+    # ExitCode $null after HasExited. Use ProcessStartInfo so the OS exit
+    # code stays available; never invent 0/1 from report.ok.
+    $utf8 = New-Object System.Text.UTF8Encoding $false
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $Path
+    $psi.Arguments = 'smoke'
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $psi.StandardOutputEncoding = $utf8
+    $psi.StandardErrorEncoding = $utf8
 
+    # Discover/autoload the monitor before a fast child can finish.
     $canWatch = $null -ne (Get-Command -Name 'Get-NetTCPConnection' -ErrorAction SilentlyContinue)
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    if (-not $process.Start()) {
+        throw "Invoke-HeadlessSmoke: failed to start process: $Path"
+    }
+
+    $stdoutAsync = $process.StandardOutput.ReadToEndAsync()
+    $stderrAsync = $process.StandardError.ReadToEndAsync()
+
     $seen = [System.Collections.Generic.HashSet[string]]::new()
     $samples = 0
 
-    # Refresh each poll: HasExited can stay stale on PS 5.1, and without it
-    # WaitForExit returns immediately with ExitCode still $null even though
-    # the child wrote a full ok:true report (run11 @ 983df57).
     while (-not $process.HasExited) {
         if ($canWatch) {
             $samples++
@@ -435,23 +454,27 @@ function Invoke-HeadlessSmoke {
         $process.Refresh()
     }
     $process.WaitForExit()
-    $process.Refresh()
+
+    $stdoutText = $stdoutAsync.GetAwaiter().GetResult()
+    $stderrText = $stderrAsync.GetAwaiter().GetResult()
+    [System.IO.File]::WriteAllText($stdout, $stdoutText, $utf8)
+    [System.IO.File]::WriteAllText($stderr, $stderrText, $utf8)
 
     $report = $null
-    if (Test-Path -LiteralPath $stdout) {
-        $text = Get-Content -LiteralPath $stdout -Raw -Encoding UTF8
-        if (-not [string]::IsNullOrWhiteSpace($text)) {
-            $report = $text | ConvertFrom-Json
+    if (-not [string]::IsNullOrWhiteSpace($stdoutText)) {
+        try {
+            $report = $stdoutText | ConvertFrom-Json
+        } catch {
+            # Leave Report null so ExitCode and report.ok stay separate checks.
+            $report = $null
         }
     }
 
-    $exitCode = $process.ExitCode
-    if ($null -eq $exitCode) {
-        # Start-Process -PassThru + RedirectStandard* quirk: HasExited true,
-        # stdout complete, ExitCode still unset. Prefer a defined code so the
-        # assert does not print "exit code ;" and fail a green product run.
-        $exitCode = if ($null -ne $report -and [bool]$report.ok) { 0 } else { 1 }
+    if (-not $process.HasExited) {
+        throw "Invoke-HeadlessSmoke: process has not exited; ExitCode unavailable (fail closed); see $stderr"
     }
+    # Process.ExitCode is Int32 once HasExited; do not derive from report.ok.
+    $exitCode = [int] $process.ExitCode
 
     return [pscustomobject]@{
         ExitCode            = $exitCode
@@ -655,7 +678,7 @@ try {
 
     if ($smoke.WatchedByThisScript) {
         Assert-Finding -Phase 'smoke' -Check 'AC-21: Windows saw no non-loopback connection either' `
-            -Condition ($smoke.NonLoopbackPeers.Count -eq 0) `
+            -Condition ($smoke.Samples -gt 0 -and $smoke.NonLoopbackPeers.Count -eq 0) `
             -Detail "$($smoke.Samples) sample(s) of the TCP table; $($smoke.NonLoopbackPeers -join ', ')"
     }
     else {
