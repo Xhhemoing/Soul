@@ -1,4 +1,4 @@
-﻿# G-W: the Windows gate, on the author's Windows 11 machine.
+# G-W: the Windows gate, on the author's Windows 11 machine.
 #
 # There is no hosted CI for this repository (DECISIONS D50). This script is
 # what the old `test-windows` and `package` jobs did, minus the runner: it
@@ -11,7 +11,7 @@
 # scripts/author-manual-checklist.md, done by hand after this passes.
 #
 # Usage, from the repository root:
-#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/gate-win.ps1
+#   pwsh -NoProfile -File scripts/gate-win.ps1
 #   ... -SkipWorkspaceTests   # rerun only the shell + package half
 #
 # Write the result to docs/gates/<yyyymmdd>-<sha7>-win.md (template in

@@ -210,7 +210,9 @@ fn an_unacknowledged_wizard_comes_back_as_an_error() {
     // reason_code + explanation — not the old internally-tagged `reason`.
     assert_eq!(refusal["reason_code"], json!("ROUTINE"));
     assert!(
-        refusal["explanation"].as_str().is_some_and(|s| !s.is_empty()),
+        refusal["explanation"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty()),
         "unexpected: {refusal}"
     );
 }
@@ -1928,7 +1930,9 @@ fn an_export_crosses_the_ipc_as_counts_and_becomes_people() {
         .as_array()
         .expect("people")
         .iter()
-        .filter(|person| person["is_you"] != json!(true) && person["tie_count"].as_u64().unwrap_or(0) > 0)
+        .filter(|person| {
+            person["is_you"] != json!(true) && person["tie_count"].as_u64().unwrap_or(0) > 0
+        })
         .max_by_key(|person| person["interaction_count"].as_u64().unwrap_or(0))
         .expect("the export has somebody in it");
     let contact_id = someone["contact_id"]
@@ -2446,7 +2450,9 @@ fn collection_can_be_granted_and_taken_back_over_the_ipc() {
     assert_eq!(off["collector_running"], json!(false));
     assert_eq!(off["survives_restart"], json!(false));
 
-    let closed = shell.invoke("config_snapshot", json!({})).expect("a snapshot");
+    let closed = shell
+        .invoke("config_snapshot", json!({}))
+        .expect("a snapshot");
     assert_eq!(closed["collect_enabled"], json!(false));
     assert_eq!(closed["fully_closed"], json!(true));
 
@@ -2465,7 +2471,9 @@ fn collection_can_be_granted_and_taken_back_over_the_ipc() {
     // 全部能力默认关闭 while /collect had a thread running. The grant now
     // reaches the in-memory `Config` the way an endpoint does, so the two
     // screens can no longer contradict each other.
-    let open = shell.invoke("config_snapshot", json!({})).expect("a snapshot");
+    let open = shell
+        .invoke("config_snapshot", json!({}))
+        .expect("a snapshot");
     assert_eq!(
         open["collect_enabled"],
         json!(true),
@@ -2481,7 +2489,9 @@ fn collection_can_be_granted_and_taken_back_over_the_ipc() {
     assert_eq!(revoked["collector_running"], json!(false));
 
     // Nothing else in this test opened anything, so 全部关闭 comes back whole.
-    let shut = shell.invoke("config_snapshot", json!({})).expect("a snapshot");
+    let shut = shell
+        .invoke("config_snapshot", json!({}))
+        .expect("a snapshot");
     assert_eq!(shut["collect_enabled"], json!(false));
     assert_eq!(shut["fully_closed"], json!(true));
     assert_eq!(shut["open_capabilities"], json!([]));
@@ -2731,7 +2741,11 @@ fn the_profile_arguments_are_required_and_spelled_the_way_the_webview_spells_the
             "a half-filled correction resolved to something: {body}",
         );
     }
-    for body in [json!({}), json!({ "field": "warmth" }), json!({ "option": "warm" })] {
+    for body in [
+        json!({}),
+        json!({ "field": "warmth" }),
+        json!({ "option": "warm" }),
+    ] {
         assert!(
             invoke("set_voice", body.clone()).is_err(),
             "a half-filled voice setting resolved to something: {body}",
@@ -2788,7 +2802,10 @@ fn a_memory_is_written_read_edited_and_forgotten_over_the_ipc() {
             return;
         }
     };
-    let memory_id = written["memory_id"].as_str().expect("a memory id").to_owned();
+    let memory_id = written["memory_id"]
+        .as_str()
+        .expect("a memory id")
+        .to_owned();
     assert_eq!(written["title"], json!(MEMORY_TITLE));
     assert_eq!(written["memory_type"], json!("episodic"));
 
@@ -3118,22 +3135,20 @@ fn the_research_preview_crosses_the_ipc_as_counts_and_no_third_party_row() {
     // Imported chat is research_export:deny (session_research.rs). The rows
     // AC-20 shows are trait axes from the questionnaire — answer one so the
     // preview is not an empty exclusion of everybody else's messages alone.
-    let intake = match shell.invoke(
-        "answer_questionnaire",
-        json!({
-            "answers": [
-                { "question_id": "q.axis.curiosity", "given": "leans_high" },
-                { "question_id": "q.voice.register", "given": "formal" },
-                { "question_id": "q.boundary.topics", "given": "工作以外的话题" },
-            ]
-        }),
-    ) {
-        Ok(intake) => intake,
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let intake = shell
+        .invoke(
+            "answer_questionnaire",
+            json!({
+                "answers": [
+                    { "question_id": "q.axis.curiosity", "given": "leans_high" },
+                    { "question_id": "q.voice.register", "given": "formal" },
+                    { "question_id": "q.boundary.topics", "given": "工作以外的话题" },
+                ]
+            }),
+        )
+        .unwrap_or_else(|refusal| {
+            panic!("answer_questionnaire must succeed for AC-20 owner trait rows; got {refusal}")
+        });
     assert_eq!(intake["answered"], json!(3));
 
     let before: Vec<PathBuf> = std::fs::read_dir(&shell.directory)
@@ -3158,15 +3173,12 @@ fn the_research_preview_crosses_the_ipc_as_counts_and_no_third_party_row() {
          a query that left somebody out: {research}",
     );
     assert!(
-        research["rows"]
-            .as_array()
-            .is_some_and(|rows| {
-                !rows.is_empty()
-                    && rows.iter().any(|row| {
-                        row.get("self_trait_axis")
-                            .map_or(false, |v| !v.is_null())
-                    })
-            }),
+        research["rows"].as_array().is_some_and(|rows| {
+            !rows.is_empty()
+                && rows
+                    .iter()
+                    .any(|row| row.get("self_trait_axis").map_or(false, |v| !v.is_null()))
+        }),
         "the research page needs an owner trait-axis row after the questionnaire; \
          import-only is deny and must not fill the preview: {research}",
     );
