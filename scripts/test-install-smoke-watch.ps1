@@ -26,15 +26,16 @@ $verdicts = @($ast.FindAll({
 if ($verdicts.Count -ne 1) { throw 'Expected one TCP watch verdict' }
 $verdict = [scriptblock]::Create($verdicts[0].Extent.Text)
 $cases = @(
-    @{ Name = 'zero samples'; Samples = 0; Peers = @(); Passed = $false },
-    @{ Name = 'one clean sample'; Samples = 1; Peers = @(); Passed = $true },
-    @{ Name = 'several clean samples'; Samples = 3; Peers = @(); Passed = $true },
-    @{ Name = 'observed remote peer'; Samples = 1; Peers = @('192.0.2.1:443'); Passed = $false }
+    @{ Name = 'zero samples'; Watched = $true; Samples = 0; Peers = @(); Passed = $false },
+    @{ Name = 'one clean sample'; Watched = $true; Samples = 1; Peers = @(); Passed = $true },
+    @{ Name = 'several clean samples'; Watched = $true; Samples = 3; Peers = @(); Passed = $true },
+    @{ Name = 'observed remote peer'; Watched = $true; Samples = 1; Peers = @('192.0.2.1:443'); Passed = $false },
+    @{ Name = 'monitor unavailable'; Watched = $false; Samples = 0; Peers = @(); Passed = $false }
 )
 foreach ($case in $cases) {
     $script:Findings = [System.Collections.Generic.List[object]]::new()
     $smoke = [pscustomobject]@{
-        WatchedByThisScript = $true
+        WatchedByThisScript = $case.Watched
         Samples = $case.Samples
         NonLoopbackPeers = $case.Peers
     }
@@ -49,4 +50,4 @@ foreach ($case in $cases) {
     }
     Write-Output "$($case.Name): verdict verified"
 }
-Write-Output 'PASS: four TCP evidence verdicts; no installation performed'
+Write-Output 'PASS: five TCP evidence verdicts; no installation performed'

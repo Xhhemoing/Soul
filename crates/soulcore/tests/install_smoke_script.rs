@@ -456,3 +456,22 @@ fn the_tcp_watch_requires_observation_before_it_can_pass() {
         String::from_utf8_lossy(&output.stderr),
     );
 }
+
+/// Provider errors and missing monitor access must not become clean samples.
+#[cfg(windows)]
+#[test]
+fn the_tcp_watch_fails_closed_on_provider_errors() {
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../scripts/test-install-smoke-tcp-provider.ps1");
+    let output = std::process::Command::new("pwsh")
+        .args(["-NoProfile", "-File"])
+        .arg(script)
+        .output()
+        .expect("pwsh is required by the Windows gate");
+    assert!(
+        output.status.success(),
+        "TCP provider regression failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+}

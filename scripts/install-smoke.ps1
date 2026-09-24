@@ -428,6 +428,9 @@ function Invoke-HeadlessSmoke {
 
     # Discover/autoload the monitor before a fast child can finish.
     $canWatch = $null -ne (Get-Command -Name 'Get-NetTCPConnection' -ErrorAction SilentlyContinue)
+    if (-not $canWatch) {
+        throw 'Invoke-HeadlessSmoke: Get-NetTCPConnection is unavailable; TCP observation is required (fail closed)'
+    }
 
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = $psi
@@ -440,19 +443,28 @@ function Invoke-HeadlessSmoke {
 
     $seen = [System.Collections.Generic.HashSet[string]]::new()
     $samples = 0
+    $watchFailure = $null
 
     while (-not $process.HasExited) {
-        if ($canWatch) {
+        try {
+            # Query the whole table: a valid empty per-process result must not
+            # be confused with a provider failure from a server-side PID filter.
+            $connections = @(Get-NetTCPConnection -ErrorAction Stop)
             $samples++
-            foreach ($connection in Get-NetTCPConnection -OwningProcess $process.Id -ErrorAction SilentlyContinue) {
+            foreach ($connection in $connections) {
+                if ($connection.OwningProcess -ne $process.Id) { continue }
                 if ($script:LoopbackAddresses -contains $connection.RemoteAddress) { continue }
                 if ($connection.State -eq 'Listen') { continue }
                 [void] $seen.Add("$($connection.RemoteAddress):$($connection.RemotePort)")
             }
+        } catch {
+            $watchFailure = $_
+            break
         }
         Start-Sleep -Milliseconds 20
         $process.Refresh()
     }
+    # Even a failed observation must reap the child and preserve both streams.
     $process.WaitForExit()
 
     $stdoutText = $stdoutAsync.GetAwaiter().GetResult()
@@ -475,6 +487,10 @@ function Invoke-HeadlessSmoke {
     }
     # Process.ExitCode is Int32 once HasExited; do not derive from report.ok.
     $exitCode = [int] $process.ExitCode
+    $process.Dispose()
+    if ($null -ne $watchFailure) {
+        throw "Invoke-HeadlessSmoke: TCP observation failed after $samples successful sample(s): $($watchFailure.Exception.Message); see $stdout and $stderr"
+    }
 
     return [pscustomobject]@{
         ExitCode            = $exitCode
@@ -682,8 +698,8 @@ try {
             -Detail "$($smoke.Samples) sample(s) of the TCP table; $($smoke.NonLoopbackPeers -join ', ')"
     }
     else {
-        Add-Finding -Phase 'smoke' -Check 'the TCP table watch' -Passed $true `
-            -Detail 'skipped; Get-NetTCPConnection is not available on this host'
+        Assert-Finding -Phase 'smoke' -Check 'the TCP table watch' -Condition $false `
+            -Detail 'Get-NetTCPConnection is not available on this host; observation is required'
     }
 
     foreach ($step in $smoke.Report.steps) {
