@@ -262,10 +262,16 @@ function Get-InstalledEntry {
                 $found = $properties.PSObject.Properties[$property]
                 if ($null -eq $found) { '' } else { [string] $found.Value }
             }
+            # NSIS stores this directory with one surrounding quote pair.
+            # Decode only the path field; uninstall command lines stay intact.
+            $installLocation = (& $read 'InstallLocation').Trim()
+            if ($installLocation.Length -ge 2 -and $installLocation.StartsWith('"') -and $installLocation.EndsWith('"')) {
+                $installLocation = $installLocation.Substring(1, $installLocation.Length - 2)
+            }
             return [pscustomobject]@{
                 Hive             = $root
                 DisplayName      = & $read 'DisplayName'
-                InstallLocation  = & $read 'InstallLocation'
+                InstallLocation  = $installLocation
                 UninstallString  = & $read 'UninstallString'
                 QuietUninstall   = & $read 'QuietUninstallString'
             }
@@ -318,12 +324,22 @@ function Invoke-SilentUninstaller {
         throw 'no uninstall.exe was found; the install directory has to be removed by hand'
     }
 
-    # _?= keeps the uninstaller in place so it can be waited on. Without it
-    # NSIS copies itself to the temp folder, returns immediately, and this
-    # script would check for a directory that is still being deleted.
+    # Run a temporary copy so the installed uninstall.exe is not locked when
+    # NSIS deletes it. _?= targets the real install directory and avoids the
+    # self-copy/relaunch path, letting Wait cover the actual uninstall work.
     $directory = Split-Path -Parent $uninstaller
-    Write-Host "  running: $uninstaller /S _?=$directory"
-    return (Start-Process -FilePath $uninstaller -ArgumentList @('/S', "_?=$directory") -Wait -PassThru).ExitCode
+    $runnerDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('soul-install-smoke-uninstall-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $runnerDirectory | Out-Null
+    $runner = Join-Path $runnerDirectory 'uninstall.exe'
+    try {
+        Copy-Item -LiteralPath $uninstaller -Destination $runner
+        Write-Host "  running: $runner /S _?=$directory (copy of $uninstaller)"
+        return (Start-Process -FilePath $runner -ArgumentList @('/S', "_?=$directory") -Wait -PassThru).ExitCode
+    } finally {
+        # Only this invocation's runner and now-empty scratch directory.
+        if (Test-Path -LiteralPath $runner) { Remove-Item -LiteralPath $runner -Force }
+        [System.IO.Directory]::Delete($runnerDirectory, $false)
+    }
 }
 
 # --- the store an uninstall must not touch ---------------------------------
@@ -744,6 +760,11 @@ finally {
                 Add-Finding -Phase 'uninstall' -Check 'soul.exe is gone' -Passed $gone `
                     -Detail $AppExecutable
                 if (-not $gone) { $exitCode = 1 }
+                $installDirectory = Split-Path -Parent $AppExecutable
+                $directoryGone = -not (Test-Path -LiteralPath $installDirectory)
+                Add-Finding -Phase 'uninstall' -Check 'the install directory is gone' -Passed $directoryGone `
+                    -Detail $installDirectory
+                if (-not $directoryGone) { $exitCode = 1 }
             }
 
             $stillListed = Get-InstalledEntry

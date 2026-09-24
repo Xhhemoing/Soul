@@ -475,3 +475,41 @@ fn the_tcp_watch_fails_closed_on_provider_errors() {
         String::from_utf8_lossy(&output.stderr),
     );
 }
+
+/// Quoted NSIS registry paths must reach guards and uninstaller as paths.
+#[cfg(windows)]
+#[test]
+fn the_registry_reader_decodes_install_location_without_changing_commands() {
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../scripts/test-install-smoke-location.ps1");
+    let output = std::process::Command::new("pwsh")
+        .args(["-NoProfile", "-File"])
+        .arg(script)
+        .output()
+        .expect("pwsh is required by the Windows gate");
+    assert!(
+        output.status.success(),
+        "InstallLocation regression failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+}
+
+/// Waiting must cover actual cleanup without locking the installed uninstaller.
+#[cfg(windows)]
+#[test]
+fn the_waited_uninstaller_removes_its_tree_without_deleting_unknown_files() {
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../scripts/test-install-smoke-uninstall.ps1");
+    let output = std::process::Command::new("pwsh")
+        .args(["-NoProfile", "-File"])
+        .arg(script)
+        .output()
+        .expect("pwsh is required by the Windows gate");
+    assert!(
+        output.status.success(),
+        "Waited-uninstaller regression failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+}
