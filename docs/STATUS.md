@@ -27,6 +27,7 @@
 
 ## 规划进展（2026-09-25）
 
+- **RES-01 已完成。** [字段、用途许可与研究问题矩阵](reviews/2026-09-25-res-01-data-permission-matrix.md) 在文档 HEAD `825b0f1` 上审查实现版本 `ebff0c9`；对收据列出的研究预览、许可、schema 与测试路径作两个提交树之间的内容比较，结果无差异，但这不表示祖先关系或整树等同。结论区分技术准入与独立研究许可：事件仅有 owner/self + bucket 聚合候选可发布；档案轴由实现直接合成 Owner + Bucket，未读取 axis/evidence 研究许可；`duration_bucket` 当前无生产路径；`ResearchPreview` consent 已定义但 Session 入口未核验。没有覆盖/在线状态和有效时长分母，RES-03 维持数据不足且不启动。本项只改文档，不改产品代码、schema、IPC、许可逻辑、PRODUCT_LOCK、Goal 1 验收或既有 gate。
 - 按作者要求，将个人数字分身、商业产品、人格与行为建模研究共同纳入 [ROADMAP.md](ROADMAP.md)，并把 [GOAL2_PLAN.md](GOAL2_PLAN.md) 细化为可由多 agent 分工的近期工作包。D66–D67 记录方向与协作口径。
 - 规划部分已写明目标、依赖、文件归属、共享接口、验收和失败处理；其后按 D68 执行独立质量预备支线，实际产品修复与门禁结果以上方“独立质量预备支线”为准。Goal 1 与正式 Goal 2 仍未关闭。
 - 规划开始时的安装 smoke 及其测试改动由原收尾工作流提交为 95ff7d6（2026-09-25）；e2fdf16 的旧证据不覆盖该源码变更。后续 95ff7d6 与 ebff0c9 的独立验证分别见顶部链接的两份 9 月 25 日记录。

@@ -96,17 +96,17 @@ M2 文件执行用于验证代理的受控行动能力；其使用率不能代�
 | ID / 优先级 | 交付物与边界 | 依赖 | Owner / 文件归属 | 完成条件 |
 |---|---|---|---|---|
 | VAL-01 / P0 | 固定三类任务、A/B/C 对照、反馈字段、截止条件；只合成样例 | 本计划；可立即设计，产品测试实现等待 Q2 入口 | 研究 agent 提案，A0 写本文第 7 节及 Q2 评测任务 | 每项指标有分母、基线、用途许可与缺失处理 |
-| RES-01 / P0 | 当前字段→许可→可研究问题→禁止问题的矩阵 | 当前 schema、research_preview | 研究 agent 只读分析；A0 将结论写阶段评测收据 | 不把 self 等同研究许可；deny/mixed 排除规则可逐项核验 |
+| RES-01 / P0 — **DONE 2026-09-25** | [当前字段→许可→可研究问题→禁止问题的矩阵](reviews/2026-09-25-res-01-data-permission-matrix.md) | 当前 schema、research_preview | 研究 agent 只读分析；A0 已写阶段评测收据 | self 与研究许可分离；各 subject/disposition 规则可从源码追踪，报告粗粒度、查询失败、截断和缺测边界已记录 |
 | VAL-02 / P1 | 作者连续使用的任务摘要与前三个阻碍 | M0 关闭、可用构建、VAL-01 | 作者实际使用；分析 agent 只处理手工脱敏结果 | 达预设任务量和期限或记“不确定”；不得伪造体验 |
 | RES-02 / P1 | 个性化增益与错误归因报告 | VAL-01；Q2 测试契约；VAL-02 实际样本 | 独立评估 agent；拟新增 docs/reviews/<日期>-personalization-pilot.md | 作者与其他用户分别报告；模板与 E1 分开；负结果保留 |
 | VAL-03 / P1 | 5–8 位自愿成年用户的探索性试用，观察上手和重复使用 | VAL-02 没有未解决的隐私/数据完整性缺陷；实际招募授权 | 产品 agent 准备任务，人执行联系；A0 收敛脱敏报告 | 记录拒绝/流失及原因，不只报告完成者 |
 | BIZ-01 / P2 | 用户问题、愿付方式、运行及支持成本、继续/收窄决策 | VAL-03、RES-02 | 产品 agent；A0 在本文商业决策中记录 | 区分访谈意愿、试用与实际付费；没有证据不加支付后端 |
 
-表中的带日期路径是未来交付时的命名规则，不是已存在文件。每份收据记录所测源码 SHA、实验条件及样本窗口，不记录原始聊天、姓名、账号、密钥或未经批准的个人数据。
+表中仍含占位符的带日期路径（例如 RES-02）是未来交付时的命名规则，不是已存在文件；RES-01 的实际收据已在表内链接。每份收据记录所测源码 SHA、实验条件及样本窗口，不记录原始聊天、姓名、账号、密钥或未经批准的个人数据。
 
-### 当前数据可用性判定（RES-01 起点）
+### 当前数据可用性判定（RES-01 结论）
 
-- 事件候选逐行读取 `privacy_subject` 与 `privacy.egress.research_export`：只有 owner/self 且 `bucket` 的小时聚合可进入预览；third_party/mixed、deny/hash/allow、缺失或不可读 disposition 均被排除并计数。规划不能把这些排除改写成许可。
+- 事件查询读取 `privacy_subject` 与 `privacy.egress.research_export`，先按类别、时间桶、subject 与 disposition 分组：只有 owner/self 且 `bucket` 的候选组可进入预览；third_party/mixed、system/未知 subject 与非 bucket disposition 均 fail closed。排除计数是聚合后的候选组数，不是原始事件数；非法 JSON 类型还可能使查询失败，不能写成都会被正常计数。筛选不能改写成独立研究许可。
 - 档案轴是另一条有意存在的派生路径：有 weak/moderate/strong `evidence_band` 的轴被构造成 owner/bucket，只输出 `self_trait_axis` 与 `self_trait_band`；产生轴的问卷/纠正 evidence 仍是 `exportable_to_research:false`，原证据和正文不随预览输出。现有 Session、IPC 与 store 测试都把这条非空轴行当作契约，因此不能误报成偶发泄漏。
 - 当前可出现的字段是事件类别、UTC 小时或退化日期桶、聚合计数、轴 ID 与证据档位。`duration_bucket` 虽在 schema/API 中允许，现有构造没有赋值；预览默认只取前 50 行，也没有采集覆盖、设备在线或可用时段字段。
 - `ConsentTopic::ResearchPreview` 已定义，但 `Session::research()` 当前只打开 store 并生成预览，没有在该入口读取或授予这项 consent。这里不据此新增缺陷或改变 v0.1 本机预览边界，但不得把枚举存在、合成测试通过或页面可打开解释为“独立研究同意已经记录”。
@@ -131,7 +131,7 @@ M2 文件执行用于验证代理的受控行动能力；其使用率不能代�
 1. 关闭依赖仍是同源码 G-L、真实 G-M 观察和受影响 Import 原生体验；分别保持 `USER_DEFERRED_NOT_RUN`、`USER_REQUESTED_SKIP_NOT_RUN` 或等待实际观察者，不能由更多 mock 测试折算为通过。
 2. 若以后批准性能调查，先在 commit/rebuild 内部分解解析、加密写入与图谱重建成本，再决定是否优化；当前不加索引、线程池或 schema。
 3. M0 关闭且可用构建形成后，优先执行 VAL-01/02 的真实任务效用验证。合成连续性与安全轨迹只提供进入实验的工程证据，不填“配对偏好”“编辑耗时”或留存数据。
-4. RES-01 继续以只读字段/许可矩阵判断数据是否足够；没有覆盖/在线状态就把下一小时活动预测记为数据不足，不启动 RES-03，也不扩采集字段。
+4. RES-01 已完成[只读字段/许可矩阵](reviews/2026-09-25-res-01-data-permission-matrix.md)：当前没有覆盖/在线状态和有效时长分母，下一小时活动预测维持“数据不足”；不启动 RES-03，也不扩采集字段。
 5. ACT、DATA、MODEL、PORT、CLOUD 等远期实现仍按原依赖释放；本次回写不改变 PRODUCT_LOCK、AC、冻结算法、schema、IPC 或出网边界。
 
 ## 7. 效用、商业与研究的评价契约
