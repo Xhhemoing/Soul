@@ -99,7 +99,9 @@ sha7 是跑门禁时 `git rev-parse --short=7 HEAD`。工作区不干净就先�
 
 ## 已有记录
 
-- [20260924-e2fdf16-win.md](20260924-e2fdf16-win.md) — 当前收尾源码 G-W 通过，独立审查 PASS；NSIS / 打包后 smoke 通过，G-M 未完成，G-L 按用户指示暂缓。
+- [20260925-95ff7d6-win.md](20260925-95ff7d6-win.md) — 安装修复的隔离 G-W 与独立受控回归通过；首次真实安装失败、恢复有残留，真实 NSIS 副本验证被执行审核阻断。G-M 未完成、G-L 暂缓。
+
+- [20260924-e2fdf16-win.md](20260924-e2fdf16-win.md) — 该历史固定源码的 G-W、NSIS / 打包后 smoke 通过；后续安装与修复状态见 9 月 25 日记录。
 
 - `20260904-6f6a259-linux.md` — G-L 绿（含 deny-list）；无 G-W
 

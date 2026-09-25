@@ -1,6 +1,6 @@
 # 作者手动清单
 
-> 当前产物（2026-09-24）：固定源码 `e2fdf16` 的 G-W、NSIS 打包、打包后 smoke 已通过，见 [正式记录](../docs/gates/20260924-e2fdf16-win.md)。本清单人工项尚未完成。旧便携 Soul GUI 仍在运行；请先正常退出并确认无 `soul.exe`，再开始安装/卸载。NSIS `/S` 会结束当前用户的同名进程。本轮没有代替作者勾选人工观察。
+> 当前状态（2026-09-25）：`95ff7d6` 的隔离 G-W 和安装修复受控回归通过，见 [正式记录](../docs/gates/20260925-95ff7d6-win.md)。已有安装包来源为 `e2fdf16`；原版 installer/headless 的配对副本与哈希见记录。首次真实安装流程失败，恢复后仍留有卸载器；旧 GUI 已不在运行。真实 NSIS 临时副本验证被自动执行审核阻断、尚未执行，需明确获准后再继续完整流程。人工项仍未完成、未代勾。NSIS `/S` 会结束当前用户的同名进程，操作前应重新核对。
 
 本地自动化门禁到此为止。下面每一条都要在一台 **Windows 11 x64、非管理员账户** 上由作者亲手过一遍，
 过完把结果写回 `docs/STATUS.md` 的对应工作单段落——写「过了」没有用，要写看到了什么。
@@ -32,8 +32,7 @@ cargo build --release -p soulcore --bin soul-headless --locked
 - `apps/desktop/src-tauri/target/release/soul.exe`
 - `target/release/soul-headless.exe`
 
-**开始之前**：这台机器上不能已经装着 Soul（`%LOCALAPPDATA%\Soul` 要不存在），
-`控制面板 → 程序和功能` 里也不能有 Soul。否则测的是升级，不是干净安装。
+**开始之前**：确认没有 Soul 进程、`%LOCALAPPDATA%\Programs\Soul` 安装目录及 Soul 卸载注册项。数据目录是 `%LOCALAPPDATA%\Soul`；它存在不等于已经安装，不能为测试删除其中的用户数据。全新用户首次运行场景应另用没有历史数据的标准用户账户，保留数据重装则单独记录。当前安装目录仍有卸载器残留，须先完成获准的恢复并复核，不能把有残留的状态记成干净安装。
 
 ---
 
@@ -61,8 +60,8 @@ HEAD 打出来的包装到 `%LOCALAPPDATA%\Programs\Soul`，碰不到这条；�
 
 脚本查的是：安装器返回 0、卸载项在 HKCU（不是 HKLM，说明是按用户装的）、
 装出来的可执行文件在 `%LOCALAPPDATA%\Programs\Soul\soul.exe` 且清单是 `asInvoker`、
-`soul-headless smoke` 退出 0 且报告干净、卸载返回 0 且安装目录里的 `soul.exe` 与注册项都消失
-（不删 `%LOCALAPPDATA%\Soul`）。失败会打印是哪一项。
+`soul-headless smoke` 退出 0 且报告干净、卸载返回 0、整个 `%LOCALAPPDATA%\Programs\Soul` 安装目录及注册项都消失
+（不删 `%LOCALAPPDATA%\Soul`）。脚本等待唯一临时卸载器副本完成，再只清理本次副本和空临时目录；未知安装残留应保留并报失败，不递归删除。失败会打印是哪一项。
 
 **已知缺口**：安装包里没有 `soul-headless.exe`（Tauri bundle 只放 `mainBinaryName`），
 所以 `-Headless` 指的是同一个 commit 编出来的那个，不是安装器放上去的那个。
@@ -116,25 +115,44 @@ CI 编译 `apps/desktop/src-tauri/src/tray.rs`，但没有 runner 有通知区�
 CI 证明的是：代码里没有这条路径、JS 侧五个出网 API 一次没被调、依赖图里走不到任何 HTTP client。
 这里补的是操作系统那一眼。
 
-1. 启动 Soul，先让它待 30 秒（启动期的任何流量都要算进来）。
-2. 打开 `资源监视器 → 网络`，或者另开一个 PowerShell 窗口跑：
+1. 启动 Soul 并记录启动时间，先让它待 30 秒。启动期流量需要另行观察并记录；下面的循环只覆盖开始采样之后，不能补证启动期。
+2. 打开 `资源监视器 → 网络`。另开一个 PowerShell 窗口，用下面的循环记录运行期 TCP 快照；操作前后至少持续观察 30 秒，按 Ctrl+C 停止并记录起止时间和最后成功计数：
 
 ```powershell
-$soul = Get-Process soul
+$ErrorActionPreference = 'Stop'
+Get-Command Get-NetTCPConnection -ErrorAction Stop | Out-Null
+$soul = @(Get-Process -Name soul -ErrorAction Stop)
+if ($soul.Count -ne 1) { throw '需要恰好一个 Soul 进程；请先核对进程状态。' }
+$soulId = $soul[0].Id
+$soulStarted = $soul[0].StartTime
+$samples = 0
 while ($true) {
-    Get-NetTCPConnection -OwningProcess $soul.Id -ErrorAction SilentlyContinue |
-        Where-Object { $_.State -ne 'Listen' -and $_.RemoteAddress -notin '127.0.0.1','::1','0.0.0.0','::' }
+    $current = Get-Process -Id $soulId -ErrorAction Stop
+    if ($current.StartTime -ne $soulStarted) { throw 'Soul 已重启，请重新开始本轮观察。' }
+    $rows = @(Get-NetTCPConnection -ErrorAction Stop)
+    $samples++
+    $connections = @($rows | Where-Object {
+        $_.OwningProcess -eq $soulId -and $_.State -ne 'Listen' -and
+        $_.RemoteAddress -notin '127.0.0.1','::1','0.0.0.0','::'
+    })
+    Write-Host ('{0:o} PID={1} successful_samples={2} non_loopback_tcp={3}' -f (Get-Date), $soulId, $samples, $connections.Count)
+    if ($connections.Count -gt 0) {
+        $connections | Format-Table LocalAddress,LocalPort,RemoteAddress,RemotePort,State
+        throw '观察到 Soul 的非回环 TCP 连接，请记录为缺口。'
+    }
     Start-Sleep -Milliseconds 500
 }
 ```
 
+本段只记录指定 PID 在采样时刻的 TCP 表快照，不覆盖采样开始前、采样间隙的短连接、UDP 或独立的 WebView2 进程。零次成功采样、查询错误或进程身份变化均不能记为观察通过；进程退出或重启后应重新确定身份并开始新记录。
+
 3. 在界面上把云端开关**连点五次**。
 
-- [ ] 上面的循环从头到尾一行都没有输出。
+- [ ] 记录了观察时段、PID 和大于 0 的成功样本数；没有查询错误，采样中未观察到目标 PID 的非回环 TCP 连接。不能以“没有输出”判断通过。
 - [ ] 资源监视器里 `soul.exe` 的「TCP 连接」是空的，「网络活动」里发送/接收字节数不增长。
 - [ ] 开关旁边的文字**始终**是「尚未启用」，点完五次还是这句。
-- [ ] 顺手看一眼 `Get-NetUDPEndpoint -OwningProcess $soul.Id`：WebView2 可能有 DNS 之类的
-      本机解析，记下看到了什么。`soul.exe` 自己不该有对外 UDP。
+- [ ] 顺手看一眼 `Get-NetUDPEndpoint -ErrorAction Stop | Where-Object OwningProcess -eq $soulId`：WebView2 可能有 DNS 之类的
+      本机解析，记下看到了什么。端点清单本身不证明是否有 UDP 出网，还需单独记录系统层实际流量。
 
 - [ ] `msedgewebview2.exe` 那几个进程也照上面看一遍。`tauri.conf.json` 现在给窗口传
       `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-background-networking`，
