@@ -535,7 +535,26 @@ A1 只加缺失组合；已有 81×2 语气安全测试不重复。A2 先区分 
 - 所有样本的事件/证据、peer/边/重建计数符合生成器；审计 verified，研究 third_party_rows=0、输出0、written_to_disk=false。研究第三方/deny 排除的 1 或 3 是小时聚合候选计数，不是消息条数；不是空库真空通过。
 - 证据均在该 worktree `target/q2/`：`q2-scale-1790306151740968600.jsonl`（SHA-256 `BF69085D049BB93225FC0DF0A1C5788FD7371472069C824103DFC751B9E31ED2`）、`scale-measurement-raw.log`（`8B190F91DDDE59320BD96DA67F6F2662881C0EB4998B0612CEE79C183CF97CCF`）、`scale-measurement-{before,after,verification}.json`。
 - 独立 `/root/release_review` 实测证据 PASS：原日志与纯 JSONL 30 条记录逐条一致；重新计算全部 108 个 min/median/max；独立重建四份 fixture 的 LF/UTF8 原始字节与 SHA256，均匹配。回执 `target/q2/reviewer/q2-03-measurement-evidence-review.json`。A0 已回读回执和实际 Git 状态。
-- 限制：单机 test profile opt-level=1、debug=0、incremental=0、jobs=4；OS 缓存未控制，profile/memories 未填充，每组仅五次，不报 p95/硬件绝对门槛。测前 CPU12%/无构建进程仅瞬时快照，不证明全程隔离。唯一后续候选是先定位 commit/rebuild 阶段内部成本；现证据不能区分解析、加密写入和重建，不修改产品、不宣称优化收益。
+- 限制：单机 test profile opt-level=1、debug=0、incremental=0、jobs=4；OS 缓存未控制，profile/memories 未填充，每组仅五次，不报 p95/硬件绝对门槛。测前 CPU12%/无构建进程仅瞬时快照，不证明全程隔离。当时唯一后续候选是先定位 commit/rebuild 阶段内部成本；该候选随后按用户自主决策授权完成，见下一节。本条原始证据本身仍不能区分解析、加密写入和重建，不修改产品、不宣称优化收益。
+
+### Q2-03 commit/rebuild 成本分解回执
+
+- 状态：诊断补充 DONE；不是新的正式 Q2 包，也不签发 Q2-00 / Q2-05。用户授权 A0 按计划自主决定后，选择执行 ROADMAP 已列的 commit/rebuild 内部成本分解，而不重复碰运气捕获极短 busy 瞬态。基线为集成产品源码 `ebff0c96325e0f297a1c397de6a3a1421fdd369d`；产出 `5dd8e4c38cbd74f82b79a8f018008b71f567db14`，分支 `codex/q203-cost-decomposition-20260925`，原生隔离 worktree `C:/Users/86080/.codex/worktrees/q203-cost-decomposition/Soul`。唯一修改 `crates/soulcore/tests/q2_scale.rs`；未改产品代码、schema、IPC、依赖、锁文件或 gate，未推送、未合并。
+- 先核对错误基线：权威文档提交 `8147e77` 不含 `q2_scale.rs`，首次基线命令因此在发现测试目标时以 Cargo 101 停止，没有运行产品代码。随后用 `git cat-file` 核实并切到文档指定的产品源码 `ebff0c9`；冷编译后原 `q2_scale` 1 通过 / 1 ignored，`session_import` 13/13，通过才开始实现。该过程不把文档提交冒称为被测产品提交。
+- TDD：先新增 100 消息 / 10 peer 的期望测试，RED 仅因 `observe_decomposed` 与 `DECOMPOSED_STAGES` 尚不存在而编译失败；最小实现后 GREEN。最终普通 `q2_scale` 2 通过 / 1 ignored，`import_and_graph_commands` 4/4，`session_import` 13/13，fmt 与 diff check 通过。保留原 Session 端到端路径；第二个 fresh SQLCipher 库经公开 `read_soul_import_v1`、`import::commit`、`graph::rebuild` 与 `SqlCipherStore::transact` 计时 parse、import command（含审计）、graph command（含审计）、transaction total 与 checked residual。
+- 审查：独立规格审查 0 findings。质量初审发现两项 Important：饱和加减会把非法计时嵌套静默压成 residual=0，`independent_samples` 又超出只保证 fresh 数据库的事实。实现者改为 `checked_add` / `checked_sub`，非法样本立即失败，并改字段为 `fresh_databases_per_trial`；amend 后质量复审 0 findings。协调者另在最终提交上重跑 2 + 4 + 13 项与 fmt，工作树保持干净。
+- 正式测量：固定干净 `5dd8e4c`，命令 `cargo test -p soulcore --test q2_scale --locked measure_four_synthetic_scales_with_five_independent_trials -- --ignored --exact --nocapture --test-threads=1`，exit 0。显式环境 `CARGO_PROFILE_DEV_DEBUG=0`、`CARGO_PROFILE_TEST_DEBUG=0`、`CARGO_INCREMENTAL=0`、`CARGO_BUILD_JOBS=4`；外围总耗时 1551.152 秒，其中 profile 重编译 24 分 04 秒不进入样本，libtest 正式测量 105.42 秒。Git author/committer 与 JSONL epoch 使用执行主机时钟，显示为 2026-09-26 00:20–00:56（UTC+08）；该主机时钟元数据原样保留，不作为本轮项目状态日期。四组各 1 热身 + 5 正式试次，共 4 热身 / 20 正式；每个 sample 对同一合成文本使用两个不同的 fresh 数据库，绝不跨路径相减。
+
+| 消息 / peer | Session total median ms | Session commit median ms | parse median ms | transaction median ms | import + audit median ms | graph + audit median ms | residual median ms |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1000 / 10 | 316.7633 | 251.3573 | 11.8513 | 235.9423 | 150.7377 | 52.9203 | 28.6703 |
+| 1000 / 100 | 347.2744 | 286.8299 | 12.4420 | 254.3578 | 165.6452 | 65.2841 | 26.2080 |
+| 10000 / 10 | 4033.1360 | 3151.2710 | 78.8320 | 3021.5983 | 2004.3602 | 582.3548 | 416.7097 |
+| 10000 / 100 | 3923.1590 | 3379.4664 | 80.7996 | 3202.7705 | 1869.3642 | 915.7206 | 351.7505 |
+
+- 证据：纯 JSONL `target/q2/q2-scale-1790355391415710700.jsonl`，48,491 字节，SHA-256 `3FBDE63A13AD81A402A3CADE4C12F4E07175B2504196D3D3DE8025F902890095`；30 条记录由 1 run、24 sample、4 summary、1 complete 组成，source SHA 全一致。协调者从 24 个样本重算 residual 与全部统计；独立 `/root/q203_measurement_review` 再重算 Session 9 阶段 + 分解 5 阶段 × 4 case，共 56 组三元组 / 168 个 min/median/max，全部精确匹配，24/24 residual 非负且等式成立，证据 PASS。
+- 解释：四组中 import command（联系人、密文、事件、evidence 写入及其审计）都是 transaction 最大的中位数组成；其 ratio-of-medians 为 58.37%–66.33%，graph 为 19.27%–28.59%，residual 为 10.30%–13.79%。这些比例是“阶段中位数 ÷ transaction 中位数”，不是同一样本比例的中位数，因此不要求相加为 100%。100 peer 相比 10 peer 的 graph 比例在两个消息规模点均上升，但四个点不足以证明复杂度或稳定趋势。
+- 限制：decomposed 路径不含 Session mutex、receipt view 或 identifier sync，两条路径使用独立数据库，不能相减；residual 还含嵌套计时、closure 间隙、结果拆包与错误处理，不是纯 SQLite BEGIN/COMMIT。OS page cache 未刷新，运行期间没有 CPU/内存时间序列，每组只有 5 个正式样本；不能给 p95、统计显著性、硬件门槛、release/真实用户/重复导入/UI/安装器/Linux 外推或优化收益。下一步若要优化，须先提出具体失败场景、目标预算和同口径复测方案；本回执不授权索引、线程池、schema 变更或新性能 gate。
 
 ### Q2-04 预备派工与集成准备（2026-09-25）
 
