@@ -167,4 +167,3 @@
   - real install, smoke, and uninstall;
   - G-M 0–7 and affected native observations;
   - final broader G-W after the candidate commit is fixed.
-
