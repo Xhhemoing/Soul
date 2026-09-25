@@ -4,7 +4,7 @@
 
 平台：v0.1 在 Windows 11 上开发与验收；核心后续部署于 Linux / macOS / Windows；接入端（数据采集与结果呈现）含 macOS / Linux / Windows / Android（DECISIONS D65）。
 
-状态：唯一发布候选工作线为 `codex/release-candidate-20260925`，产品源码基线是独立集成源码 `ebff0c9`；当前根工作树是独立规划线，不是发布候选。`ebff0c9` 的 Windows 自动门禁数字、时间、哈希与退出码仅保留为历史文字记录：原集成 worktree、其中的 `target/q2` 及六个关键原始证据文件当前均不存在，因此完整 G-W 为 `NOT VERIFIED`，必须在候选上重跑。G-M 0 作者手动打包、同源码 NSIS、真实安装/卸载、其余 G-M 人工验收和同源码 G-L 均未执行或未齐，Goal 1 未关闭。候选上的定向测试不能冒充完整 G-W。见 docs/STATUS.md。
+状态：唯一发布候选工作线为 `codex/release-candidate-20260925`，产品源码基线是独立集成源码 `ebff0c9`；当前根工作树是独立规划线，不是发布候选。`ebff0c9` 的 Windows 自动门禁数字、时间、哈希与退出码仅保留为历史文字记录：原集成 worktree、其中的 `target/q2` 及六个关键原始证据文件当前均不存在，因此完整 G-W 为 `NOT VERIFIED`，必须在候选上重跑。历史 `ebff0c9` 同源码代理 NSIS 构建和配对 `-SkipInstall` 的声称同样因原始证据缺失为 `NOT VERIFIED`；当前唯一候选的 NSIS 为 `NOT RUN`，作者 G-M 0 与真实安装/卸载为 `NOT RUN`，同源码 G-L 为 `NOT RUN` / 暂缓，其余 G-M 人工验收未完成，Goal 1 未关闭。候选上的定向测试不能冒充完整 G-W。见 docs/STATUS.md。
 
 - 产品锁定：[`docs/PRODUCT_LOCK.md`](docs/PRODUCT_LOCK.md)
 - 长期路线与并行交付：[docs/ROADMAP.md](docs/ROADMAP.md)

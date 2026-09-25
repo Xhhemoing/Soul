@@ -106,7 +106,7 @@ sha7 是跑门禁时 `git rev-parse --short=7 HEAD`。工作区不干净就先�
 
 ## 已有记录
 
-- [20260925-ebff0c9-win.md](20260925-ebff0c9-win.md) — 四包独立集成 G-W 的根1052、桌面88、前端202、时间、哈希与exit 0仅保留为历史文字记录；原集成 worktree、`target/q2` 与六个关键原始证据文件当前缺失，因此 G-W 为 `NOT VERIFIED`，完整候选 G-W 待重跑。同源码 NSIS、G-M 0、真实安装/卸载、G-L 与 G-M 1–7 均未执行或未完成。
+- [20260925-ebff0c9-win.md](20260925-ebff0c9-win.md) — 四包独立集成 G-W 的根1052、桌面88、前端202、时间、哈希与exit 0仅保留为历史文字记录；原集成 worktree、`target/q2` 与六个关键原始证据文件当前缺失，因此 G-W 为 `NOT VERIFIED`，完整候选 G-W 待重跑。历史 `ebff0c9` 同源码代理 NSIS 构建和配对 `-SkipInstall` 的声称为 `NOT VERIFIED`；当前唯一候选 NSIS 为 `NOT RUN`，作者 G-M 0 与真实安装/卸载为 `NOT RUN`，G-L 为 `NOT RUN` / 暂缓，G-M 1–7 未完成。
 
 - [20260925-95ff7d6-win.md](20260925-95ff7d6-win.md) — 安装修复的隔离 G-W 与独立受控回归通过；首次真实安装失败、恢复有残留，真实 NSIS 副本验证被执行审核阻断。G-M 未完成、G-L 暂缓。
 

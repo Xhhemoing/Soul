@@ -20,7 +20,7 @@
 - **安装修复基线 `95ff7d6` 的 G-W：隔离复验通过。** 134 个根测试程序 / **1044 项**、7 个桌面测试程序 / **88 项**通过，0 失败/忽略；Rust 编译告警 0。release / asInvoker / smoke 通过，smoke **15 项、TCP 成功样本 1 次**。原工作树首次运行因外部规划文件进入工作区而被外围校验拒绝，原始失败边界保留；后续隔离复验前后源码与工作树均干净。
 - 安装修复基线补充检查：两套 Cargo fmt、schema/E0/禁词、前端 lint 及 **14 文件 / 191 项**前端测试通过。两项安装修复的受控回归 **9 + 3 场景**、Cargo wrapper **16/16**通过；独立代码审查 PASS。手动清单的 TCP 示例另经独立 **10 场景**验证，但未代替实际人工观察。
 - **G-W：当前 `NOT VERIFIED`。** 原集成 worktree 及 `target/q2` 已不存在；`integration-before-ebff0c9.json`、`integration-verification-ebff0c9.json`、`integration-summary-ebff0c9.json`、`gate-win-ebff0c9.log`、`frontend-tests-ebff0c9.log` 和集成审查回执当前均找不到。历史数字、时间、哈希和 exit 0 不等于现存证据；完整候选 G-W 待重跑。候选上已执行的定向 Rust/Import 测试仍按其实际范围记录，不替代完整 G-W。
-- **NSIS / G-M 0：作者手动 NOT RUN，同源码 NSIS 也未在当前候选执行。** 此前记录称 `ebff0c9` 同源码构建及配对 `-SkipInstall` 成功，但所列外部证据根 `D:/Soul-q2-package-evidence-20260925/` 与产物、日志、审查回执当前均不存在；本轮复核未找到替代保存位置。因此不保留 G-M 0 PASS，不把历史哈希或代理构建当作者手动证据。
+- **NSIS / G-M 0：三种状态分开记录。** 历史 `ebff0c9` 同源码代理 NSIS 构建及配对 `-SkipInstall` 曾被记为成功，但外部证据根 `D:/Soul-q2-package-evidence-20260925/` 与产物、日志、审查回执当前均不存在，因此该历史声称为 `NOT VERIFIED`；当前唯一候选的 NSIS 为 `NOT RUN`；作者 G-M 0 为 `NOT RUN`。不把历史哈希或代理构建当作者手动证据。
 - **G-M：未完成。** 9 月 25 日实际安装流程退出 1：安装器与 HKCU 注册成功，但带引号路径使后续验证和卸载失败，未完成安装后 smoke。恢复删除了主程序及注册项，合成数据见证哈希不变；安装目录仍留有 `uninstall.exe`，不能称清洁卸载。09:52 复核无 Soul 进程或卸载项，数据目录为空。
 - **真实修复验证：按用户要求跳过，NOT RUN。** 自动执行审核拒绝运行真实 NSIS 卸载器临时副本，仅返回 `blocked by policy`，未提供具体原因；该操作未执行，未绕过。用户随后明确要求“记录并跳过这里，继续完成其他部分”；本轮不再重试该操作，不把它作为其他独立工作的前置条件，保留未验收结论与残留事实。受控合成回归与 `-SkipInstall` 不能替代完整安装/卸载或作者的托盘、UAC、标准账户、GUI/WebView2 流量与前台采集观察。
 - **G-L：按用户 2026-09-24 指示暂缓。** 当前版本没有 G-L 或本轮依赖漏洞数据库检查证据；暂缓不豁免 Goal 1 关闭条件。
