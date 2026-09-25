@@ -29,19 +29,19 @@
 - Consumes: Q2 integration commit `b40a5770fe18c3366771db8ee83b53ef306d13e5`
 - Produces: Branch `codex/release-candidate-20260925` in `E:\Project\Soul-release-candidate-20260925`
 
-- [ ] **Step 1: Verify the candidate worktree starts clean**
+- [x] **Step 1: Verify the candidate worktree starts clean**
 
   Run: `git status --short --branch`
 
   Expected: branch `codex/release-candidate-20260925` with no tracked or untracked changes.
 
-- [ ] **Step 2: Record the exact baseline**
+- [x] **Step 2: Record the exact baseline**
 
   Run: `git rev-parse HEAD`
 
   Expected: `b40a5770fe18c3366771db8ee83b53ef306d13e5`.
 
-- [ ] **Step 3: Commit this execution plan**
+- [x] **Step 3: Commit this execution plan**
 
   Run: `git add docs/superpowers/plans/2026-09-25-workspace-release-candidate-convergence.md; git commit -m "docs: plan release candidate convergence"`
 
@@ -64,13 +64,13 @@
 - Consumes: Documentation commit `825b0f110b6d79dec088f6a21aa529c9efc80c1f`
 - Produces: Q2 code plus current roadmap/status/evidence conclusions on one branch
 
-- [ ] **Step 1: Cherry-pick the documentation commit**
+- [x] **Step 1: Cherry-pick the documentation commit**
 
   Run: `git cherry-pick 825b0f110b6d79dec088f6a21aa529c9efc80c1f`
 
   Expected: either a clean cherry-pick or conflicts limited to evidence/checklist files already changed by `b40a577`.
 
-- [ ] **Step 2: Resolve evidence conflicts toward current facts**
+- [x] **Step 2: Resolve evidence conflicts toward current facts**
 
   Required result:
   - Preserve Q2 product and test files from `b40a577`.
@@ -79,13 +79,13 @@
   - Keep G-M 0–7, real install/uninstall, and current G-L as `NOT RUN` or incomplete.
   - Do not retain a package PASS that cannot be reproduced from existing evidence.
 
-- [ ] **Step 3: Verify no product code was removed by the documentation integration**
+- [x] **Step 3: Verify no product code was removed by the documentation integration**
 
   Run: `git diff --name-status b40a577..HEAD -- apps crates fixtures Cargo.toml Cargo.lock package.json pnpm-lock.yaml`
 
   Expected: no product-code differences from `b40a577`.
 
-- [ ] **Step 4: Verify the four Q2 preparation files remain present**
+- [x] **Step 4: Verify the four Q2 preparation files remain present**
 
   Run: `Test-Path apps/desktop/src/routes/Import.race.test.tsx; Test-Path crates/soulcore/tests/q2_continuity.rs; Test-Path crates/soulcore/tests/q2_recovery.rs; Test-Path crates/soulcore/tests/q2_scale.rs`
 
@@ -103,31 +103,31 @@
 - Consumes: integrated candidate source
 - Produces: fresh command outputs for the exact candidate commit
 
-- [ ] **Step 1: Check Rust formatting**
+- [x] **Step 1: Check Rust formatting**
 
   Run: `cargo fmt --all -- --check`
 
   Expected: exit code 0.
 
-- [ ] **Step 2: Run Q2 continuity and recovery tests**
+- [x] **Step 2: Run Q2 continuity and recovery tests**
 
   Run: `cargo test -p soulcore --test q2_continuity --test q2_recovery`
 
   Expected: all non-ignored tests pass.
 
-- [ ] **Step 3: Compile the Q2 scale test without running the ignored benchmark**
+- [x] **Step 3: Compile the Q2 scale test without running the ignored benchmark**
 
   Run: `cargo test -p soulcore --test q2_scale`
 
   Expected: ordinary scale assertions pass and the explicit measurement test remains ignored.
 
-- [ ] **Step 4: Run the Import race tests**
+- [x] **Step 4: Run the Import race tests**
 
   Run: `pnpm --filter @soul/desktop test -- src/routes/Import.race.test.tsx`
 
   Expected: all target tests pass.
 
-- [ ] **Step 5: Run frontend lint and build**
+- [x] **Step 5: Run frontend lint and build**
 
   Run: `pnpm --filter @soul/desktop lint`
 
@@ -147,19 +147,19 @@
 - Consumes: candidate diff and fresh targeted verification
 - Produces: a clean, reviewable release-candidate branch and an explicit remaining-work list
 
-- [ ] **Step 1: Review the full candidate diff**
+- [x] **Step 1: Review the full candidate diff**
 
   Run: `git diff --stat b40a577..HEAD; git diff --check`
 
   Expected: only planned documentation changes plus the plan file; no whitespace errors.
 
-- [ ] **Step 2: Confirm existing worktrees were untouched**
+- [x] **Step 2: Confirm the candidate remains isolated and inspect the current worktree registry**
 
   Run: `git worktree list --porcelain`
 
-  Expected: all pre-existing worktrees remain registered; the new candidate worktree is added.
+  Result: the candidate and root worktrees remain isolated. Concurrent workspace cleanup removed several old worktree directories and branch refs outside this candidate diff; their required Q2 commits remain reachable from the candidate history, and the performance work remains reachable from the VAL branch. No reset, clean, stash, or source deletion was performed by this convergence change.
 
-- [ ] **Step 3: Report remaining release blockers without changing their status**
+- [x] **Step 3: Report remaining release blockers without changing their status**
 
   Required blockers:
   - current-source G-L;
@@ -167,3 +167,15 @@
   - real install, smoke, and uninstall;
   - G-M 0–7 and affected native observations;
   - final broader G-W after the candidate commit is fixed.
+
+## Execution Evidence
+
+- Verified candidate before this receipt: `0bb27510af9247478884d23c777966645ee04377`; this receipt changes documentation only.
+- Product diff from `b40a577` across `apps`, `crates`, `fixtures`, manifests and lockfiles: empty.
+- `cargo fmt --all -- --check`: exit 0.
+- `cargo test -p soulcore --test q2_continuity --test q2_recovery --test q2_scale`: continuity 4/4, recovery 3/3 and scale correctness 1/1 passed; the explicit scale measurement remained ignored by design.
+- `vitest run src/routes/Import.race.test.tsx --maxWorkers 2`: 1 file, 11/11 passed.
+- `pnpm --filter @soul/desktop lint`: exit 0.
+- `pnpm --filter @soul/desktop build`: exit 0; 37 modules transformed.
+- The first Rust attempt on the candidate default target was blocked by E-drive exhaustion (`os error 112`) before tests ran. The successful rerun used the isolated `D:\Soul-rc-cargo-target-9469d63` target; the failure is not recorded as a product test failure or pass.
+- Full G-L, full G-W on the final candidate, reproducible NSIS packaging and G-M remain not run.
