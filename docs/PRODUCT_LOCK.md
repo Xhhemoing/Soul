@@ -40,12 +40,18 @@ Soul 是灵魂级个人软件：根据你授权的社交媒体档案、电脑（
 
 研究层是第三条轨道：本机事件库 → 可选脱敏预览 → 后期云端行为预测。没有单独同意，研究轨道不得把原始内容送出本机。v0.1 研究轨道只预览、不写导出文件。
 
+## 长期目标与规划口径
+
+长期同时服务三个目标：作者本人的数字分身、面向其他用户的商业产品、人格与行为建模研究。三者共同推进，助手与研究继续遵守独立用途许可和现有出网边界。此方向按作者 2026-09-25 的澄清记录于 D66。
+
+阶段排序、产品价值验证、后续能力契约与多 agent 分工见 [长期路线与并行交付计划](ROADMAP.md)；近期任务见 [Goal 2 计划](GOAL2_PLAN.md)。这些计划不更改 v0.1 切片、冻结算法或 Goal 1 关闭条件；记忆检索、时序个人模型、多端同步等候选的具体产品承诺须在对应契约任务中单独落定。
+
 ## 自主拍板
 
 | 项 | 决定 |
 |---|---|
 | 产品名 | Soul；进程 `soul.exe` / `soulcore` |
-| 平台 | v0.1 仅 Windows 11 x64；Win10 22H2 尽力。Android 为 v0.3。不做 Linux 桌面。Linux 仅作 CI 宿主 |
+| 平台 | v0.1 仅 Windows 11 x64；Win10 22H2 尽力。后续核心部署 Linux / macOS / Windows，接入端含 macOS / Linux / Windows / Android；Android 排在 v0.3（D65）。这不把多端加入 v0.1 验收 |
 | 技术栈 | Tauri 2 + Rust 核心 + React/TypeScript UI；pnpm + Cargo + just |
 | 许可 | 私有期 All Rights Reserved |
 | v0.1 导入 | 仅两种：`soul-import-v1` JSONL；Telegram Desktop「Settings → Advanced → Export Telegram data」全量导出的 `result.json`（Machine-readable JSON；单聊 Export chat history 是另一形状，拒收）。无文件则问卷回退。OAuth 不在 v0.1。微信/QQ 不做非官方抓取 |
@@ -153,6 +159,8 @@ v0.1 明确不做：自动发消息、常驻截屏、键鼠接管、任意 shell
 - v0.3 Android 本机采集。
 - v0.4 可选云端深度分析（第一次引入用户授权的非 E1 云路径）。
 - v1.0 电脑+手机连续灵魂。
+
+各版本的入口、退出证据和滚动工作包见 [ROADMAP.md](ROADMAP.md)。版本路线不等于对应能力已经实现或获得执行授权。
 
 ## 不可协商约束
 
