@@ -74,7 +74,7 @@
 
   Required result:
   - Preserve Q2 product and test files from `b40a577`.
-  - Preserve the existing Windows G-W facts for `ebff0c9`.
+  - Preserve the historical Windows G-W text for `ebff0c9`, but do not call it currently reproducible or verified when the original evidence is missing.
   - State that the external same-source NSIS evidence directory is missing.
   - Keep G-M 0–7, real install/uninstall, and current G-L as `NOT RUN` or incomplete.
   - Do not retain a package PASS that cannot be reproduced from existing evidence.
@@ -157,7 +157,7 @@
 
   Run: `git worktree list --porcelain`
 
-  Result: the candidate and root worktrees remain isolated. Concurrent workspace cleanup removed several old worktree directories and branch refs outside this candidate diff; their required Q2 commits remain reachable from the candidate history, and the performance work remains reachable from the VAL branch. No reset, clean, stash, or source deletion was performed by this convergence change.
+  Result: the candidate and root worktrees remain isolated. The historical integration worktree `E:\Project\Soul-q2-integration-20260925` is no longer present, so its `target/q2` evidence cannot be inspected; required Q2 source commits remain reachable from the candidate history. The root worktree is an independent planning line, not the candidate. No reset, clean, stash, or source deletion was performed by this convergence change.
 
 - [x] **Step 3: Report remaining release blockers without changing their status**
 
@@ -178,4 +178,6 @@
 - `pnpm --filter @soul/desktop lint`: exit 0.
 - `pnpm --filter @soul/desktop build`: exit 0; 37 modules transformed.
 - The first Rust attempt on the candidate default target was blocked by E-drive exhaustion (`os error 112`) before tests ran. The successful rerun used the isolated `D:\Soul-rc-cargo-target-9469d63` target; the failure is not recorded as a product test failure or pass.
-- Full G-L, full G-W on the final candidate, reproducible NSIS packaging and G-M remain not run.
+- The targeted Rust and Import checks above are candidate-specific execution evidence, but they are not a complete G-W.
+- The earlier conclusion that the `ebff0c9` G-W was currently reproducible was overturned: the historical integration worktree and `target/q2` are gone, and six key original files (before/verification/summary JSON, the raw G-W log, the frontend log, and the integration review receipt) cannot be found. Historical counts, times, hashes and exit codes remain in the record, but current G-W status is `NOT VERIFIED`.
+- Full G-L, full G-W on the final candidate, same-source NSIS packaging, real install/uninstall and G-M remain not run. The plan checkboxes above describe completed convergence and targeted checks; they do not mark these broader gates complete.

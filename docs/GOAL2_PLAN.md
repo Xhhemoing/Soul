@@ -1,6 +1,6 @@
 # Goal 2 规划（Goal 1 关闭后启动）
 
-> **当前状态：Q2-00 正式启动未获证；按 D68 先执行独立质量预备支线。** 2026-09-25 按长期目标细化。Goal 1 的关闭以 [ACCEPTANCE.md](ACCEPTANCE.md)、[STATUS.md](STATUS.md) 和同一源码提交的实际门禁为准；本文件不宣布 Goal 1 通过，也不把已有 Windows 绿灯扩展到当前工作区。执行者按下列勾选步骤派工；多 agent 实现时采用 `subagent-driven-development` 的逐包实现与独立审查方式，但本文件的范围、文件 ownership 与启动门优先。
+> **当前状态：Q2-00 正式启动未获证；按 D68 先执行独立质量预备支线。** 2026-09-25 按长期目标细化。Goal 1 的关闭以 [ACCEPTANCE.md](ACCEPTANCE.md)、[STATUS.md](STATUS.md) 和同一源码提交的实际门禁为准；本文件不宣布 Goal 1 通过，也不把历史 Windows 记录扩展到当前工作区。执行者按下列勾选步骤派工；多 agent 实现时采用 `subagent-driven-development` 的逐包实现与独立审查方式，但本文件的范围、文件 ownership 与既有 Goal 1 关闭条件优先。
 
 **目标：** 在 v0.1 已有功能内，建立可复现的连续使用、个性化对照、状态恢复与规模证据；修复其中实际复现的缺陷，得到可以结束的一轮质量增量。
 
@@ -23,72 +23,35 @@
 
 > **2026-09-25 执行顺序调整（D68）：** 用户要求记录并跳过受阻真实 NSIS 验证、继续其他部分。允许以已提交源码建立隔离工作树，提前完成 01–04 的覆盖差集、合成验证和已复现 v0.1 缺陷的最小修复，并逐包独立审查；本轮结果称独立质量预备支线，不签发 Q2-00、不写 Goal 1/Goal 2 已关闭。以下正式启动与最终关闭条件继续保留；预备支线不用伪造通过行来启动。Linux 仍暂缓、真实安装本轮 NOT RUN、人工不代勾，不推送或合并。当前规划未提交改动保持原属，由 A0 只追加本次范围及结果。
 
-## 2. 启动条件：原三条硬门，加实际 G-M 核验
+## 2. 启动核对：只引用既有 Goal 1 关闭条件
 
-保留原来的三条：
+Q2 正式启动只依赖 [ACCEPTANCE.md 的 Goal 1 关闭条件](ACCEPTANCE.md#goal-1-关闭条件) 及其既有 G-L、G-W、G-M 要求。本节不增加新的启动门禁，不要求改写历史门禁记录，也不要求新增固定格式的“Goal 1 关闭摘要”、`SOURCE_SHA`、`ARTIFACT_SHA256`、逐行 `G-M-*` 机器字段或 A0/A3 额外签发。若既有关闭条件本身尚未满足，按原条件保持未关闭；仅缺少这些额外格式或签发，不得单独阻断 Q2。
 
-1. `STATUS.md` 有独立一行 `Goal 1 已关闭 @ <sha7>`，指向实际验收的源码提交，而非后来写记录的文档提交。
-2. **同一 sha** 的 G-L 与 G-W 记录均存在，明确通过，命令完整执行且退出码为 0；只有文件、旧 SHA、跳过、未运行、日志丢失均不算通过。
-3. `STATUS.md` 有独立一行 `ACCEPTANCE 全部 v0.1 行通过`。
+### 非阻断核对清单
 
-同时核对 G-M：Windows 记录必须指向相同源码构建的安装包与 headless，含产物哈希；`scripts/author-manual-checklist.md` 的 **0–7 节**逐项写实际观察。0 节是打包证据，1–7 节不能由源码检查、manifest 或 headless 测试替代。8–10 节仍是可选，不新增成关闭门；若实际执行失败，必须记录并判断是否违反已有 AC，不能把已知失败删除。
+以下核对帮助执行者避免把历史记录、不同源码或模拟结果误当成既有验收，但它们只是证据整理清单：
 
-### 可复制的 PowerShell 预检
+- 记录当前工作树、分支、`git status` 与源码 SHA；若工作区有他人改动，先隔离执行范围，不能据此改写或删除历史记录。
+- 从既有 STATUS、ACCEPTANCE 和门禁记录确认实际被测源码 SHA；G-L 与 G-W 应关联同一源码，原始日志和结果表应仍可读取。没有要求把这些事实抄成新的固定机器行。
+- 核对 Windows 安装包、app 与 headless 是否来自同一源码；G-M 0–7 仍以作者清单中的真实执行和观察为准，不能由 manifest、源码检查、代理构建或 headless 模拟代替。
+- A0 或独立 reviewer 可以复核退出码、日志、哈希和观察，以发现证据缺口；其复核回执是辅助证据，不是既有 Goal 1 之外的新签发门。
+- 证据实质缺失时，按既有 ACCEPTANCE/G-L/G-W/G-M 语义写 `NOT VERIFIED`、`NOT RUN` 或未完成；不要因为格式不同就推翻仍然存在且可核对的历史事实，也不要用历史文字恢复已经丢失的 PASS。
 
-在仓库根、`pwsh` 内执行。此脚本只读，不运行 Linux 门禁、不安装软件、不写关闭结论。为避免自然语言中的历史绿灯误匹配，关闭时由协调者在**已验证的两份门禁记录末尾**各补一段 `## Goal 1 关闭摘要`：
-
-- 两份摘要均写 `SOURCE_SHA: <40位提交>`、`G-L: PASS; exit=0` 或 `G-W: PASS; exit=0`、`原始日志已复核: 是`，并链接实际日志/结果表。
-- Windows 摘要另逐行写 `G-M-0: PASS | <实际证据>` 至 `G-M-7: PASS | <实际观察>`，以及 `ARTIFACT_SHA256: <64位哈希>`。这些是既有验收的机器可读抄录，不是新增产品验收条款；不得先填 PASS 再去测。
+可用下列只读命令记录核对起点；输出不判定启动，也不因文本格式差异停止实现：
 
 ```pwsh
 $ErrorActionPreference = 'Stop'
-$dirty = @(git status --porcelain)
+git status --short --branch
 if ($LASTEXITCODE -ne 0) { throw 'git status 失败' }
-if ($dirty.Count -ne 0) { throw '工作区不干净：先隔离已有工作，不能启动实现' }
-$statusText = Get-Content -LiteralPath 'docs/STATUS.md' -Raw -Encoding UTF8
-$closures = [regex]::Matches($statusText, '(?m)^Goal 1 已关闭 @ ([0-9a-f]{7})\s*$')
-if ($closures.Count -ne 1) { throw '需要唯一、独立的 Goal 1 关闭行' }
-$sourceShort = $closures[0].Groups[1].Value
-$sourceFull = (git rev-parse --verify "$sourceShort^{commit}").Trim()
-if ($LASTEXITCODE -ne 0 -or $sourceFull -notmatch '^[0-9a-f]{40}$') { throw '关闭提交无法解析' }
-$baselineFull = (git rev-parse --verify 'HEAD^{commit}').Trim()
-if ($LASTEXITCODE -ne 0 -or $baselineFull -notmatch '^[0-9a-f]{40}$') { throw '实现基线无法解析' }
-if ($statusText -notmatch '(?m)^ACCEPTANCE 全部 v0\.1 行通过\s*$') { throw '缺 AC 通过行' }
-$sourcePaths = @('crates', 'apps', 'fixtures', 'scripts', 'Cargo.toml', 'Cargo.lock',
-    'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'justfile', 'deny.toml',
-    'rust-toolchain.toml', 'docs/schemas', 'docs/algorithms',
-    ':(exclude)scripts/author-manual-checklist.md')
-git diff --quiet $sourceFull HEAD -- @sourcePaths
-if ($LASTEXITCODE -ne 0) { throw 'HEAD 产品/契约内容不同于关闭提交，先重新确认启动基线' }
-foreach ($platform in @('linux', 'win')) {
-    $records = @(Get-ChildItem -LiteralPath 'docs/gates' -File |
-        Where-Object { $_.Name -match "^\d{8}-$sourceShort-$platform\.md$" })
-    if ($records.Count -ne 1) { throw "缺少或存在多份 $platform 同 SHA 记录" }
-    $record = Get-Content -LiteralPath $records[0].FullName -Raw -Encoding UTF8
-    $summary = [regex]::Match($record, '(?ms)^## Goal 1 关闭摘要\s*\r?\n(?<body>.*?)(?=^## |\z)')
-    if (-not $summary.Success) { throw "$platform 缺已复核的关闭摘要" }
-    $body = $summary.Groups['body'].Value
-    if ($body -notmatch "(?m)^SOURCE_SHA: $sourceFull\s*$") { throw "$platform 源码 SHA 不同" }
-    $gateName = if ($platform -eq 'linux') { 'G-L' } else { 'G-W' }
-    if ($body -notmatch "(?m)^${gateName}: PASS; exit=0\s*$") { throw "$gateName 未明确通过" }
-    if ($body -notmatch '(?m)^原始日志已复核: 是\s*$') { throw "$gateName 未复核原始证据" }
-    if ($platform -eq 'win') {
-        if ($body -notmatch '(?m)^ARTIFACT_SHA256: [0-9a-fA-F]{64}\s*$') { throw '缺安装包哈希' }
-        foreach ($section in 0..7) {
-            $line = [regex]::Match($body, "(?m)^G-M-${section}: PASS \| ([^\r\n]+)$")
-            if (-not $line.Success) { throw "G-M-$section 缺通过与实际观察" }
-            if ($line.Groups[1].Value -match '待做|待观察|未执行|跳过|无证据|TODO|TBD|<|>') {
-                throw "G-M-$section 仍是占位或未完成"
-            }
-        }
-    }
-}
-Write-Output "PRECHECK ONLY: 验证源码=$sourceFull；实现基线=$baselineFull；记录结构通过，仍须 A0 + reviewer 核对证据后签发启动回执。"
+$sourceFull = (git rev-parse 'HEAD^{commit}').Trim()
+if ($LASTEXITCODE -ne 0) { throw 'HEAD 无法解析' }
+Write-Output "CURRENT_SOURCE_SHA=$sourceFull"
+Get-ChildItem -LiteralPath 'docs/gates' -File |
+    Sort-Object -Property Name |
+    Select-Object -ExpandProperty Name
 ```
 
-机器 diff 只排除 `scripts/author-manual-checklist.md`，允许在已测源码之后补录观察，不排除其他脚本。A0 与 reviewer 必须逐行核对这份清单的差异：只有实际观察/证据补录可以豁免；若改了测试要求、操作步骤或通过条件，不能按文档补录放行，须重新确认相应验收。`docs/gates/` 与状态文档的补录同样不能改变被测源码。
-
-文本可以写错，所以预检通过**不自动授权实现**。A0 与独立 reviewer 还必须核对原始退出码、完整结果表、日志存在性/哈希、G-M 作者实际观察、打包前后产物及同源码关联，然后在本文件 Q2-00 回执中分别记录“Goal 1 验证源码：<source-full-sha>”“实现基线：<baseline-full-sha>”和“启动复核：PASS @ <baseline-full-sha>”。后者是包含最新计划与关闭证据的干净提交；两者仅允许经审查的文档/证据差异，产品与契约内容必须通过上述比对。缺证据就保持 BLOCKED，不补写想象的结果。目前 G-L 暂缓与 G-M 未完成并不因本规划而解除。
+该清单不能自动宣布 Goal 1 关闭，也不能取代实际执行。反过来，清单项的排版、固定字段或额外签发缺失也不构成独立阻断理由；Q2-00 只引用既有关闭条件，并如实记录当时能够核对的源码、日志与 G-M 观察。目前 G-L 暂缓、完整候选 G-W `NOT VERIFIED`、NSIS 与 G-M 未完成，仍按各自既有验收含义保留。
 
 ## 3. 已有接线与并行边界
 
@@ -137,21 +100,22 @@ flowchart LR
 
 估算为**相对工作量**：S≈半天至一天有效工作、M≈一至三天；只用于切包，不是交付日期。首次原生依赖编译、门禁主机排队与作者 G-M 等待另算。所有命令在 `pwsh` 内；原生程序每次显式检查 `$LASTEXITCODE`。新测试文件的命令只能在文件已创建后运行，不能把找不到 target 当作预期红灯。
 
-### Q2-00：固定关闭凭据与可比较基线
+### Q2-00：核对既有关闭凭据与可比较基线
 
-**优先级 / owner / 依赖 / 估算：** P0；A0 + A3；Goal 1 实际关闭；S。
+**优先级 / owner / 依赖 / 估算：** P0；A0，可请 A3 独立复核；[既有 Goal 1 关闭条件](ACCEPTANCE.md#goal-1-关闭条件)；S。
 
-**文件：** 读取既有 `STATUS.md`、`ACCEPTANCE.md`、`gates/README.md`、同 SHA 的两份门禁与 `scripts/author-manual-checklist.md`；A0 只在现有门禁补关闭摘要、在本文件追加本轮回执。测量原始日志允许落忽略的 `target/q2/`，正式结论仍写规划/门禁，不新建开发流程文档或 `.agent_workspace`。
+**文件：** 读取既有 `STATUS.md`、`ACCEPTANCE.md`、`gates/README.md`、相关门禁与 `scripts/author-manual-checklist.md`；仅在事实变化时更新现有记录，不要求补固定格式关闭摘要或改写历史正文。正式结论仍写规划/门禁，不新建开发流程文档或 `.agent_workspace`。
 
-**Consume → produce：** 消费已提交源码 SHA、G-L/G-W 退出码与 G-M 观察；产出验证源码 SHA、包含最新计划/证据的实现基线 SHA、启动复核结果、命令/版本/fixture SHA-256、01–04 覆盖差集。它不是新的 Rust/IPC API。
+**Consume → produce：** 消费既有 Goal 1 关闭结论、已提交源码 SHA、G-L/G-W 日志与 G-M 真实观察；产出本轮能够核对的源码/工作树说明、证据缺口和 01–04 覆盖差集。命令、版本或哈希可按已有记录保存，但不新增机器格式要求。它不是新的 Rust/IPC API。
 
-- [ ] 运行上面的只读预检；失败即停止实现，但可以继续记录缺失的证据。
-- [ ] A3 对照原始日志与作者观察复核每个 PASS；记录现有源码是否包含此前 dirty 修改，禁止用 `e2fdf16` 的证据证明其后产品变更。
+- [ ] 对照 ACCEPTANCE、STATUS 与现有门禁确认既有 Goal 1 关闭条件是否满足；未满足就如实记录，不另造启动门。
+- [ ] 记录工作树、源码 SHA 与可读取的同源码日志；禁止用 `e2fdf16` 或其他历史源码的证据证明其后产品变更，格式差异本身不判失败。
+- [ ] 如安排 A3，复核原始日志与作者观察的实质内容；没有额外签发不单独阻断，证据字节缺失则按既有门禁语义降级。
 - [ ] 列出现有测试覆盖：`session_screens` / `session_tie_lock` / `session_projection` / `session_crash` / `session_matrix_replay` / `session_e1` / `session_research` / Import UI。
 - [ ] 每条拟新增断言标“现有已覆盖”或“新增组合”；同等覆盖则删掉计划中的重复测试，记录引用。
-- [ ] 冻结基线与文件 ownership，签发 A1/A2 的独立任务输入；未签发前都不能写产品实现。
+- [ ] 记录可比较基线与文件 ownership，向 A1/A2 提供独立任务输入；遵守既有 Goal 1 关闭条件，不把额外回执格式当成新授权门。
 
-**验收：** 缺失、失败、同 SHA 不一致、未测人工项均能阻断；原三条硬门与 G-M 不被新文档豁免。规模/体验/效用基线此时允许“未测”，不能编造数值。
+**验收：** 对既有 Goal 1 关闭条件、源码归属、可读取日志与 G-M 真实观察给出如实结论；实质缺失或失败仍按 ACCEPTANCE/G-L/G-W/G-M 原规则处理。本节不新增启动门，不要求改写历史记录，也不因摘要格式、机器字段或额外签发缺失单独阻断 Q2。规模/体验/效用基线此时允许“未测”，不能编造数值。
 
 ### Q2-01：跨重启连续性与合成个性化对照
 
@@ -440,7 +404,7 @@ if ($LASTEXITCODE -ne 0) { throw 'G-W 失败，不能写通过' }
 - 预备源码基线：`55d43edd3d5a287939276d16f3efb672fdbc69d5`（产品源码 `95ff7d6`，其后仅收尾文档）；主树既有七项规划改动未重置或纳入代码基线。
 - A0 协调并串行编辑共享文档；A1 核心连续性；A2 Import 异步/键盘；A3 独立规格→质量审查。实现文件与独立 worktree/target 在签发任务时登记。
 - 前次两个只读分析 agent 遇到 503 / 502 基础设施错误，无代码或验证产出；已改用默认可用路由重新分派。
-- 当前预备支线：01–04 DONE，独立集成 G-W/补充检查PASS，集成源码与证据独立规格/质量PASS；原始派工表保留作为时点记录，以后续回执为准。Q2-00 正式启动及 Q2-05 整体关闭缺既定门禁，不声明完成。
+- 当前预备支线：01–04 DONE；独立集成 G-W/补充检查及集成规格/质量 PASS 只剩历史文字登记，因原始证据缺失当前为 `NOT VERIFIED`，完整候选 G-W 待重跑。原始派工表保留作为时点记录，以后续回执为准。Q2-00 正式启动及 Q2-05 整体关闭缺既定门禁，不声明完成。
 
 预备支线派工（2026-09-25，基线均为 `55d43edd3d5a287939276d16f3efb672fdbc69d5`）：
 
@@ -511,8 +475,8 @@ A1 只加缺失组合；已有 81×2 语气安全测试不重复。A2 先区分 
 - Owner `/root/core_recovery`；基线 `739073f5608864b7a5d6fedb474f67493368d6b9`；`codex/q2-04-recovery-20260925` / `E:\Project\Soul-q2-04-20260925`。只写新 `crates/soulcore/tests/q2_recovery.rs`；独立 `D:\Soul-q2-recovery-target-20260925`，从空闲 scale target 物理复制，非共享可写缓存。
 - 新覆盖限于 Session 连续恢复：空回复降级→新准备成功→旧批准拒绝→重开回关；cross-origin redirect 拒绝→clear 后成功；双临时 Session 的 endpoint/pending/consent 隔离；Unicode identifier fixture + 合成正文的真实 RecordedRequest.body、拒绝返回、非空研究排除与连续审计检查。只 loopback、无真实用户资料/采集；不改共享 mock、产品代码、manifest/schema/IPC。
 - 派工时点 RUNNING（后续已完成，见下方回执）：已有 session_e1 27/27、session_research 1/1 基线通过；当时新增组合待测试与独立规格→质量审查。初次含环境变量删除的基线命令被审核拒绝且未启动，后续不含该删除的测试命令已实际运行；不将未执行命令记为测试失败。
-- 独立集成候选 `bd36f1cc749bd92fcaf144afef9c6e1340d470e7`：`codex/q2-prep-integration-20260925` / `E:\Project\Soul-q2-integration-20260925`。按 01→02→03 顺序集成，无冲突、工作树干净；02/03 的 cherry-pick 提交分别是 `9d037d0` / `bd36f1c`。没有合入原规划树或推送。
-- `pnpm install --frozen-lockfile` exit 0，238 cached packages；独立 node_modules。root debug/release 物理复制，desktop 独立物理 target 为 `D:\Soul-q2-integration-desktop-target-20260925`，集成树的 desktop target junction 只映射该专属目录；不与其他工作树共享可写缓存。日志与 `cache-provenance.json` 在集成树 `target/q2/`。
+- 历史独立集成候选 `bd36f1cc749bd92fcaf144afef9c6e1340d470e7` 曾位于 `codex/q2-prep-integration-20260925` / `E:\Project\Soul-q2-integration-20260925`。当时记录称按 01→02→03 顺序集成，无冲突、工作树干净；02/03 的 cherry-pick 提交分别是 `9d037d0` / `bd36f1c`。该 worktree 当前已不存在，本条只描述运行时点。
+- 历史记录称 `pnpm install --frozen-lockfile` exit 0、238 cached packages，并使用独立 node_modules 与 desktop target；当时日志写在集成树 `target/q2/`。该目录随 worktree 一并不存在，不能作为当前可复核证据。
 - 新集成 G-W 尚未执行。等待 04 审查提交后固定干净集成源码，再运行完整 Windows 门禁和补充检查；旧 `95ff7d6` 门禁不覆盖此候选。真实 NSIS 本轮跳过、Linux 暂缓、受影响 G-M 未完成，均不代勾。
 
 ### Q2-04 预备回执（2026-09-25）
@@ -525,32 +489,32 @@ A1 只加缺失组合；已有 81×2 语气安全测试不重复。A2 先区分 
 - 独立 `/root/release_review` 先规格 PASS、后质量 PASS，无未解决 findings；重跑31+11与fmt，源文件哈希不变。回执 `target/q2/reviewer/q2-04-{spec,quality}-review.json`，质量回执SHA256 `5DB605108A5B50009DF02312B2B344A5C6C8B6439F1550DF7D89400AE8ED69D1`。reviewer末尾遇到503，已从已落盘日志/exit/回执恢复核验，没有重复已完成测试或用服务错误代替结论。
 - 数据与范围：临时库、仓库fixture、进程内loopback MockLlm、FakeForegroundSource；没有真实采集/用户资料/外网端点、没有改共享mock、依赖/schema/IPC，也未运行ignored规模、NSIS或Linux。不等于平台门禁或正式目标关闭。
 
-### 四包集成启动记录（2026-09-25，保留运行时点）
+### 四包集成启动记录（2026-09-25，历史运行时点）
 
-- 固定候选 `ebff0c96325e0f297a1c397de6a3a1421fdd369d`，`codex/q2-prep-integration-20260925` / `E:\Project\Soul-q2-integration-20260925`；04从`8cd293f`顺序cherry-pick为`ebff0c9`，无冲突，前后干净、blob与SHA256匹配获审文件。五个源码文件共1651增/1删；仅`Import.tsx`为产品改动，其余四个为独立测试文件；没有合并原规划树或推送。
+- 固定候选 `ebff0c96325e0f297a1c397de6a3a1421fdd369d` 当时位于 `codex/q2-prep-integration-20260925` / `E:\Project\Soul-q2-integration-20260925`；历史登记称04从`8cd293f`顺序cherry-pick为`ebff0c9`，无冲突，前后干净、blob与SHA256匹配获审文件。五个源码文件共1651增/1删；仅`Import.tsx`为产品改动，其余四个为独立测试文件；没有合并原规划树或推送。该 worktree 当前已不存在。
 - 固定源码补充检查与完整G-W已启动，结果待回执。补充项为两套fmt、`cargo run -p xtask --locked -- all`、前端lint和全量Vitest；G-W包含根/桌面workspace、bundle、release、asInvoker与`-SkipInstall` smoke。不跳过workspace测试，也不运行真实NSIS。
-- 独立desktop target先做`--no-run`编译预热，其开始版本是01–03候选`bd36f1c`，这不是测试通过证据；新增04只在根workspace测试目录。全量验证期间源码固定为`ebff0c9`，Cargo按target锁串行处理可能重叠的预热/桌面阶段；门禁耗时不作为性能基准。原始日志与完整前后状态将保留在集成树`target/q2/`。
+- 独立desktop target先做`--no-run`编译预热，其开始版本是01–03候选`bd36f1c`，这不是测试通过证据；新增04只在根workspace测试目录。历史登记称全量验证期间源码固定为`ebff0c9`，Cargo按target锁串行处理可能重叠的预热/桌面阶段；门禁耗时不作为性能基准。当时计划保留在集成树`target/q2/`的原始日志与完整前后状态当前均不可得。
 - 此处RUNNING不冒称PASS；同源码G-L暂缓、真实NSIS跳过、人工与受影响G-M未完成，Q2-00/05与Goal1/2不关闭。
 
-### 四包集成执行回执（2026-09-25）
+### 四包集成执行回执（2026-09-25，当前 G-W `NOT VERIFIED`）
 
-- 状态：自动验证PASS，集成源码与门禁证据独立规格PASS→质量PASS。正式Q2-05/Goal1/2不关闭；不把本条预备结果当作Q2-00启动凭据。
-- 固定源码 `ebff0c96325e0f297a1c397de6a3a1421fdd369d`；实际工作树与分支同上。2026-09-25 11:42:56–11:58:36（UTC+08）完成补充与完整G-W，外围exit0，前后HEAD相同、status空。正式记录 [20260925-ebff0c9-win.md](gates/20260925-ebff0c9-win.md) 在验证后写入；文档后续提交不冒称新的源码门禁。
-- G-W实际入口 `pwsh -NoProfile -File scripts/gate-win.ps1`，无跳过workspace：11:45:04.709–11:58:35.662，810.95秒，exit0。根137个测试程序/1052通过/0失败/1ignored；desktop7个测试程序/88通过/0失败/0ignored；bundle/release/asInvoker/smoke全部通过，smoke15 checks、TCP成功查询1 sample。
-- 新测试实际进入G-W：q2_continuity4、q2_recovery3、q2_scale普通1通过；ignored仅显式规模测量，它在`739073f`的此前4热身+20正式采样仍有独立证据。本次没有重测性能或把旧性能值冒称集成版本新数据。
+- 当前状态：`NOT VERIFIED`。此前执行回执曾写自动验证 PASS、集成源码与门禁证据独立规格 PASS→质量 PASS；因原集成 worktree、`target/q2` 与六个关键原始证据文件现均不存在，该结论不能作为当前可复核 G-W。正式Q2-05/Goal1/2不关闭；完整候选 G-W 待重跑。
+- 历史文字记录的固定源码为 `ebff0c96325e0f297a1c397de6a3a1421fdd369d`，时间为2026-09-25 11:42:56–11:58:36（UTC+08），并声称外围exit0、前后HEAD相同、status空。正式记录见 [20260925-ebff0c9-win.md](gates/20260925-ebff0c9-win.md)；这些字段只供追溯，不再独立证明门禁结果。
+- 历史文字记录称 G-W 入口为 `pwsh -NoProfile -File scripts/gate-win.ps1`，无跳过workspace，11:45:04.709–11:58:35.662、810.95秒、exit0，根137个测试程序/1052通过/0失败/1ignored，desktop7个测试程序/88通过/0失败/0ignored，bundle/release/asInvoker/smoke通过，smoke15 checks、TCP成功查询1 sample。原始日志缺失，以上数字不能冒充当前 PASS。
+- 历史文字记录称新测试进入G-W：q2_continuity4、q2_recovery3、q2_scale普通1通过，ignored仅显式规模测量。原始完整 G-W 日志缺失，不能据此恢复门禁 PASS；`739073f` 的此前4热身+20正式采样是另一份历史测量，本次没有重测性能或把旧性能值冒称集成版本新数据。
 - 桌面IPC51、command_surface6、one_store3均由完整all-targets真实执行，覆盖已有两种导入格式的IPC；没有另外重复相同子集命令。无共享桥接/核心接口变化，不新造同义IPC用例。
-- 补充项两套fmt、`cargo run -p xtask --locked -- all`、前端lint均exit0；`NODE_ENV=test`下全量Vitest15文件/202项通过。Rust compiler warnings0；Perl前置检查有locale warning但退出成功，不能泛称全部工具无告警。
-- 证据位于集成树 `target/q2/`：`integration-before-ebff0c9.json`、`integration-verification-ebff0c9.json`、`integration-summary-ebff0c9.json`、`gate-artifacts-ebff0c9.json`；原始 `gate-win-ebff0c9.log` SHA256 `49B1FFD4F1C1DF58CF3AF23A4637315B8CE45EB46414B4ECE644411A6513A93B`。每条补充日志哈希在verification回执，未覆写失败证据。
-- release `soul.exe` 24317440字节，SHA256 `71AE0C80B9B893823543A4419869AF786A4150C68D6FD3CE3C358C78A2413A26`；`soul-headless.exe` 15309824字节，`E3A41950FDF9893C8B6D8FBFF19C4F88C538B61927EAE30DE4A99B295D0D8A33`。本条G-W执行时尚无新NSIS包，不与旧包配对；后续同源码打包及原二进制保全见下条回执。
-- desktop编译预热原进程exit0，24分37秒；与验证前段有重叠，G-W desktop阶段确有build-directory lock等待。独立可写target不变；此耗时不是性能测量。没有因观察超时重启构建。
+- 历史文字记录称补充项两套fmt、`cargo run -p xtask --locked -- all`、前端lint均exit0，`NODE_ENV=test`下全量Vitest15文件/202项通过，Rust compiler warnings0；Perl前置检查有locale warning。候选上的后续定向测试另有执行证据，但不覆盖这些完整补充项。
+- 当时列出的证据位于已删除集成树的 `target/q2/`。当前找不到六个关键文件：`integration-before-ebff0c9.json`、`integration-verification-ebff0c9.json`、`integration-summary-ebff0c9.json`、`gate-win-ebff0c9.log`、`frontend-tests-ebff0c9.log` 与 `reviewer/q2-integration-gate-evidence-review.json`；历史日志 SHA256 仅保留为文字，不能重新计算。
+- 历史文字记录称 release `soul.exe` 为24317440字节、SHA256 `71AE0C80B9B893823543A4419869AF786A4150C68D6FD3CE3C358C78A2413A26`，`soul-headless.exe` 为15309824字节、`E3A41950FDF9893C8B6D8FBFF19C4F88C538B61927EAE30DE4A99B295D0D8A33`。产物当前不可得，不能重哈希；本条历史 G-W 执行时尚无新NSIS包，不与旧包配对。
+- 历史文字记录称desktop编译预热进程exit0、24分37秒，并与验证前段重叠；原进程与日志不可复核，此耗时也不作为性能测量。
 - 本轮产品修复仅Import busy期间格式锁、可读等待状态、重选同文件；清空原生已选文件名仍是可见UX取舍，必须保留受影响G-M检查。其他三包未发现需修改产品的违约。
 - 未完成项：同源码G-L按用户指示暂缓；真实NSIS本轮跳过NOT RUN；原始人工G-M以及Import/WebView/辅助技术体验未验收。Windows自动测试不填补这些缺口；不推送、不合并、AC-27等下一版范围不扩展。
-- 独立 `/root/release_review` 集成证据审查已完成：5个源码blob与各获审包逐一匹配；逐测试行与汇总双重计数，6条命令日志/退出码/时间/哈希、Vitest缓存含Import.race、两产物重哈希及smoke原报告均核对。回执为集成树 `target/q2/reviewer/q2-integration-gate-evidence-review.json`，SHA256 `695D3DD527B8E9E368021958AE4DF488365ACE034DF1BB10C70202E8F3A7E0C9`；规格/质量均PASS，无未解决findings，无重新运行已通过测试。
-- smoke临时日志已按原字节归档至集成树 `target/q2/smoke-ebff0c9/`，复制前后哈希一致。内部JSON的observed=false采样不算Windows观察，有效Windows证据仅实际TCP表1次成功查询。
+- 历史文字记录称独立 `/root/release_review` 曾核对5个源码blob、逐测试行、6条命令日志、Vitest缓存、产物与smoke原报告，并给出规格/质量PASS；其唯一集成回执 `target/q2/reviewer/q2-integration-gate-evidence-review.json` 当前不存在，因此该 PASS 不能作为当前可复核结论。
+- 历史文字记录称smoke临时日志曾归档至集成树 `target/q2/smoke-ebff0c9/` 且复制前后哈希一致；该目录当前不存在。内部JSON的observed=false本来也不算Windows观察，历史文字中的1次TCP查询同样需要完整候选 G-W 重跑后重新记录。
 
 ### 同源码打包证据复核（2026-09-25）
 
 - 此前执行登记曾记录 `ebff0c9` 同源码 NSIS 构建与配对 `-SkipInstall` 成功，并把产物、日志和独立审查回执指向 `D:/Soul-q2-package-evidence-20260925/`。
 - 本轮提交前独立复核确认该证据根与所列安装包、app、日志、receipt、review JSON 当前均不存在；在现有项目目录与已知 Soul 证据目录中未找到替代保存位置。记录中的历史哈希因此不能作为当前可复核证据。
 - 按作者手动清单，第 0 节必须由作者在非管理员 Windows 11 上亲手执行。代理构建即使曾成功也不能代勾 G-M 0。本轮将 G-M 0 恢复为 `NOT RUN`，不保留 `ARTIFACT_SHA256` 通过值。
-- 现存 `ebff0c9` G-W 日志、前端日志与集成审查回执仍可复核，其结论不受打包证据缺失影响。真实 NSIS 安装/卸载仍按用户要求跳过，G-L 暂缓，G-M 0–7 与受影响 Import/WebView/辅助技术观察未完成；Q2-00、正式 Q2-05 和 Goal 1/2 不关闭。
+- `ebff0c9` G-W 日志、前端日志与集成审查回执当前均不可得，完整 G-W 已降级为 `NOT VERIFIED`；必须在唯一候选上重跑，不能由候选定向测试或历史数字替代。真实 NSIS 安装/卸载仍按用户要求跳过，G-L 暂缓，G-M 0–7 与受影响 Import/WebView/辅助技术观察未完成；Q2-00、正式 Q2-05 和 Goal 1/2 不关闭。
