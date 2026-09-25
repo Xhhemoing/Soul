@@ -4,7 +4,7 @@
 
 平台：v0.1 在 Windows 11 上开发与验收；核心后续部署于 Linux / macOS / Windows；接入端（数据采集与结果呈现）含 macOS / Linux / Windows / Android（DECISIONS D65）。
 
-状态：独立集成源码 ebff0c9 的 Windows 自动门禁与补充检查已通过；同源码 NSIS 的外部证据目录当前缺失，G-M 0 作者手动打包、真实安装/卸载、其余人工验收和同源码 Linux 门禁均未齐，Goal 1 未关闭。后续源码修改不沿用旧门禁结论。见 docs/STATUS.md。
+状态：唯一发布候选工作线为 `codex/release-candidate-20260925`，产品源码基线是独立集成源码 `ebff0c9`；当前根工作树的文档收尾分支不是发布候选。`ebff0c9` 的 Windows 自动门禁与补充检查已通过，但同源码 NSIS 的外部证据目录当前缺失，G-M 0 作者手动打包、真实安装/卸载、其余人工验收和同源码 Linux 门禁均未齐，Goal 1 未关闭。后续产品源码修改不沿用旧门禁结论。见 docs/STATUS.md。
 
 - 产品锁定：[`docs/PRODUCT_LOCK.md`](docs/PRODUCT_LOCK.md)
 - 长期路线与并行交付：[docs/ROADMAP.md](docs/ROADMAP.md)

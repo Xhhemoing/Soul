@@ -26,6 +26,7 @@
 | 算法判档与中文话术 | [algorithms/DECISION.md](algorithms/DECISION.md)、[COPY_ZH.md](algorithms/COPY_ZH.md)、[REJECTED.md](algorithms/REJECTED.md) |
 | 长期目标、版本路线、个人/商业/研究如何并进 | [ROADMAP.md](ROADMAP.md)；含能力工作包、验证方法及多 agent 资源分配 |
 | Goal 2 具体派工、文件归属、依赖、测试与交付回执 | [GOAL2_PLAN.md](GOAL2_PLAN.md)；前置条件未满足时不启动 |
+| AI / 多 agent 如何派工、限制写入线并独立审查 | [GOAL2_PLAN.md](GOAL2_PLAN.md) 的资源模型、ownership、派工与执行登记；不另建 agent 工作流入口 |
 | 审查发现和修复证据 | [reviews/](reviews/)；局部修复回执不等于完整门禁通过 |
 
 ## 三、仓库与验收状态
@@ -52,3 +53,4 @@ D64 已移除 FORMAL_WORK_PROMPT、GOAL2_POLISH_PROMPT、PLAN_VERIFY_PROMPT 与�
 | 工作包 | Goal 1 冻结包只减不增，WP12 保持删除；后续 Q2/能力包独立编号，不追加到 Goal 1 验收 |
 | schemas | 同批更新 schemas.lock.json，并说明对已落库数据的影响 |
 | 合并 | 遵守 D63；本次跳过某平台不等于该平台通过 |
+| AI 协作流程 | 复用 GOAL2_PLAN 的 A0/A1/A2/A3、最多两条实现线与独立审查；不新建通用编排框架或额外审批 gate |
