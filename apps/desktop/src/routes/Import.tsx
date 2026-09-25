@@ -144,6 +144,7 @@ export function Import(): React.JSX.Element {
                   name="import-format"
                   value={choice.format}
                   checked={format === choice.format}
+                  disabled={busy}
                   onChange={() => {
                     setFormat(choice.format);
                     forget();
@@ -165,8 +166,18 @@ export function Import(): React.JSX.Element {
           type="file"
           accept={chosen(format).accept}
           disabled={busy}
-          onChange={(event) => read(event.target.files?.[0])}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            // Keep the File above so the same selection can trigger change again.
+            event.target.value = "";
+            read(file);
+          }}
         />
+        {busy ? (
+          <p className="muted" role="status">
+            正在读取或导入文件，请稍候。
+          </p>
+        ) : null}
         {characters === 0 ? null : (
           <p className="muted" data-testid="import-file-size">
             读到 {characters} 个字符，正文没有显示在这个页面上。
