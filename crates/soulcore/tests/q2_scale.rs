@@ -31,6 +31,13 @@ const STAGES: [&str; 9] = [
     "audit",
     "total",
 ];
+const DECOMPOSITION_STAGES: [&str; 5] = [
+    "parse",
+    "encrypted_import_write",
+    "graph_rebuild",
+    "transaction_total",
+    "transaction_overhead_residual",
+];
 const DECOMPOSITION_AT_UNIX_SECONDS: i64 = 1_800_000_000;
 const DECOMPOSITION_KEY_SEED: &str = "q2 performance decomposition";
 
@@ -391,12 +398,14 @@ $cpu = @(Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, Nu
         "cache": {
             "database": "fresh independent temporary directory per warmup and trial; one import per database",
             "sequence": "open, preview, commit including rebuild, people, profile, memories, research, audit",
+            "decomposition_sequence": "open a second database, parse outside the transaction, then encrypted import write and graph rebuild inside one transaction",
             "os_page_cache": "not flushed; warm/cold uncontrolled; one discarded warmup before five trials per case",
             "build_cache": "excluded from measured durations; actual CARGO_TARGET_DIR recorded",
         },
         "timing_unit": "nanoseconds",
         "total_definition": "wall time from immediately before preview through audit return; excludes open, fixture generation, metadata/hash collection, assertions, JSON output, Session drop, and temporary directory cleanup",
         "open_definition": "Session::open only; tempdir creation and canonicalization excluded",
+        "decomposition_definition": "diagnostic command-layer path on an independent database; transaction_overhead_residual includes begin/commit plus timer and closure gaps; Session identifier syncing is excluded",
         "scope": "synthetic import/read-only screens only; profile and memories unpopulated; no real data, endpoint, repeated import, UI, installer, or Linux measurement",
     })
 }
@@ -426,6 +435,22 @@ fn emit(report: &mut std::fs::File, record: Value) {
     println!("\n{line}");
 }
 
+fn summarize_trials(
+    trials: &[BTreeMap<&'static str, u64>],
+    stages: &[&'static str],
+) -> BTreeMap<&'static str, Value> {
+    let mut summary = BTreeMap::new();
+    for stage in stages {
+        let mut values: Vec<u64> = trials.iter().map(|trial| trial[stage]).collect();
+        values.sort_unstable();
+        summary.insert(
+            *stage,
+            json!({ "min": values[0], "median": values[2], "max": values[4] }),
+        );
+    }
+    summary
+}
+
 /// Explicit only: run after this file is committed, with the same clean SHA
 /// for every case. The JSONL file is independent of libtest's console wrapper.
 #[test]
@@ -448,7 +473,7 @@ fn measure_four_synthetic_scales_with_five_independent_trials() {
     emit(
         &mut report,
         json!({
-            "record": "run", "schema": "soul-q2-scale-v1", "source_sha": sha,
+            "record": "run", "schema": "soul-q2-scale-v2", "source_sha": sha,
             "report_path": report_path.to_string_lossy(), "context": context,
             "cases": [[1000, 10], [1000, 100], [10000, 10], [10000, 100]],
             "warmups_per_case": 1, "trials_per_case": 5,
@@ -458,8 +483,10 @@ fn measure_four_synthetic_scales_with_five_independent_trials() {
         let text = synthetic_jsonl(messages, peers);
         let hash = fixture_sha256(&text);
         let mut trials = Vec::with_capacity(5);
+        let mut decomposition_trials = Vec::with_capacity(5);
         for trial in 0..=5 {
             let observation = observe(&text, messages, peers);
+            let decomposition = observe_decomposed(&text, messages, peers);
             emit(
                 &mut report,
                 json!({
@@ -467,27 +494,24 @@ fn measure_four_synthetic_scales_with_five_independent_trials() {
                     "messages": messages, "peers": peers, "fixture_bytes": text.len(),
                     "warmup": trial == 0, "trial": trial,
                     "durations_ns": observation.durations_ns, "counts": observation.counts,
+                    "decomposition_durations_ns": decomposition.durations_ns,
+                    "decomposition_counts": decomposition.counts,
                 }),
             );
             if trial != 0 {
                 trials.push(observation.durations_ns);
+                decomposition_trials.push(decomposition.durations_ns);
             }
         }
-        let mut summary = BTreeMap::new();
-        for stage in STAGES {
-            let mut values: Vec<u64> = trials.iter().map(|trial| trial[stage]).collect();
-            values.sort_unstable();
-            summary.insert(
-                stage,
-                json!({ "min": values[0], "median": values[2], "max": values[4] }),
-            );
-        }
+        let summary = summarize_trials(&trials, &STAGES);
+        let decomposition_summary = summarize_trials(&decomposition_trials, &DECOMPOSITION_STAGES);
         emit(
             &mut report,
             json!({
                 "record": "summary", "source_sha": sha, "fixture_sha256": hash,
                 "messages": messages, "peers": peers, "sample_count": 5,
                 "warmup_excluded": true, "summary_ns": summary,
+                "decomposition_summary_ns": decomposition_summary,
             }),
         );
     }
