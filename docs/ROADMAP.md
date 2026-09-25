@@ -95,7 +95,7 @@ M2 文件执行用于验证代理的受控行动能力；其使用率不能代�
 
 | ID / 优先级 | 交付物与边界 | 依赖 | Owner / 文件归属 | 完成条件 |
 |---|---|---|---|---|
-| VAL-01 / P0 | 固定三类任务、A/B/C 对照、反馈字段、截止条件；只合成样例 | 本计划；可立即设计，产品测试实现等待 Q2 入口 | 研究 agent 提案，A0 写本文第 7 节及 Q2 评测任务 | 每项指标有分母、基线、用途许可与缺失处理 |
+| VAL-01 / P0 — **DESIGN DONE 2026-09-25** | 固定三类任务、A/B/C 对照、反馈字段、截止条件；只合成样例 | 本计划；设计已完成，产品测试实现等待 Q2 入口 | 本文第 7.2 节；[Goal 2 评测适配交接](GOAL2_PLAN.md#val-01-评测适配交接非-q2-关闭包) | 每项指标有分母、实验对照、用途许可与缺失处理；真实试验未启动 |
 | RES-01 / P0 — **DONE 2026-09-25** | [当前字段→许可→可研究问题→禁止问题的矩阵](reviews/2026-09-25-res-01-data-permission-matrix.md) | 当前 schema、research_preview | 研究 agent 只读分析；A0 已写阶段评测收据 | self 与研究许可分离；各 subject/disposition 规则可从源码追踪，报告粗粒度、查询失败、截断和缺测边界已记录 |
 | VAL-02 / P1 | 作者连续使用的任务摘要与前三个阻碍 | M0 关闭、可用构建、VAL-01 | 作者实际使用；分析 agent 只处理手工脱敏结果 | 达预设任务量和期限或记“不确定”；不得伪造体验 |
 | RES-02 / P1 | 个性化增益与错误归因报告 | VAL-01；Q2 测试契约；VAL-02 实际样本 | 独立评估 agent；拟新增 docs/reviews/<日期>-personalization-pilot.md | 作者与其他用户分别报告；模板与 E1 分开；负结果保留 |
@@ -130,7 +130,7 @@ M2 文件执行用于验证代理的受控行动能力；其使用率不能代�
 
 1. 关闭依赖仍是同源码 G-L、真实 G-M 观察和受影响 Import 原生体验；分别保持 `USER_DEFERRED_NOT_RUN`、`USER_REQUESTED_SKIP_NOT_RUN` 或等待实际观察者，不能由更多 mock 测试折算为通过。
 2. 若以后批准性能调查，先在 commit/rebuild 内部分解解析、加密写入与图谱重建成本，再决定是否优化；当前不加索引、线程池或 schema。
-3. M0 关闭且可用构建形成后，优先执行 VAL-01/02 的真实任务效用验证。合成连续性与安全轨迹只提供进入实验的工程证据，不填“配对偏好”“编辑耗时”或留存数据。
+3. M0 关闭后先实现 VAL-01 评测适配；满足 Q2 入口和实际授权后，由 VAL-02 开展作者真实任务验证。合成连续性与安全轨迹只提供进入实验的工程证据，不填“配对偏好”“编辑耗时”或留存数据。
 4. RES-01 已完成[只读字段/许可矩阵](reviews/2026-09-25-res-01-data-permission-matrix.md)：当前没有覆盖/在线状态和有效时长分母，下一小时活动预测维持“数据不足”；不启动 RES-03，也不扩采集字段。
 5. ACT、DATA、MODEL、PORT、CLOUD 等远期实现仍按原依赖释放；本次回写不改变 PRODUCT_LOCK、AC、冻结算法、schema、IPC 或出网边界。
 
@@ -143,7 +143,7 @@ M2 文件执行用于验证代理的受控行动能力；其使用率不能代�
 | 指标 | 当前值 | 采集方式 | 探索阶段判断 |
 |---|---|---|---|
 | 配对起草偏好 | 未测 | 同任务盲排 A/B；B 胜=1、平局=0.5、A 胜=0；按参与者计算后取中位 | B 相对 A ≥60% 作为继续投入的候选证据，非群体有效性证明 |
-| 编辑耗时 | 未测 | 任务开始至用户认可的手工计时，记录未完成与失败 | 每人配对中位数比较；A 为 0 的任务不算比例，报告原值；候选改善 ≥20% |
+| 编辑耗时 | 未测 | 任务开始至用户认可的手工计时，记录未完成与失败 | 仅对 AB（以 B 为目标）观察候选改善 ≥20%，并按模板/端点及 T1/T2/T3 分层；A 为 0 的任务不算比例且保留原值。该阈值不是 PASS gate |
 | 纠正保持与遗忘 | Q2-01/04 合成连续性与恢复矩阵已汇总；真实使用未测 | Q2 合成回放＋对应持久化测试 | 所有指定不变量通过；安全失败不能被效用收益抵消 |
 | 首次任务完成 | 未测 | 自愿用户从安装到完成三个核心场景的观察 | 记录耗时、帮助次数和失败；首轮建立基线，不虚设达标值 |
 | 重复使用 | 未测 | 第 7 / 14 日手工回访，记录是否完成过核心任务 | 分母包含同意参与的人；退出和失访单列，不伪装留存 |
@@ -152,13 +152,61 @@ M2 文件执行用于验证代理的受控行动能力；其使用率不能代�
 
 ### 7.2 首轮个性化试验
 
-- A 为无个性化基线：现有 ProfileBrief::neutral()；B 为现有 ProfileBrief::from_view()；C 为用户手工提供的简要偏好参考。C 用于检验自动整理档案的额外价值，必须固定相同输入/上下文预算，不允许临时给某组追加信息。
-- 模板路径和模型路径分别评估。自动回归使用合成 fixture / 本地 mock；真实模型调用只有用户已配置端点且逐次授权时发生。新增对照不进入产品 UI，也不新增 IPC；需要新评测适配代码时作为 Q2 测试目录的任务，不作为产品能力偷偷发布。
-- 同一配对固定模型标识、版本（若端点提供）、参数、输入、脱敏策略和预算；记录条件不可控的部分。候选显示顺序按预先固定种子平衡，评估人不知道来源标签。
-- 作者：14 个自然日、至少 30 个配对任务。其他自愿用户：5–8 人，每人 10–15 对，只作探索。所有数字均为 ASSUMPTION；预先确定开始与截止时间，不通过无限补样本追求好结果。
-- 到期未满样本量，或效果受模型/任务变化混淆，结论为“不确定”；未达到候选阈值则先检查场景、资料维护负担和失败类型，不能直接以更多采集或更大模型掩盖问题。
-- v0.1 不自动把实验反馈写成研究导出，不新增遥测。真实反馈由本人手工记录和主动提供；仓库只保存经检查的汇总。未完成任务、拒绝、隐私问题和严重错误全部进入分母或单列说明。
-- 对照试验与代理的安全不变量分开：出现越权、原始内容泄漏、纠正被静默覆盖或遗忘后仍可读取时，立即暂停相关试验，先走现有缺陷修复。
+VAL-01 的“三类任务”是现有起草路径的评测类型，不是第 3 节三个产品核心场景。关系证据与记忆控制继续由首次任务完成和安全不变量衡量，不强套 ProfileBrief 的 A/B/C。协调、边界/婉拒、关系敏感跟进只作为 T3 的固定合成输入层；T1/T2 看不到消息正文，不能声称完成了这些语义任务。
+
+#### 7.2.1 三类任务定义
+
+| ID / 当前路径 | 固定合成输入与实际能力 | 完成定义 | 失败、拒绝与不可声称 |
+|---|---|---|---|
+| T1 本机语气骨架 | 同一段合成 paste；调用本机 `draft_pasted`。模板只读取四项 voice 和第三人 turn 数，不读取 paste 正文或轴 readings；输出含待填写正文槽 | 产生 `tone_template`；参与者能在截止内补全正文槽，并整体认可由直接度、温度、语域和表情用量组成的语气；记录从展示到认可的编辑秒数 | 生成/brief 构造失败、未完成或安全暂停。只能评语气个性化与补全成本，不能评事实理解或是否正确回复 paste |
+| T2 默认占位端点 | 同一段合成 paste；`prepare_draft(..., false)` 后审批 exact plan。端点看到 ProfileBrief 与第三人占位符，不看到 paste 正文 | 产生未降级的端点草稿；草稿不捏造消息细节，参与者能把它编辑为可接受的通用确认/占位回复 | 未配置端点、审批不匹配、网络/跨 origin 拒绝、降级、未完成或安全暂停。作为隐私负对照，不能评消息特定正确性 |
+| T3 一次性原文端点 | 同一段合成 paste；二次确认 `prepare_draft(..., true)` 后审批 exact plan。已进入 `KnownIdentifiers` 的联系人 display label（含去空格变体）按字面替换；另按形状替换电子邮箱、`@handle` 与累计至少 7 位的连续/分组数字。未登记普通姓名、普通账号 ID 和物理地址不保证识别，豁免只覆盖本次。若走 Session，姓名必须先成为非 Owner、Active 且标签可解密的联系人并验证替换；合成任务卡否则不得含普通姓名。样例预先分为协调安排、边界/婉拒、关系敏感跟进三层 | 产生未降级端点草稿；保留任务卡全部必需事实和下一步，不新增承诺；参与者认可内容与语气，或在截止内编辑到认可 | 关键事实遗漏/捏造、边界反转、错误关系推断、隐私泄漏、拒绝、降级、未完成或安全暂停。T1 可评语气个性化，T2 可评不见正文时的通用档案效应；只有 T3 可评消息内容相关性及依赖正文的个性化效应 |
+
+三类任务都要求 `delivery=false`，不向收件人发送。真实阶段仍先使用预注册的合成任务卡；不把真实聊天、姓名、账号或未经批准的第三人材料写入仓库。
+
+#### 7.2.2 A/B/C 条件与盲评规则
+
+- A 是 `ProfileBrief::neutral()`；B 是直接由 `ProfileBrief::from_view()` 构造的当前档案 brief；C 是用户在看到任何候选前固定的 voice-only 手工 brief。C 的四个必填字段与允许值为：`register` 取 `casual`、`plain`、`formal`；`directness` 取 `reserved`、`balanced`、`direct`；`warmth` 取 `cool`、`even`、`warm`；`emoji_use` 取 `never`、`sparing`、`frequent`。未来评测适配器先用 `ProfileBrief::new(VoiceProfile::default())` 构造，再对 brief 的四项依次调用 `ProfileBrief::set_by_user(VoiceSetting::...)`，不调用 `with_reading`，不接受自由文本或 axis readings；不声称当前 UI 能直接选择任意 brief。
+- B 构造失败时本次任务记 `brief_build_failed`，不得沿用 Session 的静默 neutral 回退后仍标成 B。T1 只读取 voice；若一对候选的四项 voice 完全相同，该 T1 对记 `not_comparable`。轴 readings 的增益只能在 T2/T3 端点路径评估。
+- 每次只展示一个成对盲评：AB、AC 或 BC；不做三候选同屏排名。主要对比 AB（以 B 为目标）至少占预注册配对槽的 50%，AC（以 C 为目标）与 BC（以 B 为目标）在其余槽位中尽量平衡；三类任务也在整数槽位允许范围内平衡。具体槽位表、左右顺序和整数种子在开始前固定，选择后才揭盲。
+- AB（以 B 为目标）分辨自动档案相对 neutral 的增益；AC（以 C 为目标）判断手工偏好本身是否产生可观察差异；BC（以 B 为目标）判断自动档案相对手工参考的额外价值。只有 AB 使用第 7.1 节的 60% 候选线；AC/BC 只作探索性报告，不设 PASS 线。三者都不证明人格、心理或群体有效性。
+- 同一配对固定 paste、任务卡、路径、脱敏条件、上下文上限、endpoint、模型标识/版本和服务参数；A/B/C 使用相同上下文上限，不要求实际字符数相等；C 不得在看到输出后补信息。`context_limit`、`model_version`、`service_parameters` 来自评测环境配置或 endpoint 自报，不是当前产品返回字段；未暴露时如实记 `unknown/not_exposed`，不编造可重复采样。
+- 模板与端点分别报告；endpoint 返回不可读、空或临床内容导致的本机降级不计端点候选胜负，而是进入生成失败/降级分母。模型或版本中途变化的任务分层报告，不跨条件合并。
+
+#### 7.2.3 反馈字段登记
+
+以下是手工评测记录，不是产品 schema、遥测或研究导出。仓库只保存脱敏汇总，不保存原始 prompt、候选正文、编辑后正文或用户 ID。
+
+| 记录粒度 | 最小字段 / 允许值 | 必填时点与用途 | 缺失处理与数据边界 |
+|---|---|---|---|
+| Run | `evaluation_run`（匿名单参与者运行 ID）、`run_started_at`、`run_deadline_at`、`participant_scope`（`author`、`volunteer_anonymous`）、`feedback_purpose`（`product_evaluation`）、`consent_state`（`granted`、`withdrawn`） | 分配首个任务前固定；记录参与范围、用途、实际开始/截止和当前许可状态 | 无 `granted` 不开始；改为 `withdrawn` 即停止后续任务。仓库只记录匿名/汇总状态、开始/截止日期和撤回数量，不保存姓名、签名或原始同意文本 |
+| Pair | `evaluation_run`、`task_slot`、`pair_id`、`task_type`（`T1`、`T2`、`T3`）、`semantic_stratum`、`contrast`（`AB`、`AC`、`BC`）、`left_variant`（`A`、`B`、`C`）、`right_variant`（`A`、`B`、`C`）、`presentation_seed`、`comparability_status`（`comparable`、`not_comparable`）、`pair_started_at`、`pair_completed_at`、`pair_completion_status`（`completed`、`incomplete`、`aborted`、`system_failure`、`safety_stop`）、`preference`（`left`、`right`、`tie`、`unrated`）、`blind_status`（`intact`、`broken`） | 槽位分配时建行，输出前固定左右映射和种子，配对结束时填结果。T1/T2 的 `semantic_stratum=not_applicable`；T3 取 `coordination`、`boundary_refusal`、`relationship_followup` | 左右 variant 必须与 `contrast` 一致且不得相同；T1 voice 相同或运行条件不一致写 `not_comparable`。未开始或未完成也保留行；盲法破坏写 `broken`，不可比较或破盲均不进偏好分母但保留流程失败计数 |
+| Pair 运行条件 | `pair_id`、`path`（`local_template`、`endpoint_placeholder`、`endpoint_original`）、`model_id`、`model_version`、`service_parameters`、`context_limit`、`redaction_condition` | 每对开始前；证明两边除 brief 外条件相同 | `model_version`、`service_parameters`、`context_limit` 由评测环境或 endpoint 自报；未暴露写 `unknown/not_exposed`。条件不一致记 `not_comparable`，不得猜值或合并 |
+| Candidate | `pair_id`、`candidate_id`、`requested_variant`（`A`、`B`、`C`）、`actual_brief_state`（`neutral`、`from_view`、`manual_voice`、`unknown`）、`brief_build_status`（`built`、`failed`）、`generated`（`true`、`false`）、`draft_source`（`tone_template`、`user_endpoint`、`none`）、`degraded_reason`（`none`、`reply_unreadable`、`reply_empty`、`reply_clinical`、`not_generated`）、`candidate_completion_status`（`completed`、`incomplete`、`system_failure`、`safety_stop`）、`first_pass_accepted`（`true`、`false`、`not_applicable`）、`edit_seconds`、`pause_seconds`、`help_count`、`unsupported_claim`（`true`、`false`、`not_applicable`）、`required_fact_error_count`（非负整数或 `not_applicable`）、`privacy_or_safety_stop`（`true`、`false`）、`failure_code`（`none` 或脱敏拒绝/传输码） | 每个候选构造前建行，生成及评分后补齐；识别 B→neutral 回退、拒绝、降级、来源和完成状态 | 未生成时固定 `generated=false`、`draft_source=none`、`degraded_reason=not_generated` 并填写 `failure_code`；发生三种端点回复降级时 `draft_source=tone_template`。未完成的耗时不填 0。T2 必填 `unsupported_claim`，出现任何消息特定事实或承诺即候选不完成；T1 的 `unsupported_claim` 和 `required_fact_error_count` 写 `not_applicable`；T2 的 `required_fact_error_count` 写 `not_applicable`；T3 两项都必填 |
+| Candidate 隐私形状 | `candidate_id`、`placeheld_turns`、`carries_exempted_original`、`refusal_code`、`missing_reason`、`sanitized_note` | 候选生成后或任一必填字段缺失时 | 只存枚举、计数和脱敏说明；不得含原文、候选正文、编辑后正文、姓名、账号、密钥或可识别资料 |
+
+Pair 漏斗按登记字段重算：Pair 行存在即 `assigned`，`pair_started_at` 非空即 `started`，双方 Candidate 的 `generated=true` 即 `generated`，`preference` 非 `unrated`、`blind_status=intact` 且 `comparability_status=comparable` 即 `rated`，`pair_completion_status=completed` 即 `completed`。撤回不是 Pair 漏斗阶段；按匿名单参与者 Run 的 `consent_state=withdrawn` 单列数量。撤回不删除已经产生的流程计数，尚未汇总的效用评分按预先说明排除。
+
+#### 7.2.4 指标登记
+
+| 指标 | 公式、分母与实验对照 | 用途许可 | 缺失、失败与解释边界 |
+|---|---|---|---|
+| AB 配对偏好（主要，以 B 为目标） | 每位参与者 `(B胜 + 0.5×平局) / 已评分 AB 对`，再报告参与者中位数；A 为 neutral 实验控制；≥60% 仅是继续投入候选证据 | 明确同意的产品评测反馈；不自动进入研究导出或训练 | `unrated`、`not_comparable`、盲法破坏不进该分母，但保留在漏斗；不以单作者多任务冒充多用户证据 |
+| AC、BC 配对偏好（次要，分别以 C、B 为目标） | 同一公式，按参与者先算再汇总，不设通过线 | 同上 | 样本不足、任务层失衡或条件变化写“不确定”；C 不是人格真值或 oracle |
+| 配对完成率 | `双方均完成的 pair / 全部 assigned pair`；另按 A/B/C 和 T1/T2/T3 报告候选完成数 | 同上 | aborted、system failure、refusal、degraded、safety stop 留在分母或对应失败栏，不删除失败换绿色结果 |
+| 编辑耗时 | 仅双方都完成的配对报告每边原始秒数、配对中位差和中位比例；≥20% 候选改善只观察 AB，并按模板/端点及 T1/T2/T3 分层；A=0 不算比例但保留原值 | 同上 | 单边未完成不进入耗时差，但仍进入完成率；暂停秒数不混入编辑秒数；该阈值不是 PASS gate |
+| 首稿接受率 | `first_pass_accepted / 已生成候选`，按条件和任务类型分层；未降级 `user_endpoint` 与降级 `tone_template` 分开报告，不跨来源合并 | 同上 | 未生成不进入该分母，但进入完成/失败漏斗；不能把模板正文槽未填写记首稿接受 |
+| T3 必需事实正确 | `required_fact_error_count=0` 的未降级 `user_endpoint` T3 候选 / 全部未降级 `user_endpoint` T3 候选；限定 `draft_source=user_endpoint` 且 `degraded_reason=none` | 合成任务卡；真实反馈仍需产品评测同意 | T1/T2 记不适用；降级模板只进降级/失败与来源分层，不混入正确率；错误只存计数/类别，不保存原文 |
+| 隐私与严重安全失败 | `privacy_or_safety_stop / 全部 assigned 候选`，同时列事件类别 | 安全验证所必需的最小脱敏记录 | 任一越权、原始内容泄漏、纠正静默覆盖或遗忘后可读立即暂停对应试验；收益不能抵消 |
+| 流程漏斗与帮助负担 | Pair 分别报告 assigned、started、generated、rated、completed；Run 单列 withdrawn；另报 `help_count` 描述统计 | 同上 | 不把 Run 撤回拼接成 Pair 漏斗阶段；未测保持未测，缺失按原因分层，不填 0、不追加样本追阈值 |
+
+#### 7.2.5 截止、停止与启动边界
+
+- 作者：预先登记连续 14 个自然日的开始/截止时间，至少分配 30 个配对槽；AB（以 B 为目标）至少一半，AC/BC 与 T1/T2/T3 按整数槽尽量平衡。其他自愿成年用户：5–8 人，每人预先分配 10–15 对，只作探索。所有数字均为 ASSUMPTION，不是发布 gate。
+- 截止日到达即收口。未满样本、有效 AB 太少、任务类别失衡、盲法破坏、模型/版本不可比或 endpoint 不可用时，结论写“不确定”或对应任务 `NOT RUN`；不得延长、补样本或换更大模型直到过线。
+- 出现安全暂停条件立即停止相关路径，先走现有缺陷修复；恢复试验必须使用新的预注册槽位，不沿用受影响结果。参与者撤回即停止后续任务；没有预先说明撤回与脱敏汇总处理时，不启动真实参与者试验。
+- 本轮只完成设计，没有生成样本。自动适配仅可在 Goal 1 关闭、Q2-00 签发后使用合成 fixture / loopback 实现；真实模型调用另需用户已配置端点并逐次授权。评测适配不得新增产品 UI、IPC、schema、遥测或研究导出。
+- Q2-01 的 neutral/from_view/manual 模板对照只是合成接线与连续性证据，不填写偏好、编辑耗时、完成率或人格有效性。
 
 ### 7.3 预测研究的首个可检验问题
 

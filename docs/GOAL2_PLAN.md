@@ -398,6 +398,24 @@ if ($LASTEXITCODE -ne 0) { throw 'G-W 失败，不能写通过' }
 
 **失败规则：** 真正失败保持红，修后按影响重测；日志缺失或主机不可用标 BLOCKED；测试未跑标 NOT RUN；不把一次定向测试绿写成全量门禁绿。不使用 `git commit --amend` 改掉已测源码然后沿用原 SHA 记录。
 
+### VAL-01 评测适配交接（非 Q2 关闭包）
+
+**状态：DESIGN READY / EXECUTION BLOCKED_BY_GOAL1_AND_Q2-00。** 本节不是 Q2-06，不改变 Q2-00–05 的关闭条件，也不启动 VAL-02、VAL-03 或真实用户试验。
+
+**Consume → produce：** 未来只消费 [ROADMAP 7.2 的三类任务、A/B/C、反馈字段和指标登记](ROADMAP.md#72-首轮个性化试验)，以及现有 `ProfileBrief::neutral()`、`ProfileBrief::from_view()`、手工 brief Rust API、本机模板和两条 endpoint 路径；产出合成评测适配、预注册配对槽位和可回放的脱敏汇总。Q2-01 只作为 brief 接线/连续性准备证据，不作为效用结果。
+
+**进入条件：** Goal 1 以 ACCEPTANCE/STATUS 实际关闭；Q2-00 签发可比较实现输入；形成可用构建。真实作者或志愿者阶段另需主动产品评测同意、开始/截止时间、撤回说明和逐次 endpoint 授权。任一条件缺失保持 NOT STARTED。
+
+**允许范围：** Q2-00 后先做覆盖差集，再由 A0 指定 `crates/soul-draft/tests/`、`crates/soulcore/tests/` 或专用合成 fixture 的最小写路径。只允许测试/离线评测代码；不新增产品 UI、IPC、schema、产品表、遥测、研究导出、网络权限或新的 gate/baseline/hash。
+
+- [ ] 用合成输入证明 A/B/C 实际 brief 被构造；B 构造失败必须显式失败，不能沿用 Session 的 neutral 回退仍标 B；T1 voice 相同或运行条件不一致时，Pair 的 `comparability_status` 必须记录 `not_comparable`。
+- [ ] 分别覆盖 T1 本机语气骨架、T2 默认占位端点、T3 一次性原文端点；loopback 只验证适配和字段口径，不填写真人偏好。
+- [ ] 固定 AB/AC/BC 槽位、左右 variant/种子、任务类型、模型/版本和缺失规则；能够从 Pair/Candidate 字段（含 `comparability_status`）重算 assigned→started→generated→rated→completed 漏斗及各指标分母，并从匿名单参与者 Run 的 `consent_state` 单列 withdrawn 数量。
+- [ ] 证明拒绝、降级、未配置 endpoint、审批不匹配和安全暂停不会被计成正常端点胜负；原始 prompt、候选正文和编辑后正文不进入仓库回执。
+- [ ] 按第 6 节回执字段记录实际命令、退出码、合成样本数、未跑项、数据边界和独立审查；真实试验开始前另写匿名/汇总 consent 回执，只记录 `consent_state`、开始/截止日期和撤回数量，不保存姓名、签名或原始同意文本。该回执不是 gate。
+
+**当前验证：NOT RUN。** 本次只定义交接；没有新增适配代码、没有运行模型、没有生成反馈样本。未来若无法保持条件可比、盲法或最小数据边界，状态写 BLOCKED/NOT RUN，不通过改产品功能或扩大数据采集绕过。
+
 ## 6. 可复制的派工与回执
 
 下面是派工消息内容，不是要新增的流程文件。A0 每次仅派一个包，替换具体 task、基线和允许写路径后发送；所有被替换值必须来自实际 git/read 结果。
@@ -408,7 +426,7 @@ if ($LASTEXITCODE -ne 0) { throw 'G-W 失败，不能写通过' }
 
 | 字段 | 填写内容 |
 |---|---|
-| 任务 / 状态 | Q2-xx；READY / RUNNING / REVIEW / DONE / NO-CHANGE / BLOCKED |
+| 任务 / 状态 | Q2-xx / VAL-01；READY / RUNNING / REVIEW / DONE / NO-CHANGE / BLOCKED |
 | 基线 / 产出 | 完整源码 SHA、分支/worktree、实际变更路径；无代码改动明确写无 |
 | 输入证据 | 读取的契约、既有测试、fixture 路径与哈希、覆盖差集 |
 | 结果 | 新反例的原始失败、修复后通过；或无缺陷/已有覆盖的理由 |
@@ -417,7 +435,7 @@ if ($LASTEXITCODE -ne 0) { throw 'G-W 失败，不能写通过' }
 | 风险 / 下一步 | 具体剩余风险、所需共享改动、是否影响 G-M；无则写无已知阻断项 |
 | 独立审查 | reviewer、结论与 findings；作者不能给自己签 PASS |
 
-回执只进本文件末尾/对应正式门禁记录，由 A0 串行更新；其他 agent 返回消息，不并行改 `STATUS.md`、`DECISIONS.md`、`PLAN_INDEX.md`、`ROADMAP.md` 或本文件。产品/算法决策需要另立决议并明确下一版，不能借“计划补充”偷改冻结承诺。
+Q2 回执只进本文件末尾/对应正式门禁记录，由 A0 串行更新。VAL-01 只复用本表字段语义，不新增 Q2 编号；回执只进入本文件的 VAL-01 登记，不进入 `docs/gates/`，也不改变 Q2-00–05 的关闭状态。其他 agent 返回消息，不并行改 `STATUS.md`、`DECISIONS.md`、`PLAN_INDEX.md`、`ROADMAP.md` 或本文件。产品/算法决策需要另立决议并明确下一版，不能借“计划补充”偷改冻结承诺。
 
 ## 7. 本轮执行登记
 
