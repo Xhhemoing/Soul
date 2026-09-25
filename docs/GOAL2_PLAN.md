@@ -486,6 +486,19 @@ A1 只加缺失组合；已有 81×2 语气安全测试不重复。A2 先区分 
 - owner 日志：该 worktree `target/q2/q2-02/02-baseline-import.log`、`03-red-races-status.log`、`06-red-same-file.log`、`07-green-all-import.log`、`08-full-frontend.log`、`09-lint.log`、`10-build.log`、`11-final-diff-check.log`。红灯 pnpm 尾部通用 ERR 输出不代表 Vitest 未执行；实际断言失败在日志前文。
 - 独立 reviewer `/root/release_review`：规格 PASS 后质量 PASS；独立重跑 Import 24 与 lint，均 exit 0，源码 SHA-256 前后不变。回执 `target/q2/reviewer/q2-02-quality-review.json`。A0 已回读实际 diff、日志、reviewer JSON 和提交状态。
 - 数据边界：仓库合成 fixture、局部 UI mock；无实际网络端点、真实资料、安装或 Linux 操作。未做本次真实 IPC/辅助技术/G-M，也尚无集成同源码 G-W；窄回归不能继承 `95ff7d6` 门禁结论。工作树与证据保留，未推送/合并。
+
+### Q2-02 原生 Import 补充观察（2026-09-25）
+
+- 状态：固定集成源码上的原生 debug 主路径补证完成；这是 D68 预备支线的后续观察，不签发 Q2-00，不把 Q2-02、Q2-05、Goal 1 或 Goal 2 写成正式关闭。固定源码 `ebff0c96325e0f297a1c397de6a3a1421fdd369d`，detached 隔离工作树 `E:\Project\Soul-q2-02-native-20260925`，观察前后未改源码；依赖与构建产物仅留在忽略目录。
+- 准备与构建：`pnpm install --frozen-lockfile --offline` PASS，238 个包全部从缓存复用、无下载；`pnpm --filter @soul/desktop exec vitest run src/routes/Import.test.tsx src/routes/Import.race.test.tsx` 为 2 文件 / 24 项通过；`pnpm --filter @soul/desktop exec tauri build --debug --no-bundle` PASS，19 分 17 秒生成 `apps/desktop/src-tauri/target/debug/soul.exe`。
+- 运行边界：以 `SOUL_DATA_DIR=C:\Users\86080\AppData\Local\Temp\Soul-q2-02-ebff0c9-20260925-213549\data` 启动单一原生 Tauri/WebView2 实例，未使用 `%LOCALAPPDATA%\Soul`、真实聊天记录或外网端点；首次向导完成后从左侧导航进入 Import。
+- 主 fixture `three_partners.jsonl`：预览实际显示 `读到 2714 个字符`、5 人 / 5 会话 / 16 消息、认得 owner、0 条命令样注入标记，并明确尚未写库；可见文本与 accessibility 文本均未出现两条正文哨兵或 `u-lilei` / `u-mama` / `u-self` / `u-wangxiao` / `u-zhaoqi`。文件 input 为允许同文件重选而回到“未选择文件”，但格式、字符数和计数仍可见。
+- 取消与重选：点“不了，换一个文件”后，预览统计、字符数和确认按钮均消失，文件选择入口保留；再次选择同一 fixture 后相同预览恢复，证明原生文件对话框中的同文件重选有效。
+- 键盘与防重入：只用 Tab / Shift+Tab 将焦点移到“确认导入”，焦点环可见；快速连续两次 Enter 只显示一个“导入完成”卡片。空库回执为新建 5 人、匹配 0 人、写入 16 条往来记录、15 条证据、重算 4 条关系。16 条事件与 15 条证据符合 D47：owner 发到群里的那条消息仍密封为事件，但不能向历史发言人伪造谁读到的 outgoing evidence。
+- 落库复核：复制前后 live SQLCipher 文件元数据稳定；将 `config.json` / `keys.dpapi` / `soul.db` / `soul.db-wal` 复制到不带 live `-shm` 的临时快照，再用项目自身 `Session::open`、DPAPI 与 Store API 只读打开。实际为 5 联系人、16 个唯一事件、15 条唯一证据、4 条唯一关系，图谱 5 人 / 4 边 / 15 个唯一证据引用，Import 审计 1 条，各类重复 ID 为 0；总量未翻倍且只有一次 Import 审计，未发现快速双 Enter 第二次落库的迹象。该结论来自稳定文件快照，不是在 live 连接上另开 SQL；唯一 ID 本身不能单独排除“相同语义、新 UUID”，但总量与单次 fixture 精确相符。
+- Telegram 拒绝 fixture `result_missing_fields.json`：切到 Telegram 格式后，原生页面暴露 `role=alert` / accessibility“警报”，reason code 为 `ROUTINE`，并逐项给出缺失 `messages`、`id`、`date_unixtime`、`from_id` 等可读说明；明确一行未写入。可见/accessibility 文本均未出现 `Roy`、三个会话名、fixture 正文或 about 文本，也没有预览或“确认导入”按钮。
+- 未观察项：导入很快，busy / `role=status` 瞬态未捕获，记为 `NOT OBSERVED`；没有运行 Narrator 等真实辅助技术，`role=status` / `role=alert` 的 UIA 语义不能写成实际播报 PASS。方向键焦点环也未形成独立、可复核观察。此结果是 debug `--no-bundle` 的原生文件选择器与 WebView 主路径，不是 NSIS 安装/卸载、安装版复验、完整 G-M 0–7 或真实辅助技术验收。
+
 ### Q2-01 预备回执（2026-09-25）
 
 - 状态：预备包 DONE。基线 `55d43edd3d5a287939276d16f3efb672fdbc69d5`；产出 `9cf98902a01b664f40a03258a3fc85eb6c080b21`，`codex/q2-01-continuity-20260925` / `E:\Project\Soul-q2-01-20260925`，提交后工作树干净。
