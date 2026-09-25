@@ -14,7 +14,11 @@ use std::process::{Command, Stdio};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
-use soulcore::commands::session::Session;
+use soul_store::{SqlCipherStore, TestKeyProvider};
+use soulcore::commands::{
+    graph as graph_commands, import as import_commands,
+    session::{Session, SessionRefusal},
+};
 
 const STAGES: [&str; 9] = [
     "open",
@@ -27,6 +31,8 @@ const STAGES: [&str; 9] = [
     "audit",
     "total",
 ];
+const DECOMPOSITION_AT_UNIX_SECONDS: i64 = 1_800_000_000;
+const DECOMPOSITION_KEY_SEED: &str = "q2 performance decomposition";
 
 /// Every peer has its own two-person conversation, with half the messages in
 /// each direction. All ids, text, timestamps, ordering, and LF bytes are fixed.
@@ -70,6 +76,11 @@ fn timed<T>(operation: impl FnOnce() -> T) -> (T, u64) {
 }
 
 struct Observation {
+    durations_ns: BTreeMap<&'static str, u64>,
+    counts: Value,
+}
+
+struct DecomposedObservation {
     durations_ns: BTreeMap<&'static str, u64>,
     counts: Value,
 }
@@ -193,10 +204,114 @@ fn observe(text: &str, messages: usize, peers: usize) -> Observation {
     }
 }
 
+/// A diagnostic companion to observe. It uses the same parser, encrypted
+/// store, command-layer writes, graph rebuild, and audit append path, but keeps
+/// the parsed value outside the transaction so the two expensive inner stages
+/// can be timed separately. It is not the Session path: identifier syncing
+/// happens after that private transaction and remains represented only by
+/// observe's end-to-end commit timing.
+fn observe_decomposed(text: &str, messages: usize, peers: usize) -> DecomposedObservation {
+    let keep = tempfile::tempdir().expect("fresh data directory per decomposition");
+    let database = keep.path().join("soul.db");
+    let keys = TestKeyProvider::from_seed(DECOMPOSITION_KEY_SEED);
+    let mut store = SqlCipherStore::open(&database, &keys).expect("open encrypted store");
+    let (staged, parse_ns) = timed(|| import_commands::read_soul_import_v1(text));
+    let staged = staged.expect("valid synthetic import");
+
+    let mut encrypted_import_write_ns = 0;
+    let mut graph_rebuild_ns = 0;
+    let (transaction, transaction_total_ns) = timed(|| {
+        store.transact(|store| -> Result<_, SessionRefusal> {
+            let (receipt, elapsed) =
+                timed(|| import_commands::commit(store, &staged, DECOMPOSITION_AT_UNIX_SECONDS));
+            encrypted_import_write_ns = elapsed;
+            let receipt = receipt?;
+
+            let (build, elapsed) =
+                timed(|| graph_commands::rebuild(store, DECOMPOSITION_AT_UNIX_SECONDS));
+            graph_rebuild_ns = elapsed;
+            Ok((receipt, build?))
+        })
+    });
+    let (receipt, build) = transaction.expect("commit and rebuild in one transaction");
+    let measured_operations_ns = encrypted_import_write_ns
+        .checked_add(graph_rebuild_ns)
+        .expect("measured operation durations fit u64");
+    let transaction_overhead_residual_ns = transaction_total_ns
+        .checked_sub(measured_operations_ns)
+        .expect("transaction contains both measured operations");
+
+    assert_eq!(staged.messages.len(), messages);
+    assert_eq!(staged.participants.len(), peers + 1);
+    assert_eq!(receipt.events_written.len(), messages);
+    assert_eq!(receipt.evidence_written.len(), messages);
+    assert_eq!(receipt.contacts_created.len(), peers + 1);
+    assert!(receipt.contacts_matched.is_empty());
+    assert_eq!(build.edges_written.len(), peers);
+
+    DecomposedObservation {
+        durations_ns: BTreeMap::from([
+            ("parse", parse_ns),
+            ("encrypted_import_write", encrypted_import_write_ns),
+            ("graph_rebuild", graph_rebuild_ns),
+            ("transaction_total", transaction_total_ns),
+            (
+                "transaction_overhead_residual",
+                transaction_overhead_residual_ns,
+            ),
+        ]),
+        counts: json!({
+            "expected_messages": messages,
+            "expected_peers": peers,
+            "events_written": receipt.events_written.len(),
+            "evidence_written": receipt.evidence_written.len(),
+            "contacts_created": receipt.contacts_created.len(),
+            "contacts_matched": receipt.contacts_matched.len(),
+            "ties_rebuilt": build.edges_written.len(),
+        }),
+    }
+}
+
 #[test]
 fn a_hundred_messages_across_ten_peers_preserve_counts_privacy_and_audit() {
     let text = synthetic_jsonl(100, 10);
     observe(&text, 100, 10);
+}
+
+#[test]
+fn a_hundred_messages_decomposition_reports_real_transaction_stages() {
+    let text = synthetic_jsonl(100, 10);
+    let observation = observe_decomposed(&text, 100, 10);
+
+    for stage in [
+        "parse",
+        "encrypted_import_write",
+        "graph_rebuild",
+        "transaction_total",
+        "transaction_overhead_residual",
+    ] {
+        assert!(
+            observation.durations_ns.contains_key(stage),
+            "missing measured stage {stage}"
+        );
+    }
+    assert_eq!(observation.durations_ns.len(), 5);
+    assert_eq!(observation.counts["events_written"], 100);
+    assert_eq!(observation.counts["evidence_written"], 100);
+    assert_eq!(observation.counts["contacts_created"], 11);
+    assert_eq!(observation.counts["ties_rebuilt"], 10);
+
+    let write = observation.durations_ns["encrypted_import_write"];
+    let rebuild = observation.durations_ns["graph_rebuild"];
+    let transaction = observation.durations_ns["transaction_total"];
+    assert!(
+        transaction >= write + rebuild,
+        "transaction time must contain both measured operations"
+    );
+    assert_eq!(
+        observation.durations_ns["transaction_overhead_residual"],
+        transaction - write - rebuild
+    );
 }
 
 /// Run ancillary commands only through pwsh. Nothing this helper does is timed.
