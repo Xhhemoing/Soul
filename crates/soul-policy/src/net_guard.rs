@@ -41,6 +41,12 @@ pub enum OriginError {
     BadPort(String),
     #[error("`{0}` carries credentials; an origin must not")]
     HasCredentials(String),
+    /// An authority like `::1:11434`, whose colons cannot be split into host
+    /// and port. Rejected rather than guessed at: `rsplit` would read it as
+    /// host `::1` port `11434`, someone else's parser may read it as host
+    /// `::1:11434`, and an origin two parsers disagree about is not "exact".
+    #[error("`{0}` has an IPv6 host without brackets; write the address as [address] instead")]
+    UnbracketedIpv6(String),
 }
 
 impl Origin {
@@ -71,6 +77,12 @@ impl Origin {
         if authority.contains('@') {
             return Err(OriginError::HasCredentials(trimmed.to_owned()));
         }
+        // Only brackets make a second colon unambiguous. Without this, an
+        // IPv6 address typed bare would be split at its last colon and
+        // silently become a host-and-port nobody intended.
+        if !authority.starts_with('[') && authority.matches(':').count() > 1 {
+            return Err(OriginError::UnbracketedIpv6(trimmed.to_owned()));
+        }
 
         let (host, port) = split_host_port(&authority, default_port)
             .ok_or_else(|| OriginError::BadPort(trimmed.to_owned()))?;
@@ -86,6 +98,10 @@ impl Origin {
     }
 
     pub fn new(scheme: &str, host: &str, port: u16) -> Origin {
+        // Stored the way `parse` stores it: an IPv6 literal keeps its colons
+        // and loses its brackets, so `[::1]` and `::1` are one origin here
+        // and `Display` is the only place brackets are written.
+        let host = host.trim_start_matches('[').trim_end_matches(']');
         Origin {
             scheme: scheme.to_ascii_lowercase(),
             host: host.to_ascii_lowercase(),
@@ -125,17 +141,29 @@ impl Origin {
 }
 
 impl fmt::Display for Origin {
+    /// The origin as a URL prefix, byte-for-byte reparsable by [`Origin::parse`].
+    ///
+    /// This string is load-bearing: `E1RequestPlan::url` appends a path to it
+    /// and hands the result to the HTTP client, and `PolicySession` re-parses
+    /// that URL before authorizing it. An IPv6 host therefore goes back
+    /// between the brackets it was parsed out of — written bare, its own
+    /// colons read as a port split, and an `::1` host with a port came back
+    /// out as a bare `::1:11434` authority no URL parser accepts.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let implicit = match self.scheme.as_str() {
             "http" => 80,
             "https" => 443,
             _ => 0,
         };
-        if self.port == implicit {
-            write!(f, "{}://{}", self.scheme, self.host)
+        if self.host.contains(':') {
+            write!(f, "{}://[{}]", self.scheme, self.host)?;
         } else {
-            write!(f, "{}://{}:{}", self.scheme, self.host, self.port)
+            write!(f, "{}://{}", self.scheme, self.host)?;
         }
+        if self.port != implicit {
+            write!(f, ":{}", self.port)?;
+        }
+        Ok(())
     }
 }
 
