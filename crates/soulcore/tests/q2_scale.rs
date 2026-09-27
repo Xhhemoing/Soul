@@ -1,11 +1,14 @@
 //! Q2-03 adds the scale/peer-count cross-product that the small import fixtures
-//! and the 400-row source-index query-plan test do not cover. Only public Session
-//! import and read surfaces are exercised; each fresh store is imported once.
+//! and the 400-row source-index query-plan test do not cover. Public Session
+//! import/read surfaces retain their end-to-end observation, while a separate
+//! fresh store exposes coarse command and transaction timing boundaries.
 //!
 //! The ordinary test catches dropped/duplicated messages, merged peers, missing
 //! direct edges, leaked research rows, and a broken audit chain at 100/10. The
-//! ignored test runs the same assertions at 1k/10k messages and 10/100 peers.
-//! It is descriptive measurement, with no elapsed-time pass/fail threshold.
+//! decomposed ordinary test verifies the same import and graph work through the
+//! public command/store APIs. The ignored test runs both independent paths at
+//! 1k/10k messages and 10/100 peers. It is descriptive measurement, with no
+//! elapsed-time pass/fail threshold.
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -14,9 +17,12 @@ use std::process::{Command, Stdio};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
-use soulcore::commands::session::Session;
+use soul_schema::audit::AuditAction;
+use soul_store::{SqlCipherStore, TestKeyProvider};
+use soulcore::commands::session::{Session, SessionRefusal};
+use soulcore::commands::{graph as graph_commands, import as import_commands};
 
-const STAGES: [&str; 9] = [
+const SESSION_STAGES: [&str; 9] = [
     "open",
     "preview",
     "commit_including_rebuild",
@@ -26,6 +32,13 @@ const STAGES: [&str; 9] = [
     "research",
     "audit",
     "total",
+];
+const DECOMPOSED_STAGES: [&str; 5] = [
+    "parse",
+    "import_command_including_audit",
+    "graph_command_including_audit",
+    "transaction_total",
+    "transaction_overhead_residual",
 ];
 
 /// Every peer has its own two-person conversation, with half the messages in
@@ -70,6 +83,11 @@ fn timed<T>(operation: impl FnOnce() -> T) -> (T, u64) {
 }
 
 struct Observation {
+    durations_ns: BTreeMap<&'static str, u64>,
+    counts: Value,
+}
+
+struct DecomposedObservation {
     durations_ns: BTreeMap<&'static str, u64>,
     counts: Value,
 }
@@ -193,10 +211,152 @@ fn observe(text: &str, messages: usize, peers: usize) -> Observation {
     }
 }
 
+/// This diagnostic path is deliberately not a reconstruction of `Session`.
+/// It uses its own store and excludes the Session mutex, receipt view, and
+/// identifier synchronization. The residual is checked subtraction of the two
+/// nested command timers from the outer transaction timer; it includes
+/// BEGIN/COMMIT plus timer, closure-gap, result-unpacking, and error-plumbing
+/// costs, so it must not be described as pure SQLite transaction overhead.
+fn observe_decomposed(text: &str, messages: usize, peers: usize) -> DecomposedObservation {
+    let (staged, parse_ns) = timed(|| import_commands::read_soul_import_v1(text));
+    let staged = staged.expect("valid synthetic import for decomposition");
+
+    let keep = tempfile::tempdir().expect("fresh decomposed data directory per observation");
+    let keys = TestKeyProvider::in_dir(keep.path());
+    let mut store = SqlCipherStore::open(keep.path().join("soul.db"), &keys)
+        .expect("open independent decomposed store");
+    let at_unix_seconds = 1_777_000_000;
+
+    let (transaction, transaction_total_ns) = timed(|| {
+        store.transact(|store| -> Result<_, SessionRefusal> {
+            let (receipt, import_ns) =
+                timed(|| import_commands::commit(store, &staged, at_unix_seconds));
+            let receipt = receipt?;
+            let (build, graph_ns) = timed(|| graph_commands::rebuild(store, at_unix_seconds));
+            let build = build?;
+            Ok((receipt, build, import_ns, graph_ns))
+        })
+    });
+    let (receipt, build, import_ns, graph_ns) =
+        transaction.expect("commit and rebuild in one transaction");
+    let command_total_ns = import_ns
+        .checked_add(graph_ns)
+        .expect("transaction total must cover both command timings, whose sum must fit in u64");
+    let transaction_overhead_residual_ns = transaction_total_ns
+        .checked_sub(command_total_ns)
+        .expect("transaction total must cover both command timings");
+
+    // Correctness checks and audit reads are outside every measured interval.
+    assert_eq!(receipt.events_written.len(), messages);
+    assert_eq!(receipt.evidence_written.len(), messages);
+    assert_eq!(receipt.contacts_created.len(), peers + 1);
+    assert_eq!(receipt.contacts_matched.len(), 0);
+    assert_eq!(receipt.messages_with_injection_markers, 0);
+    assert_eq!(receipt.audit.len(), 1);
+    assert_eq!(build.interactions_read, messages as u64);
+    assert_eq!(build.edges_written.len(), peers);
+    assert_eq!(build.inferences_written.len(), peers);
+    assert_eq!(build.peers_unresolved, 0);
+    assert_eq!(build.audit.len(), 1);
+    store
+        .verify_audit_chain()
+        .expect("decomposed command audits form a valid chain");
+    let audit = store.audit_links().expect("read decomposed audit chain");
+    let import_audit_entries = audit
+        .iter()
+        .filter(|link| link.entry.action == AuditAction::ImportCommit)
+        .count();
+    let graph_audit_entries = audit
+        .iter()
+        .filter(|link| link.entry.action == AuditAction::InferenceWrite)
+        .count();
+    assert_eq!(audit.len(), 2);
+    assert_eq!(import_audit_entries, 1);
+    assert_eq!(graph_audit_entries, 1);
+    assert_eq!(
+        audit
+            .iter()
+            .find(|link| link.entry.action == AuditAction::ImportCommit)
+            .and_then(|link| link.entry.counts.as_ref())
+            .and_then(|counts| counts.items),
+        Some(messages as u64)
+    );
+
+    DecomposedObservation {
+        durations_ns: BTreeMap::from([
+            ("parse", parse_ns),
+            ("import_command_including_audit", import_ns),
+            ("graph_command_including_audit", graph_ns),
+            ("transaction_total", transaction_total_ns),
+            (
+                "transaction_overhead_residual",
+                transaction_overhead_residual_ns,
+            ),
+        ]),
+        counts: json!({
+            "expected_messages": messages, "expected_peers": peers,
+            "events_written": receipt.events_written.len(),
+            "evidence_written": receipt.evidence_written.len(),
+            "contacts_created": receipt.contacts_created.len(),
+            "contacts_matched": receipt.contacts_matched.len(),
+            "interactions_read": build.interactions_read,
+            "edges_written": build.edges_written.len(),
+            "inferences_written": build.inferences_written.len(),
+            "peers_unresolved": build.peers_unresolved,
+            "audit_entries": audit.len(),
+            "audit_chain_verified": true,
+            "import_audit_entries": import_audit_entries,
+            "graph_audit_entries": graph_audit_entries,
+        }),
+    }
+}
+
 #[test]
 fn a_hundred_messages_across_ten_peers_preserve_counts_privacy_and_audit() {
     let text = synthetic_jsonl(100, 10);
     observe(&text, 100, 10);
+}
+
+#[test]
+fn a_hundred_messages_across_ten_peers_expose_transaction_cost_components() {
+    let text = synthetic_jsonl(100, 10);
+    let observation = observe_decomposed(&text, 100, 10);
+
+    assert_eq!(observation.counts["events_written"], 100);
+    assert_eq!(observation.counts["evidence_written"], 100);
+    assert_eq!(observation.counts["contacts_created"], 11);
+    assert_eq!(observation.counts["contacts_matched"], 0);
+    assert_eq!(observation.counts["interactions_read"], 100);
+    assert_eq!(observation.counts["edges_written"], 10);
+    assert_eq!(observation.counts["peers_unresolved"], 0);
+    assert_eq!(observation.counts["audit_chain_verified"], true);
+    assert_eq!(observation.counts["import_audit_entries"], 1);
+    assert_eq!(observation.counts["graph_audit_entries"], 1);
+
+    for stage in DECOMPOSED_STAGES {
+        assert!(
+            observation.durations_ns.contains_key(stage),
+            "missing decomposed stage {stage}"
+        );
+    }
+    for stage in [
+        "parse",
+        "import_command_including_audit",
+        "graph_command_including_audit",
+        "transaction_total",
+    ] {
+        assert!(observation.durations_ns[stage] > 0, "{stage} must run");
+    }
+    let command_total_ns = observation.durations_ns["import_command_including_audit"]
+        .checked_add(observation.durations_ns["graph_command_including_audit"])
+        .expect("the two command timings must have a representable sum");
+    let expected_residual_ns = observation.durations_ns["transaction_total"]
+        .checked_sub(command_total_ns)
+        .expect("transaction total must cover both command timings");
+    assert_eq!(
+        observation.durations_ns["transaction_overhead_residual"],
+        expected_residual_ns
+    );
 }
 
 /// Run ancillary commands only through pwsh. Nothing this helper does is timed.
@@ -274,15 +434,20 @@ $cpu = @(Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, Nu
         "debug_assertions": cfg!(debug_assertions),
         "executable": std::env::current_exe().expect("test executable").to_string_lossy(),
         "cache": {
-            "database": "fresh independent temporary directory per warmup and trial; one import per database",
-            "sequence": "open, preview, commit including rebuild, people, profile, memories, research, audit",
+            "database": "two fresh independent temporary directories per warmup and trial: one Session observation and one decomposed transaction observation; one import per database",
+            "session_sequence": "open, preview, commit including rebuild, people, profile, memories, research, audit",
+            "decomposed_sequence": "parse, then one transaction containing import command including audit and graph command including audit",
             "os_page_cache": "not flushed; warm/cold uncontrolled; one discarded warmup before five trials per case",
             "build_cache": "excluded from measured durations; actual CARGO_TARGET_DIR recorded",
         },
         "timing_unit": "nanoseconds",
-        "total_definition": "wall time from immediately before preview through audit return; excludes open, fixture generation, metadata/hash collection, assertions, JSON output, Session drop, and temporary directory cleanup",
+        "session_total_definition": "wall time from immediately before preview through audit return; excludes open, fixture generation, metadata/hash collection, assertions, JSON output, Session drop, and temporary directory cleanup",
         "open_definition": "Session::open only; tempdir creation and canonicalization excluded",
-        "scope": "synthetic import/read-only screens only; profile and memories unpopulated; no real data, endpoint, repeated import, UI, installer, or Linux measurement",
+        "decomposed_transaction_total_definition": "wall time around SqlCipherStore::transact; parse and store open are outside; the transaction contains import and graph commands with each command's audit append",
+        "transaction_overhead_residual_definition": "checked transaction_total - (import_command_including_audit + graph_command_including_audit); measurement fails if the command sum overflows or exceeds transaction_total; not pure SQLite BEGIN/COMMIT because it also includes nested timer overhead, closure gaps, result unpacking, and error plumbing",
+        "path_relationship": "Session and decomposed observations use independent fresh databases. The decomposed path omits the Session mutex, receipt view, and identifier synchronization; stages are not summed to Session commit and the two paths are never subtracted.",
+        "statistics": "five formal samples summarized as min/median/max only; no p95 and no hardware threshold or elapsed-time pass/fail gate",
+        "scope": "synthetic import/read-only screens only under the cargo test profile; profile and memories remain unpopulated; no real user workload or data, endpoint, repeated import, UI, installer, or Linux measurement",
     })
 }
 
@@ -333,10 +498,12 @@ fn measure_four_synthetic_scales_with_five_independent_trials() {
     emit(
         &mut report,
         json!({
-            "record": "run", "schema": "soul-q2-scale-v1", "source_sha": sha,
+            "record": "run", "schema": "soul-q2-scale-v2", "source_sha": sha,
             "report_path": report_path.to_string_lossy(), "context": context,
             "cases": [[1000, 10], [1000, 100], [10000, 10], [10000, 100]],
             "warmups_per_case": 1, "trials_per_case": 5,
+            "observation_paths": ["session_end_to_end", "decomposed_transaction"],
+            "independent_databases_per_sample": 2,
         }),
     );
     for (messages, peers) in [(1000, 10), (1000, 100), (10000, 10), (10000, 100)] {
@@ -344,25 +511,42 @@ fn measure_four_synthetic_scales_with_five_independent_trials() {
         let hash = fixture_sha256(&text);
         let mut trials = Vec::with_capacity(5);
         for trial in 0..=5 {
-            let observation = observe(&text, messages, peers);
+            let session_observation = observe(&text, messages, peers);
+            let decomposed_observation = observe_decomposed(&text, messages, peers);
             emit(
                 &mut report,
                 json!({
                     "record": "sample", "source_sha": sha, "fixture_sha256": hash,
                     "messages": messages, "peers": peers, "fixture_bytes": text.len(),
                     "warmup": trial == 0, "trial": trial,
-                    "durations_ns": observation.durations_ns, "counts": observation.counts,
+                    "session_durations_ns": session_observation.durations_ns,
+                    "decomposed_durations_ns": decomposed_observation.durations_ns,
+                    "session_counts": session_observation.counts,
+                    "decomposed_counts": decomposed_observation.counts,
+                    "independent_databases": true,
                 }),
             );
             if trial != 0 {
-                trials.push(observation.durations_ns);
+                trials.push((
+                    session_observation.durations_ns,
+                    decomposed_observation.durations_ns,
+                ));
             }
         }
-        let mut summary = BTreeMap::new();
-        for stage in STAGES {
-            let mut values: Vec<u64> = trials.iter().map(|trial| trial[stage]).collect();
+        let mut session_summary = BTreeMap::new();
+        for stage in SESSION_STAGES {
+            let mut values: Vec<u64> = trials.iter().map(|trial| trial.0[stage]).collect();
             values.sort_unstable();
-            summary.insert(
+            session_summary.insert(
+                stage,
+                json!({ "min": values[0], "median": values[2], "max": values[4] }),
+            );
+        }
+        let mut decomposed_summary = BTreeMap::new();
+        for stage in DECOMPOSED_STAGES {
+            let mut values: Vec<u64> = trials.iter().map(|trial| trial.1[stage]).collect();
+            values.sort_unstable();
+            decomposed_summary.insert(
                 stage,
                 json!({ "min": values[0], "median": values[2], "max": values[4] }),
             );
@@ -372,7 +556,11 @@ fn measure_four_synthetic_scales_with_five_independent_trials() {
             json!({
                 "record": "summary", "source_sha": sha, "fixture_sha256": hash,
                 "messages": messages, "peers": peers, "sample_count": 5,
-                "warmup_excluded": true, "summary_ns": summary,
+                "warmup_excluded": true,
+                "session_summary_ns": session_summary,
+                "decomposed_summary_ns": decomposed_summary,
+                "fresh_databases_per_trial": true,
+                "cross_path_subtraction": false,
             }),
         );
     }
