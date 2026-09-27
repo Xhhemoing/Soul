@@ -4,6 +4,7 @@
 
 ## 当前状态（2026-09-27）
 
+- **本地分支收敛：** `codex/branch-convergence-20260927` 的 `f1674572a396b30c0018564b550949c5523525f3` 合并了既有 Q2 预备支线与优化提交 `d0430bb135d43d6363bd4f5101ca190a723fad08`；`Import.tsx` 的唯一冲突保留已暂存格式/正文/预览的代次保护、同文件重选与等待提示。按用户本轮“无需测试，先同步代码”指示，没有对这个合并 SHA 运行新测试或完整 G-W/G-L；它是非主干代码同步，不代表 Goal 1/Goal 2 关闭或正式验收。
 - **本轮优化起点：** `codex/m0-3-closeout-20260924` 的 `12dcb2b04b3eb3084e7f693e10c61ce3fad9b7b8`。代码优化与工作区调整的局部修改、运行范围见 [代码检查报告](2026-09-27_code-review-soul-report.md)；后续提交或合并生成的新 SHA 不继承旧版完整 G-L/G-W 或发布验收结果。
 - **项目专门化：** 新增 [AGENTS.md](../AGENTS.md)、项目级 [.codex 配置](../.codex/config.toml) 与实现/只读评审角色；沿用唯一产品权威、最多两名写者、一个重构建通道。任务卡留在会话或仓库外，不引入附件工具包或新的 hash/contract/baseline/gate。
 - **验收义务：** [ACCEPTANCE](ACCEPTANCE.md) 已从所注明历史版本补回 AC-28–34，保留 Given/When/Then；这是条目恢复，不是通过证明。Goal 1 与正式 Goal 2 仍未关闭，Linux 暂缓、真实 NSIS 与人工清单仍按既有指示处理。
