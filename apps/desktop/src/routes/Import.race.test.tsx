@@ -17,7 +17,10 @@ import {
 import { anImportPreview, anImportReceipt } from "../test/fakeCore";
 import { Import } from "./Import";
 
-vi.mock("../core", () => ({
+vi.mock("../core", async (importOriginal) => ({
+  // The real module first, so the screen's non-IPC exports — the byte budget
+  // and its refusal sentence — stay the core's own even under this mock.
+  ...(await importOriginal<typeof import("../core")>()),
   commitSoulImportV1: vi.fn(),
   commitTelegram: vi.fn(),
   previewSoulImportV1: vi.fn(),
