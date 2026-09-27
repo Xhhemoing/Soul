@@ -279,6 +279,25 @@ export interface ImportPreview {
   readonly notice: string;
 }
 
+/**
+ * `soulcore::commands::import::MAX_IMPORT_BYTES`, the byte budget one import
+ * may read. The core enforces it on every preview and commit; the import
+ * screen checks the same number against `File.size` first, because reading a
+ * file into the WebView just to be told it was too big to read would be the
+ * cost the budget exists to refuse. `contract.test.ts` pins the two sides to
+ * the same literal.
+ */
+export const MAX_IMPORT_BYTES = 64 * 1024 * 1024;
+
+/**
+ * `soulcore::commands::import::IMPORT_OVER_BYTE_BUDGET_NOTICE`, the sentence
+ * the core refuses an over-budget file with. The screen shows this exact
+ * sentence when it refuses before reading, so the user is told the same
+ * thing whichever side said no; `contract.test.ts` pins the twins equal.
+ */
+export const IMPORT_OVER_BYTE_BUDGET_NOTICE =
+  "这个文件太大，没有读：这一版一次最多读 64 MB 的导出文本。把导出按时间段拆成几份小的，一份一份来。";
+
 /** What one import wrote. Counts, for the same reason the preview is counts. */
 export interface ImportReceipt {
   readonly source: string;

@@ -13,7 +13,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { COMMANDS } from "./core";
+import { COMMANDS, IMPORT_OVER_BYTE_BUDGET_NOTICE, MAX_IMPORT_BYTES } from "./core";
 import {
   AUDIT_CHAIN_NOTICE,
   CLOUD_LABEL,
@@ -226,6 +226,22 @@ describe("壳与核心的边界", () => {
     expect(
       rustConstant(readFileSync(CORE_IMPORT_RS, "utf8"), "IMPORT_LOCAL_ONLY_NOTICE"),
     ).toBe(IMPORT_LOCAL_ONLY_NOTICE);
+  });
+
+  /**
+   * The import byte budget is enforced on both sides of the IPC — the core
+   * on the text it is handed, the screen on `File.size` before it reads —
+   * so the number and the refusal sentence both have doubles, and a change
+   * to either side alone has to fail here rather than leave the screen
+   * refusing at one size and the core at another, or with different words.
+   */
+  it("导入的字节预算和它的拒绝语句在两侧是同一份", () => {
+    const rust = readFileSync(CORE_IMPORT_RS, "utf8");
+    expect(rust).toContain("MAX_IMPORT_BYTES: usize = 64 * 1024 * 1024;");
+    expect(MAX_IMPORT_BYTES).toBe(64 * 1024 * 1024);
+    expect(rustConstant(rust, "IMPORT_OVER_BYTE_BUDGET_NOTICE")).toBe(
+      IMPORT_OVER_BYTE_BUDGET_NOTICE,
+    );
   });
 
   /**

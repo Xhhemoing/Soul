@@ -8,11 +8,13 @@
  * somebody in it still has no name on it.
  */
 
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { mockIPC } from "@tauri-apps/api/mocks";
 import { describe, expect, it } from "vitest";
 
 import { Graph } from "./Graph";
+import type { PersonSummary } from "../core";
 import { denylistHits, diagnosticTerms, renderedText } from "../test/denylist";
 import {
   aPeopleGraph,
@@ -35,6 +37,54 @@ async function open(options: FakeCoreOptions = {}) {
 }
 
 describe("人脉图页", () => {
+  it.each(["success", "failure"] as const)("最后选中的人的摘要不会被旧请求的 %s 覆盖", async (outcome) => {
+    const initialGraph = aPeopleGraph();
+    const secondId = "0192f000-0000-7000-8000-000000000003";
+    const graph = aPeopleGraph({ people: [
+      ...initialGraph.people,
+      { ...initialGraph.people[1]!, contact_id: secondId, identifier_hint: "cccccccc" },
+    ] });
+    let resolve!: (summary: PersonSummary) => void;
+    let reject!: (error: unknown) => void;
+    const old = new Promise<PersonSummary>((yes, no) => { resolve = yes; reject = no; });
+    let summaries = 0;
+    mockIPC((command) => {
+      if (command === "people_graph") return graph;
+      if (command === "person_summary") return ++summaries === 1
+        ? old : aPersonSummary({ contact_id: secondId, text: "最后选中的人的摘要" });
+      throw new Error(`unexpected command: ${command}`);
+    });
+    const user = userEvent.setup();
+    render(<Graph />);
+    const buttons = await screen.findAllByRole("button", { name: "看这个人的摘要" });
+    await user.click(buttons[0]!);
+    await user.click(buttons[1]!);
+    expect(await screen.findByTestId("summary-text")).toHaveTextContent("最后选中的人的摘要");
+    await act(async () => {
+      if (outcome === "success") resolve(aPersonSummary({ text: "先前选中的人的摘要" }));
+      else reject({ reason_code: "ROUTINE", explanation: "先前摘要失败" });
+    });
+    expect(screen.getByTestId("summary-text")).toHaveTextContent("最后选中的人的摘要");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("纠正关系期间尚未返回的旧摘要不会重新显示", async () => {
+    const graph = aPeopleGraph();
+    let resolve!: (summary: PersonSummary) => void;
+    const old = new Promise<PersonSummary>((yes) => { resolve = yes; });
+    mockIPC((command) => {
+      if (command === "people_graph" || command === "correct_tie") return graph;
+      if (command === "person_summary") return old;
+      throw new Error(`unexpected command: ${command}`);
+    });
+    const user = userEvent.setup();
+    render(<Graph />);
+    await user.click(await screen.findByRole("button", { name: "看这个人的摘要" }));
+    await user.click(within(screen.getByTestId(`tie-${TIE_ID}`)).getByRole("button", { name: "强" }));
+    await act(async () => resolve(aPersonSummary()));
+    expect(screen.queryByTestId("summary-text")).toBeNull();
+  });
+
   it("库里没有人的时候，说清楚为什么是空的", async () => {
     await open();
 

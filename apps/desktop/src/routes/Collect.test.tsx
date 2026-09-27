@@ -15,6 +15,7 @@
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Collect } from "./Collect";
@@ -85,6 +86,52 @@ afterEach(() => {
 });
 
 describe("采集页", () => {
+  it.each(["success", "failure"] as const)("停止采集后忽略先前状态读取的 %s", async (outcome) => {
+    let resolve!: (status: CollectStatus) => void;
+    let reject!: (reason: unknown) => void;
+    const pending = new Promise<CollectStatus>((yes, no) => { resolve = yes; reject = no; });
+    const running = aCollectStatus({ consent_granted: true, collector_running: true, events_collected: 12 });
+    let reads = 0;
+    mockIPC((command) => {
+      if (command === "collect_status") return ++reads === 1 ? running : pending;
+      if (command === "revoke_collect_consent") return aCollectStatus({ events_collected: 13 });
+      throw new Error(`unexpected command: ${command}`);
+    });
+    const user = userEvent.setup();
+    render(<Collect />);
+    await screen.findByTestId("collect-state");
+    await user.click(screen.getByRole("button", { name: "看现在的条数" }));
+    await user.click(screen.getByRole("button", { name: "停止采集" }));
+    expect(screen.getByTestId("collect-state")).toHaveTextContent("没有在采集");
+
+    await act(async () => {
+      if (outcome === "success") resolve(running);
+      else reject({ reason_code: "ROUTINE", explanation: "先前读取失败" });
+    });
+    expect(screen.getByTestId("collect-state")).toHaveTextContent("没有在采集");
+    expect(screen.getByTestId("collect-count")).toHaveTextContent("已经有 13 条");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("读取未返回时不重复发送状态请求", async () => {
+    let resolve!: (status: CollectStatus) => void;
+    const pending = new Promise<CollectStatus>((yes) => { resolve = yes; });
+    let reads = 0;
+    mockIPC((command) => {
+      if (command === "collect_status") return ++reads === 1 ? aCollectStatus() : pending;
+      throw new Error(`unexpected command: ${command}`);
+    });
+    const user = userEvent.setup();
+    render(<Collect />);
+    await screen.findByTestId("collect-state");
+    const refresh = screen.getByRole("button", { name: "看现在的条数" });
+    await user.click(refresh);
+    await user.click(refresh);
+    expect(reads).toBe(2);
+    await act(async () => resolve(aCollectStatus({ events_collected: 9 })));
+    expect(screen.getByTestId("collect-count")).toHaveTextContent("已经有 9 条");
+  });
+
   it("说清楚采的是前台应用的时长，不采窗口标题", async () => {
     open();
 

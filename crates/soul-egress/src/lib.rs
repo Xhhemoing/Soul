@@ -116,6 +116,13 @@ pub fn send(plan: &E1RequestPlan) -> Result<E1Response, EgressError> {
     let status = response.status().as_u16();
     let body = read_capped(response, &permitted)?;
 
+    if !(200..300).contains(&status) {
+        return Err(EgressError::HttpStatus {
+            status,
+            body_len: body.len(),
+        });
+    }
+
     Ok(E1Response { status, body })
 }
 

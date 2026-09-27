@@ -42,6 +42,88 @@ pub const IMPORT_LOCAL_ONLY_NOTICE: &str =
 pub const IMPORT_REFUSED_NOTICE: &str = "这个文件没有导入，一行都没有写进库。\
     下面写的是它哪里对不上，不会复述文件里的内容：";
 
+// ------------------------------------------------------ input budgets ---
+//
+// Wave 1 (2026-09-27): the import channel is the one place the product reads
+// a file somebody else wrote, and until here it read however much arrived.
+// The WebView holds the whole text, the IPC copies it, and the parsers walk
+// it line by line — so a file only bounded by the disk it came from was a
+// memory bound nobody had written down. The three budgets below are the
+// written-down version. They are checked in `Session` (the core says no on
+// its own) and the byte budget again in the import screen, against the
+// file's size, before the WebView reads it at all.
+
+/// The most import text one preview or commit will read, in bytes.
+///
+/// 64 MiB is far past both shipped exporters: the Q2 scale fixtures put ten
+/// thousand messages well under ten megabytes, and a `result.json` this size
+/// holds years of heavy use. Past it, the copies this path makes — the
+/// WebView's string, the IPC's, the parser's staged form — stop being a cost
+/// and start being the thing that falls over, and a refusal with a sentence
+/// beats an allocation failure with none.
+pub const MAX_IMPORT_BYTES: usize = 64 * 1024 * 1024;
+
+/// The most messages one commit will seal.
+///
+/// An import and its graph rebuild are one transaction on one click. The
+/// Q2-03 measurements put ten thousand messages at a few seconds of it;
+/// ten times that is the ceiling at which the click still ends, rather than
+/// holding the store's lock for however long a hostile line count decides.
+pub const MAX_IMPORT_MESSAGES: usize = 100_000;
+
+/// The longest single message body a staged import may carry, in characters.
+///
+/// No chat this product imports produces one message this long — Telegram
+/// caps a message at a few thousand characters — so a "message" of sixty-five
+/// thousand is an export that is broken or built to be expensive: each body
+/// becomes one sealed blob and one injection scan. The budget is per message
+/// so the sentence can say what is wrong without quoting anything.
+pub const MAX_MESSAGE_CHARS: usize = 65_536;
+
+/// What a file over [`MAX_IMPORT_BYTES`] is told. Nothing was parsed.
+pub const IMPORT_OVER_BYTE_BUDGET_NOTICE: &str = "这个文件太大，没有读：\
+    这一版一次最多读 64 MB 的导出文本。把导出按时间段拆成几份小的，一份一份来。";
+
+/// What a file over [`MAX_IMPORT_MESSAGES`] is told. Nothing was written.
+pub const IMPORT_OVER_MESSAGE_BUDGET_NOTICE: &str = "这个文件没有导入：\
+    里面的消息条数超过了这一版一次能写的上限（100000 条）。\
+    把导出按时间段拆成几份小的，一份一份来。";
+
+/// What a file with a body over [`MAX_MESSAGE_CHARS`] is told.
+pub const IMPORT_MESSAGE_TOO_LONG_NOTICE: &str = "这个文件没有导入：\
+    里面有消息比这一版单条能存的上限（65536 个字符）还长。\
+    聊天软件导不出这么长的单条消息，这更像是文件本身出了问题。";
+
+/// Refuse text over the byte budget, before any parser reads it.
+///
+/// Bytes rather than characters, because bytes are what the IPC carried and
+/// what the parsers will walk; the shell checks the same constant against
+/// `File.size` before reading, and this check is the one that holds when
+/// something other than the import screen is doing the sending.
+pub fn within_byte_budget(text: &str) -> Result<(), String> {
+    match text.len() > MAX_IMPORT_BYTES {
+        true => Err(IMPORT_OVER_BYTE_BUDGET_NOTICE.to_owned()),
+        false => Ok(()),
+    }
+}
+
+/// Refuse a parsed import that is over the record budget or carries a body
+/// no chat produced. Counts only: the sentence never quotes the file.
+pub fn within_staged_budget(staged: &StagedImport) -> Result<(), String> {
+    if staged.messages.len() > MAX_IMPORT_MESSAGES {
+        return Err(IMPORT_OVER_MESSAGE_BUDGET_NOTICE.to_owned());
+    }
+    let over_long = staged
+        .messages
+        .iter()
+        .filter(|message| message.body.char_count() > MAX_MESSAGE_CHARS)
+        .count();
+    match over_long > 0 {
+        true => Err(format!("{IMPORT_MESSAGE_TOO_LONG_NOTICE}（{over_long} 条超长）")),
+        false => Ok(()),
+    }
+}
+
 /// Parse a `soul-import-v1` JSONL file. Writes nothing.
 pub fn read_soul_import_v1(text: &str) -> Result<StagedImport, ImportFailure> {
     soul_import::soul_import_v1::parse(text)
@@ -182,5 +264,91 @@ impl ImportReceiptView {
             ties_rebuilt,
             notice: IMPORT_LOCAL_ONLY_NOTICE.to_owned(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! The budget arithmetic, on staged imports built by hand.
+    //!
+    //! The session tests exercise the same checks through `Session` with real
+    //! files; these pin the boundaries themselves — at the budget is allowed,
+    //! one past it is refused — without allocating a hundred-thousand-line
+    //! export inside a parser.
+
+    use soul_import::model::{ImportSource, ParticipantHandle, StagedImport, StagedMessage};
+    use soul_policy::injection::UntrustedText;
+    use soul_schema::common::Timestamp;
+    use soul_schema::contact::IdentifierKind;
+    use soul_schema::soul_import_v1::SenderScope;
+
+    use super::{
+        within_byte_budget, within_staged_budget, IMPORT_MESSAGE_TOO_LONG_NOTICE,
+        IMPORT_OVER_BYTE_BUDGET_NOTICE, IMPORT_OVER_MESSAGE_BUDGET_NOTICE, MAX_IMPORT_BYTES,
+        MAX_IMPORT_MESSAGES, MAX_MESSAGE_CHARS,
+    };
+
+    fn message_of(chars: usize) -> StagedMessage {
+        StagedMessage {
+            external_id: "m-1".to_owned(),
+            occurred_at: Timestamp::new("2026-01-01T00:00:00Z"),
+            sender: ParticipantHandle {
+                kind: IdentifierKind::Handle,
+                value: "someone".to_owned(),
+            },
+            conversation_id: "c-1".to_owned(),
+            group: false,
+            scope: SenderScope::ThirdParty,
+            body: UntrustedText::new("a".repeat(chars)),
+        }
+    }
+
+    fn staged_with(messages: Vec<StagedMessage>) -> StagedImport {
+        StagedImport {
+            source: ImportSource::SoulImportV1,
+            exported_at: None,
+            participants: Vec::new(),
+            messages,
+        }
+    }
+
+    #[test]
+    fn the_byte_budget_allows_the_boundary_and_refuses_one_past_it() {
+        let at_the_limit = "a".repeat(MAX_IMPORT_BYTES);
+        assert_eq!(within_byte_budget(&at_the_limit), Ok(()));
+        let mut over = at_the_limit;
+        over.push('a');
+        assert_eq!(
+            within_byte_budget(&over),
+            Err(IMPORT_OVER_BYTE_BUDGET_NOTICE.to_owned()),
+        );
+    }
+
+    #[test]
+    fn the_message_budget_allows_the_boundary_and_refuses_one_past_it() {
+        let at_the_limit = staged_with(vec![message_of(1); MAX_IMPORT_MESSAGES]);
+        assert_eq!(within_staged_budget(&at_the_limit), Ok(()));
+        let mut messages = at_the_limit.messages;
+        messages.push(message_of(1));
+        assert_eq!(
+            within_staged_budget(&staged_with(messages)),
+            Err(IMPORT_OVER_MESSAGE_BUDGET_NOTICE.to_owned()),
+        );
+    }
+
+    #[test]
+    fn a_body_at_the_character_limit_passes_and_one_past_it_is_counted_not_quoted() {
+        let at_the_limit = staged_with(vec![message_of(MAX_MESSAGE_CHARS)]);
+        assert_eq!(within_staged_budget(&at_the_limit), Ok(()));
+
+        let over = staged_with(vec![
+            message_of(MAX_MESSAGE_CHARS + 1),
+            message_of(2),
+            message_of(MAX_MESSAGE_CHARS + 1),
+        ]);
+        let refusal = within_staged_budget(&over).expect_err("two bodies are over");
+        assert!(refusal.contains(IMPORT_MESSAGE_TOO_LONG_NOTICE), "{refusal}");
+        assert!(refusal.contains("2 条超长"), "{refusal}");
+        assert!(!refusal.contains("aaa"), "a refusal must not quote the file");
     }
 }

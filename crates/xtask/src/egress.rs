@@ -424,9 +424,9 @@ pub fn scan_tree_for_urls_excluding(root: &Path, exempt_children: &[&str]) -> Re
         if !entry.file_type().is_file() || !is_scannable(entry.path()) {
             continue;
         }
-        let Ok(text) = std::fs::read_to_string(entry.path()) else {
-            continue; // binary or non-UTF-8; nothing quotable in it
-        };
+        let text = std::fs::read_to_string(entry.path()).with_context(|| {
+            format!("reading {} as UTF-8 for URL audit", entry.path().display())
+        })?;
         scan.files_scanned += 1;
         scan.hits.extend(find_url_literals(entry.path(), &text));
     }

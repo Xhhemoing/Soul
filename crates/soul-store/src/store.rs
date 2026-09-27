@@ -338,6 +338,12 @@ impl SqlCipherStore {
         let Some((wrapped, nonce)) = row else {
             return Ok(None);
         };
+        if nonce.len() != 24 {
+            return Err(StoreError::Backend(format!(
+                "content key {content_key_id} has a {}-byte wrapping nonce, expected 24",
+                nonce.len()
+            )));
+        }
         let aad = content_key_aad(content_key_id);
         let raw = self
             .kek_cipher()
@@ -1181,6 +1187,9 @@ impl BlobStore for SqlCipherStore {
         let Some((nonce, ciphertext)) = blob else {
             return Err(StoreError::BlobMissing(sealed.blob_id));
         };
+        if nonce.len() != 24 {
+            return Err(StoreError::SealBroken(sealed.blob_id));
+        }
 
         let aad = sealed.aad.as_deref().unwrap_or_default();
         XChaCha20Poly1305::new(Key::from_slice(key.expose()))

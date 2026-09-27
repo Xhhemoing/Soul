@@ -262,10 +262,16 @@ function Get-InstalledEntry {
                 $found = $properties.PSObject.Properties[$property]
                 if ($null -eq $found) { '' } else { [string] $found.Value }
             }
+            # NSIS stores this directory with one surrounding quote pair.
+            # Decode only the path field; uninstall command lines stay intact.
+            $installLocation = (& $read 'InstallLocation').Trim()
+            if ($installLocation.Length -ge 2 -and $installLocation.StartsWith('"') -and $installLocation.EndsWith('"')) {
+                $installLocation = $installLocation.Substring(1, $installLocation.Length - 2)
+            }
             return [pscustomobject]@{
                 Hive             = $root
                 DisplayName      = & $read 'DisplayName'
-                InstallLocation  = & $read 'InstallLocation'
+                InstallLocation  = $installLocation
                 UninstallString  = & $read 'UninstallString'
                 QuietUninstall   = & $read 'QuietUninstallString'
             }
@@ -318,12 +324,22 @@ function Invoke-SilentUninstaller {
         throw 'no uninstall.exe was found; the install directory has to be removed by hand'
     }
 
-    # _?= keeps the uninstaller in place so it can be waited on. Without it
-    # NSIS copies itself to the temp folder, returns immediately, and this
-    # script would check for a directory that is still being deleted.
+    # Run a temporary copy so the installed uninstall.exe is not locked when
+    # NSIS deletes it. _?= targets the real install directory and avoids the
+    # self-copy/relaunch path, letting Wait cover the actual uninstall work.
     $directory = Split-Path -Parent $uninstaller
-    Write-Host "  running: $uninstaller /S _?=$directory"
-    return (Start-Process -FilePath $uninstaller -ArgumentList @('/S', "_?=$directory") -Wait -PassThru).ExitCode
+    $runnerDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('soul-install-smoke-uninstall-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $runnerDirectory | Out-Null
+    $runner = Join-Path $runnerDirectory 'uninstall.exe'
+    try {
+        Copy-Item -LiteralPath $uninstaller -Destination $runner
+        Write-Host "  running: $runner /S _?=$directory (copy of $uninstaller)"
+        return (Start-Process -FilePath $runner -ArgumentList @('/S', "_?=$directory") -Wait -PassThru).ExitCode
+    } finally {
+        # Only this invocation's runner and now-empty scratch directory.
+        if (Test-Path -LiteralPath $runner) { Remove-Item -LiteralPath $runner -Force }
+        [System.IO.Directory]::Delete($runnerDirectory, $false)
+    }
 }
 
 # --- the store an uninstall must not touch ---------------------------------
@@ -412,36 +428,88 @@ function Invoke-HeadlessSmoke {
     $stdout = Join-Path $LogDirectory 'headless-stdout.json'
     $stderr = Join-Path $LogDirectory 'headless-stderr.txt'
 
-    $process = Start-Process -FilePath $Path -ArgumentList @('smoke') -NoNewWindow -PassThru `
-        -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    # Start-Process -PassThru + RedirectStandard* on PS 5.1 often leaves
+    # ExitCode $null after HasExited. Use ProcessStartInfo so the OS exit
+    # code stays available; never invent 0/1 from report.ok.
+    $utf8 = New-Object System.Text.UTF8Encoding $false
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $Path
+    $psi.Arguments = 'smoke'
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $psi.StandardOutputEncoding = $utf8
+    $psi.StandardErrorEncoding = $utf8
 
+    # Discover/autoload the monitor before a fast child can finish.
     $canWatch = $null -ne (Get-Command -Name 'Get-NetTCPConnection' -ErrorAction SilentlyContinue)
+    if (-not $canWatch) {
+        throw 'Invoke-HeadlessSmoke: Get-NetTCPConnection is unavailable; TCP observation is required (fail closed)'
+    }
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    if (-not $process.Start()) {
+        throw "Invoke-HeadlessSmoke: failed to start process: $Path"
+    }
+
+    $stdoutAsync = $process.StandardOutput.ReadToEndAsync()
+    $stderrAsync = $process.StandardError.ReadToEndAsync()
+
     $seen = [System.Collections.Generic.HashSet[string]]::new()
     $samples = 0
+    $watchFailure = $null
 
     while (-not $process.HasExited) {
-        if ($canWatch) {
+        try {
+            # Query the whole table: a valid empty per-process result must not
+            # be confused with a provider failure from a server-side PID filter.
+            $connections = @(Get-NetTCPConnection -ErrorAction Stop)
             $samples++
-            foreach ($connection in Get-NetTCPConnection -OwningProcess $process.Id -ErrorAction SilentlyContinue) {
+            foreach ($connection in $connections) {
+                if ($connection.OwningProcess -ne $process.Id) { continue }
                 if ($script:LoopbackAddresses -contains $connection.RemoteAddress) { continue }
                 if ($connection.State -eq 'Listen') { continue }
                 [void] $seen.Add("$($connection.RemoteAddress):$($connection.RemotePort)")
             }
+        } catch {
+            $watchFailure = $_
+            break
         }
         Start-Sleep -Milliseconds 20
+        $process.Refresh()
     }
+    # Even a failed observation must reap the child and preserve both streams.
     $process.WaitForExit()
 
+    $stdoutText = $stdoutAsync.GetAwaiter().GetResult()
+    $stderrText = $stderrAsync.GetAwaiter().GetResult()
+    [System.IO.File]::WriteAllText($stdout, $stdoutText, $utf8)
+    [System.IO.File]::WriteAllText($stderr, $stderrText, $utf8)
+
     $report = $null
-    if (Test-Path -LiteralPath $stdout) {
-        $text = Get-Content -LiteralPath $stdout -Raw
-        if (-not [string]::IsNullOrWhiteSpace($text)) {
-            $report = $text | ConvertFrom-Json
+    if (-not [string]::IsNullOrWhiteSpace($stdoutText)) {
+        try {
+            $report = $stdoutText | ConvertFrom-Json
+        } catch {
+            # Leave Report null so ExitCode and report.ok stay separate checks.
+            $report = $null
         }
+    }
+
+    if (-not $process.HasExited) {
+        throw "Invoke-HeadlessSmoke: process has not exited; ExitCode unavailable (fail closed); see $stderr"
+    }
+    # Process.ExitCode is Int32 once HasExited; do not derive from report.ok.
+    $exitCode = [int] $process.ExitCode
+    $process.Dispose()
+    if ($null -ne $watchFailure) {
+        throw "Invoke-HeadlessSmoke: TCP observation failed after $samples successful sample(s): $($watchFailure.Exception.Message); see $stdout and $stderr"
     }
 
     return [pscustomobject]@{
-        ExitCode            = $process.ExitCode
+        ExitCode            = $exitCode
         Report              = $report
         StdoutPath          = $stdout
         StderrPath          = $stderr
@@ -642,12 +710,12 @@ try {
 
     if ($smoke.WatchedByThisScript) {
         Assert-Finding -Phase 'smoke' -Check 'AC-21: Windows saw no non-loopback connection either' `
-            -Condition ($smoke.NonLoopbackPeers.Count -eq 0) `
+            -Condition ($smoke.Samples -gt 0 -and $smoke.NonLoopbackPeers.Count -eq 0) `
             -Detail "$($smoke.Samples) sample(s) of the TCP table; $($smoke.NonLoopbackPeers -join ', ')"
     }
     else {
-        Add-Finding -Phase 'smoke' -Check 'the TCP table watch' -Passed $true `
-            -Detail 'skipped; Get-NetTCPConnection is not available on this host'
+        Assert-Finding -Phase 'smoke' -Check 'the TCP table watch' -Condition $false `
+            -Detail 'Get-NetTCPConnection is not available on this host; observation is required'
     }
 
     foreach ($step in $smoke.Report.steps) {
@@ -692,6 +760,11 @@ finally {
                 Add-Finding -Phase 'uninstall' -Check 'soul.exe is gone' -Passed $gone `
                     -Detail $AppExecutable
                 if (-not $gone) { $exitCode = 1 }
+                $installDirectory = Split-Path -Parent $AppExecutable
+                $directoryGone = -not (Test-Path -LiteralPath $installDirectory)
+                Add-Finding -Phase 'uninstall' -Check 'the install directory is gone' -Passed $directoryGone `
+                    -Detail $installDirectory
+                if (-not $directoryGone) { $exitCode = 1 }
             }
 
             $stillListed = Get-InstalledEntry

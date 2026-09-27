@@ -1,55 +1,55 @@
 # 计划索引（30 秒定位权威文件）
 
-> 目标落位：`docs/PLAN_INDEX.md`。本页所有链接按该落位写成相对路径。
+核于 2026-09-27。本页只导航到当前仓库实际存在的权威文件；历史分支说明不作为当前进度。AI 开发先读项目级 [AGENTS.md](../AGENTS.md)，其职责是协作和执行导航，不是第二份产品规范。
 
-新来的人只需要这一页。**同一个事实只有一个权威文件**；下表左列以外的任何地方写到同一件事，都是复述，冲突时以左列为准。
+## 一、先读四份
 
-## 一、先读四份（按顺序，约 15 分钟）
-
-| # | 文件 | 它是什么的唯一权威 | 冻结标记 |
-|---|---|---|---|
-| 1 | [`PRODUCT_LOCK.md`](PRODUCT_LOCK.md) | 产品是什么、不是什么；v0.1 的 13 条垂直切片；砍/留；出网分级 E0/E1/L；不可协商约束 | `PLAN_FROZEN` |
-| 2 | [`DECISIONS.md`](DECISIONS.md) | 已拍板的选择（D1–D60）。想重开某个方向战，先在这里找它有没有被拍过 | `PLAN_FROZEN` |
-| 3 | [`algorithms/DECISION.md`](algorithms/DECISION.md) | 灵魂层算法：人脉 = T4D，特质 = A0，摘要 = A2 渲染器，A1 默认规则；常量表；as_of 纪律；已知代价；回退链 | `ALGO_FROZEN` |
-| 4 | [`FORMAL_WORK_PROMPT.md`](FORMAL_WORK_PROMPT.md) | Goal 1 怎么开工：工作包清单、实现者红线、**验收矩阵（唯一门禁）**。开工路径只认末尾的「开工第一动作」；中段「历史段」是作者开工原话的存档，**不是工作指令** | 随 `PLAN_FROZEN` |
+| 文件 | 唯一权威范围 |
+|---|---|
+| [PRODUCT_LOCK.md](PRODUCT_LOCK.md) | 产品边界、v0.1 十三条垂直切片、出网分级、不可协商约束 |
+| [DECISIONS.md](DECISIONS.md) | 已拍板的选择；本地门禁为 D61–D63，文档清理为 D64，平台定位为 D65，长期目标与并行规划为 D66–D67，受阻验收期间的预备支线边界为 D68 |
+| [algorithms/DECISION.md](algorithms/DECISION.md) | T4D、A0/A1/A2/A3、常量、as_of 纪律与回退链 |
+| [ACCEPTANCE.md](ACCEPTANCE.md) | Goal 1 验收矩阵、工作包、红线与关闭条件 |
 
 ## 二、按问题查
 
-| 你想知道 | 去哪 |
+| 问题 | 去哪 |
 |---|---|
-| v0.1 到底做不做某个功能 | `PRODUCT_LOCK.md`「v0.1 最小垂直切片」+「砍 / 留」 |
-| 某个决定为什么是这样 | `DECISIONS.md`（产品/工程）、`algorithms/DECISION.md` 第 4–5 节（算法代价与回退） |
-| 一件事算不算做完 | `FORMAL_WORK_PROMPT.md` 验收矩阵。**散文不作门禁**（D29）。问「Goal 1 整体算不算关闭」是另一回事：矩阵与 `PRODUCT_LOCK.md` 十三片切片必须同时过（D54） |
-| 现在到哪一步了、谁没合入 | `STATUS.md` |
-| 数据长什么样 | `schemas/`（十份正文 = 九份存储契约 + 一份导入契约，另有 `_defs` 与 `schemas.lock.json`）。`tie_strength` 收紧见 D58/D59 |
-| 接手时该不该重开 Goal 1 / 重派 planner | 不该。`FORMAL_WORK_PROMPT.md`「开工第一动作」；理由见 D49（唯一实现主干）与 `STATUS.md`。同文件「历史段」写于 Goal 1 开工之前，照做即重开第二条线 |
-| 判档阈值到底是多少 | 只有两处：`algorithms/DECISION.md` 第 3 节常量表（语义）与 `crates/soul-algo-tie` 常量模块（取值）。产品锁 / 拍板 / FORMAL / STATUS / README / PLAN_INDEX / SECURITY 只写常量名。`algorithms/COPY_ZH.md` 与 `REJECTED.md` 允许引用常量表已钉的数字（D60） |
-| 加密、密钥、遗忘、审计的规范 | `SECURITY.md` |
-| 关系强度为什么是这个档 | `algorithms/DECISION.md` 第 3 节；中文话术在 `algorithms/COPY_ZH.md`；被否决的候选在 `algorithms/REJECTED.md` |
-| Goal 1 的 DAG 与实现细节 | `origin/cursor/soul-goal1-7b1c:docs/GOAL1_PLAN.md`（只读对照，尚未合入 `main`） |
-| 已知阻塞 | `origin/cursor/blockers-analysis-a073:docs/BLOCKERS.md`（`BLOCKERS_FROZEN`）。**仍在 PR #6，尚未合入 `main`，本树也没有这份文件**；本计划 PR 不整份拷贝它。按 `STATUS.md` 的合入顺序，PR #6 在本 PR 之后合 |
-| Goal 2 | `GOAL2_POLISH_PROMPT.md`。Goal 1 关闭前不要打开 |
+| 现在到哪一步、还有哪些缺口 | [STATUS.md](STATUS.md) 顶部当前状态；历史段按当时日期阅读 |
+| v0.1 是否做某个功能 | [PRODUCT_LOCK.md](PRODUCT_LOCK.md) 的最小垂直切片与砍/留 |
+| 一件事怎样算完成 | [ACCEPTANCE.md](ACCEPTANCE.md)；矩阵与产品十三条切片同时满足 |
+| Goal 1 的实现拆分与依赖 | [GOAL1_PLAN.md](GOAL1_PLAN.md) |
+| 门禁怎么跑、哪个版本有证据 | [gates/README.md](gates/README.md) 与对应 SHA 的记录 |
+| Windows 真机要看到什么 | [作者手动清单](../scripts/author-manual-checklist.md) |
+| 数据契约 | [schemas/](schemas/) 正文与 schemas.lock.json |
+| 加密、密钥、遗忘、审计 | [SECURITY.md](SECURITY.md) |
+| 算法判档与中文话术 | [algorithms/DECISION.md](algorithms/DECISION.md)、[COPY_ZH.md](algorithms/COPY_ZH.md)、[REJECTED.md](algorithms/REJECTED.md) |
+| 长期目标、版本路线、个人/商业/研究如何并进 | [ROADMAP.md](ROADMAP.md)；含能力工作包、验证方法及多 agent 资源分配 |
+| Goal 2 具体派工、文件归属、依赖、测试与交付回执 | [GOAL2_PLAN.md](GOAL2_PLAN.md)；正式启动须满足前置条件，D68 独立质量预备支线不等于正式启动 |
+| 项目专用实现与只读评审角色、单写者热点、重构建调度 | [AGENTS.md](../AGENTS.md) 与 [.codex/](../.codex/)；任务卡和短交接留在会话或仓库外，不新增流程系统 |
+| 审查发现和修复证据 | [reviews/](reviews/)；局部修复回执不等于完整门禁通过 |
 
-## 三、仓库拓扑（读代码前先看这三行）
+## 三、仓库与验收状态
 
-- `main`：计划权威面 `docs/` + 冻结算法 crate `crates/soul-algo-tie`（T4D）、`crates/soul-algo-trait`（A0/A1/A2/A3）。**没有可安装的应用。**
-- `cursor/soul-goal1-7b1c`：Goal 1 实现主干（桌面壳、加密库、导入、图谱、记忆、审计、安装 smoke）。唯一实现线，尚未合回 `main`。
-- 计划冻结 ≠ Goal 1 关闭 ≠ `main` 已有应用。三件事在 `STATUS.md` 里分开写。
+- 本地主干记录 `8aae8f3` 已合入 M0-2 收敛，仓库包含核心与桌面实现；不再是只有计划和算法 crate。
+- M0-3 安装修复基线为 `95ff7d6`：继承 `1eb471a` / `e2fdf16`，新增注册路径解码、临时副本卸载及完整目录消失判定；隔离 G-W 与受控回归通过。实际安装首次失败、部分恢复仍有残留，见 [安装修复记录](gates/20260925-95ff7d6-win.md)。
+- D68 独立集成源码 `ebff0c9` 的完整 G-W 与补充检查已通过，见 [四包集成门禁记录](gates/20260925-ebff0c9-win.md)。此前记录的同源码 NSIS 外部证据目录当前缺失，不能代勾 G-M 0；真实安装/卸载按用户要求 `NOT RUN`，G-M / G-L 未齐，Goal 1、Q2-00、正式 Q2-05 与 Goal 2 均未关闭。
+- 根 Cargo workspace 与 `apps/desktop/src-tauri` 是两个独立 workspace。根目录测试不覆盖桌面壳。
+- 计划冻结、代码实现、平台门禁通过、Goal 1 关闭分别记录。旧版本的绿不能替代当前版本的证据。
+- 本轮按用户指示暂时跳过 Linux 门禁；这不是豁免 Goal 1 的 G-L 关闭条件。
 
-## 四、不是权威（别拿它当依据）
+## 四、历史材料的边界
 
-- `.agent_workspace/**`：过程材料（扫描轮次、探针、子代理草稿）。**任何权威结论必须落到 `docs/`**；`.agent_workspace/context/plan/` 已不再是权威面。
-- `scan-rounds/**`：历史仲裁记录。解释「为什么」，不定义「是什么」。
-- [`PLAN_VERIFY_PROMPT.md`](PLAN_VERIFY_PROMPT.md)：**一次性提示词，已执行完毕**（三轮双模型扫描，结论 `PLAN_FROZEN`，落盘在 `scan-rounds/`）。存档以便追溯当时的风险清单，**不要当新工单重跑**。
-- `FORMAL_WORK_PROMPT.md` 的「历史段」：作者开工原话，`CreateGoal：Goal 1` 与派 planner 都已执行过。可执行路径只有同文件的「开工第一动作」。
-- 第二份 `PRODUCT.md`：**禁止存在**（D27）。看到就删。
+D64 已移除 FORMAL_WORK_PROMPT、GOAL2_POLISH_PROMPT、PLAN_VERIFY_PROMPT 与扫描流程材料。当前验收和规划使用本页所列文件，不恢复这些旧入口。
+历史分支、临时探针、过程草稿可以解释由来，不能替代当前源码与门禁结果。
 
-## 五、改这些文件的规矩
+## 五、改动规则
 
-| 想改 | 前置 |
+| 改动 | 前置 |
 |---|---|
-| 产品方向 | 先改 `PRODUCT_LOCK.md`，并在 `DECISIONS.md` 追一条 |
-| 算法判档 | 只走 `algorithms/DECISION.md` 第 5 节回退链，`DECISIONS.md` 留痕。禁止为 F04c 加第三道门 |
-| 验收矩阵 | 只增不删已通过的门禁；新增行写清 Given/When/Then 与「谁跑」。行文里只准出现夹具身份的数字，不准复述判档阈值（红线 11） |
-| 工作包 | 只减不增（D30）。WP12 保持删除 |
-| `schemas/**` | 同一 PR 里重算 Goal 1 的 `schemas.lock.json`，并说明对已落库数据的影响 |
+| 产品方向 | 先改 PRODUCT_LOCK，在 DECISIONS 追记 |
+| 算法判档 | 按 algorithms/DECISION 的回退链，DECISIONS 留痕；不另设阈值 |
+| 验收矩阵 | 不删已通过项；新增项写清 Given / When / Then 与执行者 |
+| 工作包 | Goal 1 冻结包只减不增，WP12 保持删除；后续 Q2/能力包独立编号，不追加到 Goal 1 验收 |
+| schemas | 同批更新 schemas.lock.json，并说明对已落库数据的影响 |
+| 合并 | 遵守 D63；本次跳过某平台不等于该平台通过 |

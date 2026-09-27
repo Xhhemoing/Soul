@@ -12,12 +12,12 @@ use soul_schema::common::{
 };
 use soul_schema::event::{EventKind, EventSource, SoulEvent};
 use soul_schema::memory::{ForgetState, MemoryType, SoulMemory};
-use soul_store::{KeyProvider, TestKeyProvider};
+use soul_store::{DpapiKeyProvider, KeyProvider, TestKeyProvider};
 use soul_store_api::forget::ForgetUnit;
 use soul_store_api::research::ResearchPreviewRequest;
 use soul_store_api::types::{SealRequest, StoreError};
 use soul_store_api::{BlobStore, EventStore, MemoryStore, SoulStore};
-use soulcore::commands::session::Session;
+use soulcore::commands::session::{Session, KEY_BLOB_FILE_NAME};
 use soulcore::commands::store as store_commands;
 use uuid::Uuid;
 
@@ -120,11 +120,20 @@ fn a_database_from_a_newer_build_leaves_the_session_without_a_store_and_says_why
     drop(first);
 
     // The stamp a Soul several schemas ahead would have left behind, written
-    // under the key material this machine's session uses.
-    let dek = TestKeyProvider::in_dir(&directory)
-        .database_key()
-        .expect("the developer key file the session just created")
-        .to_hex();
+    // under the key material this machine's session uses. Session picks DPAPI
+    // on Windows and the developer key file elsewhere — planting with the
+    // other provider opens an undecryptable file (NotADatabase), not a stamp.
+    let dek = if cfg!(windows) {
+        DpapiKeyProvider::new(directory.join(KEY_BLOB_FILE_NAME))
+            .database_key()
+            .expect("the DPAPI key blob the session just created")
+            .to_hex()
+    } else {
+        TestKeyProvider::in_dir(&directory)
+            .database_key()
+            .expect("the developer key file the session just created")
+            .to_hex()
+    };
     let conn = rusqlite::Connection::open(store_commands::database_path(&directory))
         .expect("open the database file directly");
     conn.execute_batch(&format!("PRAGMA key = \"x'{dek}'\";"))

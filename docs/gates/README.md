@@ -1,20 +1,29 @@
 # docs/gates/ — 本地门禁记录
 
-> 依据 DECISIONS **D50–D52**：本项目没有 hosted CI（GitHub Actions 已关闭，`ci.yml` 已删）。
+> 依据 DECISIONS **D61–D63**：本项目没有 hosted CI（GitHub Actions 已关闭，`ci.yml` 已删）。
 > 所有质量门禁在作者控制的机器上本地运行，证据落在这个目录。
-> 合到 `main` 或 Goal 分支的每个 sha 都必须有对应记录；没有记录的提交不合（D52）。
+> 合到 `main` 或 Goal 分支的每个 sha 都必须有对应记录；没有记录的提交不合（D63）。
 
 ## 三道门
 
 | 门 | 在哪跑 | 命令 | 覆盖 |
 |---|---|---|---|
-| **G-L** | Linux 开发机（D51：本项目指定的 Linux 门禁机，4 vCPU / 3.9 GB） | `just ci-full` | lint / schema / e0 / denylist / fixtures-verify / `cargo test --workspace --all-targets` / smoke-lint / sbom / ui-lint / ui-test / `cargo deny check` / `cargo deny list` |
-| **G-W** | 作者 Win11 真机 | `pwsh -File scripts/gate-win.ps1` | `cargo test --workspace --all-targets`（含 SQLCipher、DPAPI）/ 桌面壳 `--all-targets` / 前端 bundle / release 二进制 / `soul.exe` 内嵌 `asInvoker` / `install-smoke.ps1 -SkipInstall` |
+| **G-L** | Linux 开发机（D62：本项目指定的 Linux 门禁机，4 vCPU / 3.9 GB） | `just ci-full` | lint / schema / e0 / denylist / fixtures-verify / `cargo test --workspace --all-targets` / smoke-lint / sbom / ui-lint / ui-test / `cargo deny check` / `cargo deny list` |
+| **G-W** | 作者 Win11 真机 | `pwsh -NoProfile -File scripts/gate-win.ps1` | `cargo test --workspace --all-targets`（含 SQLCipher、DPAPI）/ 桌面壳 `--all-targets` / 前端 lint、test、bundle / release 二进制 / `soul.exe` 内嵌 `asInvoker` / `install-smoke.ps1 -SkipInstall` |
 | **G-M** | 作者 Win11 真机 | `scripts/author-manual-checklist.md` | `tauri build`、真装真卸、托盘、UAC、进程名、WebView2 抓包、真机采集（没有任何自动化能替） |
+
+G-W 的 Windows TCP 观察必须记录至少 1 次成功查询且未观察到该子进程的非回环连接；监测器缺失或任一次查询报错必须失败，不能记成 skipped success。`0 sample(s)` 不是观察通过；旧脚本即使打印 green，也不能用该行补齐 AC-21。TCP 表轮询不覆盖 UDP，也不替代 G-M 的 WebView2 出网观察。
 
 不在 G-L 里的：桌面壳 mock-runtime 测试（`just desktop-shell-test`：`ipc_roundtrip` / `command_surface` / `no_egress_path`）需要 webkit2gtk 开发库，门禁机没有也装不了（无 sudo）。G-W 的 `desktop-test --all-targets` 覆盖同一批文件；有 GUI 栈的 Linux 机器跑了也写进记录。
 
 哪些改动必须带 G-W：`apps/desktop/**`、`crates/soul-collect/src/windows.rs`、`crates/soul-win-dpapi/**`、`installer-hooks.nsh` / `tauri.conf.json`。
+
+## 开发反馈与正式验收
+
+- 定向 crate、前端单文件或脚本受控测试是开发反馈，不自动获得 G-L/G-W 结论。正式门禁和人工观察仍按 D61–D63，项目协作分工见 [AGENTS.md](../../AGENTS.md)。
+- 同时只安排一份完整构建/门禁/打包；由集成人协调，不能靠多个 agent 各自跑全套争抢同一机器。不要全局覆盖 `CARGO_TARGET_DIR`，当前 G-W 仍按固定 root/desktop target 路径读取产物。
+- 传入 `-SkipWorkspaceTests` 是局部复跑；无论脚本末尾如何着色，都不能记录为完整 G-W 通过。逐项记录 SKIPPED / NOT RUN 与原因，不能沿用旧源码绿灯补齐。
+- 原始日志和执行结果是证据；摘要不代替实际运行。源码、依赖或脚本变动后重新确定候选和必要验证，不用更新记录中的 SHA 代替重测。
 
 ## 命名规则
 
@@ -66,7 +75,7 @@ sha7 是跑门禁时 `git rev-parse --short=7 HEAD`。工作区不干净就先�
 
 ## G-W 记录模板
 
-`scripts/gate-win.ps1` 跑完会把结果表打印出来，贴进来即可；再补环境表与手动节：
+`scripts/gate-win.ps1` 跑完会把结果表打印出来；核对实际执行范围、退出码和跳过项后记录，再补环境表与手动节。绿色文字本身不是完整验收证明：
 
 ```markdown
 # G-W 门禁记录 — <yyyy-mm-dd> — <sha7> — win
@@ -96,6 +105,12 @@ sha7 是跑门禁时 `git rev-parse --short=7 HEAD`。工作区不干净就先�
 ```
 
 ## 已有记录
+
+- [20260925-ebff0c9-win.md](20260925-ebff0c9-win.md) — 四包独立集成 G-W 执行通过：根1052、桌面88、前端202；现存集成证据独立规格/质量PASS。此前记录的同源码 NSIS 外部证据目录当前缺失，G-M 0 不计通过；真实安装/卸载跳过、G-L暂缓、G-M 0–7未完成。
+
+- [20260925-95ff7d6-win.md](20260925-95ff7d6-win.md) — 安装修复的隔离 G-W 与独立受控回归通过；首次真实安装失败、恢复有残留，真实 NSIS 副本验证被执行审核阻断。G-M 未完成、G-L 暂缓。
+
+- [20260924-e2fdf16-win.md](20260924-e2fdf16-win.md) — 该历史固定源码的 G-W、NSIS / 打包后 smoke 通过；后续安装与修复状态见 9 月 25 日记录。
 
 - `20260904-6f6a259-linux.md` — G-L 绿（含 deny-list）；无 G-W
 

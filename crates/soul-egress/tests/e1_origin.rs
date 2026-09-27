@@ -281,6 +281,47 @@ fn a_reply_under_the_cap_still_comes_back_whole() {
     );
 }
 
+/// A syntactically valid HTTP response is not a successful model answer just
+/// because its body arrived. The status is part of the wire contract, and the
+/// endpoint-controlled body must not be copied into the error that reaches
+/// logs or callers.
+#[test]
+fn non_success_statuses_are_errors_without_exposing_their_bodies() {
+    const BODY: &str = "upstream secret: account 12345 is rate limited";
+    for (status, reason) in [
+        (302, "Found"),
+        (429, "Too Many Requests"),
+        (503, "Service Unavailable"),
+    ] {
+        let endpoint = StatusEndpoint::start(status, reason, BODY);
+
+        let guard = NetGuard::new(
+            EgressConfig::with_user_endpoint(&endpoint.base_url()).expect("the user's endpoint"),
+        );
+        let permit = guard
+            .authorize_e1(&format!("{}/v1/chat/completions", endpoint.base_url()))
+            .expect("permit");
+        let error = refusal(&E1RequestPlan::chat_completions(
+            permit,
+            MODEL,
+            default_body(),
+        ));
+
+        assert!(
+            matches!(
+                error,
+                EgressError::HttpStatus {
+                    status: actual_status,
+                    body_len,
+                } if actual_status == status && body_len == BODY.len()
+            ),
+            "expected status {status} and the body length only, got {error:?}",
+        );
+        assert!(!error.to_string().contains(BODY));
+        assert!(!format!("{error:?}").contains(BODY));
+    }
+}
+
 /// The case the cap exists for, and the only one that tells a bounded read
 /// apart from a read that finishes and then complains about the size.
 ///
@@ -329,6 +370,57 @@ fn refusal(plan: &E1RequestPlan) -> EgressError {
             response.status,
             response.body.len(),
         ),
+    }
+}
+
+/// A one-shot loopback endpoint for status handling at the actual HTTP wire.
+#[derive(Debug)]
+struct StatusEndpoint {
+    addr: std::net::SocketAddr,
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+
+impl StatusEndpoint {
+    fn start(status: u16, reason: &'static str, body: &'static str) -> StatusEndpoint {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind loopback");
+        let addr = listener.local_addr().expect("the bound address");
+        let worker = std::thread::spawn(move || {
+            let Ok((mut socket, _)) = listener.accept() else {
+                return;
+            };
+            let timeout = Some(std::time::Duration::from_secs(10));
+            let _ = socket.set_read_timeout(timeout);
+            let _ = socket.set_write_timeout(timeout);
+
+            let mut request = [0u8; 1024];
+            if socket.read(&mut request).is_err() {
+                return;
+            }
+            let response = format!(
+                "HTTP/1.1 {status} {reason}\r\ncontent-type: text/plain\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len(),
+            );
+            let _ = socket.write_all(response.as_bytes());
+        });
+
+        StatusEndpoint {
+            addr,
+            worker: Some(worker),
+        }
+    }
+
+    fn base_url(&self) -> String {
+        format!("http://127.0.0.1:{}", self.addr.port())
+    }
+}
+
+impl Drop for StatusEndpoint {
+    fn drop(&mut self) {
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
     }
 }
 

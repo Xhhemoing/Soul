@@ -2,6 +2,51 @@
 
 单一事实来源。每项工作完工必须更新本文件。
 
+## 当前状态（2026-09-27）
+
+- **Wave1（issue #61）P1「输入与网络」两项已实现，改动在工作区未提交：** 在计划合入提交 `c964c71` 之上，导入侧加入输入预算（64 MiB / 100 000 条 / 65 536 字符；`soulcore::commands::import` 里的常量与 `within_byte_budget` / `within_staged_budget`，Session 四条 preview/commit 入口先查字节再解析、解析后查暂存预算，拒绝一律 `ROUTINE`，超长只报条数不引原文）；IPv6 origin 规范化（`soul-policy` 的 `Origin` 主机去括号存储，`Display` 对含冒号主机补括号使其可重新解析，裸 IPv6 authority 以 `OriginError::UnbracketedIpv6` 拒绝并说明写法，而不是在最后一个冒号误拆主机和端口）。UI 侧 `/import` 在读文件前按同一字节预算拒绝——这是第一处屏侧拒绝，理由：把 64 MB 读进 WebView 再送去核心拒绝会让预算失去意义；句子与数字是 `core.ts` 运行时常量，由 `contract.test.ts` 与 Rust 侧钉成同一份。计划里 P0 两组（#62 撤权三阶段、#63 遗忘结果语义）本轮未动：它们要重构 `session.rs` 的执行模型，而本机跑不了任何 cargo 测试（见下条），在无法配套测试的前提下不启动重构；「出网前脱敏失败即拒绝」为既有行为，本轮未触碰。
+- **本轮验证不对称，Rust 侧全部未运行：** 前端本机全绿——`pnpm install --frozen-lockfile`、`pnpm --filter @soul/desktop lint`、测试 15 文件 / **222 项**（219 基线 + 3 新增）、`NODE_ENV=production` build 通过；`Import.race.test.tsx` 的 `vi.mock("../core")` 工厂改为先展开 `importOriginal` 再覆盖四个函数，否则核心新常量在 mock 下是 undefined。本沙箱装不上 Rust 工具链（rustup / apt / crates.io 全被网络策略挡住），所有 Rust 改动只做了静态复查（导入路径与依赖、rustfmt 行宽与括号内排序、`xtask` e0-audit 的 URL 扫描规则——`net_guard.rs` 文档注释里的示例已按扫描器规则改写）。接手的门禁机至少要跑：两套 `cargo fmt --check`、clippy、`soul-policy` 与 `soulcore` 全部测试（含新增 `net_guard` 3 项、`import.rs` 单元测试、`session_import.rs` 预算 2 项）、`just e0`（`cargo run -p xtask -- e0-audit`）；IPC 层预算用例未写（要能编译桌面壳才有意义），与 `apps/desktop` 改动一起归 G-W。未提交、未推送，不代表任何门禁通过。
+- **本地分支收敛：** `codex/branch-convergence-20260927` 的 `f1674572a396b30c0018564b550949c5523525f3` 合并了既有 Q2 预备支线与优化提交 `d0430bb135d43d6363bd4f5101ca190a723fad08`；`Import.tsx` 的唯一冲突保留已暂存格式/正文/预览的代次保护、同文件重选与等待提示。按用户本轮“无需测试，先同步代码”指示，没有对这个合并 SHA 运行新测试或完整 G-W/G-L；它是非主干代码同步，不代表 Goal 1/Goal 2 关闭或正式验收。
+- **本轮优化起点：** `codex/m0-3-closeout-20260924` 的 `12dcb2b04b3eb3084e7f693e10c61ce3fad9b7b8`。代码优化与工作区调整的局部修改、运行范围见 [代码检查报告](2026-09-27_code-review-soul-report.md)；后续提交或合并生成的新 SHA 不继承旧版完整 G-L/G-W 或发布验收结果。
+- **项目专门化：** 新增 [AGENTS.md](../AGENTS.md)、项目级 [.codex 配置](../.codex/config.toml) 与实现/只读评审角色；沿用唯一产品权威、最多两名写者、一个重构建通道。任务卡留在会话或仓库外，不引入附件工具包或新的 hash/contract/baseline/gate。
+- **验收义务：** [ACCEPTANCE](ACCEPTANCE.md) 已从所注明历史版本补回 AC-28–34，保留 Given/When/Then；这是条目恢复，不是通过证明。Goal 1 与正式 Goal 2 仍未关闭，Linux 暂缓、真实 NSIS 与人工清单仍按既有指示处理。
+- **本次调整核验：** 本机配置读取返回项目层启用、子 agent 上限 3；指令渲染发现根 AGENTS；3 份 TOML 解析与字段断言通过。历史 AC-28–34 的 7 行仅执行方变化，原 AC-01–26 的 26 行未变；活动相对链接与 `git diff --check` 通过；独立 AI 只读评审未发现本次范围内 P1/P2。未启动模型会话验证两个角色的实际沙箱，也未运行产品测试或 G-L/G-W/G-M。严格全局配置检查被已有全局旧字段阻断，本次未修改全局配置；以上项目层读取成功不等于全局严格检查通过。
+
+### 已有平台证据（2026-09-25，按所标源码版本阅读）
+
+**独立质量预备四包已完成；Q2-03 的 commit/rebuild 成本分解补充测量已完成；集成源码 `ebff0c9` 的完整 Windows G-W 与补充检查执行通过，相关源码与证据均已独立审查。Goal 1 与正式 Goal 2 未关闭。** 最新门禁结果见 [四包集成门禁记录](gates/20260925-ebff0c9-win.md)；Q2-03 诊断补充见 [Goal 2 执行登记](GOAL2_PLAN.md#q2-03-commitrebuild-成本分解回执)；首次实际安装失败、部分恢复与未验收项继续保留在 [安装修复记录](gates/20260925-95ff7d6-win.md)。以下当前状态优先于后文历史记录。
+
+- 收尾源码提交 `95ff7d64b47021360b849b58fe2bce6797486f4b`；继承质量修复 `1eb471a` 与 TCP 查询错误修复 `e2fdf16`。本轮增加 `InstallLocation` 外围引号解码、临时副本卸载与完整安装目录消失判定；未改产品运行时代码、依赖、schema 或 IPC。
+- **安装修复基线 `95ff7d6` 的 G-W：隔离复验通过。** 134 个根测试程序 / **1044 项**、7 个桌面测试程序 / **88 项**通过，0 失败/忽略；Rust 编译告警 0。release / asInvoker / smoke 通过，smoke **15 项、TCP 成功样本 1 次**。原工作树首次运行因外部规划文件进入工作区而被外围校验拒绝，原始失败边界保留；后续隔离复验前后源码与工作树均干净。
+- 安装修复基线补充检查：两套 Cargo fmt、schema/E0/禁词、前端 lint 及 **14 文件 / 191 项**前端测试通过。两项安装修复的受控回归 **9 + 3 场景**、Cargo wrapper **16/16**通过；独立代码审查 PASS。手动清单的 TCP 示例另经独立 **10 场景**验证，但未代替实际人工观察。
+- **NSIS / G-M 0：作者手动 NOT RUN，自动打包记录当前不可复核。** 此前记录称 `ebff0c9` 同源码构建及配对 `-SkipInstall` 成功，但所列外部证据根 `D:/Soul-q2-package-evidence-20260925/` 与产物、日志、审查回执当前均不存在；本轮复核未找到替代保存位置。因此不保留 G-M 0 PASS，不把历史哈希或代理构建当作者手动证据。G-W 的现存日志与审查回执不受此缺口影响。
+- **G-M：未完成。** 9 月 25 日实际安装流程退出 1：安装器与 HKCU 注册成功，但带引号路径使后续验证和卸载失败，未完成安装后 smoke。恢复删除了主程序及注册项，合成数据见证哈希不变；安装目录仍留有 `uninstall.exe`，不能称清洁卸载。09:52 复核无 Soul 进程或卸载项，数据目录为空。
+- **真实修复验证：按用户要求跳过，NOT RUN。** 自动执行审核拒绝运行真实 NSIS 卸载器临时副本，仅返回 `blocked by policy`，未提供具体原因；该操作未执行，未绕过。用户随后明确要求“记录并跳过这里，继续完成其他部分”；本轮不再重试该操作，不把它作为其他独立工作的前置条件，保留未验收结论与残留事实。受控合成回归与 `-SkipInstall` 不能替代完整安装/卸载或作者的托盘、UAC、标准账户、GUI/WebView2 流量与前台采集观察。
+- **G-L：按用户 2026-09-24 指示暂缓。** 当前版本没有 G-L 或本轮依赖漏洞数据库检查证据；暂缓不豁免 Goal 1 关闭条件。
+- WP01–WP11、WP13 与 DPAPI 的既有产品实现继续保留。文件整理仍仅只读预览，AC-27 执行/撤销仍属 v0.1.1；未签发 Q2-00 正式启动回执；独立质量预备支线按 D68 执行。外部规划改动未纳入此前收尾提交；未推送或合并，另一收尾工作树未修改。
+
+本轮进展：`ebff0c9` 四包集成、同源码 G-W 与独立审查已完成；Q2-03 在独立提交 `5dd8e4c` 上完成 commit/rebuild 粗粒度成本分解，确认所测四组中 import command（含审计）是 transaction 最大的中位数组成，未修改产品或宣称优化收益。打包证据复核发现外部证据目录缺失，G-M 0 已恢复为作者手动 NOT RUN。Import 原生 debug 主路径已经补充观察，busy 瞬态与真实辅助技术播报仍为 `NOT OBSERVED`；正式目标仍缺同源码 G-L、G-M 0–7 及安装版受影响观察。回执见 [GOAL2_PLAN.md](GOAL2_PLAN.md#7-本轮执行登记)。真实 NSIS 安装/卸载保持用户要求跳过，Linux 保持暂缓，人工项不代勾；恢复相应验收时仍需同一源码与实际观察。满足 [Goal 1 关闭条件](ACCEPTANCE.md#goal-1-关闭条件) 后才能关闭 Goal 1。
+
+## 独立质量预备支线（D68，2026-09-25）
+
+- **Q2-02 已提交 `ba26078`（隔离分支，已纳入独立集成候选，未推送/合并）。** 修复导入等待期间格式错配、取消后同文件无法重选，并补可读等待状态；11 个新 UI 用例，目标 24/24、全前端 15 文件/202 项、lint/build 均通过。独立规格与质量审查 PASS，reviewer 重跑目标与 lint 通过；回执见 [GOAL2_PLAN](GOAL2_PLAN.md#q2-02-预备回执2026-09-25)。固定 `ebff0c9` 的原生 debug 主路径随后补证：主预览、取消与同文件重选、键盘确认、双 Enter 单回执和 Telegram 警报拒绝均按预期；busy 与真实辅助技术播报未观察，详见 [原生 Import 补充观察](GOAL2_PLAN.md#q2-02-原生-import-补充观察2026-09-25)。
+- **Q2-01 已提交 `9cf9890`（隔离分支，已纳入独立集成候选，未推送/合并）。** 仅新增核心连续性4项测试（含11组三路模板对照）；新增4/4、关联15+9项与fmt通过，独立规格/质量PASS，reviewer重跑目标与fmt通过。没有确认产品缺陷；首跑1项UUID测试输入错误及原始日志保留。
+- **Q2-03 预备包 `739073f` DONE；成本分解补充 `5dd8e4c` DONE（隔离分支，未推送/合并）。** 原包在固定干净提交上完成四组 1k/10k 消息 × 10/100 peer、每组 1 次热身 + 5 次正式采样。补充提交只修改 `q2_scale.rs`，保留 Session 路径，并用第二个 fresh SQLCipher 库把 transaction 粗分为 parse、import command（含审计）、graph command（含审计）与 residual；产品代码、schema、IPC、依赖和 gate 均未改。TDD 红灯后普通测试 2 通过 / 1 ignored，关联 4 + 13 项与 fmt 通过；规格 PASS，质量初审发现饱和运算和 `independent_samples` 两项 Important，修复为 checked 失败与 `fresh_databases_per_trial` 后复审 PASS。固定 `5dd8e4c` 的 4 热身 / 20 正式样本显示 transaction 中位数 235.9423 / 254.3578 / 3021.5983 / 3202.7705 ms；import 的 ratio-of-medians 为 58.37%–66.33%，graph 为 19.27%–28.59%，residual 为 10.30%–13.79%。独立 reviewer 重算 56 组三元组 / 168 个统计值及 24 条 residual，全部匹配。比例来自各阶段中位数分别除以 transaction 中位数，不保证相加为 100%；单机 test profile、OS 缓存与运行期资源负载未控制，每组仅 5 次，不给 p95、硬件门槛、复杂度或优化收益。
+- **Q2-04 已提交 `8cd293f`，预备包 DONE。** 仅新增 `q2_recovery.rs` 三条 Session 连续轨迹；新增3/3、关联27+1+11与fmt通过。独立规格/质量 PASS，reviewer重跑42项与fmt通过。前两次是合成数据双self、NFD/NFC预期错误，仅修测试输入/预期，未发现产品缺陷。
+- **独立集成源码 `ebff0c9` 自动验证通过。** 完整 G-W 根137个测试程序/1052项通过、1显式规模测量ignored；桌面7个测试程序/88项通过；前端15文件/202项、两套fmt、xtask all、lint、bundle、release/asInvoker与15项smoke均通过。TCP成功样本1；Rust compiler warnings0，不等于所有工具无告警。11:45:04–11:58:35（UTC+08），810.95秒；源码前后固定且干净，现存原始日志/产物哈希与审查回执可复核，集成源码与 G-W 证据独立规格/质量PASS。五个源码文件仅Import有产品修复；Import 原生 debug 主路径已补证，但 busy / 真实辅助技术与安装版观察未完成。后续打包的外部证据当前缺失，G-M 0 不计通过，真实安装/卸载仍跳过、G-L暂缓，不改变关闭结论。
+
+## 规划进展（2026-09-25）
+
+- **VAL-01 设计已完成，执行未启动。** [ROADMAP 7.2](ROADMAP.md#72-首轮个性化试验) 已按当前真实起草路径固定 T1 本机语气骨架、T2 默认占位端点、T3 一次性原文端点，补齐 A/B/C 成对盲评、反馈字段、指标分母、用途许可、缺失/撤回、截止和安全暂停规则；[Goal 2 交接](GOAL2_PLAN.md#val-01-评测适配交接非-q2-关闭包) 状态为 `DESIGN READY / EXECUTION BLOCKED_BY_GOAL1_AND_Q2-00`。Q2-01 仍只是合成接线证据，不填写偏好或效用结果。本项只改规划文档；未新增产品 UI、IPC、schema、遥测、gate 或评测代码，未运行模型、未生成样本，VAL-02/03 仍未启动。
+- **RES-01 已完成。** [字段、用途许可与研究问题矩阵](reviews/2026-09-25-res-01-data-permission-matrix.md) 在文档 HEAD `825b0f1` 上审查实现版本 `ebff0c9`；对收据列出的研究预览、许可、schema 与测试路径作两个提交树之间的内容比较，结果无差异，但这不表示祖先关系或整树等同。结论区分技术准入与独立研究许可：事件仅有 owner/self + bucket 聚合候选可发布；档案轴由实现直接合成 Owner + Bucket，未读取 axis/evidence 研究许可；`duration_bucket` 当前无生产路径；`ResearchPreview` consent 已定义但 Session 入口未核验。没有覆盖/在线状态和有效时长分母，RES-03 维持数据不足且不启动。本项只改文档，不改产品代码、schema、IPC、许可逻辑、PRODUCT_LOCK、Goal 1 验收或既有 gate。
+- 按作者要求，将个人数字分身、商业产品、人格与行为建模研究共同纳入 [ROADMAP.md](ROADMAP.md)，并把 [GOAL2_PLAN.md](GOAL2_PLAN.md) 细化为可由多 agent 分工的近期工作包。D66–D67 记录方向与协作口径。
+- 规划部分已写明目标、依赖、文件归属、共享接口、验收和失败处理；其后按 D68 执行独立质量预备支线，实际产品修复与门禁结果以上方“独立质量预备支线”为准。Goal 1 与正式 Goal 2 仍未关闭。
+- 规划开始时的安装 smoke 及其测试改动由原收尾工作流提交为 95ff7d6（2026-09-25）；e2fdf16 的旧证据不覆盖该源码变更。后续 95ff7d6 与 ebff0c9 的独立验证分别见顶部链接的两份 9 月 25 日记录。
+
+## 历史实施记录
+
+以下保留原日期、原分支与当时的验证数字用于追溯，不能据此判断当前 HEAD 已通过或仍受 hosted CI 账单阻塞。
+
 核于 2026-08-26。本树是 Goal 1 关闭线 `cursor/goal1-closeout-c49c`，已 merge `origin/main` @ `a0ec14b`（M2）。T4D/A0/A2 已走产品路径：`TieEdgeView` 带 `venue_split_measured` / `direct_count` / `group_count`，图上同屏报一对一与群里两个数（分列缺席则整句不出）。`Session::correct_tie` 锁边后 A2 只消费生效档。AC-34 Telegram owner 群消息不扇出。`COMMANDS` 含 `correct_tie` / `release_tie`。本机 `cargo test --workspace --all-targets` 与 `pnpm --filter @soul/desktop test`（164）绿。**作者 Win11 清单与 hosted AC-26（私库 Billing）仍未过，不在代理解的范围内。** 不要启动 Goal 2，不要做 AC-27。
 
 ## 当前里程碑

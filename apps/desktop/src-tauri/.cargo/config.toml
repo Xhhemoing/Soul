@@ -1,4 +1,4 @@
-# The workspace is pinned to Rust 1.83 (see ../../../rust-toolchain.toml), and
+﻿# The workspace is pinned to Rust 1.83 (see ../../../rust-toolchain.toml), and
 # most of the Tauri dependency tree has moved past it. This tells cargo to
 # resolve to the newest version of each crate that still declares a compatible
 # `rust-version`, which is what produced the committed Cargo.lock.
@@ -10,7 +10,14 @@
 #   cargo +1.83 check --locked --all-targets
 #
 # `just desktop-check` runs the second line. Regenerating the lock on 1.83
-# alone will fail on a dependency that needs edition 2024 — that is the
+# alone will fail on a dependency that needs edition 2024 â€” that is the
 # resolver picking versions this toolchain cannot read, not a broken manifest.
 [resolver]
 incompatible-rust-versions = "fallback"
+
+# Transitive pin note (M0-3): tao→dlopen2 0.8.1+ / dlopen2_derive 0.4.2+ declare
+# an MSRV Cargo's fallback treats as 1.83-compatible, but their manifests use
+# edition2024 which Cargo 1.83 cannot parse. Keep the lock on dlopen2 0.8.0 +
+# dlopen2_derive 0.4.1 (cargo +stable update -p … --precise …) after any
+# generate-lockfile.
+

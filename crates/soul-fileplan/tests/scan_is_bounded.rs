@@ -200,3 +200,80 @@ fn a_limit_of_zero_collects_nothing_and_admits_it() {
         "an empty view of four files is not the same as four files",
     );
 }
+
+#[test]
+fn skipped_names_consume_the_entry_budget() {
+    let folder = Folder::flat(0);
+    for index in 0..80 {
+        std::fs::write(
+            folder.path().join(format!("skip-\u{0085}-{index:03}.txt")),
+            "x",
+        )
+        .expect("write a name the planner must skip");
+    }
+    let scan = soul_fileplan::scan::scan(&folder.authorization(), &folder.raw(), limits(5))
+        .expect("a bounded scan");
+    assert!(scan.entries().is_empty());
+    assert_eq!(
+        scan.skipped()
+            .iter()
+            .filter(|entry| entry.reason == SkipReason::UnplannableName)
+            .count(),
+        5,
+        "skipped names must cost the same budget as accepted names",
+    );
+    assert_eq!(
+        scan.skipped()
+            .iter()
+            .filter(|entry| entry.reason == SkipReason::EntryLimit)
+            .count(),
+        1
+    );
+    assert!(scan.truncated());
+    assert!(scan.disk_unchanged());
+}
+
+#[test]
+fn a_snapshot_obeys_the_same_depth_boundary_as_the_scan() {
+    let folder = Folder::flat(0);
+    std::fs::create_dir_all(folder.path().join("nested/deeper")).expect("nested directories");
+    std::fs::write(
+        folder.path().join("nested/hidden.txt"),
+        "outside the preview depth",
+    )
+    .expect("nested fixture");
+    let limits = ScanLimits {
+        max_depth: 1,
+        max_entries: 50,
+    };
+    let scan = soul_fileplan::scan::scan(&folder.authorization(), &folder.raw(), limits)
+        .expect("a shallow scan");
+    assert_eq!(scan.entries().len(), 1);
+    assert_eq!(
+        scan.snapshot_before().entries(),
+        1,
+        "the snapshot must not enter nested"
+    );
+    assert!(
+        scan.snapshot_before().truncated(),
+        "the depth bound leaves a partial snapshot"
+    );
+    assert_eq!(scan.snapshot_before(), scan.snapshot_after());
+}
+
+#[test]
+fn zero_depth_never_reads_children() {
+    let folder = Folder::flat(4);
+    let limits = ScanLimits {
+        max_depth: 0,
+        max_entries: 50,
+    };
+    let scan = soul_fileplan::scan::scan(&folder.authorization(), &folder.raw(), limits)
+        .expect("zero-depth preview");
+    assert!(scan.entries().is_empty());
+    assert_eq!(scan.snapshot_before().entries(), 0);
+    assert_eq!(scan.snapshot_after().entries(), 0);
+    assert!(scan.truncated());
+    assert_eq!(scan.skipped().len(), 1);
+    assert_eq!(scan.skipped()[0].reason, SkipReason::DepthLimit);
+}

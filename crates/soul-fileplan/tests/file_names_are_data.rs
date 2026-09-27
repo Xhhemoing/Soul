@@ -14,7 +14,9 @@
 
 use std::path::Path;
 
-use soul_fileplan::{Authorization, ScanLimits, SkipReason};
+#[cfg(unix)]
+use soul_fileplan::SkipReason;
+use soul_fileplan::{Authorization, ScanLimits};
 use soul_policy::hitl::{ActionKind, ActionRequest, RequestOrigin, TokenIssuer};
 use soul_policy::injection::{self, UntrustedText};
 use soul_policy::net_guard::NetGuard;
