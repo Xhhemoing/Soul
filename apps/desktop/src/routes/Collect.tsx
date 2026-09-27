@@ -71,16 +71,25 @@ export function Collect(): React.JSX.Element {
 
   /** False once the user has left this route, so a late answer lands nowhere. */
   const onScreen = useRef(true);
+  const generation = useRef(0);
+  const reading = useRef<number | null>(null);
+  const changing = useRef(false);
 
   const reread = useCallback((): void => {
+    if (!onScreen.current || changing.current || reading.current !== null) return;
+    const request = ++generation.current;
+    reading.current = request;
     collectStatus().then(
       (value) => {
-        if (!onScreen.current) return;
+        if (!onScreen.current || request !== generation.current) return;
+        reading.current = null;
         setStatus(value);
         setRefusal(null);
       },
       (error: unknown) => {
-        if (onScreen.current) setRefusal(asRefusal(error));
+        if (!onScreen.current || request !== generation.current) return;
+        reading.current = null;
+        setRefusal(asRefusal(error));
       },
     );
   }, []);
@@ -90,6 +99,8 @@ export function Collect(): React.JSX.Element {
     reread();
     return () => {
       onScreen.current = false;
+      generation.current += 1;
+      reading.current = null;
     };
   }, [reread]);
 
@@ -113,14 +124,22 @@ export function Collect(): React.JSX.Element {
   }, [running, busy, reread]);
 
   const ask = (change: () => Promise<CollectStatus>): void => {
+    if (changing.current) return;
+    const request = ++generation.current;
+    reading.current = null;
+    changing.current = true;
     setBusy(true);
     setRefusal(null);
     change().then(
       (value) => {
+        if (!onScreen.current || request !== generation.current) return;
+        changing.current = false;
         setStatus(value);
         setBusy(false);
       },
       (error: unknown) => {
+        if (!onScreen.current || request !== generation.current) return;
+        changing.current = false;
         setRefusal(asRefusal(error));
         setBusy(false);
       },

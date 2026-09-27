@@ -1145,8 +1145,10 @@ impl Session {
         let at = now_unix_seconds();
         let store = self.opened_store()?;
         let mut store = hold(&store);
-        profile_commands::correct_axis(&mut store, OWNER_PROFILE_ID, axis_id, position, at)?;
-        Ok(profile_commands::screen(&store, OWNER_PROFILE_ID)?)
+        store.transact(|store| -> Result<ProfileScreen, SessionRefusal> {
+            profile_commands::correct_axis(store, OWNER_PROFILE_ID, axis_id, position, at)?;
+            Ok(profile_commands::screen(store, OWNER_PROFILE_ID)?)
+        })
     }
 
     /// The user set a voice field by hand. Inference must leave it alone after
@@ -1164,8 +1166,10 @@ impl Session {
         let at = now_unix_seconds();
         let store = self.opened_store()?;
         let mut store = hold(&store);
-        profile_commands::set_voice(&mut store, OWNER_PROFILE_ID, setting, at)?;
-        Ok(profile_commands::screen(&store, OWNER_PROFILE_ID)?)
+        store.transact(|store| -> Result<ProfileScreen, SessionRefusal> {
+            profile_commands::set_voice(store, OWNER_PROFILE_ID, setting, at)?;
+            Ok(profile_commands::screen(store, OWNER_PROFILE_ID)?)
+        })
     }
 
     // ------------------------------------------------------- WP04: memory ---
@@ -1190,7 +1194,9 @@ impl Session {
         let at = now_unix_seconds();
         let store = self.opened_store()?;
         let mut store = hold(&store);
-        Ok(memory_commands::write_new(&mut store, new, at)?)
+        store.transact(|store| -> Result<MemoryDetail, SessionRefusal> {
+            Ok(memory_commands::write_new(store, new, at)?)
+        })
     }
 
     /// Edit one in place. The same content key is reused, so the memory stays
@@ -1204,9 +1210,9 @@ impl Session {
         let at = now_unix_seconds();
         let store = self.opened_store()?;
         let mut store = hold(&store);
-        Ok(memory_commands::write_change(
-            &mut store, memory_id, change, at,
-        )?)
+        store.transact(|store| -> Result<MemoryDetail, SessionRefusal> {
+            Ok(memory_commands::write_change(store, memory_id, change, at)?)
+        })
     }
 
     /// What forgetting this memory would cost. Destroys nothing.

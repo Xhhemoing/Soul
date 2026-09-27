@@ -18,7 +18,7 @@ export default defineConfig({
     // WebView2 on Windows 11 is Chromium; this is the platform floor, not a
     // browser support matrix.
     target: "chrome110",
-    sourcemap: true,
+    sourcemap: false,
     emptyOutDir: true,
   },
   test: {
@@ -26,6 +26,7 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    maxWorkers: 2,
     restoreMocks: true,
     unstubGlobals: true,
   },

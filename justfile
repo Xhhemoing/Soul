@@ -6,12 +6,12 @@
 # stays usable, and CI stays reproducible, without installing `just`.
 #
 #   just              list the recipes
-#   just ci           the whole Linux gate (G-L); see docs/gates/README.md
+#   just ci-full      the whole Linux gate (G-L); see docs/gates/README.md
 #
 # Installing just:  cargo install just --locked --version 1.46.0
 # (1.46 is the last release that builds on the pinned Rust 1.83 toolchain.)
 #
-# There is no hosted CI for this repository (DECISIONS D50). Every gate runs on
+# There is no hosted CI for this repository (DECISIONS D61). Every gate runs on
 # a machine the author controls and leaves its record under docs/gates/.
 
 set shell := ["bash", "-uc"]

@@ -7,6 +7,7 @@
 状态：独立集成源码 ebff0c9 的 Windows 自动门禁与补充检查已通过；同源码 NSIS 的外部证据目录当前缺失，G-M 0 作者手动打包、真实安装/卸载、其余人工验收和同源码 Linux 门禁均未齐，Goal 1 未关闭。后续源码修改不沿用旧门禁结论。见 docs/STATUS.md。
 
 - 产品锁定：[`docs/PRODUCT_LOCK.md`](docs/PRODUCT_LOCK.md)
+- AI 协作与工作区入口：[`AGENTS.md`](AGENTS.md)（项目规则，不替代产品与验收权威）
 - 长期路线与并行交付：[docs/ROADMAP.md](docs/ROADMAP.md)
 - 决策记录：[`docs/DECISIONS.md`](docs/DECISIONS.md)
 - 进度：[`docs/STATUS.md`](docs/STATUS.md)

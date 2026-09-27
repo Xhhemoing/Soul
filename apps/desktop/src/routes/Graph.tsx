@@ -47,7 +47,7 @@
  * looking: live buttons whose only outcome is a refusal invite the press.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   correctTie,
@@ -120,6 +120,7 @@ export function Graph(): React.JSX.Element {
   const [summaryRefusal, setSummaryRefusal] = useState<Refusal | null>(null);
   const [tieRefusal, setTieRefusal] = useState<Refusal | null>(null);
   const [busy, setBusy] = useState(false);
+  const summaryGeneration = useRef(0);
 
   useEffect(() => {
     let live = true;
@@ -133,6 +134,7 @@ export function Graph(): React.JSX.Element {
     );
     return () => {
       live = false;
+      summaryGeneration.current += 1;
     };
   }, []);
 
@@ -146,6 +148,7 @@ export function Graph(): React.JSX.Element {
    * tell which of the two is current. It comes back by asking for it again.
    */
   const write = (change: Promise<PeopleGraph>): void => {
+    summaryGeneration.current += 1;
     setBusy(true);
     setTieRefusal(null);
     setSummary(null);
@@ -163,11 +166,17 @@ export function Graph(): React.JSX.Element {
   };
 
   const summarize = (contactId: string): void => {
+    if (busy) return;
+    const request = ++summaryGeneration.current;
     setSummary(null);
     setSummaryRefusal(null);
     personSummary(contactId).then(
-      (value) => setSummary(value),
-      (error: unknown) => setSummaryRefusal(asRefusal(error)),
+      (value) => {
+        if (request === summaryGeneration.current) setSummary(value);
+      },
+      (error: unknown) => {
+        if (request === summaryGeneration.current) setSummaryRefusal(asRefusal(error));
+      },
     );
   };
 
@@ -209,7 +218,7 @@ export function Graph(): React.JSX.Element {
         ) : (
           <ul className="facts" data-testid="people-list">
             {others.map((person) => (
-              <Person key={person.contact_id} person={person} onSummarize={summarize} />
+              <Person key={person.contact_id} person={person} busy={busy} onSummarize={summarize} />
             ))}
           </ul>
         )}
@@ -282,6 +291,7 @@ export function Graph(): React.JSX.Element {
 
 interface PersonProps {
   readonly person: PersonNode;
+  readonly busy: boolean;
   readonly onSummarize: (contactId: string) => void;
 }
 
@@ -294,7 +304,7 @@ interface PersonProps {
  * the same fact said where the user is looking: a row that reads 已被遗忘 with
  * a live button beside it invites a press whose only outcome is a refusal.
  */
-function Person({ person, onSummarize }: PersonProps): React.JSX.Element {
+function Person({ person, busy, onSummarize }: PersonProps): React.JSX.Element {
   return (
     <li>
       <code>{person.identifier_hint}</code>
@@ -306,7 +316,7 @@ function Person({ person, onSummarize }: PersonProps): React.JSX.Element {
       </span>
       <button
         type="button"
-        disabled={person.forgotten}
+        disabled={person.forgotten || busy}
         onClick={() => onSummarize(person.contact_id)}
       >
         看这个人的摘要

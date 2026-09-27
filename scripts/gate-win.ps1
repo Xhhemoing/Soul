@@ -59,6 +59,22 @@ function FailClass {
     throw "[$Class] $Message"
 }
 
+function With-NodeEnv {
+    param([ValidateSet('test','production')][string]$Value, [scriptblock]$Body)
+    $hadOriginal = Test-Path Env:NODE_ENV
+    $original = $env:NODE_ENV
+    $env:NODE_ENV = $Value
+    try {
+        & $Body
+    } finally {
+        if ($hadOriginal) {
+            $env:NODE_ENV = $original
+        } else {
+            Remove-Item Env:NODE_ENV -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 Write-Host "G-W on $branch @ $sha ($env:COMPUTERNAME)"
 Write-Host ("rustc: " + (rustc -V))
 Write-Host ("node:  " + (node -v) + "  pnpm: " + (pnpm -v))
@@ -167,8 +183,16 @@ Step 'pnpm install --frozen-lockfile' {
     pnpm install --frozen-lockfile
 }
 
+Step 'frontend lint' {
+    pnpm --filter '@soul/desktop' lint
+}
+
+Step 'frontend tests' {
+    With-NodeEnv test { pnpm --filter '@soul/desktop' test }
+}
+
 Step 'frontend bundle' {
-    pnpm --filter '@soul/desktop' build
+    With-NodeEnv production { pnpm --filter '@soul/desktop' build }
 }
 
 Step 'release binaries (--locked)' {

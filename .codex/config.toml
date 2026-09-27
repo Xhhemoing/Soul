@@ -1,0 +1,5 @@
+# Soul 项目配置：主会话 + 最多两名实现者 + 一名只读评审者。
+# 不覆盖用户的模型、审批策略、全局权限或构建目录。
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 3
