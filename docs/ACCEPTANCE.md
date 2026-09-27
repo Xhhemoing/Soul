@@ -1,6 +1,6 @@
 # Goal 1 验收矩阵与红线
 
-本文件是 Goal 1 的**验收权威**（DECISIONS D29）。内容自 2026-08 冻结的开工合同原样迁出（2026-09-04，按作者指示移除开发流程文档，见 DECISIONS D64），Given / When / Then 三列逐字未改（已与移除前文件 diff 校验）；仅「谁跑」列 24 处由 `CI` 改为「本地门禁（G-L，Windows 特有项由 G-W 覆盖）」（D61）。
+本文件是 Goal 1 的**验收权威**（DECISIONS D29）。AC-01–26 自 2026-08 冻结的开工合同迁出（2026-09-04，见 D64）；此前迁出时 Given / When / Then 三列未改，「谁跑」列 24 处按 D61 从 `CI` 改为本地门禁。2026-09-27 按用户指定的工作区调整方案，补回遗漏的历史 AC-28–34：来源为 `5500ed5706c62d5ba7db0d4ad0f03d86c6549d0e:docs/FORMAL_WORK_PROMPT.md`，Given / When / Then 保持原文，只把「谁跑」从 `CI` 改为相同的本地门禁表述。不恢复旧提示词，不执行其中派单指令；恢复条目不等于这些条目已经通过。
 
 ## v0.1 代理层边界
 
@@ -66,6 +66,13 @@ WP12 已删除。并行：WP01 冻结后 WP02–WP06、WP08 可并行。
 | AC-24 | 写入中注入崩溃 | 重启 | 链通过；未提交最多丢 1 条 | 本地门禁（G-L，Windows 特有项由 G-W 覆盖） |
 | AC-25 | 注入串出现在导入、粘贴或文件名 | 档案与起草 | 无工具计划；无外连该 URL | 本地门禁（G-L，Windows 特有项由 G-W 覆盖） |
 | AC-26 | 仓库 | 本地门禁（D61） | G-L `just ci-full` 绿 + G-W `scripts/gate-win.ps1` 绿，记录在 `docs/gates/<日期>-<sha7>-*.md` | G-L + G-W |
+| AC-28 | 决胜夹具 `group_heavy_plus_one_direct_each_way`（群聊互惠 30 次 / 10 天，另加一对一每方向各 1 次）已入库，全库单一 as_of | 重建人脉图并读该边 | band **不是** strong（T4D 实测 weak）；边上落 `direct_out_count` / `direct_in_count` / `group_out_count` / `group_in_count` 与 `direct_active_day_count`；解释文案同屏报出一对一与群里两个数。把判档口径改回「任一场地计数」必须让此行变红（同口径下 T4 判 strong，即该漏洞的实证） | 本地门禁（G-L，Windows 特有项由 G-W 覆盖） |
+| AC-29 | 锚夹具 `lilei_12`（一对一互惠 12 次 / 6 天 / 3 天前收尾）已入库，同一 as_of | 重建人脉图并读该边 | band = strong。吸收 T4D 不得改判此行；自愈路径 `group_heavy_plus_three_directs`（夹具名中的 `three_directs` 即其一对一条数）回到 moderate，在同一测试内一并断言 | 本地门禁（G-L，Windows 特有项由 G-W 覆盖） |
+| AC-30 | 一个库里同时有活跃关系与 2019 年休眠关系 | 跑一次全库 rebuild | 全库只用**一个** as_of（调用方传入，缺省 = 全库 `max(occurred_at)`）；该值与沉寂天数随每条边落库、可复核；休眠边判 weak。把 as_of 改成 per-peer 各取自己的最大时间戳必须让此行变红 | 本地门禁（G-L，Windows 特有项由 G-W 覆盖） |
+| AC-31 | 某特质轴已被本人纠正锁定 | 再跑一次问卷 intake（或导入触发的 intake） | 锁定轴不被移动；被拒绝的答案以「已跳过 + 原因」如实回报，不静默丢弃；答案行照常落库；`apply_intake` 与 replay 结论全等；其余轴不受影响 | 本地门禁（G-L，Windows 特有项由 G-W 覆盖） |
+| AC-32 | 某边机器档=中等；用户纠正为强并锁定 | 新观测进入并重建；打开图与该 peer 的 A2 摘要 | 生效档=强；机器档另存且继续更新；A2 与图只消费生效档；审计记纠正且无正文。COPY_ZH 未加性批准「由你本人指定」变体前，锁定边不得渲染冻结 P5 原句（D35 / D48） | 本地门禁（G-L，Windows 特有项由 G-W 覆盖） |
+| AC-33 | 一条边携带一对一/群聊分列；另一条边分列缺席 | 渲染两份人事摘要 | 前者 P1b 句只渲染携带的两个数；后者 P1b 整句不出现；A2 / `soul-draft` / 图 UI 无从证据重算分列、无第二套阈值字面量。「分列缺席」只指未声明判档算法的遗留边——声明了 `algorithm_id` 的边分列必填（schema 的 `if(algorithm_id)`），适配器不得援引本行少填 | 本地门禁（G-L，Windows 特有项由 G-W 覆盖） |
+| AC-34 | 一份群聊导出：owner 发 1 条消息，会话里有未出现在该条消息中的历史发言人 A、B | 导入并重建人脉图 | 不产生 owner→A、owner→B 的 Outgoing 行；A/B 的 `last_contact` 不因这条消息刷新（D47 / G1+） | 本地门禁（G-L，Windows 特有项由 G-W 覆盖） |
 
 AC-27 文件执行与撤销标 **v0.1.1**，不是 Goal 1。
 

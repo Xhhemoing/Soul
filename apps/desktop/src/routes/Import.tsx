@@ -17,7 +17,7 @@
  * rendered, and there is nothing on screen it could reach.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   commitSoulImportV1,
@@ -32,6 +32,12 @@ import { asRefusal, Refused } from "../refusal";
 
 /** The two exports v0.1 will read, and nothing else. */
 type Format = "soul-import-v1" | "telegram-desktop";
+
+interface StagedImport {
+  readonly format: Format;
+  readonly text: string;
+  readonly preview: ImportPreview;
+}
 
 interface FormatChoice {
   readonly format: Format;
@@ -63,67 +69,70 @@ function chosen(format: Format): FormatChoice {
 
 export function Import(): React.JSX.Element {
   const [format, setFormat] = useState<Format>("soul-import-v1");
-  /** The picked file's text. Sent to the core twice, rendered never. */
-  const [text, setText] = useState<string | null>(null);
+  /** Only a successfully previewed file can be committed, with its own format. */
+  const [staged, setStaged] = useState<StagedImport | null>(null);
   const [characters, setCharacters] = useState(0);
-  const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [receipt, setReceipt] = useState<ImportReceipt | null>(null);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [busy, setBusy] = useState(false);
+  const generation = useRef(0);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => () => {
+    generation.current += 1;
+  }, []);
 
   const forget = (): void => {
-    setText(null);
+    generation.current += 1;
+    if (fileInput.current !== null) fileInput.current.value = "";
+    setStaged(null);
     setCharacters(0);
-    setPreview(null);
     setReceipt(null);
     setRefusal(null);
+    setBusy(false);
   };
 
-  const read = (file: File | undefined): void => {
+  const read = async (file: File | undefined): Promise<void> => {
     forget();
     if (file === undefined) return;
+    const request = generation.current;
+    const selectedFormat = format;
     setBusy(true);
-    file.text().then(
-      (contents) => {
-        setText(contents);
-        setCharacters(contents.length);
-        const reading =
-          format === "telegram-desktop" ? previewTelegram(contents) : previewSoulImportV1(contents);
-        reading.then(
-          (value) => {
-            setPreview(value);
-            setBusy(false);
-          },
-          (error: unknown) => {
-            setRefusal(asRefusal(error));
-            setBusy(false);
-          },
-        );
-      },
-      (error: unknown) => {
-        setRefusal(asRefusal(error));
-        setBusy(false);
-      },
-    );
+    try {
+      const contents = await file.text();
+      if (request !== generation.current) return;
+      setCharacters(contents.length);
+      const preview = await (selectedFormat === "telegram-desktop"
+        ? previewTelegram(contents)
+        : previewSoulImportV1(contents));
+      if (request !== generation.current) return;
+      setStaged({ format: selectedFormat, text: contents, preview });
+      setBusy(false);
+    } catch (error: unknown) {
+      if (request !== generation.current) return;
+      setRefusal(asRefusal(error));
+      setBusy(false);
+    }
   };
 
-  const commit = (): void => {
-    if (text === null) return;
+  const commit = async (): Promise<void> => {
+    if (staged === null || busy) return;
+    const request = ++generation.current;
     setBusy(true);
     setRefusal(null);
-    const writing =
-      format === "telegram-desktop" ? commitTelegram(text) : commitSoulImportV1(text);
-    writing.then(
-      (value) => {
-        setReceipt(value);
-        setPreview(null);
-        setBusy(false);
-      },
-      (error: unknown) => {
-        setRefusal(asRefusal(error));
-        setBusy(false);
-      },
-    );
+    try {
+      const value = await (staged.format === "telegram-desktop"
+        ? commitTelegram(staged.text)
+        : commitSoulImportV1(staged.text));
+      if (request !== generation.current) return;
+      setReceipt(value);
+      setStaged(null);
+      setBusy(false);
+    } catch (error: unknown) {
+      if (request !== generation.current) return;
+      setRefusal(asRefusal(error));
+      setBusy(false);
+    }
   };
 
   return (
@@ -162,16 +171,12 @@ export function Import(): React.JSX.Element {
         </label>
         <input
           id="import-file"
+          ref={fileInput}
           className="text-input"
           type="file"
           accept={chosen(format).accept}
           disabled={busy}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            // Keep the File above so the same selection can trigger change again.
-            event.target.value = "";
-            read(file);
-          }}
+          onChange={(event) => void read(event.target.files?.[0])}
         />
         {busy ? (
           <p className="muted" role="status">
@@ -189,8 +194,8 @@ export function Import(): React.JSX.Element {
         <Refused title="这个文件没有读成" refusal={refusal} testId="import-refusal-code" />
       )}
 
-      {preview === null ? null : (
-        <Preview preview={preview} busy={busy} onCommit={commit} onAbandon={forget} />
+      {staged === null ? null : (
+        <Preview preview={staged.preview} busy={busy} onCommit={() => void commit()} onAbandon={forget} />
       )}
 
       {receipt === null ? null : <Receipt receipt={receipt} />}

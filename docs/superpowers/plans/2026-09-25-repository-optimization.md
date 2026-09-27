@@ -4,9 +4,9 @@
 
 **Goal:** Fix the highest-value, bounded correctness and performance defects found by the full repository audit without redesigning product contracts.
 
-**Architecture:** Preserve existing crate and UI boundaries. Each task adds a regression test first, applies the smallest local fix, and runs the narrow test plus the relevant lint/build command. Transactional and irreversible-operation redesigns remain documented follow-up work because they require an explicit product-level result contract.
+**Architecture:** Preserve existing crate and UI boundaries. Each task adds a regression test first, applies the smallest local fix, and runs the narrow test plus the relevant lint/build command. Ordinary session edits use the existing transaction primitive; irreversible-operation result redesigns remain follow-up work because they require an explicit product-level result contract.
 
-**Tech Stack:** Rust 1.83, Cargo, React 18, TypeScript, Vite, Vitest, PowerShell 7.
+**Tech Stack:** Rust 1.83, Cargo, React 19, TypeScript, Vite, Vitest, PowerShell 7.
 
 ## Global Constraints
 
@@ -15,7 +15,7 @@
 - Do not add hashes, frozen contracts, baselines, or new gates.
 - Preserve existing safety checks and security boundaries.
 - Use targeted edits; do not reformat unrelated files.
-- Scope coverage: all 323 tracked code files were inventoried; 268 Rust files and 38 TypeScript/TSX files received static review, with deeper L3 review on the defects below.
+- Scope: repository-wide module review, with deeper review and executable regressions for the defects below. The September 27 inventory contains 470 tracked files, including 275 Rust files, 39 TypeScript/TSX files, and 7 PowerShell scripts; inventory and static review are not proof that every execution path is correct.
 
 ---
 
@@ -29,7 +29,7 @@
 - Consumes: `send(&E1RequestPlan) -> Result<E1Response, EgressError>`
 - Produces: `EgressError::HttpStatus { status, body_len }` for every non-2xx response after bounded body reading.
 
-- [ ] **Step 1: Write a failing wire-level test**
+- [x] **Step 1: Write a failing wire-level test**
 
 Add a loopback response test that serves a `429` body containing hostile text, calls `send`, and asserts:
 
@@ -41,13 +41,13 @@ assert!(matches!(
 assert!(!error.to_string().contains("hostile response body"));
 ```
 
-- [ ] **Step 2: Run the test and verify current behavior fails**
+- [x] **Step 2: Run the test and verify current behavior fails**
 
-Run: `cargo test -p soul-egress --test e1_origin non_success_status_is_an_error -- --exact`
+Run: `cargo test -p soul-egress --test e1_origin non_success_statuses_are_errors_without_exposing_their_bodies -- --exact`
 
 Expected before fix: the call returns `Ok(E1Response { status: 429, .. })`.
 
-- [ ] **Step 3: Return the existing typed error**
+- [x] **Step 3: Return the existing typed error**
 
 After `read_capped`, add:
 
@@ -60,7 +60,7 @@ if !(200..=299).contains(&status) {
 }
 ```
 
-- [ ] **Step 4: Verify the crate**
+- [x] **Step 4: Verify the crate**
 
 Run: `cargo test -p soul-egress --test e1_origin`
 
@@ -78,17 +78,17 @@ Run: `cargo clippy -p soul-egress --all-targets -- -D warnings`
 - Consumes: preview and commit commands selected by `ImportFormat`.
 - Produces: one staged object containing the exact `format`, `text`, and `preview` confirmed by the user.
 
-- [ ] **Step 1: Write a deferred-read regression test**
+- [x] **Step 1: Write a deferred-read regression test**
 
 Create a `File` whose `text()` returns a controlled promise. Upload it under `soul-import-v1`, switch the radio to Telegram before resolving the read, then resolve it. Assert the stale preview does not become confirmable and no commit command can use a format different from the previewed format.
 
-- [ ] **Step 2: Run the focused test and verify it fails**
+- [x] **Step 2: Run the focused test and verify it fails**
 
 Run: `pnpm --filter @soul/desktop test -- Import.test.tsx --maxWorkers=2`
 
 Expected before fix: the stale request publishes a preview or commit uses the newly selected radio format.
 
-- [ ] **Step 3: Stage format, text, and preview together**
+- [x] **Step 3: Stage format, text, and preview together**
 
 Use a request generation ref. Increment it when forgetting/changing format and before every new file read. Only publish results for the current generation. Store:
 
@@ -102,7 +102,7 @@ type StagedImport = {
 
 Commit from `staged.format` and `staged.text`. Disable both format radios while `busy`.
 
-- [ ] **Step 4: Verify the route and lint**
+- [x] **Step 4: Verify the route and lint**
 
 Run: `pnpm --filter @soul/desktop test -- Import.test.tsx --maxWorkers=2`
 
@@ -119,15 +119,15 @@ Run: `pnpm --filter @soul/desktop lint`
 **Interfaces:**
 - Produces: all Vitest entry points use two workers; production `dist` contains no JavaScript source map; the existing Windows gate runs existing lint and test commands before bundling.
 
-- [ ] **Step 1: Centralize Vitest worker count**
+- [x] **Step 1: Centralize Vitest worker count**
 
 Add `maxWorkers: 2` to the existing `test` config so root, package, and gate invocations have the measured stable setting.
 
-- [ ] **Step 2: Disable production source maps**
+- [x] **Step 2: Disable production source maps**
 
 Change `build.sourcemap` from `true` to `false`.
 
-- [ ] **Step 3: Extend the existing Windows gate**
+- [x] **Step 3: Extend the existing Windows gate**
 
 After install and before bundle, add existing checks:
 
@@ -143,7 +143,7 @@ Step 'frontend tests' {
 
 This extends G-W; it does not create a new gate.
 
-- [ ] **Step 4: Verify all frontend paths**
+- [x] **Step 4: Verify all frontend paths**
 
 Run: `pnpm --filter @soul/desktop test`
 
@@ -162,26 +162,26 @@ Parse the PowerShell script with `System.Management.Automation.Language.Parser::
 **Files:**
 - Modify: `crates/soul-store/src/store.rs:326-365`
 - Modify: `crates/soul-store/src/store.rs:1167-1195`
-- Modify: the closest existing `crates/soul-store/tests/*.rs` store corruption test file.
+- Add: `crates/soul-store/tests/malformed_nonce.rs`.
 
 **Interfaces:**
 - Produces: `StoreError::Backend` for malformed wrapped-key nonce length and `StoreError::SealBroken` or `StoreError::Backend` for malformed sealed-blob nonce length; neither path panics.
 
-- [ ] **Step 1: Write corruption regression tests**
+- [x] **Step 1: Write corruption regression tests**
 
 Open a test store, create valid encrypted rows, mutate `wrap_nonce` and `sealed_blobs.nonce` to a short BLOB through SQL, then invoke the public read/open paths inside normal test execution. Assert an error is returned and the test process does not panic.
 
-- [ ] **Step 2: Run the focused tests and verify the panic**
+- [x] **Step 2: Run the focused tests and verify the panic**
 
-Run the exact new tests with `cargo test -p soul-store <test-name> -- --exact`.
+Run: `cargo test -p soul-store --test malformed_nonce --locked --offline -j 2`.
 
 Expected before fix: `XNonce::from_slice` panics on the malformed length.
 
-- [ ] **Step 3: Validate lengths before fixed-size conversion**
+- [x] **Step 3: Validate lengths before fixed-size conversion**
 
-For both database nonce reads, require `nonce.len() == 24` before calling `XNonce::from_slice`. Return an error that names the affected key/blob identifier and observed length without exposing ciphertext or key material.
+For both database nonce reads, require `nonce.len() == 24` before calling `XNonce::from_slice`. The wrapping-key error includes the key identifier and observed length without exposing ciphertext or key material. The blob path retains the existing `SealBroken(blob_id)` error shape.
 
-- [ ] **Step 4: Verify the store crate**
+- [x] **Step 4: Verify the store crate**
 
 Run: `cargo test -p soul-store --tests`
 
@@ -189,13 +189,47 @@ Run: `cargo clippy -p soul-store --all-targets -- -D warnings`
 
 ---
 
-## Deferred Findings Requiring Contract Design
+### Task 5: Report unreadable source during URL audits
+
+**Files:** `crates/xtask/src/egress.rs`, `crates/xtask/tests/self_test.rs`.
+
+- [x] Reproduce the silently skipped UTF-16 source file with a real temporary script.
+- [x] Return a contextual UTF-8 read error naming the file; preserve the existing audit and allowlist.
+- [x] Pass all 34 xtask self tests and targeted Clippy.
+
+### Task 6: Reject stale collection and people-summary responses
+
+**Files:** `Collect.tsx`, `Collect.test.tsx`, `Graph.tsx`, `Graph.test.tsx` under `apps/desktop/src/routes/`.
+
+- [x] Reproduce old collection success/error overwriting a completed stop and duplicate pending status requests (3 failing tests).
+- [x] Add collection request generations, an in-flight read guard, and a synchronous write guard.
+- [x] Reproduce summary response reordering and a pre-correction summary reappearing (3 failing tests).
+- [x] Invalidate summaries on newer selection, correction, and unmount; disable summary requests during a relationship write.
+- [x] Pass independent review, 39 focused tests, and the full frontend suite (205 tests), lint, and build.
+
+### Task 7: Roll back ordinary session edits when their audit fails
+
+**Files:** `crates/soulcore/src/commands/session.rs`, `crates/soulcore/tests/session_atomic_edits.rs`.
+
+- [x] Write four real-SQLCipher regressions using an audit INSERT failure and exact affected-table row comparisons, followed by successful retries.
+- [x] Observe the four tests fail before changing production code.
+- [x] Wrap `correct_axis`, `set_voice`, `write_memory`, and `edit_memory` in the existing `SqlCipherStore::transact`, including response readback.
+- [x] Pass focused tests, relevant crate tests, Clippy, and independent review.
+
+## Completion evidence — September 27, 2026
+
+- `cargo test --workspace --locked --offline -j 2`: 1053 passed, 0 failed, 0 ignored, including the two nonce and four session regressions.
+- `cargo clippy --workspace --all-targets --profile test --locked --offline -j 2 -- -D warnings`: passed. The test profile reuses the native dependency build; it is not a release build check.
+- Frontend: 205 tests passed; lint and the explicit `NODE_ENV=production` build passed; no source maps in `dist`.
+- Independent code review found no blocking issue in the import, collection, summary, scanner, nonce, and transaction changes.
+- See the [results and remaining risks](../../2026-09-27_code-review-soul-report.md). The desktop Rust workspace, full Windows release gate, and installation smoke workflow were not run in this task.
+
+## Deferred Findings and Deliberate Product Limits
 
 - Collection consent revocation can race with the final store write.
-- Re-importing the same source duplicates events/evidence by current documented design.
-- Memory/profile multi-write operations and post-commit audit/checkpoint failures need explicit committed-with-warning result types.
+- Re-importing the same source duplicates events/evidence by current documented v0.1 design; preserve that behavior rather than introducing a new hash or uniqueness contract.
+- Post-forget audit/checkpoint failures need explicit committed-with-warning result types. This does not apply to the ordinary, reversible session edits in Task 7.
 - WAL checkpoint `busy` status is currently discarded after irreversible forget commits.
 - Graph rebuild performs O(P²) existing-row matching and should be pre-indexed with a performance regression fixture.
-- `xtask e0-audit` should explicitly handle UTF-16 scripts instead of silently skipping decode failures.
 
-These are not silently dismissed; they are excluded from this patch because changing them without a reviewed state/result contract could make irreversible behavior less clear.
+These are not silently dismissed. Revocation and forgetting require concurrency/result semantics; graph indexing needs measurement and behavior-preserving fixtures. They are not claimed fixed by this patch.
