@@ -11,9 +11,19 @@
 
 ## 本轮阶段
 
-1. **文档对齐：IMPLEMENTED。** 修正 SECURITY 中“main 没有应用代码”的过期表述，以源码指针和带版本的平台记录分别表达实现与验证；原 STATUS 以原始 Git blob 完整保留在同目录，原相对链接保持原位置语义。本阶段不改运行时代码。
-2. **图谱交互补强：待实施。** 在既有摘要代次保护之上，检查关系写入的同步准入、卸载后的返回与摘要对象匹配；只改 UI 生命周期和回归测试，不改冻结算法、权限、schema 或 IPC 命令。
-3. **验证与交接：待实施。** 只记录实际执行的命令及覆盖范围；没有依赖和平台时不签发完整门禁结果。
+1. **文档对齐：IMPLEMENTED，已同步 `d32d1ea`。** 修正 SECURITY 中“main 没有应用代码”的过期表述，以源码指针和带版本的平台记录分别表达实现与验证；原 STATUS 以原始 Git blob 完整保留在同目录。本阶段不改运行时代码。
+2. **图谱交互补强：IMPLEMENTED。** `Graph.tsx` 与 `graphRequests.ts` 在调用 IPC 之前同步准入；同一挂起关系写入不会被连点重复启动，写入期间拒绝新摘要；同一对象的挂起摘要不重复发送，仍可选择其他对象。结果按请求代次和对象校验，关系纠正会使旧摘要失效；卸载后的写入和摘要回调不更新页面，同步抛错也进入可重试拒绝路径。只改变 UI 生命周期，不修改冻结算法、权限、schema、IPC 命令或核心取消语义。丢弃页面结果不等于取消远端请求或回滚已执行操作。
+3. **回归用例已编写，平台验证待补。** 新增 `graphRequests.test.ts` 的 16 个纯逻辑场景与 `Graph.lifecycle.test.tsx` 的 11 个 React/IPC 场景；原有测试保留。纯逻辑同一组断言已通过 Node 原生测试运行器执行，处理器探针也已执行；这不是仓库 Vitest 或真实 React/WebView 测试通过。
+
+## 本轮实际检查（非门禁）
+
+环境：Linux；Node v22.16.0、TypeScript 5.8.3；没有项目锁定的 React/Vitest 依赖，也没有 Rust、pnpm、PowerShell。以下仅为仓库外工作副本的离线检查，不是 PowerShell 平台门禁。
+
+- `tsc --noEmit --strict --target ES2022 apps/desktop/src/routes/graphRequests.ts`：退出 0，仅检查新增请求状态模块。
+- `node --test checks/run-pure-tests.cjs`：退出 0，16/16；将纯测试的 `vitest` runner 导入替换为 `node:test`，执行同一份测试断言，不加载 Vitest。
+- `SOUL_PROBE_BEFORE=1 node --test checks/graph-handler-probes.cjs`：退出 1，4 通过 / 8 失败（预期的修改前结果）；修改后同组 `node --test checks/graph-handler-probes.cjs`：退出 0，12/12。探针转译实际 Graph.tsx 并用轻量 hook/JSX 替身调用同一渲染代的处理器；它能检查准入和回调，但不验证 React 调度、DOM、Tauri 或真实出网。
+- 修改前 Graph.tsx 工作副本的 Git blob 与远端 `156f7c47fb3d6f74ca776d1c938df2a5939d7b39` 一致；未用旧报告代码代替续写分支代码。
+- **未运行：** 仓库前端 lint、Vitest（含新增 React/IPC 用例）、生产构建、Rust/桌面测试、完整 G-L/G-W/G-M、独立只读评审。源码转译和纯逻辑检查不能替代它们。
 
 ## 已有平台证据（按所标源码版本阅读）
 
@@ -21,10 +31,9 @@
 - [20260925-95ff7d6-win](gates/20260925-95ff7d6-win.md)：保留安装失败、恢复与未验收边界。
 - **G-L 仍按既有用户指示暂缓。** 本轮未启动完整 Linux 门禁；暂缓不是免除 Goal 1 关闭条件。
 - **G-M 未完成。** 真实 NSIS 安装/卸载按既有指示跳过；不重试，不勾选人工清单。外部打包证据缺失及卸载残留的历史说明保留在状态快照，不把合成测试或源码检查等同于真实观察。
-- 当前执行环境缺少 Rust、pnpm、PowerShell 及项目 React/Vitest 依赖，直接访问 GitHub/依赖源也不可用。GitHub 读写使用连接器；能够执行的局部检查将单列，不宣称满足仓库 PowerShell 门禁环境。
 
 ## 下一动作与边界
 
-优先完成本轮小范围补强及回归检查；交接到具备依赖的平台后执行前端 lint/test/build、受影响 Rust/桌面测试与独立评审。完整关闭仍按 [ACCEPTANCE](ACCEPTANCE.md)、[gates/README](gates/README.md) 和 [作者手动清单](../scripts/author-manual-checklist.md)，没有对应证据就不关闭。
+具备项目依赖的环境先执行 `pnpm --filter @soul/desktop lint`、`pnpm --filter @soul/desktop test` 和生产 `build`；检查新增 27 个 Vitest 用例及现有回归，再进行独立评审和受影响平台验证。完整关闭仍按 [ACCEPTANCE](ACCEPTANCE.md)、[gates/README](gates/README.md) 和 [作者手动清单](../scripts/author-manual-checklist.md)，没有对应证据就不关闭。
 
 Wave1 P0 撤权执行模型与遗忘结果语义尚待实施和平台验证。消息幂等、持久化检索、行为预测以及新采集能力不在本轮修改范围；不新增冻结 contract、hash 或门禁体系。
