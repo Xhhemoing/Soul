@@ -33,7 +33,7 @@
 
 - 本地主干记录 `8aae8f3` 已合入 M0-2 收敛，仓库包含核心与桌面实现；不再是只有计划和算法 crate。
 - M0-3 安装修复基线为 `95ff7d6`：继承 `1eb471a` / `e2fdf16`，新增注册路径解码、临时副本卸载及完整目录消失判定；隔离 G-W 与受控回归通过。实际安装首次失败、部分恢复仍有残留，见 [安装修复记录](gates/20260925-95ff7d6-win.md)。
-- D68 独立集成源码 `ebff0c9` 的完整 G-W 与补充检查已通过，见 [四包集成门禁记录](gates/20260925-ebff0c9-win.md)。此前记录的同源码 NSIS 外部证据目录当前缺失，不能代勾 G-M 0；真实安装/卸载按用户要求 `NOT RUN`，G-M / G-L 未齐，Goal 1、Q2-00、正式 Q2-05 与 Goal 2 均未关闭。
+- D68 独立集成源码 `ebff0c9` 的 9 月 25 日完整 G-W 与补充检查只剩历史文字登记；原集成 worktree、`target/q2` 与六个关键原始证据文件已不存在，该历史运行维持 `NOT VERIFIED`，见[四包集成门禁记录](gates/20260925-ebff0c9-win.md)。唯一候选 `6fa479f` 已于 9 月 27 日完整重跑 G-W 并实测 PASS，见[新候选记录](gates/20260927-6fa479f-win.md)。历史 `ebff0c9` 同源码代理 NSIS 构建和配对 `-SkipInstall` 的声称因原始证据缺失为 `NOT VERIFIED`；当前唯一候选 NSIS 为 `NOT RUN`，作者 G-M 0 与真实安装/卸载为 `NOT RUN`，G-L 为 `NOT RUN` / 暂缓，其余 G-M 未完成。Goal 1、Q2-00、正式 Q2-05 与 Goal 2 均未关闭。
 - 根 Cargo workspace 与 `apps/desktop/src-tauri` 是两个独立 workspace。根目录测试不覆盖桌面壳。
 - 计划冻结、代码实现、平台门禁通过、Goal 1 关闭分别记录。旧版本的绿不能替代当前版本的证据。
 - 本轮按用户指示暂时跳过 Linux 门禁；这不是豁免 Goal 1 的 G-L 关闭条件。
@@ -53,3 +53,4 @@ D64 已移除 FORMAL_WORK_PROMPT、GOAL2_POLISH_PROMPT、PLAN_VERIFY_PROMPT 与�
 | 工作包 | Goal 1 冻结包只减不增，WP12 保持删除；后续 Q2/能力包独立编号，不追加到 Goal 1 验收 |
 | schemas | 同批更新 schemas.lock.json，并说明对已落库数据的影响 |
 | 合并 | 遵守 D63；本次跳过某平台不等于该平台通过 |
+| AI 协作流程 | 复用 GOAL2_PLAN 的 A0/A1/A2/A3、最多两条实现线与独立审查；不新建通用编排框架或额外审批 gate |
