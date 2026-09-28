@@ -31,12 +31,10 @@ import {
   type Refusal,
 } from "../core";
 import { asRefusal, Refused } from "../refusal";
-
-/** The two exports v0.1 will read, and nothing else. */
-type Format = "soul-import-v1" | "telegram-desktop";
+import { ImportRequests, type ImportFormat as Format, type ImportRead } from "./importRequests";
 
 interface StagedImport {
-  readonly format: Format;
+  readonly request: ImportRead;
   readonly text: string;
   readonly preview: ImportPreview;
 }
@@ -77,15 +75,16 @@ export function Import(): React.JSX.Element {
   const [receipt, setReceipt] = useState<ImportReceipt | null>(null);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [busy, setBusy] = useState(false);
-  const generation = useRef(0);
+  const requests = useRef(new ImportRequests());
   const fileInput = useRef<HTMLInputElement>(null);
 
-  useEffect(() => () => {
-    generation.current += 1;
+  useEffect(() => {
+    const current = requests.current;
+    current.activate();
+    return () => current.deactivate();
   }, []);
 
-  const forget = (): void => {
-    generation.current += 1;
+  const clearPreview = (): void => {
     if (fileInput.current !== null) fileInput.current.value = "";
     setStaged(null);
     setCharacters(0);
@@ -94,53 +93,67 @@ export function Import(): React.JSX.Element {
     setBusy(false);
   };
 
+  const forget = (): boolean => {
+    if (!requests.current.reset()) return false;
+    clearPreview();
+    return true;
+  };
+
   const read = async (file: File | undefined): Promise<void> => {
-    forget();
-    if (file === undefined) return;
+    if (file === undefined) {
+      forget();
+      return;
+    }
+    const request = requests.current.beginRead(format);
+    if (request === null) return;
+    clearPreview();
     // The core's own byte budget, checked against the size on disk before
     // anything is read: `file.text()` would hold the whole file in the
     // WebView, and the core would then refuse it with this same sentence.
     // The sentence and the number are the core's constants — this screen
     // composes nothing, it only says the refusal a byte earlier.
     if (file.size > MAX_IMPORT_BYTES) {
+      requests.current.finishRead(request, false);
       setRefusal({ reason_code: "ROUTINE", explanation: IMPORT_OVER_BYTE_BUDGET_NOTICE });
       return;
     }
-    const request = generation.current;
-    const selectedFormat = format;
     setBusy(true);
     try {
       const contents = await file.text();
-      if (request !== generation.current) return;
+      if (!requests.current.isReading(request)) return;
       setCharacters(contents.length);
-      const preview = await (selectedFormat === "telegram-desktop"
+      const preview = await (request.format === "telegram-desktop"
         ? previewTelegram(contents)
         : previewSoulImportV1(contents));
-      if (request !== generation.current) return;
-      setStaged({ format: selectedFormat, text: contents, preview });
+      if (!requests.current.finishRead(request, true)) return;
+      setStaged({ request, text: contents, preview });
       setBusy(false);
     } catch (error: unknown) {
-      if (request !== generation.current) return;
+      if (!requests.current.finishRead(request, false)) return;
+      setCharacters(0);
       setRefusal(asRefusal(error));
       setBusy(false);
     }
   };
 
   const commit = async (): Promise<void> => {
-    if (staged === null || busy) return;
-    const request = ++generation.current;
+    if (staged === null || !staged.preview.owner_identified) return;
+    const request = requests.current.beginCommit(staged.request);
+    if (request === null) return;
     setBusy(true);
     setRefusal(null);
     try {
-      const value = await (staged.format === "telegram-desktop"
+      const value = await (staged.request.format === "telegram-desktop"
         ? commitTelegram(staged.text)
         : commitSoulImportV1(staged.text));
-      if (request !== generation.current) return;
+      if (!requests.current.finishCommit(request, true)) return;
       setReceipt(value);
       setStaged(null);
+      setCharacters(0);
+      if (fileInput.current !== null) fileInput.current.value = "";
       setBusy(false);
     } catch (error: unknown) {
-      if (request !== generation.current) return;
+      if (!requests.current.finishCommit(request, false)) return;
       setRefusal(asRefusal(error));
       setBusy(false);
     }
@@ -166,8 +179,7 @@ export function Import(): React.JSX.Element {
                   checked={format === choice.format}
                   disabled={busy}
                   onChange={() => {
-                    setFormat(choice.format);
-                    forget();
+                    if (forget()) setFormat(choice.format);
                   }}
                 />{" "}
                 {choice.label}
