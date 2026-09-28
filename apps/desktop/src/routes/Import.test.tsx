@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { Import } from "./Import";
+import { IMPORT_OVER_BYTE_BUDGET_NOTICE, MAX_IMPORT_BYTES } from "../core";
 import type { ImportPreview, ImportReceipt } from "../core";
 import { denylistHits, diagnosticTerms, renderedText } from "../test/denylist";
 import {
@@ -435,6 +436,40 @@ describe("导入页", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("第 3 行少了必需的字段");
     expect(screen.queryByTestId("preview-counts")).toBeNull();
     expect(renderedText()).not.toContain(A_SENTENCE);
+  });
+
+  it("超过字节预算的文件在读之前就被拒绝，一个字节都没有读", async () => {
+    const core = installFakeCore();
+    const user = userEvent.setup();
+    render(<Import />);
+
+    const file = new File([], "huge.jsonl", { type: "application/json" });
+    Object.defineProperty(file, "size", { value: MAX_IMPORT_BYTES + 1 });
+    Object.defineProperty(file, "text", {
+      value: () => {
+        throw new Error("the screen read a file it had refused");
+      },
+    });
+    await user.upload(screen.getByLabelText("选择文件"), file);
+
+    expect(screen.getByTestId("import-refusal-code")).toHaveTextContent("ROUTINE");
+    expect(screen.getByRole("alert")).toHaveTextContent(IMPORT_OVER_BYTE_BUDGET_NOTICE);
+    expect(screen.queryByTestId("preview-counts")).toBeNull();
+    expect(core.calls).toEqual([]);
+  });
+
+  it("恰好在预算上的文件照常读、照常预览", async () => {
+    const core = installFakeCore();
+    const user = userEvent.setup();
+    render(<Import />);
+
+    const file = new File([JSONL], "valid_basic.jsonl", { type: "application/json" });
+    Object.defineProperty(file, "size", { value: MAX_IMPORT_BYTES });
+    await user.upload(screen.getByLabelText("选择文件"), file);
+
+    expect(await screen.findByTestId("preview-counts")).toBeVisible();
+    expect(core.callsTo("preview_soul_import_v1")).toHaveLength(1);
+    expect(screen.queryByTestId("import-refusal-code")).toBeNull();
   });
 
   it("认不出哪一个是你的时候，不给按确认的机会", async () => {

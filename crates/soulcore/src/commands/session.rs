@@ -976,9 +976,20 @@ impl Session {
     /// that one stays: a file that was read and a file that was sealed are two
     /// facts, and two rows of counts is what an honest chain looks like when
     /// both happened.
+    ///
+    /// Wave 1 put budgets on this channel — [`import_commands::MAX_IMPORT_BYTES`]
+    /// before the parser reads anything, the record and body budgets after it
+    /// parsed — and they sit here rather than in `soul-import` because the
+    /// session is the door every caller comes through: the import screen
+    /// checks the byte budget too, against the file's size, but the core has
+    /// to say no on its own. A file refused for its size leaves no
+    /// `injection.blocked` row, the same as a file that did not parse: the
+    /// channel records what it read, and a refused file was not read in.
     pub fn preview_soul_import_v1(&self, text: &str) -> Result<ImportPreview, SessionRefusal> {
         self.opened_store()?;
+        import_commands::within_byte_budget(text).map_err(over_budget)?;
         let staged = import_commands::read_soul_import_v1(text)?;
+        import_commands::within_staged_budget(&staged).map_err(over_budget)?;
         let preview = ImportPreview::of(&staged);
         self.note_injection(preview.messages_with_injection_markers)?;
         Ok(preview)
@@ -991,24 +1002,34 @@ impl Session {
     /// and this reads the text of that one file.
     pub fn preview_telegram(&self, text: &str) -> Result<ImportPreview, SessionRefusal> {
         self.opened_store()?;
+        import_commands::within_byte_budget(text).map_err(over_budget)?;
         let staged = import_commands::read_telegram(&telegram_document(text)?)?;
+        import_commands::within_staged_budget(&staged).map_err(over_budget)?;
         let preview = ImportPreview::of(&staged);
         self.note_injection(preview.messages_with_injection_markers)?;
         Ok(preview)
     }
 
     /// Seal a `soul-import-v1` file into the store. AC-04.
+    ///
+    /// The same budgets as the preview, checked again: the commit re-parses
+    /// the text rather than trusting that what arrives is what was shown, so
+    /// it re-refuses on the same grounds too.
     pub fn commit_soul_import_v1(
         &mut self,
         text: &str,
     ) -> Result<ImportReceiptView, SessionRefusal> {
+        import_commands::within_byte_budget(text).map_err(over_budget)?;
         let staged = import_commands::read_soul_import_v1(text)?;
+        import_commands::within_staged_budget(&staged).map_err(over_budget)?;
         self.commit_import(&staged)
     }
 
     /// Seal a Telegram export into the store. AC-05.
     pub fn commit_telegram(&mut self, text: &str) -> Result<ImportReceiptView, SessionRefusal> {
+        import_commands::within_byte_budget(text).map_err(over_budget)?;
         let staged = import_commands::read_telegram(&telegram_document(text)?)?;
+        import_commands::within_staged_budget(&staged).map_err(over_budget)?;
         self.commit_import(&staged)
     }
 
@@ -1627,6 +1648,21 @@ fn rolled_back(notice: &str, refusal: SessionRefusal) -> SessionRefusal {
     SessionRefusal {
         explanation: format!("{notice}\n{}", refusal.explanation),
         ..refusal
+    }
+}
+
+/// An import refused for its size, wearing the reason code the other import
+/// refusals wear.
+///
+/// The sentence arrives finished from `import_commands` — it names a budget
+/// and at most a count, never the file — and `Routine` is the right code for
+/// the same reason it is on a parse failure: the audit vocabulary is about
+/// why an *action* was denied, and "the file is too big" is not a different
+/// kind of no from "the file does not parse".
+fn over_budget(explanation: String) -> SessionRefusal {
+    SessionRefusal {
+        reason_code: ReasonCode::Routine.as_str().to_owned(),
+        explanation,
     }
 }
 

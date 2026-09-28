@@ -22,6 +22,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   commitSoulImportV1,
   commitTelegram,
+  IMPORT_OVER_BYTE_BUDGET_NOTICE,
+  MAX_IMPORT_BYTES,
   previewSoulImportV1,
   previewTelegram,
   type ImportPreview,
@@ -95,6 +97,15 @@ export function Import(): React.JSX.Element {
   const read = async (file: File | undefined): Promise<void> => {
     forget();
     if (file === undefined) return;
+    // The core's own byte budget, checked against the size on disk before
+    // anything is read: `file.text()` would hold the whole file in the
+    // WebView, and the core would then refuse it with this same sentence.
+    // The sentence and the number are the core's constants — this screen
+    // composes nothing, it only says the refusal a byte earlier.
+    if (file.size > MAX_IMPORT_BYTES) {
+      setRefusal({ reason_code: "ROUTINE", explanation: IMPORT_OVER_BYTE_BUDGET_NOTICE });
+      return;
+    }
     const request = generation.current;
     const selectedFormat = format;
     setBusy(true);

@@ -688,3 +688,81 @@ fn with_no_store_open_the_import_screen_is_told_why_rather_than_shown_counts() {
     }
     drop(keep);
 }
+
+// ------------------------------------------------- Wave 1: input budgets ---
+
+/// A file over the byte budget is refused with the budget sentence, before
+/// any parser reads it. The text here is not JSON and not JSONL, and the
+/// refusal must still be the size one on all four entry points — a parse
+/// refusal instead would mean something walked 64 MB it had been told not to
+/// read.
+#[test]
+fn an_export_over_the_byte_budget_is_refused_before_anything_reads_it() {
+    use soulcore::commands::import::{IMPORT_OVER_BYTE_BUDGET_NOTICE, MAX_IMPORT_BYTES};
+
+    let (keep, directory) = scratch();
+    let mut session = Session::open(&directory);
+    let oversized = "a".repeat(MAX_IMPORT_BYTES + 1);
+
+    for refusal in [
+        session
+            .preview_soul_import_v1(&oversized)
+            .expect_err("over budget"),
+        session
+            .preview_telegram(&oversized)
+            .expect_err("over budget"),
+        session
+            .commit_soul_import_v1(&oversized)
+            .expect_err("over budget"),
+        session
+            .commit_telegram(&oversized)
+            .expect_err("over budget"),
+    ] {
+        assert_eq!(refusal.reason_code, "ROUTINE");
+        // Exactly the budget sentence: a parse sentence here would mean
+        // something walked 64 MB it had been told not to read.
+        assert_eq!(refusal.explanation, IMPORT_OVER_BYTE_BUDGET_NOTICE);
+    }
+    assert_eq!(events_in(&session), 0, "a refused file writes nothing");
+    drop(keep);
+}
+
+/// A file that parses but carries a body no chat produced is refused after
+/// the parse, with a count and never a quote, and the store stays empty.
+#[test]
+fn an_export_with_a_body_over_the_length_budget_is_counted_not_quoted() {
+    use soulcore::commands::import::{IMPORT_MESSAGE_TOO_LONG_NOTICE, MAX_MESSAGE_CHARS};
+
+    let (keep, directory) = scratch();
+    let mut session = Session::open(&directory);
+    let blob = "长".repeat(MAX_MESSAGE_CHARS + 1);
+    let header = r#"{"type":"header","format":"soul-import-v1","version":1,"exported_at":"2026-09-27T08:00:00Z"}"#;
+    let message = format!(
+        r#"{{"type":"message","id":"m-0001","occurred_at":"2026-09-27T08:01:00Z","sender_scope":"self","conversation_id":"c-01","sender_id":"u-self","text":"{blob}"}}"#,
+    );
+    let text = format!("{header}\n{message}\n");
+
+    for refusal in [
+        session.preview_soul_import_v1(&text).expect_err("too long"),
+        session.commit_soul_import_v1(&text).expect_err("too long"),
+    ] {
+        assert_eq!(refusal.reason_code, "ROUTINE");
+        assert!(
+            refusal.explanation.contains(IMPORT_MESSAGE_TOO_LONG_NOTICE),
+            "{}",
+            refusal.explanation,
+        );
+        assert!(
+            refusal.explanation.contains("1 条超长"),
+            "{}",
+            refusal.explanation
+        );
+        assert!(
+            !refusal.explanation.contains("长长"),
+            "the refusal quoted the body: {}",
+            refusal.explanation,
+        );
+    }
+    assert_eq!(events_in(&session), 0, "a refused file writes nothing");
+    drop(keep);
+}
