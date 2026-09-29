@@ -4,7 +4,11 @@
 
 平台：v0.1 在 Windows 11 上开发与验收；核心后续部署于 Linux / macOS / Windows；接入端（数据采集与结果呈现）含 macOS / Linux / Windows / Android（DECISIONS D65）。
 
-状态：独立集成源码 ebff0c9 的 Windows 自动门禁与补充检查已通过；同源码 NSIS 的外部证据目录当前缺失，G-M 0 作者手动打包、真实安装/卸载、其余人工验收和同源码 Linux 门禁均未齐，Goal 1 未关闭。后续源码修改不沿用旧门禁结论。见 docs/STATUS.md。
+状态（2026-09-29）：Goal 1、正式 Goal 2 与 Wave 1 均未关闭。工作分支的 `6a8ad64` 已将新遗忘服务、核心回执、原生 IPC 与桌面页面接线，并新增仅重试日志清理入口；只有离线局部诊断通过，真实组件、原生测试、完整门禁、独立评审和主干集成仍未完成。销毁前影响面重新校验与独立撤权执行模型仍待补。见 [docs/STATUS.md](docs/STATUS.md)。
+
+快速理解：[架构与项目进度展示页](docs/project-overview.html)（单文件 HTML，保存后用浏览器打开；包含架构、18 个 Rust 模块、能力筛选、验证账本与剩余任务）。页面是固定在 `6a8ad64` 的说明快照，不是 Soul 客户端，不实时更新，不读取个人数据，不自动联网。最新状态以 STATUS 和对应源码证据为准。
+
+历史：独立集成源码 `ebff0c9` 有 Windows 自动门禁记录；同源码 NSIS 的外部证据目录缺失，人工验收与同源码 Linux 门禁未齐。旧门禁结论不覆盖后续源码；此前暂缓 G-L、跳过 NSIS 安装／卸载与 G-M 的指示保持不变。
 
 - 产品锁定：[`docs/PRODUCT_LOCK.md`](docs/PRODUCT_LOCK.md)
 - AI 协作与工作区入口：[`AGENTS.md`](AGENTS.md)（项目规则，不替代产品与验收权威）
