@@ -1,45 +1,50 @@
 # STATUS
 
-本文件是当前状态的唯一入口。历史记录见 [2026-09-27 状态快照](STATUS_HISTORY_20260927.md)；该文件完整保留原文，历史段落中的“本轮”“未提交”“未推送”只描述当时工作区，不是当前状态。
+本文件是当前状态入口。历史见 [2026-09-28 快照](STATUS_HISTORY_20260928.md) 与[遗忘阶段 1–4 记录](SOUL_FORGET_PROGRESS_2026-09-29.md)。历史记录中的“尚未接入”描述其当时版本，不覆盖本页的新进展。
 
-## 当前状态（2026-09-28）
+## 当前状态（2026-09-29，阶段 5：桌面接线）
 
-- **Goal 1 与正式 Goal 2 均未关闭。** 代码实现、局部测试、完整平台门禁、人工观察和主干集成是不同状态；不互相替代。
-- 续写分支：`codex/soul-followup-20260928`。该分支从 PR #65 的 `arena/01a0e375-soul` @ `efcaf8c77af0992a830ff5b9b8922c3a660ab063` 延续；本次修改的直接父提交为 `bc0d8d25f829003fabe2cb06b4ebb1124727c2fd`。独立分支同步不等于修改或合并 `main`，不代替 PR #65 的验收。
-- **继承的实现，不计为本次新增：** 导入等待/格式切换/同文件重选保护、图谱摘要请求保护、导入输入预算及 IPv6 origin 规范化。Wave1 范围继续按 [现有实施计划](SOUL_WAVE1_IMPLEMENTATION_PLAN_2026-09-27.md) 执行。
-- PR #65 的前端 222 项通过是该 PR 作者记录的历史局部结果；不是本分支本次 PASS。该 PR 明确记录 Rust 改动未运行，仍须补验证。
+**Goal 1、正式 Goal 2 与 Wave 1 均未关闭。** 本轮把遗忘结果接到桌面源码并完成局部诊断，不是原生端到端通过、独立评审通过或发布声明。
 
-## 阶段记录
+工作分支：`codex/soul-forget-outcomes-20260929`，PR #66 保持草稿。直接父提交 `631e9ed16fcb7426cbd1f7e8df2132a6efefc211`。本轮核对 main 仍为 `8aae8f3877bc93529d0a0104c277a85ded9c43aa`，未修改或合并 main。前轮分支起点仍是 `codex/soul-followup-20260928` @ `3cd0c73`。
 
-1. **文档对齐：IMPLEMENTED，已同步 `d32d1ea`。** 修正 SECURITY 的过期状态说明；原 STATUS 以原始 Git blob 保留在同目录，不改运行时代码。
-2. **图谱交互补强：IMPLEMENTED，已同步 `bc0d8d2`。** 写入和摘要在 IPC 前同步准入；旧响应、错误对象与卸载回调不能更新页面。新增 16 个请求状态用例、11 个 React/IPC 用例。该阶段记录的离线 Node 16/16 与处理器探针 12/12 属于此前局部检查；本次未重跑图谱套件，未升级其验证状态。
-3. **导入确认补强：IMPLEMENTED，随本提交同步。** 新增 `importRequests.ts`，只管理页面内读取、预览和确认的归属，不持有正文。`Import.tsx` 在启动文件读取或提交 IPC 之前同步准入；同一挂起确认不能重入，取消/替换/成功后的旧预览回调不能再次提交，卸载后的回调不能启动新读取或更新页面。提交期间的取消、换文件和格式变化不能把在途回执丢掉；未识别 owner 的预览在处理器处也不提交。成功后释放 staged 引用并清除字符计数和文件输入；失败保留既有明确重试路径，不自动重试。
-4. **导入配套测试：已编写，真实组件执行待补。** `importRequests.test.ts` 有 24 个纯状态用例；`Import.lifecycle.test.tsx` 有 12 个展开后的 React/IPC 用例，全部使用合成输入。原有 `Import.test.tsx`、`Import.race.test.tsx` 和图谱测试没有修改。
+## 本轮完成的源码对齐
 
-## 本次实际检查（非门禁）
+- 核心 `commands::memory::forget` 改用 `forget_with_outcome`，保留原 unit/impact 访问，增加清理与审计确认；已遗忘记忆不再次执行销毁。既有 Session 调用通过这个桥接进入新服务，没有修改 Session 的整体锁模型。
+- `ForgetReceiptView` 增加 `logical_committed`、`cleanup`、`audit`。新 `retry_forget_cleanup` 命令复用 Session 的同一个加密库连接，不接收记忆 id 或销毁确认，不执行销毁或补写审计。
+- TypeScript 包装、原生命令声明、原生命令名表、Tauri 注册表静态核对为同一组 **39 个命令**。原有命令未删除，新增一个清理命令。
+- `Memory.tsx` 接入三种独立结果和“仅重试日志清理”按钮；重试保留原回执数字及审计不确定性。重启后已有墓碑也可发起清理，但不重建历史回执，不把墓碑当清理／审计确认。
+- 页面请求在 IPC 前同步准入，卸载前后与旧预览回调不得重入；在实际启动 IPC 的微任务内再次检查归属。只有明确的预览编号不匹配保留确认面板；未知 IPC 结果不冒称回滚，不自动重发销毁。
+- 旧版回执缺少新字段时不默认成功。既有 `fakeCore` 保留为旧形状测试材料；新增组件测试分别覆盖当前与旧形状。没有修改旧回归来掩盖不兼容。
+- 原 `FORGET_NOTICE` 常量及其旧测试双胞胎未改；页面另行明确其永久不可读描述以日志清理确认为前提。旧底层遗忘 API 保留供旧调用者使用，本轮并非迁移所有旧 API 调用方。
 
-环境：Linux，Node v22.16.0、TypeScript 5.8.3；无项目锁定的 React/Vitest 依赖，无 Rust、pnpm、PowerShell。依赖源 DNS 解析失败。本次只在仓库外工作副本执行离线检查，不宣称执行了仓库 PowerShell 门禁。
+## 本轮实际检查（不是完整门禁）
 
-- 修改前 `Import.tsx` 工作副本与远端 Git blob `b51d7575c70aa6f1f69cbf2c94ff42822a9886ac` 一致，包括结尾换行。
-- `tsc --noEmit --strict --noUnusedLocals --noUnusedParameters --exactOptionalPropertyTypes --noUncheckedIndexedAccess --target ES2022 apps/desktop/src/routes/importRequests.ts`：退出 0，仅检查新状态模块。
-- `node --test checks/run-import-pure.cjs`：退出 0，24/24。将已编写纯测试的 `vitest` runner 导入替换成 `node:test`，断言体不变；这不是 Vitest 执行结果。
-- 修改前 `SOUL_PROBE_BEFORE=1 node --test checks/import-handler-probes.cjs`：退出 1，7 通过 / 11 失败；修改后同组 `node --test checks/import-handler-probes.cjs`：退出 0，18/18。探针转译实际组件源码，用轻量 hook/JSX 替身调用处理器，不加载 React/DOM/Tauri；覆盖重入确认、过期预览、卸载、失败重试与预算拒绝等边界。
-- 4 个本次源码/测试文件的 TypeScript 单文件转译无语法诊断；UTF-8、LF、尾随空白检查通过。单文件转译不能代替项目类型检查、lint 或生产构建。
-- **未运行：** 项目完整 Vitest（含新增 12 个 React/IPC 用例）、前端 lint/build、Rust/桌面测试、完整 G-L/G-W/G-M、独立只读评审。没有签发 REVIEWED、GATED、INTEGRATED 或发布 PASS。
+环境为 Linux 外部部分工作副本，Node v22.16.0、TypeScript 5.8.3。没有 cargo、rustc、pnpm、pwsh 或完整项目 React/Vitest 依赖；原始下载域名访问失败。诊断未使用仓库要求的 PowerShell，不能当作 G-L/G-W。
 
-探针的证据边界：受控地重入同一渲染回调或持有旧回调，不等于已经在真实浏览器复现普通双击。React 对独立点击分别处理状态更新，因此不能据此声称用户正常双击一定造成重复导入。本次是页面处理器加固；真实调度行为仍以待执行的组件与平台测试为准。
+| 检查 | 实际结果 | 证据边界 |
+| --- | --- | --- |
+| `node /mnt/data/soul-checks/run-pure.cjs` | 退出 0，17/17 | 新 `memoryRequests.test.ts` 只替换 runner 导入为 node:test；断言正文不改；不是 Vitest |
+| `node /mnt/data/soul-checks/probe-memory-ui.cjs` | 退出 0，12/12 | 实际 Memory 源码与 core.ts 包装，hook/JSX 和 invoke 替身；不是 React、DOM 或 Tauri 原生执行 |
+| `node /mnt/data/soul-checks/check_sources.cjs` | 退出 0 | 7 个 TS/TSX 单文件转译无语法诊断；四处命令表一致、39 项；原生命令仍为单行转发 |
+| `tsc --noEmit --strict --noUnusedLocals --noUnusedParameters --exactOptionalPropertyTypes --noUncheckedIndexedAccess --target ES2022` | 退出 0 | 仅 memoryRequests.ts 和 forgetOutcome.ts 两个独立模块 |
+| Git blob 字节核对 | 通过 | 五个修改前完整文件匹配来源 blob；提交源码匹配工作副本；不是编译正确性证明 |
 
-## 已有平台证据（按所标源码版本阅读）
+新增 **10 个 React/Vitest 用例、4 个 Rust 用例已编写但未运行**。前轮 14 个 Rust 用例也仍未运行。前轮 SQLite 6/6 和呈现断言 14/14 属于前轮局部证据，本轮没有重新计为 PASS。
 
-- [20260925-ebff0c9-win](gates/20260925-ebff0c9-win.md)：历史四包集成的 Windows 记录，不自动覆盖当前分支或新增代码。
-- [20260925-95ff7d6-win](gates/20260925-95ff7d6-win.md)：保留安装失败、恢复与未验收边界。
-- **G-L 仍按既有用户指示暂缓。** 本次未启动完整 Linux 门禁；暂缓不是免除 Goal 1 关闭条件。
-- **G-M 未完成。** 真实 NSIS 安装/卸载按既有指示跳过；不重试，不勾选人工清单。外部打包证据缺失与卸载残留的历史说明仍在状态快照中。
+没有运行完整应用类型检查、lint/build、旧回归、真实组件、Rust 格式／编译／测试、桌面 IPC、独立只读评审或平台门禁。受控地重复旧回调不等于真实浏览器正常双击复现；页面结果忽略不等于取消或回滚核心操作。
 
-## 待补验证与下一步
+## 未闭环与后续顺序
 
-具备项目依赖的环境应执行 `pnpm --filter @soul/desktop lint`、`pnpm --filter @soul/desktop test` 和生产 `build`，覆盖新增导入 36 个用例、既有图谱 27 个新增用例及全部旧回归；再进行独立评审和受影响平台验证。不将这些“已编写用例”的数量算作已通过数量。
+1. **遗忘预览的影响面变化仍是 P0。** 当前 Session 校验预览编号／对象后执行，matched_preview 在返回回执时比较；本轮没有把影响面比较移动到销毁前，不能宣称阻止了预览后内容变化导致的超范围销毁。需在同一存储锁保护下重新比较再执行，并增加真实事务回归。
+2. **独立撤权仍是 P0。** Session 长任务的准备／锁外执行／提交、撤权优先路径、取消与来源变化后的提交拒绝尚未实现。新清理命令仍受现有锁模型约束。
+3. 补真实 Rust／SQLCipher、现有回归、React／Vitest、完整构建与原生 IPC 测试，再做独立评审。源码已接线不等于产品已验收。
+4. 继续按原许可处理 G-L/G-W/G-M 与主干集成。G-L 暂缓，NSIS 安装／卸载和 G-M 跳过；没有据此勾选或免除任何关闭条件。
 
-本次不改冻结算法、权限、Rust 核心、schema、IPC 命令、存储事务或取消语义。忽略已卸载页面的结果不等于取消核心请求或回滚导入；释放 JavaScript 引用不承诺内存物理擦除。手动再次选择同一文件仍可重新预览并确认，不声称实现消息级幂等。
+## 整体范围
 
-Wave1 P0 撤权执行模型与遗忘结果语义仍待实施及平台验证。消息幂等、持久化检索、行为预测及新采集能力不在本次修改范围；不新增冻结 contract、hash 或门禁体系。完整关闭继续按 [ACCEPTANCE](ACCEPTANCE.md)、[gates/README](gates/README.md) 和 [作者手动清单](../scripts/author-manual-checklist.md)，没有对应证据就不关闭。
+已有 v0.1 路径包括问卷与档案纠正、导入、图谱、记忆 CRUD、Windows 前台时长采集、起草、授权目录只读计划、审计与内存研究预览；各自当前完整验证状态不得从旧版本绿迁移。
+
+获准记忆自动检索参与起草、消息级幂等、行为预测、恢复包与受控文件执行、多设备／Android、可选云深度分析仍按 [ROADMAP](ROADMAP.md) 和 [Goal 2 计划](GOAL2_PLAN.md) 推进，不算本轮完成。
+
+冻结 schema、算法、依赖锁文件、权限和采集能力没有扩展；未恢复托管 CI。正式关闭仍以 [Wave 1 计划](SOUL_WAVE1_IMPLEMENTATION_PLAN_2026-09-27.md)、[ACCEPTANCE](ACCEPTANCE.md)、[gates/README](gates/README.md) 与[作者清单](../scripts/author-manual-checklist.md) 为准。

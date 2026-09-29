@@ -19,8 +19,8 @@ use soulcore::commands::fileplan::PlanPreview;
 use soulcore::commands::graph::PeopleGraphView;
 use soulcore::commands::import::{ImportPreview, ImportReceiptView};
 use soulcore::commands::memory::{
-    ForgetConfirmation, ForgetPreview, ForgetReceiptView, MemoryChange, MemoryDetail, MemoryList,
-    NewMemory,
+    ForgetCleanupView, ForgetConfirmation, ForgetPreview, ForgetReceiptView, MemoryChange,
+    MemoryDetail, MemoryList, NewMemory,
 };
 use soulcore::commands::profile::{GivenAnswer, IntakeReceipt, ProfileScreen, QuestionView};
 use soulcore::commands::session::{
@@ -317,6 +317,14 @@ pub fn forget_memory(
     session.held().forget_memory(&confirmation)
 }
 
+/// Only retry the existing store's WAL cleanup, never the destructive act.
+#[tauri::command]
+pub fn retry_forget_cleanup(
+    session: State<'_, SessionState>,
+) -> Result<ForgetCleanupView, SessionRefusal> {
+    soulcore::commands::memory::retry_cleanup_for_session(&session.held())
+}
+
 /// What the research track would see. On screen only; nothing is written.
 #[tauri::command]
 pub fn research_preview(
@@ -428,6 +436,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "update_memory",
     "preview_forget",
     "forget_memory",
+    "retry_forget_cleanup",
     "research_preview",
     "audit_chain",
     "collect_status",

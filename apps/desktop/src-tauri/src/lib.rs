@@ -85,6 +85,7 @@ pub fn configure<R: tauri::Runtime>(
             commands::update_memory,
             commands::preview_forget,
             commands::forget_memory,
+            commands::retry_forget_cleanup,
             commands::research_preview,
             commands::audit_chain,
             commands::collect_status,

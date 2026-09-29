@@ -12,10 +12,13 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use soul_memory::{MemoryContent, MemoryDigest, MemoryDraft, MemoryEdit, MemoryError};
+use soul_memory::{ForgetAudit, MemoryContent, MemoryDigest, MemoryDraft, MemoryEdit, MemoryError};
 use soul_schema::memory::{MemoryType, SoulMemory};
 use soul_store::SqlCipherStore;
-use soul_store_api::forget::{ForgetImpact, ForgetReceipt};
+use soul_store_api::forget::{ForgetCleanup, ForgetImpact, ForgetUnit};
+use soul_store_api::MemoryStore;
+
+use super::session::{Session, SessionRefusal, STORE_UNAVAILABLE_NOTICE};
 
 /// Seal a memory's title and summary and store the row that points at them.
 pub fn create(
@@ -56,14 +59,53 @@ pub fn preview_forget(
     soul_memory::preview_forget(store, memory_id)
 }
 
-/// Destroy the content key behind this memory. Irreversible, and the audit
-/// entry is written after the destruction so the chain can never block it.
+/// A committed destruction, with cleanup and audit acknowledgement kept
+/// separate. The old unit/impact accessors remain available to core callers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForgetCommandReceipt {
+    pub unit: ForgetUnit,
+    pub impact: ForgetImpact,
+    pub cleanup: ForgetCleanup,
+    pub audit: ForgetAudit,
+}
+
+/// Destroy once. Post-commit cleanup/audit problems remain in the receipt,
+/// never an error inviting another destructive attempt.
 pub fn forget(
     store: &mut SqlCipherStore,
     memory_id: Uuid,
     at_unix_seconds: i64,
-) -> Result<ForgetReceipt, MemoryError> {
-    soul_memory::forget(store, memory_id, at_unix_seconds)
+) -> Result<ForgetCommandReceipt, MemoryError> {
+    if store.get_memory(memory_id)?.forget_state == soul_schema::memory::ForgetState::Forgotten {
+        return Err(MemoryError::Forgotten(memory_id));
+    }
+    let outcome = soul_memory::forget_with_outcome(store, memory_id, at_unix_seconds)?;
+    Ok(ForgetCommandReceipt {
+        unit: outcome.receipt.unit,
+        impact: outcome.receipt.impact,
+        cleanup: outcome.cleanup,
+        audit: outcome.audit,
+    })
+}
+
+/// A cleanup observation, not a new destruction receipt or audit verdict.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ForgetCleanupView {
+    pub cleanup: ForgetCleanup,
+}
+
+/// Reuse the session's sole store connection, including after a restart.
+/// No memory id, confirmation, destruction, or audit append is accepted here.
+pub fn retry_cleanup_for_session(session: &Session) -> Result<ForgetCleanupView, SessionRefusal> {
+    let shared = session.store().ok_or_else(|| SessionRefusal {
+        reason_code: soul_policy::ReasonCode::Routine.as_str().to_owned(),
+        explanation: STORE_UNAVAILABLE_NOTICE.to_owned(),
+    })?;
+    let mut store = shared.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    Ok(ForgetCleanupView {
+        cleanup: soul_memory::retry_forget_cleanup(&mut *store),
+    })
 }
 
 // ------------------------------------------------- what a screen may draw ---
@@ -257,12 +299,16 @@ pub struct ForgetReceiptView {
     pub inferences_orphaned: u64,
     /// Whether the receipt charges what the preview quoted.
     pub matched_preview: bool,
+    /// Only constructed from a committed service outcome, never from an error.
+    pub logical_committed: bool,
+    pub cleanup: ForgetCleanup,
+    pub audit: ForgetAudit,
 }
 
 impl ForgetReceiptView {
     pub(crate) fn of(
         memory_id: Uuid,
-        receipt: &ForgetReceipt,
+        receipt: &ForgetCommandReceipt,
         quoted: &ForgetImpact,
     ) -> ForgetReceiptView {
         ForgetReceiptView {
@@ -271,6 +317,9 @@ impl ForgetReceiptView {
             sealed_blobs_destroyed: receipt.impact.sealed_blobs_destroyed,
             inferences_orphaned: receipt.impact.inferences_orphaned,
             matched_preview: &receipt.impact == quoted,
+            logical_committed: true,
+            cleanup: receipt.cleanup.clone(),
+            audit: receipt.audit,
         }
     }
 }
@@ -340,3 +389,7 @@ fn word<T: Serialize>(value: &T) -> String {
         .and_then(|value| value.as_str().map(str::to_owned))
         .unwrap_or_default()
 }
+
+#[cfg(test)]
+#[path = "memory_outcome_tests.rs"]
+mod outcome_tests;
