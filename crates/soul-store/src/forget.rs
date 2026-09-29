@@ -20,7 +20,10 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use soul_schema::memory::ForgetState;
-use soul_store_api::forget::{ForgetImpact, ForgetOps, ForgetReceipt, ForgetUnit};
+use soul_store_api::forget::{
+    ForgetCleanup, ForgetImpact, ForgetOps, ForgetOutcome, ForgetOutcomeOps, ForgetReceipt,
+    ForgetUnit,
+};
 use soul_store_api::types::{InferenceState, StoreError, StoreResult};
 
 use crate::store::{as_text, backend, enum_text, placeholders, SqlCipherStore};
@@ -269,6 +272,21 @@ impl ForgetOps for SqlCipherStore {
     }
 
     fn execute_forget(&mut self, unit: ForgetUnit) -> StoreResult<ForgetReceipt> {
+        let outcome = self.execute_forget_outcome(unit)?;
+        match outcome.cleanup {
+            ForgetCleanup::Complete => Ok(outcome.receipt),
+            ForgetCleanup::Pending { .. } => Err(StoreError::Backend(
+                "content-key destruction committed, but WAL cleanup is unconfirmed; \
+                 old WAL frames may still hold wrapped key bytes. Do not execute forget \
+                 again: use retry_forget_cleanup to retry only cleanup"
+                    .into(),
+            )),
+        }
+    }
+}
+
+impl ForgetOutcomeOps for SqlCipherStore {
+    fn execute_forget_outcome(&mut self, unit: ForgetUnit) -> StoreResult<ForgetOutcome> {
         // One resolution, used both for the receipt and for the deletions, so
         // the user cannot be charged for something the receipt did not name.
         let plan = self.forget_plan(unit)?;
@@ -334,13 +352,169 @@ impl ForgetOps for SqlCipherStore {
         // frames written before the delete, and those carry the page as it was
         // when the wrapped key was on it. Truncating the log is what discards
         // them; until then the key sits next to a database the DEK opens.
-        self.checkpoint().map_err(|error| {
-            StoreError::Backend(format!(
-                "the content keys were destroyed, but folding the write-ahead log back in \
-                 failed, so it may still hold their wrapped bytes: {error}"
-            ))
-        })?;
+        // A query can succeed while checkpointing reports SQLITE_BUSY in
+        // column zero. Preserve the committed receipt even on cleanup failure.
+        let cleanup = self.retry_forget_cleanup();
+        Ok(ForgetOutcome {
+            receipt: ForgetReceipt { unit, impact },
+            cleanup,
+        })
+    }
 
-        Ok(ForgetReceipt { unit, impact })
+    fn retry_forget_cleanup(&mut self) -> ForgetCleanup {
+        // Only this pragma: no key deletion, no new impact resolution, and no
+        // audit append. No raw database errors or paths leave this API.
+        match self.checkpoint_status() {
+            Ok(checkpoint) => ForgetCleanup::from_checkpoint(checkpoint),
+            Err(_) => ForgetCleanup::Pending { checkpoint: None },
+        }
+    }
+}
+
+#[cfg(test)]
+mod outcome_tests {
+    use std::time::Duration;
+
+    use soul_schema::common::{SealedSubject, SealedText};
+    use soul_store_api::forget::WalCheckpoint;
+    use soul_store_api::types::SealRequest;
+    use soul_store_api::{BlobStore, SoulStore};
+
+    use super::*;
+    use crate::TestKeyProvider;
+
+    fn seeded() -> (tempfile::TempDir, SqlCipherStore, TestKeyProvider, Uuid, SealedText) {
+        let directory = tempfile::tempdir().expect("temporary synthetic store");
+        let keys = TestKeyProvider::from_seed("forget outcome regression");
+        let mut store = SqlCipherStore::open(directory.path().join("soul.db"), &keys)
+            .expect("open SQLCipher");
+        store.conn.busy_timeout(Duration::ZERO).expect("no busy wait");
+        store.conn.pragma_update(None, "wal_autocheckpoint", 0).expect("disable auto checkpoint");
+        let key = Uuid::now_v7();
+        let sealed = store.seal(SealRequest::new(
+            key,
+            Uuid::now_v7(),
+            "body_ref",
+            SealedSubject::Owner,
+            b"synthetic prose only".to_vec(),
+        )).expect("seal fixture");
+        (directory, store, keys, key, sealed)
+    }
+
+    fn pin_reader(store: &SqlCipherStore, keys: &TestKeyProvider) -> SqlCipherStore {
+        let reader = SqlCipherStore::open(store.path(), keys).expect("test-only second connection");
+        reader.conn.execute_batch("BEGIN").expect("begin snapshot");
+        let count: i64 = reader.conn.query_row(
+            "SELECT count(*) FROM content_keys", [], |row| row.get(0),
+        ).expect("pin pre-forget snapshot");
+        assert_eq!(count, 1);
+        reader
+    }
+
+    fn changes(store: &SqlCipherStore) -> i64 {
+        store.conn.query_row("SELECT total_changes()", [], |row| row.get(0))
+            .expect("read change count")
+    }
+
+    #[test]
+    fn busy_cleanup_keeps_the_committed_receipt() {
+        let (_directory, mut store, keys, key, sealed) = seeded();
+        let reader = pin_reader(&store, &keys);
+        let expected = store.preview_impact(ForgetUnit::ContentKey(key)).expect("preview");
+        let outcome = store.execute_forget_outcome(ForgetUnit::ContentKey(key))
+            .expect("destruction committed despite busy cleanup");
+        assert_eq!(outcome.receipt.impact, expected);
+        assert!(matches!(outcome.cleanup, ForgetCleanup::Pending {
+            checkpoint: Some(WalCheckpoint { busy: 1, .. }),
+        }));
+        assert!(store.open(&sealed).is_err(), "live store must no longer open the prose");
+        assert!(reader.open(&sealed).is_ok(), "pinned old snapshot still exposes the risk");
+        reader.conn.execute_batch("ROLLBACK").expect("release reader");
+        assert_eq!(store.retry_forget_cleanup(), ForgetCleanup::Complete);
+    }
+
+    #[test]
+    fn copied_frames_with_a_reader_are_not_a_completed_truncate() {
+        let (_directory, mut store, keys, _key, _sealed) = seeded();
+        let reader = pin_reader(&store, &keys);
+        let ForgetCleanup::Pending { checkpoint: Some(observed) } = store.retry_forget_cleanup()
+        else { panic!("reader must prevent truncation") };
+        assert_eq!(observed.busy, 1);
+        assert!(observed.log_frames > 0);
+        assert_eq!(observed.log_frames, observed.checkpointed_frames);
+        reader.conn.execute_batch("ROLLBACK").expect("release reader");
+    }
+
+    #[test]
+    fn cleanup_retries_do_not_repeat_destruction_or_write_audit() {
+        let (directory, mut store, keys, key, sealed) = seeded();
+        let reader = pin_reader(&store, &keys);
+        let outcome = store.execute_forget_outcome(ForgetUnit::ContentKey(key))
+            .expect("committed receipt");
+        assert!(matches!(outcome.cleanup, ForgetCleanup::Pending { .. }));
+        reader.conn.execute_batch("ROLLBACK").expect("release reader");
+        store.conn.execute_batch(
+            "CREATE TEMP TRIGGER forbid_new_destruction BEFORE DELETE ON content_keys
+             BEGIN SELECT RAISE(ABORT, 'retry must not destroy'); END;"
+        ).expect("install destructive-retry tripwire");
+        let before = changes(&store);
+        assert_eq!(store.retry_forget_cleanup(), ForgetCleanup::Complete);
+        assert_eq!(store.retry_forget_cleanup(), ForgetCleanup::Complete);
+        assert_eq!(changes(&store), before, "cleanup must do no DML, including audit");
+        reader.close().expect("close reader");
+        store.close().expect("close writer");
+        let mut reopened = SqlCipherStore::open(directory.path().join("soul.db"), &keys)
+            .expect("reopen");
+        let before = changes(&reopened);
+        assert_eq!(reopened.retry_forget_cleanup(), ForgetCleanup::Complete);
+        assert_eq!(changes(&reopened), before);
+        assert!(reopened.open(&sealed).is_err());
+        assert_eq!(outcome.receipt.impact.content_key_ids, vec![key]);
+    }
+
+    #[test]
+    fn failure_before_commit_rolls_back_the_deleted_key() {
+        let (_directory, mut store, _keys, key, sealed) = seeded();
+        store.conn.execute_batch(
+            "CREATE TEMP TRIGGER fail_after_key_delete BEFORE INSERT ON destroyed_content_keys
+             BEGIN SELECT RAISE(ABORT, 'synthetic precommit failure'); END;"
+        ).expect("install failure after delete and before commit");
+        assert!(store.execute_forget_outcome(ForgetUnit::ContentKey(key)).is_err());
+        assert_eq!(store.open(&sealed).expect("key deletion rolled back"), b"synthetic prose only");
+        let destroyed: i64 = store.conn.query_row(
+            "SELECT count(*) FROM destroyed_content_keys", [], |row| row.get(0),
+        ).expect("read tombstone count");
+        assert_eq!(destroyed, 0);
+    }
+
+    #[test]
+    fn query_failure_is_pending_not_complete() {
+        let (_directory, mut store, _keys, _key, _sealed) = seeded();
+        store.conn.execute_batch("BEGIN IMMEDIATE").expect("open write transaction");
+        assert_eq!(store.retry_forget_cleanup(), ForgetCleanup::Pending { checkpoint: None });
+        store.conn.execute_batch("ROLLBACK").expect("rollback");
+    }
+
+    #[test]
+    fn legacy_forget_never_reports_success_for_busy_cleanup() {
+        let (_directory, mut store, keys, key, sealed) = seeded();
+        let reader = pin_reader(&store, &keys);
+        let error = store.execute_forget(ForgetUnit::ContentKey(key))
+            .expect_err("busy cleanup is not legacy success");
+        assert!(error.to_string().contains("committed"));
+        assert!(error.to_string().contains("retry_forget_cleanup"));
+        assert!(store.open(&sealed).is_err());
+        reader.conn.execute_batch("ROLLBACK").expect("release reader");
+    }
+
+    #[test]
+    fn checkpoint_and_flush_also_reject_busy_completion() {
+        let (_directory, mut store, keys, _key, _sealed) = seeded();
+        let reader = pin_reader(&store, &keys);
+        assert!(store.checkpoint().is_err());
+        assert!(store.flush().is_err());
+        reader.conn.execute_batch("ROLLBACK").expect("release reader");
+        store.checkpoint().expect("confirmed truncate");
+        store.flush().expect("confirmed flush");
     }
 }

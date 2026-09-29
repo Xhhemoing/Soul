@@ -61,6 +61,7 @@ import {
   type TieEdge,
 } from "../core";
 import { asRefusal, Refused } from "../refusal";
+import { GraphRequests } from "./graphRequests";
 
 /**
  * The band, in words. COPY_ZH allows only 弱 / 中等 / 强 for a档位; the
@@ -120,9 +121,12 @@ export function Graph(): React.JSX.Element {
   const [summaryRefusal, setSummaryRefusal] = useState<Refusal | null>(null);
   const [tieRefusal, setTieRefusal] = useState<Refusal | null>(null);
   const [busy, setBusy] = useState(false);
-  const summaryGeneration = useRef(0);
+  const requests = useRef(new GraphRequests());
+  const [summaryContact, setSummaryContact] = useState<string | null>(null);
 
   useEffect(() => {
+    const lifecycle = requests.current;
+    lifecycle.activate();
     let live = true;
     peopleGraph().then(
       (value) => {
@@ -134,7 +138,7 @@ export function Graph(): React.JSX.Element {
     );
     return () => {
       live = false;
-      summaryGeneration.current += 1;
+      lifecycle.deactivate();
     };
   }, []);
 
@@ -147,37 +151,55 @@ export function Graph(): React.JSX.Element {
    * underneath a lock that just overruled it — and the user has no way to
    * tell which of the two is current. It comes back by asking for it again.
    */
-  const write = (change: Promise<PeopleGraph>): void => {
-    summaryGeneration.current += 1;
+  const write = (change: () => Promise<PeopleGraph>): void => {
+    const request = requests.current.beginWrite();
+    if (request === null) return;
     setBusy(true);
     setTieRefusal(null);
     setSummary(null);
     setSummaryRefusal(null);
-    change.then(
-      (value) => {
+    setSummaryContact(null);
+    // A factory, not an already-started promise: a refused second click must
+    // not reach the core. The async wrapper also catches synchronous throws.
+    void (async () => {
+      try {
+        const value = await change();
+        if (!requests.current.finishWrite(request)) return;
         setGraph(value);
         setBusy(false);
-      },
-      (error: unknown) => {
+      } catch (error: unknown) {
+        if (!requests.current.finishWrite(request)) return;
         setTieRefusal(asRefusal(error));
         setBusy(false);
-      },
-    );
+      }
+    })();
   };
 
   const summarize = (contactId: string): void => {
-    if (busy) return;
-    const request = ++summaryGeneration.current;
+    const request = requests.current.beginSummary(contactId);
+    if (request === null) return;
     setSummary(null);
     setSummaryRefusal(null);
-    personSummary(contactId).then(
-      (value) => {
-        if (request === summaryGeneration.current) setSummary(value);
-      },
-      (error: unknown) => {
-        if (request === summaryGeneration.current) setSummaryRefusal(asRefusal(error));
-      },
-    );
+    setSummaryContact(contactId);
+    void (async () => {
+      try {
+        const value = await personSummary(contactId);
+        if (!requests.current.finishSummary(request)) return;
+        setSummaryContact(null);
+        if (value.contact_id !== request.contactId) {
+          setSummaryRefusal({
+            reason_code: "ROUTINE",
+            explanation: "摘要返回的对象与本次选择不一致，未显示该结果。请重新选择。",
+          });
+          return;
+        }
+        setSummary(value);
+      } catch (error: unknown) {
+        if (!requests.current.finishSummary(request)) return;
+        setSummaryContact(null);
+        setSummaryRefusal(asRefusal(error));
+      }
+    })();
   };
 
   if (refusal !== null) {
@@ -218,7 +240,12 @@ export function Graph(): React.JSX.Element {
         ) : (
           <ul className="facts" data-testid="people-list">
             {others.map((person) => (
-              <Person key={person.contact_id} person={person} busy={busy} onSummarize={summarize} />
+              <Person
+                key={person.contact_id}
+                person={person}
+                busy={busy || summaryContact === person.contact_id}
+                onSummarize={summarize}
+              />
             ))}
           </ul>
         )}
@@ -245,8 +272,8 @@ export function Graph(): React.JSX.Element {
                 forgotten={
                   forgotten.has(tie.from_contact_id) || forgotten.has(tie.to_contact_id)
                 }
-                onCorrect={(band) => write(correctTie(tie.relationship_id, band))}
-                onRelease={() => write(releaseTie(tie.relationship_id))}
+                onCorrect={(band) => write(() => correctTie(tie.relationship_id, band))}
+                onRelease={() => write(() => releaseTie(tie.relationship_id))}
               />
             ))}
           </ul>

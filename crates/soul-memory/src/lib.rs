@@ -22,6 +22,7 @@
 
 pub mod draft;
 pub mod error;
+pub mod outcome;
 pub mod service;
 
 pub use draft::{
@@ -29,4 +30,5 @@ pub use draft::{
     TITLE_FIELD,
 };
 pub use error::{MemoryError, MemoryResult};
+pub use outcome::{forget_with_outcome, retry_forget_cleanup, ForgetAudit, MemoryForgetOutcome};
 pub use service::{create, forget, list, preview_forget, read, update};

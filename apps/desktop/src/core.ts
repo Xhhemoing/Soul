@@ -14,6 +14,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import type { ForgetAudit, ForgetCleanup } from "./forgetOutcome";
 
 /** The only state the cloud switch has in v0.1. There is no `enabled`. */
 export type CloudState = "not_yet_available";
@@ -510,6 +511,14 @@ export interface ForgetReceipt {
   readonly inferences_orphaned: number;
   /** Whether the receipt charges what the preview quoted. */
   readonly matched_preview: boolean;
+  /** Missing fields from a legacy peer stay unconfirmed, never default true. */
+  readonly logical_committed?: boolean;
+  readonly cleanup?: ForgetCleanup;
+  readonly audit?: ForgetAudit;
+}
+
+export interface ForgetCleanupResult {
+  readonly cleanup: ForgetCleanup;
 }
 
 /** One row of the research preview. Counts and buckets, never a body. */
@@ -646,6 +655,7 @@ export const COMMANDS = {
   updateMemory: "update_memory",
   previewForget: "preview_forget",
   forgetMemory: "forget_memory",
+  retryForgetCleanup: "retry_forget_cleanup",
   researchPreview: "research_preview",
   auditChain: "audit_chain",
   collectStatus: "collect_status",
@@ -881,11 +891,16 @@ export function previewForget(memoryId: string): Promise<ForgetPreview> {
  * Destroy the content key behind one memory. Irreversible.
  *
  * This is a forget, which D15 defines as key destruction, and it is the one
- * destructive thing v0.1 does. It writes no file: AC-27 is about the file
- * plan, and there is still no command that carries one out.
+ * destructive thing v0.1 does. It writes Soul's own encrypted store and log;
+ * it does not execute the file plans that belong to AC-27.
  */
 export function forgetMemory(confirmation: ForgetConfirmation): Promise<ForgetReceipt> {
   return invoke<ForgetReceipt>(COMMANDS.forgetMemory, { confirmation });
+}
+
+/** Only the WAL cleanup. Never reuses a destructive confirmation or writes audit. */
+export function retryForgetCleanup(): Promise<ForgetCleanupResult> {
+  return invoke<ForgetCleanupResult>(COMMANDS.retryForgetCleanup);
 }
 
 /** What the research track would see. On screen only. */
