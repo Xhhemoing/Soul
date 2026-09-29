@@ -4,8 +4,8 @@
  *
  * Forgetting is allowed here, and it is the only destructive thing v0.1 does.
  * `docs/DECISIONS.md` D15 defines deleting as destroying the content key: the
- * prose stops being openable, the row stays behind as a tombstone, and no file
- * is written or removed anywhere on disk. That is why this screen has a forget
+ * live prose stops being openable and the row remains a tombstone. Soul writes
+ * its own encrypted database and log; cleanup and audit are separate results. That is why this screen has a forget
  * and the file-plan screen still has no execute — they are not the same kind
  * of act, and AC-27 is about the other one.
  *
@@ -18,7 +18,7 @@
  * what was on the screen in front of the user.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   createMemory,
@@ -26,6 +26,7 @@ import {
   memoryDetail,
   memoryList,
   previewForget,
+  retryForgetCleanup,
   updateMemory,
   type ForgetPreview,
   type ForgetReceipt,
@@ -35,6 +36,9 @@ import {
   type Refusal,
 } from "../core";
 import { asRefusal, Refused } from "../refusal";
+import { cleanupStatus, type ForgetCleanup } from "../forgetOutcome";
+import { ForgetResult } from "../components/ForgetResult";
+import { MemoryRequests } from "./memoryRequests";
 
 /** `memory.schema.json`'s kinds. The core sends which ones exist. */
 const KIND: Record<string, string> = {
@@ -63,110 +67,180 @@ export function Memory(): React.JSX.Element {
   const [receipt, setReceipt] = useState<ForgetReceipt | null>(null);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [busy, setBusy] = useState(false);
+  const [uncertainForget, setUncertainForget] = useState(false);
+  const [cleanup, setCleanup] = useState<ForgetCleanup | null>(null);
+  const requests = useRef(new MemoryRequests()).current;
 
-  const reload = (): Promise<void> =>
-    memoryList().then(
-      (value) => setList(value),
-      (error: unknown) => setRefusal(asRefusal(error)),
+  const reload = (): void => {
+    const ticket = requests.nextList();
+    void Promise.resolve().then(() => {
+      if (!requests.ownsList(ticket)) throw new Error("inactive list request");
+      return memoryList();
+    }).then(
+      (value) => { if (requests.ownsList(ticket)) setList(value); },
+      (error: unknown) => {
+        if (requests.ownsList(ticket)) setRefusal(asRefusal(error));
+      },
     );
+  };
 
   useEffect(() => {
-    let live = true;
-    memoryList().then(
-      (value) => {
-        if (live) setList(value);
-      },
+    requests.activate();
+    const ticket = requests.nextList();
+    void Promise.resolve().then(() => {
+      if (!requests.ownsList(ticket)) throw new Error("inactive list request");
+      return memoryList();
+    }).then(
+      (value) => { if (requests.ownsList(ticket)) setList(value); },
       (error: unknown) => {
-        if (live) setRefusal(asRefusal(error));
+        if (requests.ownsList(ticket)) setRefusal(asRefusal(error));
       },
     );
-    return () => {
-      live = false;
-    };
-  }, []);
+    return () => requests.dispose();
+  }, [requests]);
 
-  /** Anything that touches one memory: clear the forget in flight first. */
-  const act = (change: Promise<MemoryDetail>): void => {
+  function invokeOwned<T>(ticket: number, work: () => Promise<T>): Promise<T> {
+    return Promise.resolve().then(() => {
+      if (!requests.owns(ticket)) throw new Error("inactive memory request");
+      return work();
+    });
+  }
+
+  const finish = (ticket: number): void => {
+    if (requests.finish(ticket)) setBusy(false);
+  };
+
+  /** Admit before IPC, not after constructing an already-running promise. */
+  const act = (change: () => Promise<MemoryDetail>): void => {
+    const ticket = requests.begin();
+    if (ticket === null) return;
     setBusy(true);
     setRefusal(null);
     setPreview(null);
     setReceipt(null);
-    change.then(
+    void invokeOwned(ticket, change).then(
       (value) => {
+        if (!requests.owns(ticket)) return;
         setOpen(value);
-        setBusy(false);
-        void reload();
+        finish(ticket);
+        reload();
       },
       (error: unknown) => {
+        if (!requests.owns(ticket)) return;
         setRefusal(asRefusal(error));
-        setBusy(false);
+        finish(ticket);
       },
     );
   };
 
-  /** Read the price. Nothing is destroyed by this call. */
   const askPrice = (memoryId: string): void => {
+    const ticket = requests.begin();
+    if (ticket === null) return;
     setBusy(true);
     setRefusal(null);
+    setPreview(null);
     setReceipt(null);
-    previewForget(memoryId).then(
+    void invokeOwned(ticket, () => previewForget(memoryId)).then(
       (value) => {
+        if (!requests.owns(ticket)) return;
+        requests.remember(ticket, value);
         setPreview(value);
-        setBusy(false);
+        finish(ticket);
       },
       (error: unknown) => {
+        if (!requests.owns(ticket)) return;
         setRefusal(asRefusal(error));
-        setBusy(false);
+        finish(ticket);
       },
     );
   };
 
-  /**
-   * Pay it, with the core's own answer echoed back unchanged.
-   *
-   * The preview stays on screen until the core says the forget ran. A refusal
-   * leaves the held preview standing on the other side — `Session::forget_
-   * memory` matches before it takes, so a confirmation that named the wrong
-   * preview costs the click and not the price the user read — and a screen
-   * that cleared the panel anyway would make one refused click the reason to
-   * walk the irreversible screen again. Retries that get clicked through
-   * rather than read are the thing this whole page is built to avoid.
-   */
   const forget = (quoted: ForgetPreview): void => {
+    const ticket = requests.begin(quoted);
+    if (ticket === null) return;
     setBusy(true);
     setRefusal(null);
-    forgetMemory({ preview_id: quoted.preview_id, memory_id: quoted.memory_id }).then(
+    setCleanup(null);
+    void invokeOwned(ticket, () => forgetMemory({
+      preview_id: quoted.preview_id, memory_id: quoted.memory_id,
+    })).then(
       (value) => {
+        if (!requests.owns(ticket)) return;
+        requests.remember(ticket, null);
         setPreview(null);
-        setReceipt(value);
+        const matches = value.memory_id === quoted.memory_id;
+        setReceipt(matches ? value : null);
         setOpen(null);
-        setBusy(false);
-        void reload();
+        setUncertainForget(!matches || value.logical_committed !== true);
+        finish(ticket);
+        reload();
       },
       (error: unknown) => {
+        if (!requests.owns(ticket)) return;
+        const problem = asRefusal(error);
+        setRefusal(problem);
+        // A lost IPC reply is not proof of rollback. Only an explicit
+        // preview mismatch is known to leave the held preview unspent.
+        if (problem.reason_code !== "PLAN_HASH_MISMATCH") {
+          requests.remember(ticket, null);
+          setPreview(null);
+          setOpen(null);
+          setUncertainForget(true);
+        }
+        finish(ticket);
+        reload();
+      },
+    );
+  };
+
+  const retryCleanup = (): void => {
+    const ticket = requests.begin();
+    if (ticket === null) return;
+    setBusy(true);
+    setRefusal(null);
+    setPreview(null);
+    setCleanup(null);
+    void invokeOwned(ticket, retryForgetCleanup).then(
+      (value) => {
+        if (!requests.owns(ticket)) return;
+        setCleanup(value.cleanup);
+        // Preserve the original counts, preview match, and audit uncertainty.
+        // Cleanup cannot manufacture a missing destruction acknowledgement.
+        setReceipt((previous) => previous === null
+          ? null : { ...previous, cleanup: value.cleanup });
+        finish(ticket);
+      },
+      (error: unknown) => {
+        if (!requests.owns(ticket)) return;
         setRefusal(asRefusal(error));
-        setBusy(false);
+        finish(ticket);
       },
     );
   };
 
   if (list === null) {
     return refusal === null ? (
-      <section className="panel" aria-busy="true">
-        <p>正在读本机的记忆…</p>
-      </section>
-    ) : (
-      <Refused title="记忆没有读出来" refusal={refusal} testId="memory-refusal-code" />
-    );
+      <section className="panel" aria-busy="true"><p>正在读本机的记忆…</p></section>
+    ) : <Refused title="记忆没有读出来" refusal={refusal} testId="memory-refusal-code" />;
   }
+
+  const recoverable = receipt !== null || uncertainForget
+    || list.memories.some((row) => row.forget_state === "forgotten");
 
   return (
     <>
-      <Write types={list.memory_types} busy={busy} onWrite={(fresh) => act(createMemory(fresh))} />
-
+      <Write types={list.memory_types} busy={busy} onWrite={(fresh) => act(() => createMemory(fresh))} />
       {refusal === null ? null : (
-        <Refused title="这一次没有做成" refusal={refusal} testId="memory-refusal-code" />
+        <Refused title="这次请求需要核对" refusal={refusal} testId="memory-refusal-code" />
       )}
+      {uncertainForget ? (
+        <section className="panel" role="status" data-testid="forget-uncertain">
+          <h2>尚未确认上一次遗忘的结果</h2>
+          <p>没有收到完整回执，不等于没有执行。不要重复确认销毁；先核对列表和审计。
+            日志清理即使成功，也不能替代这次遗忘或审计的确认。</p>
+          <button type="button" disabled={busy} onClick={reload}>刷新列表核对</button>
+        </section>
+      ) : null}
 
       <section className="panel" aria-labelledby="memories-heading">
         <h2 id="memories-heading">这台机器上的记忆（{list.memories.length}）</h2>
@@ -177,57 +251,44 @@ export function Memory(): React.JSX.Element {
         ) : (
           <ul className="facts" data-testid="memory-list">
             {list.memories.map((row) => (
-              <Row
-                key={row.memory_id}
-                row={row}
-                busy={busy}
-                onOpen={() => act(memoryDetail(row.memory_id))}
-                onAskPrice={() => askPrice(row.memory_id)}
-              />
+              <Row key={row.memory_id} row={row} busy={busy}
+                onOpen={() => act(() => memoryDetail(row.memory_id))}
+                onAskPrice={() => askPrice(row.memory_id)} />
             ))}
           </ul>
         )}
-        <p className="muted" data-testid="forget-notice">
-          {list.forget_notice}
+        <p className="muted" data-testid="forget-stage-notice">
+          下面“正文从此打不开”的说明以日志清理也获得确认为前提。
+          墓碑只表明逻辑状态，不代表旧日志已经清理，也不代表审计写入已确认。
         </p>
+        <p className="muted" data-testid="forget-notice">{list.forget_notice}</p>
       </section>
 
       {open === null ? null : (
-        <Edit
-          key={open.memory_id}
-          detail={open}
-          types={list.memory_types}
-          busy={busy}
-          onSave={(change) => act(updateMemory(open.memory_id, change))}
-        />
+        <Edit key={open.memory_id} detail={open} types={list.memory_types} busy={busy}
+          onSave={(change) => act(() => updateMemory(open.memory_id, change))} />
       )}
-
       {preview === null ? null : (
-        <Price
-          preview={preview}
-          busy={busy}
-          onForget={() => forget(preview)}
-          onKeep={() => setPreview(null)}
-        />
+        <Price preview={preview} busy={busy} onForget={() => forget(preview)}
+          onKeep={() => { if (requests.abandon()) setPreview(null); }} />
       )}
-
-      {receipt === null ? null : (
-        <section className="panel" aria-labelledby="receipt-heading">
-          <h2 id="receipt-heading">已经遗忘</h2>
-          <ul className="facts" data-testid="forget-receipt">
-            <li>
-              销毁了 {receipt.content_keys_destroyed} 把内容密钥，
-              {receipt.sealed_blobs_destroyed} 块密封正文从此打不开。
-            </li>
-            <li>{receipt.inferences_orphaned} 条推断失去了依据，会标出来而不是悄悄留着。</li>
-            <li data-testid="receipt-matched">
-              {receipt.matched_preview
-                ? "销毁的东西和你看过的那份预览一致。"
-                : "销毁的东西和预览对不上，请把这件事报告出来。"}
-            </li>
-          </ul>
+      {receipt === null ? null : <ForgetResult receipt={receipt} />}
+      {recoverable ? (
+        <section className="panel" aria-labelledby="cleanup-heading">
+          <h2 id="cleanup-heading">日志清理与恢复</h2>
+          <p>这个操作只重试 Soul 自己的数据库日志清理，不会再次销毁密钥，
+            不会补写审计，也不承诺磁盘块的物理擦除。重启后仍可使用。</p>
+          <button type="button" disabled={busy} onClick={retryCleanup}>仅重试日志清理</button>
+          {cleanup === null ? null : (
+            <p role="status" data-testid="cleanup-result">
+              {cleanupStatus(cleanup) === "complete" ? "本次日志清理已确认。"
+                : cleanupStatus(cleanup) === "pending" ? "日志清理仍待完成，旧日志可能仍有包裹密钥。"
+                  : "本次清理结果尚未确认。"}
+              这不改变上一次遗忘回执或审计的确认状态。
+            </p>
+          )}
         </section>
-      )}
+      ) : null}
     </>
   );
 }
@@ -423,7 +484,7 @@ interface PriceProps {
  * forget that names a preview it is not holding, so approving a stale set of
  * numbers destroys nothing.
  *
- * The panel stays up through a refusal. The core kept the preview it issued —
+ * The panel stays up only for an explicit preview mismatch. The core kept the preview it issued —
  * it matches before it takes — so these are still the numbers it is holding,
  * and the button beneath them is still the one that pays for them.
  */
