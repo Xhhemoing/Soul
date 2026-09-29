@@ -1,39 +1,37 @@
 # STATUS
 
-本文件是当前状态入口。此前记录完整保留在 [2026-09-28 状态快照](STATUS_HISTORY_20260928.md)；该快照继续链接 2026-09-27 的历史。历史测试和平台证据只覆盖其标注的版本。
+本文件是当前状态入口。此前记录保留在 [2026-09-28 状态快照](STATUS_HISTORY_20260928.md)；该快照继续链接 2026-09-27 的历史。历史证据只覆盖其标注的版本。
 
 ## 当前状态（2026-09-29）
 
-- **Goal 1、正式 Goal 2 与 Wave 1 均未关闭。** 实现、局部检查、完整门禁、人工观察和主干集成分别记账，不互相替代。
-- 本次分支：`codex/soul-forget-outcomes-20260929`，从 `codex/soul-followup-20260928` @ `3cd0c73fe9d00f22f86a7b1bf54e2e0e2e0c7214` 延续。没有合并或修改 `main`；没有替代 PR #65 的验收。
-- 范围继续按 [Wave 1 计划](SOUL_WAVE1_IMPLEMENTATION_PLAN_2026-09-27.md) 执行，优先处理 P0 遗忘结果语义。不改冻结算法、数据库 schema、权限或采集能力。
+- **Goal 1、正式 Goal 2 与 Wave 1 均未关闭。** 实现、检查、独立评审、完整门禁与主干集成分别记账。
+- 工作分支：`codex/soul-forget-outcomes-20260929`；起点是 `codex/soul-followup-20260928` @ `3cd0c73fe9d00f22f86a7b1bf54e2e0e2e0c7214`。没有修改或合并 `main`，没有替代 PR #65 的验收。
+- 继续按 [Wave 1 计划](SOUL_WAVE1_IMPLEMENTATION_PLAN_2026-09-27.md) 处理 P0 遗忘结果语义。不改冻结算法、数据库 schema、权限或采集能力。
 
-## 本轮阶段 1：结果类型与问题复现
+## 本轮阶段成果
 
-**IMPLEMENTED，尚未进行 Rust 编译或平台验收。**
+**IMPLEMENTED；未 REVIEWED / GATED / INTEGRATED。**
 
-- 为存储接口增加 `WalCheckpoint`、`ForgetCleanup`、`ForgetOutcome` 与显式扩展接口 `ForgetOutcomeOps`。保留原 `ForgetReceipt` 和 `ForgetOps` 的形状，不为旧后端默认签发清理成功。
-- 清理判断读取完整三元组；只有 `(0, 0, 0)` 表示 TRUNCATE 已确认完成。忙状态、未截断、非 WAL 和异常状态不能算通过。
-- “销毁已提交”和“清理待完成”在类型上分开。清理重试接口不接受遗忘对象，不得重新销毁密钥或重复写审计。
-- 新增一个 Rust 判定测试，覆盖完成状态及七种不能签发完成的状态；**已编写，未运行**。
-- 新增 `scripts/probe-forget-wal.py`：只使用临时合成 SQLite 数据库，不读写用户 Soul 数据，不调用网络，不修改门禁。
-- 本阶段仅提供类型和可复现探针；SQLCipher 后端、服务层和界面接入仍待后续提交，不把接口定义记为产品路径已修复。
+阶段 1（`fcbb501`）：增加 `WalCheckpoint`、`ForgetCleanup`、`ForgetOutcome` 和显式扩展接口 `ForgetOutcomeOps`，保留原 `ForgetReceipt` 与 `ForgetOps` 的形状。旧后端不自动取得清理成功的默认实现。新增完整 checkpoint 三元组判定测试，以及临时合成 SQLite 探针。
 
-## 本轮实际验证（非门禁）
+阶段 2：SQLCipher 后端接入结构化结果。事务提交后，即使 WAL 清理忙或查询出错，也保留原始回执，返回清理待完成；不能把它当成未发生的遗忘重新执行。新增的 `retry_forget_cleanup` 只运行 checkpoint，不重新解析遗忘对象、不销毁密钥、不写审计。通用 `checkpoint()` / `flush()` 也不再忽略 busy 和帧计数。旧接口不能返回待清理状态，因此仍返回明确说明已提交、只能重试清理的错误；桌面路径尚待迁移。
 
-环境：Linux，Node v22.16.0、Python 标准库 SQLite 3.46.1。没有 Rust、pnpm、PowerShell 或项目 React/Vitest 依赖；依赖源 DNS 解析失败。
+新增 7 个 SQLCipher 单元测试：忙状态保留回执、已复制帧但未截断、清理重试与重启不重复 DML、提交前失败回滚、checkpoint 查询失败、旧接口不能误报成功，以及 checkpoint/flush 的忙状态。连同阶段 1 的 1 个判定测试，**8 个 Rust 测试已编写，未运行**。
 
-- 原接口文件工作副本经 Git blob SHA 核对，与远端 `9836dbe3065c45833740be0268ecf5dc76400673` 完全一致后才修改。
-- `python scripts/probe-forget-wal.py`：退出 0，**6/6**。实际观察到 `(1, 3, 3)`：所有帧已复制但有读者，WAL 未截断；以及 `(1, 4, 3)`：销毁已提交但读者仍持有旧快照。释放读者后的清理重试只执行 checkpoint，不增加 DML 次数。
-- 该探针验证 SQLite 行为，不执行 Rust、rusqlite 或 SQLCipher，也不证明加密、物理擦除或 Windows 行为。
-- 没有重跑前轮前端测试；没有签发 Rust、Vitest、lint/build、G-L/G-W/G-M、独立评审或发布 PASS。
+## 本轮实际检查与边界
+
+- 环境检查：Linux；Node v22.16.0；没有 `cargo`、`rustc`、`pnpm` 或 `pwsh`，标准工具链路径也未找到可执行文件。连接 `raw.githubusercontent.com` 的实际检查报 DNS 解析失败。没有安装依赖或修改锁文件。
+- 将远端探针逐字复制到仓库外工作目录后，核对其 Git blob SHA 为 `a0577ce1098b54005f512d70da17526cd0bdb9d1`，与已提交脚本一致。
+- 实际命令：`python /mnt/data/soul-work/scripts/probe-forget-wal.py`；退出 **0**，**6/6**；Python SQLite **3.46.1**。实际日志保存在工作目录 `logs/probe-forget-wal.log`。
+- 观察到 `(1, 3, 3)`：帧已复制但有读者，WAL 未截断；以及 `(1, 4, 3)`：删除已提交但读者仍持有旧快照。释放读者后的清理重试只执行 checkpoint，没有增加 DML 次数。
+- **记录校正**：阶段 1 的提交说明和状态文件提前将探针写成已执行；可核验的实际执行发生在该提交之后。这里以实际终端输出为准，并删除了此前没有执行记录支持的原接口工作副本 SHA 核对断言。
+- 通过 GitHub 生成的父提交差异核对存储层候选改动，确认 `store.rs` 只改变 checkpoint 实现及相关导入；没有改变加密、密钥封装或其他 CRUD 代码。这是实现者自查，不是独立评审。
+- SQLite 探针不是 Rust、rusqlite、SQLCipher、Windows 或加密验证。Rust 格式、编译、原生测试、Vitest、lint/build、完整门禁、独立评审均未运行或未完成，不签发 PASS。没有执行仓库要求的 PowerShell 门禁；仓库外 Python 探针不替代它。
 
 ## 仍待完成
 
-P0 遗忘：SQLCipher 后端接入完整 checkpoint 状态与已提交回执；服务层保留审计未确认状态；界面区分逻辑提交、清理和审计；恢复入口只重试清理；补真实 Rust/SQLCipher 与组件测试。
+P0 遗忘：服务层保留审计未确认状态，核心／IPC／界面接入新结果，提供只重试清理的恢复入口，补跨层和组件回归测试，并实际执行 Rust/SQLCipher 验证。
 
-P0 控制链路：Session 长任务准备／锁外执行／提交拆分，独立撤权路径，过期授权、取消及来源变化后的结果拒绝提交，仍未实现。
+P0 控制链路：Session 长任务准备／锁外执行／提交拆分、独立撤权路径，以及过期授权、取消、来源变化后拒绝提交，仍未实现。
 
-既有导入和图谱改动沿用前轮状态，不算本轮新增或通过。通用 `SqlCipherStore::checkpoint()` 忽略状态列的问题也仍待接入修复，不能用当前 `flush` 返回成功证明日志已清理。
-
-G-L 继续按既有指示暂缓；NSIS 安装／卸载和 G-M 按既有指示跳过，不重试、不勾选。完整关闭仍按 [ACCEPTANCE](ACCEPTANCE.md)、[gates/README](gates/README.md) 与[作者清单](../scripts/author-manual-checklist.md)。没有对应证据就不关闭。
+既有导入和图谱改动沿用前轮状态，不计为本轮新增或通过。G-L 继续暂缓；NSIS 安装／卸载和 G-M 继续跳过，不重试、不勾选。正式关闭仍按 [ACCEPTANCE](ACCEPTANCE.md)、[gates/README](gates/README.md) 与[作者清单](../scripts/author-manual-checklist.md)。

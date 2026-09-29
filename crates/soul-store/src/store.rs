@@ -30,6 +30,7 @@ use soul_schema::relationship::SoulRelationship;
 use soul_schema::validate::SchemaId;
 use soul_schema::SchemaSet;
 
+use soul_store_api::forget::WalCheckpoint;
 use soul_store_api::types::{EventFilter, InferenceState, SealRequest, StoreError, StoreResult};
 use soul_store_api::{AuditLog, BlobStore, EventStore, GraphStore, MemoryStore, ProfileStore};
 
@@ -484,13 +485,32 @@ impl SqlCipherStore {
         })
     }
 
-    /// Fold the write-ahead log back into the main database file.
+    /// Fold the write-ahead log back into the main database and confirm that
+    /// it was truncated. SQL success alone is insufficient: SQLite reports a
+    /// blocking reader in the first result column, not necessarily as Err.
     pub fn checkpoint(&self) -> StoreResult<()> {
+        let status = self.checkpoint_status()?;
+        if status.confirms_truncate() {
+            Ok(())
+        } else {
+            Err(StoreError::Backend(format!(
+                "WAL truncation unconfirmed: busy={}, log_frames={}, checkpointed_frames={}",
+                status.busy, status.log_frames, status.checkpointed_frames
+            )))
+        }
+    }
+
+    /// Share the full observation with forgetting, whose caller must retain
+    /// the already-committed receipt when this cleanup cannot be confirmed.
+    pub(crate) fn checkpoint_status(&self) -> StoreResult<WalCheckpoint> {
         self.conn
             .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
-                row.get::<_, i64>(0)
+                Ok(WalCheckpoint {
+                    busy: row.get(0)?,
+                    log_frames: row.get(1)?,
+                    checkpointed_frames: row.get(2)?,
+                })
             })
-            .map(|_| ())
             .map_err(backend)
     }
 
