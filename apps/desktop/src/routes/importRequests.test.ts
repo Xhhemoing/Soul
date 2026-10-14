@@ -21,6 +21,7 @@ describe("import request ownership", () => {
     const requests = new ImportRequests();
     assert.equal(requests.beginRead("soul-import-v1"), null);
     assert.equal(requests.reset(), false);
+    assert.equal(requests.clearSelection(), false);
   });
 
   it("claims one read synchronously and keeps its format", () => {
@@ -44,6 +45,19 @@ describe("import request ownership", () => {
     const read = requests.beginRead("soul-import-v1")!;
     assert.equal(requests.reset(), false);
     assert.equal(requests.isReading(read), true);
+  });
+
+  it.each([true, false])("ignores a cleared selection's late read result (%s)", (succeeded) => {
+    const requests = active();
+    const old = requests.beginRead("soul-import-v1")!;
+    assert.equal(requests.clearSelection(), true);
+    assert.equal(requests.isReading(old), false);
+    assert.equal(requests.beginCommit(old), null);
+    const current = requests.beginRead("telegram-desktop")!;
+    assert.equal(requests.finishRead(old, succeeded), false);
+    assert.equal(requests.isReading(current), true);
+    assert.equal(requests.finishRead(current, true), true);
+    assert.notEqual(requests.beginCommit(current), null);
   });
 
   it("requires the original read ticket, not a copied one", () => {
@@ -97,6 +111,7 @@ describe("import request ownership", () => {
     const write = requests.beginCommit(read)!;
     assert.equal(requests.beginRead("telegram-desktop"), null);
     assert.equal(requests.reset(), false);
+    assert.equal(requests.clearSelection(), false);
     assert.equal(requests.finishCommit(write, true), true);
   });
 

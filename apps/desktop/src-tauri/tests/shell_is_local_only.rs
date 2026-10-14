@@ -182,8 +182,9 @@ fn closing_the_window_leaves_soul_in_the_tray_rather_than_ending_it() {
 
 /// The hole this closes: closing the window leaves Soul in the tray, so the
 /// obvious way to get it back is to start Soul again — and the second process
-/// used to open its own handle on `soul.db` before anything noticed. Two
-/// SQLCipher connections on one file are two write-ahead logs.
+/// used to open its own handle on `soul.db` before anything noticed. That
+/// violates Soul's single-owner invariant for keys, transactions and audit;
+/// SQLite itself supports multiple connections to one database and one WAL.
 ///
 /// Source order is the assertion because it is the thing that can regress: a
 /// claim that happens after the store is opened is not a claim at all.

@@ -1,0 +1,24 @@
+flowchart TD
+    subgraph DESIGN["目标执行模型 / 尚未实施"]
+        direction TB
+        INPUT["本次请求与确认"]
+        PREPARE["prepare 短锁：验证并登记操作"]
+        SNAPSHOT["不可变输入 / operation_id / epoch / 来源版本"]
+        DISPATCH{"派发许可仍有效？"}
+        EXECUTE["execute：有界执行 / 不持 Session 或 store 锁"]
+        RESULT["尚未确认的执行结果"]
+        COMPLETE{"complete 短锁：操作、授权、来源仍有效？"}
+        COMMIT["按需事务提交 / 交付可核对结果"]
+        REJECT["拒收失效工作 / 不自动重新入队"]
+        REVOKE["独立撤权入口"]
+        AUTH["关闭授权 / 推进 epoch"]
+        AUDIT["记录撤权审计 / 失败不恢复授权"]
+        INPUT --> PREPARE --> SNAPSHOT --> DISPATCH
+        DISPATCH -->|"是"| EXECUTE --> RESULT --> COMPLETE
+        DISPATCH -->|"否"| REJECT
+        COMPLETE -->|"是"| COMMIT
+        COMPLETE -->|"否"| REJECT
+        REVOKE --> AUTH --> AUDIT
+        AUTH -.->|"阻止新的派发许可"| DISPATCH
+        AUTH -.->|"拒收旧 epoch 结果"| COMPLETE
+    end

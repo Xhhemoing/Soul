@@ -101,7 +101,7 @@ export function Import(): React.JSX.Element {
 
   const read = async (file: File | undefined): Promise<void> => {
     if (file === undefined) {
-      forget();
+      if (requests.current.clearSelection()) clearPreview();
       return;
     }
     const request = requests.current.beginRead(format);

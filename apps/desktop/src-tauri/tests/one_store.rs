@@ -1,11 +1,9 @@
 //! WP07 leftover 8 and WP09 leftover 8: one process, one store handle.
 //!
-//! Two connections to the same SQLCipher database are two write-ahead logs.
-//! Nothing crashes when a second one is opened — the two just stop agreeing
-//! about what is committed, in a way that shows up much later as rows that
-//! were written and are not there. So the rule is not "be careful", it is
-//! "there is one place that opens a database", and this file is what keeps
-//! that true as the shell grows routes.
+//! SQLite supports multiple connections to one database and one WAL. Soul
+//! deliberately keeps one connection so its content keys, transactions and
+//! audit ordering have a single owner. This file keeps that application
+//! invariant true as the shell grows routes.
 //!
 //! The check is a read of this crate's own source. That is a blunt instrument
 //! and it is the right one here: a runtime test can only prove that the

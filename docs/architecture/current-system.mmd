@@ -1,0 +1,25 @@
+flowchart TD
+    subgraph WEB["WebView：表达层"]
+        UI["React routes / 页面状态"]
+        BRIDGE["core.ts / 唯一 IPC 包装"]
+        UI --> BRIDGE
+    end
+    subgraph NATIVE["本机 Rust 核心"]
+        IPC["Tauri commands / Mutex Session"]
+        APP["soulcore / Session 编排"]
+        DOMAIN["领域服务 / 7 crates"]
+        ALGO["纯算法 / 2 crates"]
+        DATA["契约、存储、平台密钥 / 4 crates"]
+        POLICY["soul-policy / 授权与脱敏"]
+        EGRESS["soul-egress / 唯一 HTTP 客户端"]
+        IPC --> APP
+        APP --> DOMAIN
+        DOMAIN --> ALGO
+        DOMAIN --> DATA
+        DOMAIN --> POLICY
+        APP --> DATA
+        APP -->|"授权校验与请求计划"| POLICY
+        APP -->|"批准后调用"| EGRESS
+    end
+    BRIDGE -->|"IPC 信任边界"| IPC
+    EGRESS -->|"受控网络边界"| ENDPOINT["用户指定端点"]

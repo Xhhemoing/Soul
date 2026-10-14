@@ -4,10 +4,10 @@
 //! Everything above this module has been able to assume somebody else was
 //! holding an open [`SqlCipherStore`]. Nobody was: the desktop shell carried an
 //! in-memory [`Config`] and every route that needed rows was empty. This is
-//! where the handle comes from, and there is exactly one of it — WP07 leftover
-//! 8 is blunt about why. Two connections to the same SQLCipher database are
-//! two write-ahead logs, and the second one to be opened wins arguments it was
-//! never told it was having.
+//! where the handle comes from. Soul keeps one connection so key material,
+//! transaction ownership and audit ordering share one store lock. SQLite can
+//! support multiple connections to one database and one WAL; this stricter
+//! ownership is an application invariant, not a limitation of SQLite.
 //!
 //! ## What lives on disk, and what deliberately does not
 //!
@@ -60,8 +60,9 @@ use soul_policy::hitl::{RequestOrigin, TokenIssuer};
 use soul_policy::injection::{self, UntrustedText};
 use soul_policy::ReasonCode;
 use soul_schema::audit::{AuditAction, AuditCounts};
+use soul_store::forget::ForgetScope;
 use soul_store::SqlCipherStore;
-use soul_store_api::forget::ForgetImpact;
+use soul_store_api::forget::ForgetUnit;
 
 use crate::commands::collect::{
     self as collect_commands, share, CollectorConfig, CollectorHandle, ConsentHandle,
@@ -451,7 +452,7 @@ struct RunningCollector {
 struct HeldForget {
     preview_id: Uuid,
     memory_id: Uuid,
-    impact: ForgetImpact,
+    scope: ForgetScope,
 }
 
 impl Session {
@@ -1243,18 +1244,19 @@ impl Session {
     /// confirmation carries an id rather than only a memory.
     pub fn preview_forget(&mut self, memory_id: &str) -> Result<ForgetPreview, SessionRefusal> {
         let memory_id = parse_id(memory_id, "记忆")?;
-        let impact = {
+        let scope = {
             let store = self.opened_store()?;
             let store = hold(&store);
-            memory_commands::preview_forget(&store, memory_id)?
+            store.preview_forget_scope(ForgetUnit::Memory(memory_id))?
         };
         let preview_id = Uuid::now_v7();
+        let preview = ForgetPreview::of(preview_id, memory_id, scope.impact());
         self.held_forget = Some(HeldForget {
             preview_id,
             memory_id,
-            impact: impact.clone(),
+            scope,
         });
-        Ok(ForgetPreview::of(preview_id, memory_id, &impact))
+        Ok(preview)
     }
 
     /// Destroy the content key behind one memory. AC-15, and irreversible.
@@ -1286,18 +1288,31 @@ impl Session {
 
         let at = now_unix_seconds();
         let store = self.opened_store()?;
-        // Taken now, and not before: everything above this line can refuse,
-        // and none of it destroys anything.
+        let mut store = hold(&store);
+        let quoted = self
+            .held_forget
+            .as_ref()
+            .expect("the confirmation matched the held preview");
+        if !store.forget_scope_is_current(&quoted.scope)? {
+            // The denial appends audit through the same mutex. Release it
+            // before auditing; no destruction has begun. Retain the quote,
+            // as for an identity mismatch, until the user asks for a new one.
+            drop(store);
+            return Err(self.refuse_forget());
+        }
+        // Revalidation and destruction share one guard: collection or other
+        // callers of the shared store cannot change the scope in between.
+        // Do not wrap forget in an outer transaction: its WAL cleanup must
+        // still happen after its own logical destruction has committed.
         let held = self
             .held_forget
             .take()
             .expect("the confirmation matched the held preview");
-        let mut store = hold(&store);
         let receipt = memory_commands::forget(&mut store, held.memory_id, at)?;
         Ok(ForgetReceiptView::of(
             held.memory_id,
             &receipt,
-            &held.impact,
+            held.scope.impact(),
         ))
     }
 

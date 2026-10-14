@@ -69,7 +69,7 @@ export function Memory(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [uncertainForget, setUncertainForget] = useState(false);
   const [cleanup, setCleanup] = useState<ForgetCleanup | null>(null);
-  const requests = useRef(new MemoryRequests()).current;
+  const [requests] = useState(() => new MemoryRequests());
 
   const reload = (): void => {
     const ticket = requests.nextList();
@@ -111,24 +111,26 @@ export function Memory(): React.JSX.Element {
   };
 
   /** Admit before IPC, not after constructing an already-running promise. */
-  const act = (change: () => Promise<MemoryDetail>): void => {
+  const act = (change: () => Promise<MemoryDetail>): Promise<boolean> => {
     const ticket = requests.begin();
-    if (ticket === null) return;
+    if (ticket === null) return Promise.resolve(false);
     setBusy(true);
     setRefusal(null);
     setPreview(null);
     setReceipt(null);
-    void invokeOwned(ticket, change).then(
+    return invokeOwned(ticket, change).then(
       (value) => {
-        if (!requests.owns(ticket)) return;
+        if (!requests.owns(ticket)) return false;
         setOpen(value);
         finish(ticket);
         reload();
+        return true;
       },
       (error: unknown) => {
-        if (!requests.owns(ticket)) return;
+        if (!requests.owns(ticket)) return false;
         setRefusal(asRefusal(error));
         finish(ticket);
+        return false;
       },
     );
   };
@@ -296,16 +298,24 @@ export function Memory(): React.JSX.Element {
 interface WriteProps {
   readonly types: readonly string[];
   readonly busy: boolean;
-  readonly onWrite: (fresh: { memory_type: string; title: string; summary: string }) => void;
+  readonly onWrite: (fresh: { memory_type: string; title: string; summary: string }) => Promise<boolean>;
 }
 
 function Write({ types, busy, onWrite }: WriteProps): React.JSX.Element {
   const [kind, setKind] = useState(types[0] ?? "episodic");
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
+  const revision = useRef(0);
 
-  const submit = (): void => {
-    onWrite({ memory_type: kind, title, summary });
+  // A completed save belongs to the submitted draft, not later edits or a
+  // form that has since unmounted. No copy of its prose is retained here.
+  useEffect(() => () => { revision.current += 1; }, []);
+
+  const submit = async (): Promise<void> => {
+    const submittedRevision = revision.current;
+    const saved = await onWrite({ memory_type: kind, title, summary });
+    if (!saved || revision.current !== submittedRevision) return;
+    revision.current += 1;
     setTitle("");
     setSummary("");
   };
@@ -320,7 +330,7 @@ function Write({ types, busy, onWrite }: WriteProps): React.JSX.Element {
         id="memory-kind"
         className="text-input"
         value={kind}
-        onChange={(event) => setKind(event.target.value)}
+        onChange={(event) => { revision.current += 1; setKind(event.target.value); }}
       >
         {types.map((type) => (
           <option key={type} value={type}>
@@ -336,7 +346,7 @@ function Write({ types, busy, onWrite }: WriteProps): React.JSX.Element {
         className="text-input"
         type="text"
         value={title}
-        onChange={(event) => setTitle(event.target.value)}
+        onChange={(event) => { revision.current += 1; setTitle(event.target.value); }}
       />
       <label className="field" htmlFor="memory-summary">
         再多写几句
@@ -346,14 +356,14 @@ function Write({ types, busy, onWrite }: WriteProps): React.JSX.Element {
         className="paste-box"
         rows={4}
         value={summary}
-        onChange={(event) => setSummary(event.target.value)}
+        onChange={(event) => { revision.current += 1; setSummary(event.target.value); }}
       />
       <div className="switch-row">
         <button
           type="button"
           className="primary"
           disabled={busy || title.trim() === "" || summary.trim() === ""}
-          onClick={submit}
+          onClick={() => void submit()}
         >
           存下来
         </button>

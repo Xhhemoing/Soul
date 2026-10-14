@@ -252,6 +252,34 @@ describe("导入页", () => {
     for (const radio of screen.getAllByRole("radio")) expect(radio).toBeEnabled();
   });
 
+  it("提交期间到达的清空选择事件不会丢掉回执或启动第二次提交", async () => {
+    const receipt = deferred<ImportReceipt>();
+    const commits: unknown[] = [];
+    mockIPC((command, payload) => {
+      if (command === "preview_soul_import_v1") return anImportPreview();
+      if (command === "commit_soul_import_v1") {
+        commits.push(payload);
+        return receipt.promise;
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+    const user = userEvent.setup();
+    render(<Import />);
+    const input = screen.getByLabelText("选择文件");
+    await user.upload(input, fileWithText("first.jsonl", Promise.resolve(JSONL)));
+    await screen.findByTestId("preview-counts");
+    await user.click(screen.getByRole("button", { name: "确认导入" }));
+    fireEvent.change(input, { target: { files: [] } });
+
+    expect(input).toBeDisabled();
+    expect(screen.getByTestId("preview-counts")).toBeVisible();
+    expect(screen.getByRole("button", { name: "确认导入" })).toBeDisabled();
+    await act(async () => receipt.resolve(anImportReceipt()));
+    expect(await screen.findByTestId("receipt-source")).toHaveTextContent("soul-import-v1");
+    expect(input).toBeEnabled();
+    expect(commits).toEqual([{ text: JSONL }]);
+  });
+
   it.each(["success", "failure"] as const)("取消文件选择后忽略旧读取的 %s", async (outcome) => {
     const contents = deferred<string>();
     const core = installFakeCore();

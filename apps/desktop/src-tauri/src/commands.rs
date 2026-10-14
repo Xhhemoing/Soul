@@ -6,8 +6,9 @@
 //! catch — which is the point. The decisions have tests, in `soulcore`.
 //!
 //! One thing this file does *not* do is open a database. WP07 leftover 8 says
-//! the process gets one `SqlCipherStore` handle, because two connections are
-//! two write-ahead logs; so the handle is opened once in `lib.rs`, lives
+//! the process gets one `SqlCipherStore` handle to keep key material,
+//! transaction ownership and audit ordering together. SQLite itself allows
+//! multiple connections to the same WAL. The handle opens once in `lib.rs`, lives
 //! inside `soulcore::commands::session::Session`, and every command here
 //! borrows it through [`SessionState`]. `tests/one_store.rs` reads this file
 //! and `lib.rs` back to check that no second opening has appeared.

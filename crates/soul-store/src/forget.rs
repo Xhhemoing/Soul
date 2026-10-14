@@ -38,7 +38,57 @@ pub(crate) struct ForgetPlan {
     pub(crate) inferences: Vec<Uuid>,
 }
 
+/// An in-memory quote of the exact rows affected by a forget.
+///
+/// Counts alone cannot detect a same-size replacement of evidence or a
+/// dependent memory. Keep existing primary keys, not prose or a second hash
+/// protocol. This is deliberately not serializable or constructible by IPC.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForgetScope {
+    unit: ForgetUnit,
+    plan: ForgetPlan,
+    sealed_blobs: Vec<Uuid>,
+    impact: ForgetImpact,
+}
+
+impl ForgetScope {
+    pub fn impact(&self) -> &ForgetImpact {
+        &self.impact
+    }
+}
+
 impl SqlCipherStore {
+    /// Resolve the quote while holding the session's sole store lock.
+    pub fn preview_forget_scope(&self, unit: ForgetUnit) -> StoreResult<ForgetScope> {
+        let plan = self.forget_plan(unit)?;
+        let impact = self.impact_from_plan(unit, &plan)?;
+        let sealed_blobs = if plan.content_keys.is_empty() {
+            Vec::new()
+        } else {
+            let keys = as_text(&plan.content_keys);
+            self.uuid_column(
+                &format!(
+                    "SELECT blob_id FROM sealed_blobs WHERE content_key_id IN ({}) ORDER BY blob_id",
+                    placeholders(keys.len())
+                ),
+                &keys,
+            )?
+        };
+        Ok(ForgetScope {
+            unit,
+            plan,
+            sealed_blobs,
+            impact,
+        })
+    }
+
+    /// Revalidate immediately before destruction, without releasing the same
+    /// store guard in between. This relies on Soul's single-writer ownership;
+    /// it is not a transaction/authorization token for another connection.
+    pub fn forget_scope_is_current(&self, quoted: &ForgetScope) -> StoreResult<bool> {
+        Ok(&self.preview_forget_scope(quoted.unit)? == quoted)
+    }
+
     /// Read one column of UUIDs.
     fn uuid_column(&self, sql: &str, bound: &[String]) -> StoreResult<Vec<Uuid>> {
         let mut statement = self.conn.prepare(sql).map_err(backend)?;
@@ -383,53 +433,112 @@ mod outcome_tests {
     use super::*;
     use crate::TestKeyProvider;
 
-    fn seeded() -> (tempfile::TempDir, SqlCipherStore, TestKeyProvider, Uuid, SealedText) {
+    fn seeded() -> (
+        tempfile::TempDir,
+        SqlCipherStore,
+        TestKeyProvider,
+        Uuid,
+        SealedText,
+    ) {
         let directory = tempfile::tempdir().expect("temporary synthetic store");
         let keys = TestKeyProvider::from_seed("forget outcome regression");
-        let mut store = SqlCipherStore::open(directory.path().join("soul.db"), &keys)
-            .expect("open SQLCipher");
-        store.conn.busy_timeout(Duration::ZERO).expect("no busy wait");
-        store.conn.pragma_update(None, "wal_autocheckpoint", 0).expect("disable auto checkpoint");
+        let mut store =
+            SqlCipherStore::open(directory.path().join("soul.db"), &keys).expect("open SQLCipher");
+        store
+            .conn
+            .busy_timeout(Duration::ZERO)
+            .expect("no busy wait");
+        store
+            .conn
+            .pragma_update(None, "wal_autocheckpoint", 0)
+            .expect("disable auto checkpoint");
         let key = Uuid::now_v7();
-        let sealed = store.seal(SealRequest::new(
-            key,
-            Uuid::now_v7(),
-            "body_ref",
-            SealedSubject::Owner,
-            b"synthetic prose only".to_vec(),
-        )).expect("seal fixture");
+        let sealed = store
+            .seal(SealRequest::new(
+                key,
+                Uuid::now_v7(),
+                "body_ref",
+                SealedSubject::Owner,
+                b"synthetic prose only".to_vec(),
+            ))
+            .expect("seal fixture");
         (directory, store, keys, key, sealed)
     }
 
     fn pin_reader(store: &SqlCipherStore, keys: &TestKeyProvider) -> SqlCipherStore {
         let reader = SqlCipherStore::open(store.path(), keys).expect("test-only second connection");
         reader.conn.execute_batch("BEGIN").expect("begin snapshot");
-        let count: i64 = reader.conn.query_row(
-            "SELECT count(*) FROM content_keys", [], |row| row.get(0),
-        ).expect("pin pre-forget snapshot");
+        let count: i64 = reader
+            .conn
+            .query_row("SELECT count(*) FROM content_keys", [], |row| row.get(0))
+            .expect("pin pre-forget snapshot");
         assert_eq!(count, 1);
         reader
     }
 
     fn changes(store: &SqlCipherStore) -> i64 {
-        store.conn.query_row("SELECT total_changes()", [], |row| row.get(0))
+        store
+            .conn
+            .query_row("SELECT total_changes()", [], |row| row.get(0))
             .expect("read change count")
+    }
+
+    #[test]
+    fn replacing_a_blob_identity_invalidates_an_equal_count_quote() {
+        let (_directory, store, _keys, key, mut sealed) = seeded();
+        let unit = ForgetUnit::ContentKey(key);
+        let quote = store.preview_forget_scope(unit).expect("quote");
+        let replacement = Uuid::now_v7();
+        // An adversarial same-size replacement, without changing the key or
+        // count. A real caller cannot supply an arbitrary ForgetScope.
+        store
+            .conn
+            .execute(
+                "UPDATE sealed_blobs SET blob_id = ?1 WHERE blob_id = ?2",
+                [replacement.to_string(), sealed.blob_id.to_string()],
+            )
+            .expect("replace identity");
+        sealed.blob_id = replacement;
+        assert_eq!(
+            store.preview_impact(unit).expect("same impact"),
+            *quote.impact()
+        );
+        assert!(!store.forget_scope_is_current(&quote).expect("new identity"));
+        assert_eq!(
+            store.open(&sealed).expect("no destruction"),
+            b"synthetic prose only"
+        );
     }
 
     #[test]
     fn busy_cleanup_keeps_the_committed_receipt() {
         let (_directory, mut store, keys, key, sealed) = seeded();
         let reader = pin_reader(&store, &keys);
-        let expected = store.preview_impact(ForgetUnit::ContentKey(key)).expect("preview");
-        let outcome = store.execute_forget_outcome(ForgetUnit::ContentKey(key))
+        let expected = store
+            .preview_impact(ForgetUnit::ContentKey(key))
+            .expect("preview");
+        let outcome = store
+            .execute_forget_outcome(ForgetUnit::ContentKey(key))
             .expect("destruction committed despite busy cleanup");
         assert_eq!(outcome.receipt.impact, expected);
-        assert!(matches!(outcome.cleanup, ForgetCleanup::Pending {
-            checkpoint: Some(WalCheckpoint { busy: 1, .. }),
-        }));
-        assert!(store.open(&sealed).is_err(), "live store must no longer open the prose");
-        assert!(reader.open(&sealed).is_ok(), "pinned old snapshot still exposes the risk");
-        reader.conn.execute_batch("ROLLBACK").expect("release reader");
+        assert!(matches!(
+            outcome.cleanup,
+            ForgetCleanup::Pending {
+                checkpoint: Some(WalCheckpoint { busy: 1, .. }),
+            }
+        ));
+        assert!(
+            store.open(&sealed).is_err(),
+            "live store must no longer open the prose"
+        );
+        assert!(
+            reader.open(&sealed).is_ok(),
+            "pinned old snapshot still exposes the risk"
+        );
+        reader
+            .conn
+            .execute_batch("ROLLBACK")
+            .expect("release reader");
         assert_eq!(store.retry_forget_cleanup(), ForgetCleanup::Complete);
     }
 
@@ -437,34 +546,52 @@ mod outcome_tests {
     fn copied_frames_with_a_reader_are_not_a_completed_truncate() {
         let (_directory, mut store, keys, _key, _sealed) = seeded();
         let reader = pin_reader(&store, &keys);
-        let ForgetCleanup::Pending { checkpoint: Some(observed) } = store.retry_forget_cleanup()
-        else { panic!("reader must prevent truncation") };
+        let ForgetCleanup::Pending {
+            checkpoint: Some(observed),
+        } = store.retry_forget_cleanup()
+        else {
+            panic!("reader must prevent truncation")
+        };
         assert_eq!(observed.busy, 1);
         assert!(observed.log_frames > 0);
         assert_eq!(observed.log_frames, observed.checkpointed_frames);
-        reader.conn.execute_batch("ROLLBACK").expect("release reader");
+        reader
+            .conn
+            .execute_batch("ROLLBACK")
+            .expect("release reader");
     }
 
     #[test]
     fn cleanup_retries_do_not_repeat_destruction_or_write_audit() {
         let (directory, mut store, keys, key, sealed) = seeded();
         let reader = pin_reader(&store, &keys);
-        let outcome = store.execute_forget_outcome(ForgetUnit::ContentKey(key))
+        let outcome = store
+            .execute_forget_outcome(ForgetUnit::ContentKey(key))
             .expect("committed receipt");
         assert!(matches!(outcome.cleanup, ForgetCleanup::Pending { .. }));
-        reader.conn.execute_batch("ROLLBACK").expect("release reader");
-        store.conn.execute_batch(
-            "CREATE TEMP TRIGGER forbid_new_destruction BEFORE DELETE ON content_keys
-             BEGIN SELECT RAISE(ABORT, 'retry must not destroy'); END;"
-        ).expect("install destructive-retry tripwire");
+        reader
+            .conn
+            .execute_batch("ROLLBACK")
+            .expect("release reader");
+        store
+            .conn
+            .execute_batch(
+                "CREATE TEMP TRIGGER forbid_new_destruction BEFORE DELETE ON content_keys
+             BEGIN SELECT RAISE(ABORT, 'retry must not destroy'); END;",
+            )
+            .expect("install destructive-retry tripwire");
         let before = changes(&store);
         assert_eq!(store.retry_forget_cleanup(), ForgetCleanup::Complete);
         assert_eq!(store.retry_forget_cleanup(), ForgetCleanup::Complete);
-        assert_eq!(changes(&store), before, "cleanup must do no DML, including audit");
+        assert_eq!(
+            changes(&store),
+            before,
+            "cleanup must do no DML, including audit"
+        );
         reader.close().expect("close reader");
         store.close().expect("close writer");
-        let mut reopened = SqlCipherStore::open(directory.path().join("soul.db"), &keys)
-            .expect("reopen");
+        let mut reopened =
+            SqlCipherStore::open(directory.path().join("soul.db"), &keys).expect("reopen");
         let before = changes(&reopened);
         assert_eq!(reopened.retry_forget_cleanup(), ForgetCleanup::Complete);
         assert_eq!(changes(&reopened), before);
@@ -475,23 +602,40 @@ mod outcome_tests {
     #[test]
     fn failure_before_commit_rolls_back_the_deleted_key() {
         let (_directory, mut store, _keys, key, sealed) = seeded();
-        store.conn.execute_batch(
-            "CREATE TEMP TRIGGER fail_after_key_delete BEFORE INSERT ON destroyed_content_keys
-             BEGIN SELECT RAISE(ABORT, 'synthetic precommit failure'); END;"
-        ).expect("install failure after delete and before commit");
-        assert!(store.execute_forget_outcome(ForgetUnit::ContentKey(key)).is_err());
-        assert_eq!(store.open(&sealed).expect("key deletion rolled back"), b"synthetic prose only");
-        let destroyed: i64 = store.conn.query_row(
-            "SELECT count(*) FROM destroyed_content_keys", [], |row| row.get(0),
-        ).expect("read tombstone count");
+        store
+            .conn
+            .execute_batch(
+                "CREATE TEMP TRIGGER fail_after_key_delete BEFORE INSERT ON destroyed_content_keys
+             BEGIN SELECT RAISE(ABORT, 'synthetic precommit failure'); END;",
+            )
+            .expect("install failure after delete and before commit");
+        assert!(store
+            .execute_forget_outcome(ForgetUnit::ContentKey(key))
+            .is_err());
+        assert_eq!(
+            store.open(&sealed).expect("key deletion rolled back"),
+            b"synthetic prose only"
+        );
+        let destroyed: i64 = store
+            .conn
+            .query_row("SELECT count(*) FROM destroyed_content_keys", [], |row| {
+                row.get(0)
+            })
+            .expect("read tombstone count");
         assert_eq!(destroyed, 0);
     }
 
     #[test]
     fn query_failure_is_pending_not_complete() {
         let (_directory, mut store, _keys, _key, _sealed) = seeded();
-        store.conn.execute_batch("BEGIN IMMEDIATE").expect("open write transaction");
-        assert_eq!(store.retry_forget_cleanup(), ForgetCleanup::Pending { checkpoint: None });
+        store
+            .conn
+            .execute_batch("BEGIN IMMEDIATE")
+            .expect("open write transaction");
+        assert_eq!(
+            store.retry_forget_cleanup(),
+            ForgetCleanup::Pending { checkpoint: None }
+        );
         store.conn.execute_batch("ROLLBACK").expect("rollback");
     }
 
@@ -499,12 +643,16 @@ mod outcome_tests {
     fn legacy_forget_never_reports_success_for_busy_cleanup() {
         let (_directory, mut store, keys, key, sealed) = seeded();
         let reader = pin_reader(&store, &keys);
-        let error = store.execute_forget(ForgetUnit::ContentKey(key))
+        let error = store
+            .execute_forget(ForgetUnit::ContentKey(key))
             .expect_err("busy cleanup is not legacy success");
         assert!(error.to_string().contains("committed"));
         assert!(error.to_string().contains("retry_forget_cleanup"));
         assert!(store.open(&sealed).is_err());
-        reader.conn.execute_batch("ROLLBACK").expect("release reader");
+        reader
+            .conn
+            .execute_batch("ROLLBACK")
+            .expect("release reader");
     }
 
     #[test]
@@ -513,7 +661,10 @@ mod outcome_tests {
         let reader = pin_reader(&store, &keys);
         assert!(store.checkpoint().is_err());
         assert!(store.flush().is_err());
-        reader.conn.execute_batch("ROLLBACK").expect("release reader");
+        reader
+            .conn
+            .execute_batch("ROLLBACK")
+            .expect("release reader");
         store.checkpoint().expect("confirmed truncate");
         store.flush().expect("confirmed flush");
     }
