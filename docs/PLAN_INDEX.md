@@ -17,6 +17,7 @@
 |---|---|
 | 现在到哪一步、还有哪些缺口 | [STATUS.md](STATUS.md) 顶部当前状态；历史段按当时日期阅读 |
 | 当前分层、操作流程与后续执行架构图 | [ARCHITECTURE.md](ARCHITECTURE.md)；明确区分已实现与设计中，图源在 [architecture/](architecture/) |
+| 从实际使用出发的后续框架、候选算法与反例实验 | [使用框架设计](design/2026-10-15-usage-framework.md) / [交互 HTML](framework-design.html)；非生产参考，授权/迁移语义未改变 |
 | v0.1 是否做某个功能 | [PRODUCT_LOCK.md](PRODUCT_LOCK.md) 的最小垂直切片与砍/留 |
 | 一件事怎样算完成 | [ACCEPTANCE.md](ACCEPTANCE.md)；矩阵与产品十三条切片同时满足 |
 | Goal 1 的实现拆分与依赖 | [GOAL1_PLAN.md](GOAL1_PLAN.md) |

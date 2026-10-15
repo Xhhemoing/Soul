@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Soul · 使用闭环与算法设计</title><style>
+:root{color-scheme:light;--ink:#183e35;--muted:#62746c;--line:#d6dfd8;--paper:#f4f6ef;--gold:#d2ae64;--orange:#a36033}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:#27372f;font:16px/1.75 system-ui,-apple-system,"Microsoft YaHei",sans-serif}button,input,select{font:inherit}button,select{cursor:pointer}button,a,input,select,summary{outline-offset:4px}button:focus-visible,a:focus-visible{outline:3px solid var(--orange)}a{color:#146553;text-underline-offset:3px}button{border:1px solid var(--line);border-radius:9px;padding:9px 16px;background:#fff;color:var(--ink)}button:hover{background:#e9eee7}button:disabled{cursor:default;opacity:.5}select{border:1px solid var(--line);border-radius:8px;padding:10px;background:white;max-width:100%}.wrap{max-width:1220px;margin:auto;padding:0 28px}header{background:var(--ink);color:#fff;padding:42px 0 34px}.eyebrow{font-size:12px;letter-spacing:2px;color:#bbd5c7}h1{font-size:clamp(28px,4vw,46px);font-weight:650;letter-spacing:-1px;line-height:1.25;margin:16px 0}header p{color:#d2e3d9;max-width:780px}header .tag{display:inline-block;border:1px solid #5f8073;padding:3px 10px;border-radius:30px;font-size:12px;margin-right:8px}.nav-wrap{position:sticky;top:0;z-index:5;background:#f4f6eff5;border-bottom:1px solid var(--line);backdrop-filter:blur(8px)}nav{display:flex;gap:8px;overflow:auto;padding:13px 0}nav button{white-space:nowrap;border-color:transparent;background:none}nav button[aria-pressed=true]{background:var(--ink);color:white}main{padding:30px 0 60px}.panel[hidden]{display:none}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.card{background:white;border:1px solid var(--line);border-radius:16px;padding:24px;margin-bottom:20px}.card h3{font-size:21px;line-height:1.4;margin:7px 0 12px}.number{font-size:12px;letter-spacing:1px;color:var(--orange);font-weight:650}.muted{color:var(--muted);font-size:14px}.notice{border-left:3px solid var(--gold);background:#ede9d9;padding:13px 18px;margin:22px 0}.section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.section-head h2{margin:5px 0;font-size:25px}.diagram svg{width:100%;height:auto;display:block}.diagram{max-width:960px;margin:20px auto}.buttons{display:flex;flex-wrap:wrap;gap:9px}.split{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:20px}.counter-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:20px 0}.counter{padding:16px 8px;background:#edf2eb;border-radius:11px;text-align:center}.counter b{font-size:27px;display:block;color:var(--ink)}.counter span{font-size:12px}.timeline{padding:0;list-style:none;min-height:180px}.timeline li{padding:10px 12px;margin:8px 0;background:#f1f4ed;border-left:3px solid #698f7c;border-radius:0 7px 7px 0;font-size:14px}.timeline li.deny{background:#f7ede4;border-left-color:#b27545}.hint{font-size:14px;color:var(--muted)}label.toggle{display:block;padding:7px 0}input[type=checkbox]{width:18px;height:18px;vertical-align:middle;accent-color:var(--ink)}input[type=range]{width:100%;accent-color:var(--ink)}.rows{display:grid;gap:8px}.memory-row{padding:12px;border:1px solid var(--line);border-radius:9px;display:flex;justify-content:space-between;gap:12px;font-size:14px}.memory-row.selected{border-color:#78a58e;background:#edf6ee}.reason{font-size:12px;color:var(--muted);white-space:nowrap}.badge{font-size:12px;padding:3px 9px;border-radius:20px;background:#e6eee3;color:var(--ink)}.doc{background:white;padding:30px;border-radius:16px;border:1px solid var(--line);overflow:hidden}.doc h1{font-size:30px;line-height:1.4}.doc h2{font-size:24px;border-top:1px solid var(--line);padding-top:30px;margin-top:35px;scroll-margin-top:90px}.doc h3{font-size:19px}.doc table{display:block;overflow-x:auto;border-collapse:collapse;width:100%;font-size:14px;margin:20px 0}.doc td,.doc th{border:1px solid var(--line);padding:12px;min-width:150px;text-align:left;vertical-align:top}.doc th{background:#eaf0e7}.doc pre{overflow-x:auto;padding:18px;background:#172e27;color:#e1eee5;border-radius:10px;line-height:1.6;font-size:13px}.doc code{overflow-wrap:anywhere;font-size:.9em}.doc p,.doc li{overflow-wrap:anywhere}.doc li{margin:8px 0}.toc{display:flex;flex-wrap:wrap;gap:6px 16px;margin:12px 0 22px;font-size:13px}.small-link{font-size:14px}footer{border-top:1px solid var(--line);padding:25px 0;color:var(--muted);font-size:12px}summary{cursor:pointer;font-weight:600}details{margin:18px 0}.live{min-height:50px;border-radius:10px;background:#edf2eb;padding:12px 16px;margin:16px 0;font-size:14px}body.no-script .panel{display:block}@media(max-width:780px){.wrap{padding:0 17px}header{padding:28px 0}.grid,.split{grid-template-columns:1fr}.card{padding:19px}.doc{padding:20px 16px}.memory-row{flex-wrap:wrap}.doc h2{font-size:21px}.diagram{min-width:0}nav{gap:2px}nav button{padding:8px 11px;font-size:14px}}@media print{header{background:white;color:#183e35}header p{color:#62746c}.nav-wrap,.buttons,#lab{display:none}.panel[hidden]{display:block}.doc{border:0}.wrap{max-width:none}.doc table{display:table;font-size:10px}.doc th,.doc td{min-width:0;padding:7px}.card{break-inside:avoid}}
+</style></head><body>
+<header><div class="wrap"><div class="eyebrow">SOUL / ARCHITECTURE RESEARCH / 2026.10.15</div><h1>让个人资料真正参与每一次帮助</h1><p>从实际使用出发，研究记忆、证据、纠正与任务控制。这里给出候选方案、可运行算法和反例修订，作为下一轮逐用例开发的依据。</p><span class="tag">设计原型 · 未接入生产</span><span class="tag">源码基准 6e8f3c0</span><span class="tag">离线可用 · 无自动联网</span></div></header>
+<div class="nav-wrap"><div class="wrap"><nav aria-label="页面内容"><button data-tab="overview" aria-pressed="true">框架总览</button><button data-tab="research" aria-pressed="false">研究与设计</button><button data-tab="lab" aria-pressed="false">算法实验</button><button data-tab="validation" aria-pressed="false">评审与验证</button></nav></div></div>
+<main class="wrap"><section class="panel" id="overview"><div class="grid">
+<div class="card"><span class="number">01 / 使用问题</span><h3>输入、预览与批准<br>必须是同一次意图</h3><p class="muted">当前起草页存在静态归属风险。编辑后迟到的旧预览，不能重新获得确认资格。</p><span class="badge">优先接线</span></div>
+<div class="card"><span class="number">02 / 资料问题</span><h3>先判断能否使用<br>再判断是否相关</h3><p class="muted">获准用途、有效出处、时间与冲突先于排序。记忆尚未自动参与当前起草。</p><span class="badge">后续能力设计</span></div>
+<div class="card"><span class="number">03 / 执行问题</span><h3>慢任务放到锁外<br>返回时重新校验</h3><p class="muted">独立控制路径处理撤权与来源变化；正在执行的阻塞工作仍占物理额度。</p><span class="badge">需语义决定</span></div></div>
+<div class="card"><div class="section-head"><h2>目标用例框架</h2><span class="badge">整张图均为目标设计</span></div><p class="muted">复用现有领域模块、密封存储与策略。新增的是用例内部的组织方式，既有 T4D / A0–A3 规则保持原权威。</p><div class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 660" role="img" aria-labelledby="title desc">
+<title id="title">Soul 用例编排与证据上下文目标设计</title>
+<desc id="desc">尚未接入生产。意图进入快照准备、证据选择、用户批准和控制状态，再锁外执行并检查最新状态；撤权直接更新控制状态，结果反馈用户。</desc>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L8 3L0 6Z" fill="#638179"/></marker></defs>
+<rect width="960" height="660" fill="#f4f7f3" rx="24"/>
+<g fill="none" stroke="#638179" stroke-width="2" marker-end="url(#arrow)">
+<path d="M480 104V138"/><path d="M270 176H340"/><path d="M480 216V250"/><path d="M480 328V362"/>
+<path d="M480 440V474"/><path d="M690 512H620"/><path d="M340 512H270"/>
+<path d="M150 550V616H340"/><path d="M480 550V594"/>
+<path d="M620 616H810V440"/><path d="M810 362V66H620"/>
+</g>
+<g font-family="Noto Sans CJK SC, Microsoft YaHei, system-ui, sans-serif" text-anchor="middle">
+<g fill="#173e35"><rect x="340" y="26" width="280" height="78" rx="14"/><rect x="340" y="474" width="280" height="76" rx="14"/></g>
+<g fill="#fff" stroke="#cedbd5"><rect x="340" y="138" width="280" height="78" rx="14"/><rect x="340" y="250" width="280" height="78" rx="14"/><rect x="340" y="362" width="280" height="78" rx="14"/><rect x="30" y="138" width="240" height="78" rx="14"/><rect x="30" y="474" width="240" height="76" rx="14"/><rect x="690" y="474" width="240" height="76" rx="14"/><rect x="690" y="362" width="240" height="78" rx="14"/></g>
+<g fill="#fff" font-size="20" font-weight="650"><text x="480" y="59">用户意图</text><text x="480" y="507">控制状态</text></g>
+<g fill="#c7e2d5" font-size="14"><text x="480" y="83">编辑代次 · 页面归属</text><text x="480" y="530">版本 · 超时 · 一次许可</text></g>
+<g fill="#173e35" font-size="19" font-weight="600"><text x="480" y="172">准备资料快照</text><text x="480" y="284">选择证据上下文</text><text x="480" y="396">材料预览与批准</text><text x="150" y="172">现有领域与存储</text><text x="150" y="507">锁外执行</text><text x="810" y="507">撤权 / 来源变化</text><text x="810" y="396">草稿与证据</text></g>
+<g fill="#60706b" font-size="14"><text x="480" y="196">不可变准备体 + 来源版本</text><text x="480" y="308">用途 → 冲突 → 排序 → 预算</text><text x="480" y="420">本次批准 · 默认占位</text><text x="150" y="196">密封记录 · 档案 · 图谱</text><text x="150" y="530">既有策略 + 出网边界</text><text x="810" y="530">独立短路径</text><text x="810" y="420">或拒收、澄清、结果未知</text></g>
+<rect x="340" y="594" width="280" height="44" rx="12" fill="#e8d9b7"/><text x="480" y="622" fill="#4d422a" font-size="17">结果接收前复验最新状态</text>
+</g></svg>
+</div><div class="buttons"><button id="download-svg">下载 SVG</button><button id="download-mmd">下载 Mermaid</button></div></div>
+<div class="notice">本轮完成研究、框架设计和参考算法验证。当前生产代码仍有待接线项；本页不是运行中的 Soul 客户端，也不是性能或准确率提升声明。</div>
+<div class="card"><h2>从一个小闭环开始</h2><p>起草页归属 → 一个慢任务的准备 / 执行 / 接收 → 手选记忆与证据预览 → 比较检索方案 → 操作回执与恢复。</p><p class="muted">授权、迁移、遗忘后重导的具体语义保留为待决定项。正式 Goal 1 / Goal 2 / Wave 1 状态不因这份设计而关闭。</p><div class="buttons"><button data-open="research">阅读完整设计</button><button data-open="lab">操作反例实验</button></div></div>
+</section>
+<section class="panel" id="research" hidden><div class="section-head"><h2>研究依据与具体算法</h2><button id="download-md">下载研究源文</button></div><p class="muted">源码事实、研究推论和后续提案在文内分别注明。相对文档链接指向当前工作分支；研究基准固定为 6e8f3c0。</p><div class="toc"><a href="#section-1">1. 先回答：日常使用究竟缺哪一环？</a><a href="#section-2">2. 研究问题、证据与取舍</a><a href="#section-3">3. Brainstorm：四种整体路线</a><a href="#section-4">4. 目标框架：在现有边界内增加三段用例</a><a href="#section-5">5. 算法一：输入—预览—批准归属</a><a href="#section-6">6. 算法二：可撤权的慢任务与结果接收</a><a href="#section-7">7. 算法三：先获准、后相关的证据上下文</a><a href="#section-8">8. 算法四：未知结果与恢复路径</a><a href="#section-9">9. 评价：先测正确性，再测召回，再测实际价值</a><a href="#section-10">10. 落地顺序与需要拍板的精确边界</a><a href="#section-11">11. 本轮交付与复核位置</a></div><article class="doc"><h1>Soul：从实际使用到框架与算法</h1>
+<p>日期：2026-10-15。审查源码：PR #66 工作分支 <code>6e8f3c06b7fd0cbc7920766337572301319b021a</code>。这是后续架构设计与可执行参考实验，<strong>不是生产接线完成、算法解冻或正式验收</strong>。原来的 <a href="https://github.com/Xhhemoing/Soul/blob/codex/soul-forget-outcomes-20260929/docs/ARCHITECTURE.md">系统架构</a> 继续描述现有实现；<a href="https://github.com/Xhhemoing/Soul/blob/codex/soul-forget-outcomes-20260929/docs/framework-design.html">交互研究页</a> 展示本文和可操作的反例。</p>
+<h2 id="section-1">1. 先回答：日常使用究竟缺哪一环？</h2>
+<p>目标不是让 Soul 多运行几个 agent，而是让它在用户交代事情时可靠地完成：理解本次意图 → 使用获准且当前有效的个人资料 → 展示依据 → 由用户控制生成 → 接收纠正或遗忘 → 下一次行为随之改变。</p>
+<p>本次没有访问真实聊天、个人数据库或端点，也没有做用户访谈。下面是依据产品承诺和当前源码构造的使用场景，频率与真实满意度均未测；静态反例与已运行的参考测试分别标注。</p>
+<table>
+<thead>
+<tr>
+<th>使用场景</th>
+<th>当前事实 / 源码定位</th>
+<th>问题与研究点</th>
+<th>预期可观察结果</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>第一次使用，没有数据或模型端点</td>
+<td><code>soul-draft/src/template.rs</code> 是确定性骨架；<code>ProfileBrief::neutral</code> 无轴断言</td>
+<td>用户是否能分清“语气骨架”与“理解消息后的回复”？</td>
+<td>无数据仍可用；缺失不填零，不声称已理解其人格</td>
+</tr>
+<tr>
+<td>粘贴 A，等待预览时又改成 B</td>
+<td><code>apps/desktop/src/routes/Draft.tsx</code> 的 <code>describe</code> 回调无输入代次；textarea 只 <code>setPasted</code></td>
+<td>输入、预览、批准和原文豁免怎样绑定？</td>
+<td>A 的迟到预览不能覆盖 B；改回 A 也不会复活旧批准</td>
+</tr>
+<tr>
+<td>起草前纠正“我希望简短、正式”</td>
+<td><code>ProfileBrief::from_view</code> 读取 voice/axes；<code>Session::set_voice</code> 写资料，未使已有准备失效</td>
+<td>纠正如何穿过快照、生成、返回各阶段？</td>
+<td>新请求采用用户生效值；旧快照结果不能被当作新纠正后的答案</td>
+</tr>
+<tr>
+<td>希望回忆“我上次为什么拒绝这个安排”</td>
+<td><code>SoulMemory</code> 与 <code>MemoryStore</code> 是 CRUD/密封引用；起草 brief 没有记忆入口</td>
+<td>检索什么、凭什么使用、怎样引用、无证据怎样回答？</td>
+<td>先选可用资料，再生成；可查看所选记忆及来源；不足时澄清</td>
+</tr>
+<tr>
+<td>请求较慢，用户关闭端点</td>
+<td>Tauri <code>SessionState(Mutex&lt;Session&gt;)</code>，<code>generate_draft</code> 同步到 blocking HTTP</td>
+<td>撤权能否绕过慢工作；派发边界是什么？</td>
+<td>撤权不排在整段 HTTP 后；撤权之后不再发新许可，旧结果不被接收</td>
+</tr>
+<tr>
+<td>忘掉一段经历，旧任务随后返回</td>
+<td>已有精确 <code>ForgetScope</code>，但还没有通用任务来源版本</td>
+<td>数据主键未变、正文已变，如何识别旧快照？</td>
+<td>内容密钥销毁仍由 store 执行；依赖已变的任务被拒收</td>
+</tr>
+<tr>
+<td>导入/遗忘确认后窗口丢失回执</td>
+<td>import 有事务，forget 有 commit/cleanup/audit 分离回执</td>
+<td>“未知”是否被错误显示为失败并自动重做？</td>
+<td>不把未知当未执行；区分事务提交、清理、审计、UI 收到四件事</td>
+</tr>
+<tr>
+<td>问“现在住哪里”，历史有两个地址</td>
+<td>目前记忆没有完整有效时间/知识时间和适用范围契约</td>
+<td>最近记录是否一定是真实最新？冲突如何处理？</td>
+<td>不用文件导入时间覆盖事实时间；未消解冲突先澄清</td>
+</tr>
+</tbody></table>
+<p>现有能力应保留：问卷与纠正锁、图谱判档与证据、记忆 CRUD/遗忘、默认占位的 E1、确定性起草回退、只读文件计划。<strong>获准记忆自动参与起草仍是后续产品能力，不是 v0.1 漏做的承诺。</strong></p>
+<h2 id="section-2">2. 研究问题、证据与取舍</h2>
+<table>
+<thead>
+<tr>
+<th>研究问题</th>
+<th>一手依据</th>
+<th>对 Soul 的推论</th>
+<th>不可外推的结论</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>长记忆该怎样评估？</td>
+<td><a href="https://arxiv.org/abs/2410.10813">LongMemEval</a> 分别研究提取、跨会话、时间、更新、拒答，并拆开索引/检索/阅读</td>
+<td>分开测“选对证据”与“读对证据”；加入纠正、时间、无答案轨迹</td>
+<td>论文分数不等于 Soul 的中文个人数据准确率</td>
+</tr>
+<tr>
+<td>对话能否直接当人格真值？</td>
+<td><a href="https://aclanthology.org/2024.acl-long.747/">LoCoMo，ACL 2024</a> 用长对话、时间事件与 QA/摘要任务研究记忆</td>
+<td>保留原始出处与事件关联；摘要是可撤销派生物</td>
+<td>合成对话 QA 不是人格科学有效性，也不是临床结论</td>
+</tr>
+<tr>
+<td>静态问答测够了吗？</td>
+<td><a href="https://arxiv.org/abs/2603.01966">AMemGym 预印本，2026</a> 研究状态演化和交互式记忆评估</td>
+<td>用“创建→纠正→检索→遗忘→迟到返回”的轨迹测状态变化</td>
+<td>模拟用户与自动裁判不能替代本人确认的实际效用</td>
+</tr>
+<tr>
+<td>多路检索分数如何合并？</td>
+<td><a href="https://cormack.uwaterloo.ca/cormacksigir09-rrf.pdf">RRF 原论文</a> 融合排序位置</td>
+<td>候选试验可合并关键词/结构化结果，避免直接相加不同尺度分数</td>
+<td>RRF 不是可信度、真值或授权；不能替代准入过滤</td>
+</tr>
+<tr>
+<td>换异步锁能否解决撤权？</td>
+<td><a href="https://tokio.rs/tokio/tutorial/shared-state">Tokio shared state</a>、<a href="https://v2.tauri.app/develop/state-management/">Tauri state</a></td>
+<td>分开控制状态和慢任务；改变临界区范围比换锁类型更关键</td>
+<td>异步锁不会让持锁 HTTP 期间的另一个命令获得同一把锁</td>
+</tr>
+<tr>
+<td>abort 能否取消阻塞请求？</td>
+<td><a href="https://docs.rs/tokio/1.53.1/tokio/task/fn.spawn_blocking.html">Tokio 1.53.1 spawn_blocking</a>，与当前 Cargo.lock 解析版本一致</td>
+<td>取消先使结果不可接收；物理 worker 退出前仍占并发额度</td>
+<td>不能声称 abort 撤回 HTTP 或释放正在运行的线程</td>
+</tr>
+<tr>
+<td>重试如何避免重复副作用？</td>
+<td><a href="https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/">AWS Builders’ Library</a> 区分请求意图与相同参数</td>
+<td>操作回执标识与消息去重标识分开设计</td>
+<td>不能用正文 hash 猜测用户是否希望重复导入</td>
+</tr>
+<tr>
+<td>事务为何不能自动解决旧预览？</td>
+<td><a href="https://www.sqlite.org/isolation.html">SQLite isolation</a> 说明单 writer 与快照可见性</td>
+<td>应用必须复验读时依据；短事务保护写入一致性</td>
+<td>不应把应用一把锁描述成 SQLite 只允许一个连接</td>
+</tr>
+</tbody></table>
+<p>以上采用的是方法和故障机制；本报告不引用外部论文的提升百分比来预测本项目收益。研究读取日为 2026-10-15；LongMemEval 细节对照原论文 v1，未宣称覆盖其全部后续版本。</p>
+<h2 id="section-3">3. Brainstorm：四种整体路线</h2>
+<table>
+<thead>
+<tr>
+<th>路线</th>
+<th>实际收益</th>
+<th>主要代价 / 反例</th>
+<th>结论</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>全量资料塞进长上下文</td>
+<td>接入看似快，少建索引</td>
+<td>过量出网、旧事实冲突、遗忘派生物追踪困难、成本随全库增长</td>
+<td>不采用为默认路径</td>
+</tr>
+<tr>
+<td>向量库 + 自动记忆 agent</td>
+<td>同义语义召回潜力；可自动整理</td>
+<td>新模型/索引/密钥生命周期，自动写入可能把误读固化；无法先解决撤权</td>
+<td>保留为有实测需求后的候选</td>
+</tr>
+<tr>
+<td>拆成微服务或多 agent 总线</td>
+<td>可分布式伸缩</td>
+<td>当前本机单用户更需要原子性；引入部署、消息重复、跨服务权限问题</td>
+<td>当前不采用</td>
+</tr>
+<tr>
+<td><strong>现有模块 + 用例编排 + 证据上下文</strong></td>
+<td>复用 18 crates、冻结算法、密封存储和策略；逐用例迁移</td>
+<td>需要明确任务与来源版本，处理结果未知；保守失效会增加重新准备次数</td>
+<td><strong>本轮选定的设计方向</strong></td>
+</tr>
+</tbody></table>
+<p>检索内部也不一次定死：先“本次手动选择记忆”建立可解释闭环，再比较本地关键词/结构化召回，最后才评估本地向量召回。RRF 是多路候选的试验组合器；单路足够时不用为了架构而加第二路。自动抽取先存候选并由用户确认，不能悄悄改写档案锁。</p>
+<h2 id="section-4">4. 目标框架：在现有边界内增加三段用例</h2>
+<p><strong>准备 prepare → 锁外执行 execute → 校验接收 complete</strong> 是应用层内部组织方式。不是新的 agent 产品框架，也不新增 crate 或持久化系统。</p>
+<table>
+<thead>
+<tr>
+<th>层 / 建议位置</th>
+<th>接收与产出</th>
+<th>所有权和禁止事项</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>React 起草页</td>
+<td>编辑代次、页面 ticket、预览 ID → 用户意图</td>
+<td>同步准入；忽略迟到回调；不能伪造核心撤权</td>
+</tr>
+<tr>
+<td><code>soulcore::commands</code> 用例编排</td>
+<td><code>DraftInput</code> → <code>PreparedDraft</code> → <code>DraftOutcome</code></td>
+<td>仍是唯一组合者；持有不可变准备体，不在发送时从 UI 重建</td>
+</tr>
+<tr>
+<td>拟议 <code>soulcore::operations</code></td>
+<td>任务 ID、epoch、deadline、状态 → 接收/拒绝</td>
+<td>私有 Rust 类型；控制锁只保护短内存操作，不等 store/HTTP/审计</td>
+</tr>
+<tr>
+<td>拟议 <code>soul-memory::selection</code></td>
+<td>用途、查询、可读候选 → <code>ContextSelection</code></td>
+<td>可信适配器先判用途/证据/遗忘；排序服务不能批准使用</td>
+</tr>
+<tr>
+<td><code>soul-profile</code> / <code>soul-graph</code> / 两算法 crate</td>
+<td>当前生效档案、既有 T4D/A0–A3 输出</td>
+<td>用户锁优先；不新增关系分数，不重算第二套判档</td>
+</tr>
+<tr>
+<td><code>soul-policy</code> + <code>soul-egress</code></td>
+<td>已审查准备、现有一次性能力与 redacted body → HTTP 结果</td>
+<td>继续精确 origin、默认占位、固定指令、拒绝路径；不让模型自行授权</td>
+</tr>
+<tr>
+<td><code>soul-store</code> + <code>soul-store-api</code></td>
+<td>原始记录、密封引用、事务、遗忘 → 有来源的快照</td>
+<td>单 writer 不变；密钥、事务、清理仍由 store 管；不把正文抄到审计</td>
+</tr>
+</tbody></table>
+<p>最小接口草图（<strong>设计稿，不是新增 IPC/schema 定义</strong>）：</p>
+<pre><code class="language-rust">struct PreparedDraft { /* existing preparation_id, body, plan_hash, origin;
+                          internal source revision + expiry + operation identity */ }
+enum Completion&lt;T&gt; { Accepted(T), Stale, Cancelled, Expired, Unconfirmed }
+fn prepare_draft(input: DraftInput, deps: &amp;Services) -&gt; Result&lt;PreparedDraft&gt;;
+fn execute_draft(job: OwnedDispatch, worker: &amp;BoundedExecutor) -&gt; WorkResult;
+fn complete_draft(job: OperationId, result: WorkResult, deps: &amp;Services) -&gt; Completion&lt;Draft&gt;;
+</code></pre>
+<p>类型中的来源版本只在内存内跟踪已有单 writer 变更；不会新建正文 hash、schema 锁或版本基线。已有 preparation ID 继续区分“相同段数但不同正文”；已有 plan hash 不删除，不被新的通用 hash 替代。重启不恢复旧授权或旧内存任务。</p>
+<h2 id="section-5">5. 算法一：输入—预览—批准归属</h2>
+<p>状态为 <code>live, edit_revision, serial, active_ticket, preview_identity</code>。开始请求先同步占槽，再调用 IPC；不能只依赖 React 下一次渲染才禁用按钮。</p>
+<ol>
+<li>每次编辑递增 revision 并隐藏旧确认面板。A→B→A 仍是三个不同编辑状态。</li>
+<li>开始请求保存 ticket 和 revision；同页面已有请求则拒绝第二次准入。</li>
+<li>回调仅在页面仍存活、ticket 相同、revision 未变时可更新界面。</li>
+<li>旧回调只能释放它自己的槽；不能释放新任务。编辑不释放在途槽，避免用“视觉取消”无限启动工作。</li>
+<li>批准/原文豁免必须传入当前预览的对象身份，不能从旧闭包批准新输入。核心仍校验 preparation ID/hash/origin。</li>
+<li><code>discardDraft()</code> 当前不带 preparation ID。初步接线采用串行 drain：隐藏 UI 后等待 discard 结束才准入新 prepare；若回执未知，不自动再次 discard。以后若需要按 ID 丢弃，先决定 IPC 语义。<strong>参考模型的 abandon 仅模拟 UI，未模拟 discard IPC 排序。</strong></li>
+</ol>
+<p>参考实现 <code>DraftFlow</code> 每步 O(1)。它证明归属规则可执行，不意味着 <code>Draft.tsx</code> 已接线。本次发现的 A/B 错配是静态源级风险；没有把它描述为生产端点双发，因为核心现有 <code>pending.take()</code> 已防同一准备重复消费。</p>
+<h2 id="section-6">6. 算法二：可撤权的慢任务与结果接收</h2>
+<p>拟议状态：prepared → dispatched → accepted / rejected；prepared 可取消；dispatched 可标记取消，但 worker 未退出前不得释放物理槽。时间使用单调时钟的 deadline，判定 <code>now &gt;= deadline</code> 已过期；与人脉算法的数据 <code>as_of</code> 无关。</p>
+<p>快照 <code>S = (control_epoch, data_version, origin, writing=false)</code>。当前实现没有这个通用版本层；参考模型通过显式输入验证它，生产接线需另作决定。</p>
+<p><strong>准入条件</strong>：有 origin，来源快照与当前状态一致，未到 deadline，未使用过本次任务 ID，队列容量未满。<code>prepare</code> 接受读资料时的快照，禁止“读旧资料后再用当前版本号冒充新快照”。</p>
+<p><strong>派发条件</strong>：仍为 prepared，未取消/过期，epoch、origin、data_version 均一致。检查、现有一次性能力消费及派发资格的发放在同一个控制临界区内完成；临界区内禁止 HTTP、数据库等待和审计。不能把“检查 epoch”和“另一个线程随后发许可”拆开。</p>
+<p><strong>接收条件</strong>：确实已派发，未被取消，未过期，授权和来源仍一致，结果结构/禁止词/证据校验及必要审计处理已完成。最后接收点再次校验，再向 UI 返回。Accepted 是核心逻辑接收点，不是 UI 已显示的证明：在它之后、IPC 抵达之前发生变更，页面也必须根据核心版本/失效事件拒绝旧结果；事件先后需原生集成测试。已经展示的结果在资料变更后标注失效或清除。未来若有真正的领域写入，不能 complete 返回 ok 后放开保护再提交；必须把验证与提交纳入同一受保护边界。</p>
+<p><strong>撤权的精确定义（待决定）</strong>：撤权提交之后不再发新的派发许可，并拒收该 epoch 的晚到结果。许可已经发放的 worker 可能尚未开始网络发送，也可能已把字节送出；此时只能尽力中止，不保证撤回。若产品要求“撤权确认后绝无首字节发出”，必须把边界推进到传输层并做 socket 级测试，本模型不提供该保证。</p>
+<h3>锁顺序与写入版本，避免新的死锁</h3>
+<ul>
+<li>控制锁从不获取 store 锁、不等待 worker、不写审计。撤权只需控制锁。</li>
+<li>读快照：读控制版本 C0 → 单独持 store 锁复制最小所需数据 → 放开 store → 再读控制 C1；只有 C0=C1 且无写入进行中才注册准备，否则重做或明确要求重新准备。</li>
+<li>单 writer 的写路径：获得 store guard 后，短暂取得控制锁，置 writing=true 并递增 data_version；释放控制锁再执行事务；事务成功或失败后清除 writing。失败也保守使旧任务失效。清除必须由 Rust guard/RAII 保证；panic 后不得留下“看似可用”的错误状态。</li>
+<li>complete 的最后判断仅在控制锁内做；写事务从“宣布变更”起会令旧结果失效。引用读取/结果审计在最后判断之前完成，且不持控制锁做 I/O。验收必须覆盖审计阶段插入纠正/撤权。</li>
+<li>当前全局 data_version 会使无关记忆编辑也让任务失效，这是第一版保守代价。确认所有写入口均参与后才考虑按依赖 ID 分版本；不能现在遗漏 import、forget、联系人/脱敏词表、profile 等入口而宣称完整保护。</li>
+<li>该纪律只覆盖同进程唯一 writer。多进程/多端支持需要单独协议，不能凭内存 epoch 推广。</li>
+</ul>
+<p>参考 <code>OperationControl</code> 单项查找/派发/接收平均 O(1)，准入与失效时扫描最多 Q 个排队项，O(Q)，Q 受容量限制。过期、撤权或资料失效的 prepared 项没有真实 worker，立即或在下次准入前回收；已 dispatched 的工作必须等实际结束。模型的 used-ID 集合保留至实例结束，仅用于有限实验；生产不得把它做成无限任务账本，应复用一次性准备生命周期并有界回收终态。模型没有实际线程、Socket、SQLite 或审计，穷举只检查事件线性顺序。</p>
+<h2 id="section-7">7. 算法三：先获准、后相关的证据上下文</h2>
+<h3>7.1 数据适配先于检索</h3>
+<p><code>SoulMemory</code> 目前没有普遍的用途许可、revision 或双时间字段；<code>SoulEvidence.privacy</code> 可为空，<code>source_refs</code> 还是领域定义的 opaque 值。因此参考模型里的 <code>granted, recordedAt, validFrom, validTo, claimKey, cost</code> <strong>不是已落库字段</strong>，更不能由导入 JSON 或模型自行填写后就获得权限。</p>
+<p>第一步建议从“本次手动选择记忆”得到临时用途许可，复用已有 memory/blob/evidence ID；本次选择不授予研究用途或 E1 原文出网权。无来源的手写记忆可把本条用户记录及密封 blob 作为一手出处，不凭空制造外部证据。自动选择、长期用途许可及时间字段的持久化另行决定；未决定前不把缺失 privacy 当 allow。</p>
+<p>查询只在本次意图确定的候选范围内执行。结构化范围（人、事情、时间）不明确时先问一个能缩小范围的问题，避免全库解密。第一阶段可本地扫描有上限的用户选中集合；加密索引/中文分词/embedding 尚未实现，不能把这里的排名输入当作真实召回。</p>
+<h3>7.2 可执行选择算法</h3>
+<p>输入：可信适配器提供的候选、每路去重排名、用途 p、事实时间 t（可为空）、知识截止时间 k、预算 B、条数 L、来源上限 C、试验参数 rrfK。</p>
+<ol>
+<li><strong>硬过滤</strong>：active 且可解密；本次用途明确获准；引用非空且可解引用；记录时间已知且不晚于 k；若问特定时间，则必须满足 <code>validFrom &lt;= t &lt; validTo</code>（null 的 validTo 明确代表无结束）。缺失时间不是 0；撤权/遗忘/孤立证据直接排除。</li>
+<li><strong>冲突检查</strong>：只在合格召回并集里检查同一已规范化的主体+属性+范围内、当前时间同时有效却有不同值 → 不靠分数投票，转澄清。检查在截断 top-K 之前，不能把反证排到第 K+1 名就假装没有冲突；未被召回的无关记录不能触发本题澄清。无时间问题遇到历史变化可保守澄清。若反证根本未召回，本算法无法发现，所以反证召回率必须单独评估。</li>
+<li><strong>候选融合</strong>：各路仅对合格 ID 压缩重排，一路中同 ID 只计一次；<code>RRF(d) = Σ 1 / (rrfK + rank_i(d))</code>。平局按稳定 ID 排序。未知 ID 忽略。RRF 只作内部选材，不展示为人格/可信度分数。</li>
+<li><strong>预算选择</strong>：按融合顺序遍历；达到 L 停选；同来源超过 C 则略过；累计费用加当前费用超过 B 则略过，继续尝试后面的短材料。每条保留引用；不能为塞进预算切断出处或否定词。预算须预留固定指令、分隔符和输出空间，由调用者使用真实序列化体/目标 tokenizer 计量；组装后重新核算整个请求，超限则移除完整材料并重算。单项 token 数相加不天然等于最终 token 数；演示只用抽象单位。</li>
+<li><strong>产出</strong>：selected + citations + exclusion reasons + context/clarify/abstain。无合格证据仍可用原有模板，但不能补写个人事实；有冲突先澄清，不让 LLM 自行选一个事实。</li>
+<li><strong>生成前后复验</strong>：选择只是候选结果，发送前按算法二复验所有依赖；E1 再走原有 redactor/一次批准。模型输出的引用必须属于本次选择集合且仍有效；“ID 有效”只证明出处存在，不证明正文支持主张，语义蕴含需人工样本与额外验证器研究。</li>
+</ol>
+<p>复杂度：N 个候选、R 条排名项、U 个融合候选，过滤/融合 O(N+R)，融合排序 O(U log U)，选择 O(U)；参考实现还排序排除项/冲突列表，因此总时间保守为 O(N log N + R + U log U)，含召回集合的额外空间 O(N+R+U)（引用总长度另计）。来源上限是可解释的去重复近似，不能宣称等价于 MMR 或最优背包；长材料会被跳过而造成召回损失，需记录预算排除率。</p>
+<p>RRF 的演示参数 60、来源上限 1 只是合成实验配置，不是产品常量，更不是对 T4D/A0–A3 的修改。真实方案需要比较不融合 / RRF、不同候选粒度及预算，不能从这组测试宣布最佳参数。</p>
+<h3>7.3 用户纠正与时间的两条独立轴</h3>
+<p>现有档案字段：<code>effective = locked ? user_value : supported_machine_value</code>；锁定但值缺失时显示 unknown，不回退机器猜测。<code>resolveField</code> 仅演示这个优先原则，未重写 A0/A1。</p>
+<p>时间性事实：事件发生时间、有效起止、系统获知时间与任务单调超时分别保存语义；不能用导入日期代替发生日期，也不能用“最新记录”推翻限定场景的用户纠正。候选文本的 claimKey/claimValue 规范化、代词消解、否定/假设识别尚未实现；未获用户确认的抽取不能自动覆盖现有事实。</p>
+<h2 id="section-8">8. 算法四：未知结果与恢复路径</h2>
+<p>这个部分给出协议设计，<strong>未新增数据库表或可执行持久化实现</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>已知事实</th>
+<th>用户看到的状态</th>
+<th>允许下一步</th>
+<th>禁止的推断</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>准入前确定拒绝</td>
+<td>未开始，附原因</td>
+<td>修正后重新准备</td>
+<td>不能声称已发生写入</td>
+</tr>
+<tr>
+<td>有明确提交回执，cleanup 失败</td>
+<td>已提交，清理待完成</td>
+<td>现有 cleanup-only 重试</td>
+<td>不能再次销毁或重导来“修复清理”</td>
+</tr>
+<tr>
+<td>提交确认，但 audit 未确认</td>
+<td>已提交，审计未确认</td>
+<td>保留三分结果，按既有恢复能力处理</td>
+<td>不能把审计失败改成事务回滚</td>
+</tr>
+<tr>
+<td>IPC/进程中断，没有可靠回执</td>
+<td>结果未知</td>
+<td>查询可证明的持久事实/要求核对</td>
+<td>不自动重发不可逆动作；墓碑不等于完整历史回执</td>
+</tr>
+<tr>
+<td>未来有同事务写入的操作回执</td>
+<td>可据操作 ID 查状态</td>
+<td>相同意图 ID 返回已有结果</td>
+<td>回执未找到也可能尚在执行，需所有权/生命周期判定</td>
+</tr>
+</tbody></table>
+<p>未来导入回执流程：接收客户端意图 ID → 查已存在回执 → 验证相同参数/相同导入意图 → 单事务写领域数据和无正文回执 → commit → 返回。事务与回执要原子；外部 HTTP 不在这个事务里，也不能假称 exactly-once。操作 ID 解决“同一点击的重试”，来源稳定消息 ID 解决“不同导出文件含同一条消息”，两者不可替代。</p>
+<p>D55 仍为后续 P1。迁移、稳定消息键、编辑过的消息、撤回消息、遗忘后重导（允许重建、拒绝或用户再次批准）、回执保留期需先明确决定。不能用新正文哈希或保留可逆内容指纹绕开遗忘。</p>
+<h2 id="section-9">9. 评价：先测正确性，再测召回，再测实际价值</h2>
+<table>
+<thead>
+<tr>
+<th>层次</th>
+<th>应测内容与指标</th>
+<th>本轮证据</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>状态正确性</td>
+<td>重复准入次数、失效结果接收数、撤权后新许可数、物理槽占用</td>
+<td>可执行模型与对抗轨迹，见验证记录</td>
+</tr>
+<tr>
+<td>选材正确性</td>
+<td>禁用资料入选数、引用可解析率、冲突漏报、时间错用、预算越界</td>
+<td>合成描述符测试；不是自然语言召回或安全红队验收</td>
+</tr>
+<tr>
+<td>检索效用</td>
+<td>按人/会话留出；标注相关和反证，分别报 Recall@K、反证召回、拒答精确率/覆盖率</td>
+<td>未测，需真实检索适配器；不得只用平均 QA 分数</td>
+</tr>
+<tr>
+<td>生成效用</td>
+<td>档案-only、手选记忆、关键词、混合四组；盲评事实正确/语气/是否愿采用，记录改写量</td>
+<td>未测；本轮无真实 LLM 调用或用户试验</td>
+</tr>
+<tr>
+<td>运行成本</td>
+<td>同一机器候选量增长下 p50/p95、峰值内存、锁占用、撤权确认耗时、上下文字节/token</td>
+<td>未测；不把微型 JS 执行时间当 Windows Rust 性能</td>
+</tr>
+</tbody></table>
+<p>评估集先由合成轨迹构造：单事实、跨会话、过去/现在更新、本人纠正、否定/假设、相似姓名、第三人/研究用途、遗忘、重启/未知提交。每条同时标正证据与反证，冻结测试拆分后才调参；不要把同一人的相邻片段分到训练/测试两侧。真实数据只在另行获得授权后本地处理。</p>
+<p>研发停止条件按具体用例判断：当前迁移不破坏既有产品承诺，新增对抗断言满足，独立审查无阻塞，再进相应原有平台验证。这里不新建 Goal 1 gate，也不替代 G-L/G-W/G-M。</p>
+<h2 id="section-10">10. 落地顺序与需要拍板的精确边界</h2>
+<table>
+<thead>
+<tr>
+<th>顺序</th>
+<th>可独立交付的切片</th>
+<th>修改位置</th>
+<th>验证重点</th>
+<th>语义决定</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>起草页输入/预览归属，明确模板是骨架</td>
+<td>Draft.tsx 与现有请求协调模式</td>
+<td>A/B/A、同轮双击、卸载、原文豁免绑定、discard drain；React + 原生 IPC</td>
+<td>不把 UI 隐藏解释为核心取消</td>
+</tr>
+<tr>
+<td>2</td>
+<td>只迁移起草一个慢用例</td>
+<td>Session/draft/policy、Tauri state</td>
+<td>短锁、控制路径可达、单次许可、来源变更、审计插入、真实 mock 请求计数</td>
+<td>采用本报告“撤权后无新许可”的定义，是否接受已发许可余量</td>
+</tr>
+<tr>
+<td>3</td>
+<td>手选记忆作为上下文，完整证据预览</td>
+<td>soul-memory/soul-draft/起草页</td>
+<td>本次用途、出处、遗忘后失效、默认 E1 占位</td>
+<td>记忆用途和出网批准范围；不借研究许可</td>
+</tr>
+<tr>
+<td>4</td>
+<td>比较关键词/结构化/RRF，必要时本地向量</td>
+<td>受控 selection 适配器</td>
+<td>中文召回、反证、预算、时序；保留无记忆对照</td>
+<td>索引加密与密钥生命周期、时间字段迁移</td>
+</tr>
+<tr>
+<td>5</td>
+<td>操作回执、D55、摘要/扫描推广</td>
+<td>store/import/commands</td>
+<td>crash 前后、消息键、回执/审计独立、未知结果</td>
+<td>迁移与遗忘重导语义</td>
+</tr>
+</tbody></table>
+<p>这些是可评审提案，未写入 DECISIONS 伪装为已批准。不因既有 Goal 1 平台验收受阻而停止设计和合成实验；也不把本轮设计工作称作 Goal 2 正式完成。</p>
+<h2 id="section-11">11. 本轮交付与复核位置</h2>
+<ul>
+<li><a href="https://github.com/Xhhemoing/Soul/blob/codex/soul-forget-outcomes-20260929/docs/design/framework-algorithms.mjs">参考算法</a>：页面归属、任务控制、证据选择、纠正优先；纯 JS、无依赖、无 I/O。</li>
+<li><a href="https://github.com/Xhhemoing/Soul/blob/codex/soul-forget-outcomes-20260929/docs/design/framework-algorithms.test.mjs">对抗测试</a>：运行 <code>node --test docs/design/framework-algorithms.test.mjs</code>。</li>
+<li><a href="https://github.com/Xhhemoing/Soul/blob/codex/soul-forget-outcomes-20260929/docs/design/2026-10-15-framework-validation.md">验证与独立评审</a>：真实运行范围、修订和未覆盖项。</li>
+<li><a href="https://github.com/Xhhemoing/Soul/blob/codex/soul-forget-outcomes-20260929/docs/framework-design.html">离线 HTML</a>：研究结论、目标图和复用相同算法源码的交互反例。</li>
+</ul>
+<p>所有产品事实以本文开头的固定提交和仓库既有权威为准。本轮没有改 PRODUCT_LOCK、DECISIONS、冻结算法、schema、Cargo/pnpm 锁、IPC 或生产 Rust/React 代码。先把可验证的设计闭环做好，再按上表逐用例接线。</p>
+</article></section>
+<section class="panel" id="lab" hidden><div class="section-head"><h2>可运行的算法实验</h2><button id="download-code">下载参考算法</button></div><p class="muted">仅操作合成描述符；不读取你的资料、不执行真实授权或网络请求。下方与测试复用同一份算法源码。</p><div class="split"><div class="card"><h3>任务状态与迟到结果</h3><label for="scenario">选择交错情景</label><br><select id="scenario"><option value="normal">正常完成</option><option value="before">派发前撤权</option><option value="after">派发后撤权</option><option value="change">生成中纠正资料</option><option value="cancel">取消后仍有 worker</option><option value="expire">旧准备过期后重试</option></select><div class="counter-grid"><div class="counter"><b id="permits">0</b><span>派发许可数</span></div><div class="counter"><b id="accepted">0</b><span>接收结果数</span></div><div class="counter"><b id="occupied">0</b><span>占用槽位</span></div></div><div class="buttons"><button id="step">执行下一步</button><button id="reset">重新开始</button></div><ol class="timeline" id="timeline" aria-live="polite"></ol><p class="hint">“派发”表示发放许可。之前已发许可或数据不能保证撤回；取消不会让正在运行的阻塞任务凭空消失。</p></div>
+<div class="card"><h3>证据选择与预算</h3><label class="toggle"><input type="checkbox" id="allow-memory" checked> 本次允许使用“简短回复”记忆</label><label class="toggle"><input type="checkbox" id="forget-memory"> 已遗忘这条记忆</label><label class="toggle"><input type="checkbox" id="conflicting"> 召回相互冲突的日程证据</label><label for="budget">材料预算：<strong id="budget-label">6</strong> 个演示单位</label><input id="budget" type="range" min="0" max="10" value="6" step="1"><div class="live" id="selection-state" aria-live="polite"></div><div id="memory-rows" class="rows"></div><p class="hint">最高相关的“研究专用”记录仍不获准。冲突检查位于截断之前；排名值不会变成个人可信度分数。演示没有真正的关键词/向量检索。</p></div></div></section>
+<section class="panel" id="validation" hidden><article class="doc"><h1>框架参考算法：验证与独立评审</h1>
+<p>日期：2026-10-15。依据源码 <code>6e8f3c06b7fd0cbc7920766337572301319b021a</code>。本次修改是设计文档、离线 HTML、图源和非生产 JS 参考模型；没有修改生产 Rust/React/IPC/schema/依赖。</p>
+<h2 id="section-12">实际执行</h2>
+<p>环境：Linux；Node <code>v24.19.0</code>；源码来自固定提交归档，工作副本没有 <code>.git</code>。Bash 诊断不代替仓库要求的 PowerShell 平台门禁。没有运行真实外部模型、个人数据或数据库。</p>
+<table>
+<thead>
+<tr>
+<th>检查</th>
+<th>实际结果</th>
+<th>能证明什么</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>node --test docs/design/framework-algorithms.test.mjs</code></td>
+<td>最终 37/37，退出 0</td>
+<td>参考模型的归属、失效、容量、选择与纠正优先</td>
+</tr>
+<tr>
+<td>事件顺序枚举</td>
+<td>120 种顺序全部满足断言，包含在上述 37 项中的一项</td>
+<td>单线程线性模型的撤权/取消/来源变更与派发/接收关系；不是 120 个额外测试</td>
+</tr>
+<tr>
+<td>六个定向变异</td>
+<td>6/6 被原测试检出</td>
+<td>断言能捕获关键保护被删除；不是生产 mutation coverage</td>
+</tr>
+<tr>
+<td>独立只读评审</td>
+<td>四类问题有反例并已修正；定向 Node 探针退出 0，复审无剩余算法阻塞项</td>
+<td>候选参考代码和语义边界获得独立检查</td>
+</tr>
+<tr>
+<td>HTML 浏览器检查</td>
+<td>13/13，退出 0</td>
+<td>四视图、六种任务交错、键盘重置、选材交互、四项下载字节一致、目录、390px 无横向溢出、零脚本错误/自动 HTTP 请求；只验证交付页</td>
+</tr>
+</tbody></table>
+<p>首稿为 31/31；独立评审发现未覆盖反例后新增 6 项，最终为 37。这里不沿用此前生产前端 338 项、Rust 65 项或旧 HTML 12 项来增加本轮测试数。</p>
+<p>HTML 使用本地 Chromium 133 / Playwright，在真实 file:// 打开；1440px 与 390px 布局已检查。测试浏览器注入本地 CJK 字体仅用于截图，交付 HTML 使用系统字体，不含自动字体请求。截图检查发现 SVG 自设字体未采用注入字体，已补明确的 CJK 字体回退并复查；不是 Soul 产品字体变更。</p>
+<h2 id="section-13">评审怎样实际改变了设计</h2>
+<table>
+<thead>
+<tr>
+<th>反例</th>
+<th>初稿问题</th>
+<th>修订与回归</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>capacity=1，准备 A → 撤权 → 重新配置 → 准备 B</td>
+<td>从未派发的失效 A 永久占槽，B 一直 busy</td>
+<td>回收失效/过期的 prepared；仍在运行的 dispatched 等待实际结束。补撤权、过期、来源改变三项</td>
+</tr>
+<tr>
+<td><code>purposes: &#39;redraft&#39;</code>，或字符串 citations</td>
+<td>字符串 includes 误判用途；字符串引用展开成字符</td>
+<td>严格数组与非空字符串成员校验；补 string/null/mixed 反例</td>
+</tr>
+<tr>
+<td>只命中一条无关材料，库中另有两个地址冲突</td>
+<td>未召回的记录仍迫使本题澄清</td>
+<td>冲突限定合格召回并集，仍位于 top-K 截断前；无命中为 abstain</td>
+</tr>
+<tr>
+<td>origin 是 undefined、空串或 false</td>
+<td>非 null 就被当作已配置</td>
+<td>模型拒绝非规范 HTTP(S) origin 表示；生产仍必须复用真实 Origin/NetGuard</td>
+</tr>
+</tbody></table>
+<p>独立复审进一步要求的文字修订也已纳入：Accepted 与 UI 实际显示之间还有 IPC 间隙；未来真实提交不得在成功校验后脱离保护；完整请求需要计入固定开销并最终重新计量；复杂度包括队列回收、排除项排序和召回集合。</p>
+<h2 id="section-14">定向变异的复现规则</h2>
+<p>对 <code>framework-algorithms.mjs</code> 分别创建独立临时副本，保持测试文件不变，每次仅应用一行替换，然后运行同一 <code>node --test</code>。六个副本退出码均非零，原始参考模型退出 0。临时副本没有写回仓库。</p>
+<table>
+<thead>
+<tr>
+<th>故意移除的保护</th>
+<th>独立替换</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>编辑代次</td>
+<td><code>&amp;&amp; ticket.revision === this.#revision</code> → <code>&amp;&amp; true</code></td>
+<td>检出</td>
+</tr>
+<tr>
+<td>取消标记</td>
+<td><code>if (op.cancelled)</code> → <code>if (false)</code></td>
+<td>检出</td>
+</tr>
+<tr>
+<td>来源版本</td>
+<td><code>snapshot.dataVersion === this.#dataVersion</code> → <code>true</code></td>
+<td>检出</td>
+</tr>
+<tr>
+<td>本次使用许可</td>
+<td><code>row.granted !== true ||</code> → <code>false ||</code></td>
+<td>检出</td>
+</tr>
+<tr>
+<td>遗忘状态</td>
+<td><code>row.active !== true ||</code> → <code>false ||</code></td>
+<td>检出</td>
+</tr>
+<tr>
+<td>过期准备回收</td>
+<td><code>this.#sweepPrepared(now);</code> → 注释</td>
+<td>检出</td>
+</tr>
+</tbody></table>
+<p>变异检查用于证明确有敏感断言，不作为新的项目 gate 或覆盖率目标。</p>
+<h2 id="section-15">覆盖范围与剩余风险</h2>
+<p>参考模型假设调用来自可信适配器、方法原子执行、只有一个数据 writer。没有实现锁、线程、实际取消、网络传输、持久化回执、中文分词、向量召回、LLM 语义证据验证、自然语言冲突提取或跨进程同步。</p>
+<p>参考选择器接收已经召回的排名和规范化 claim。它不能发现没召回的反证；也不能证明每个引用真的支持正文。模型容量有界，但用于有限实验的 used-ID 集合不是生产回收策略。页面 abandon 不模拟核心 discard IPC，需要接线时串行 drain 或获批的按 ID 丢弃语义。</p>
+<p>生产接线仍需测试：React 真实交互、Session/worker 交错、拒绝时零 mock 出站、许可发放后的撤权余量、审计中途变更、IPC 结果到达前失效、SQLCipher 事务/重启/遗忘，以及现有平台验收。未运行全 Rust workspace、独立 Tauri workspace、G-W/G-M；完整 G-L 仍按既有指示暂缓。本轮不签发 GATED/INTEGRATED，不合并 main，不宣布 Goal 1/Goal 2/Wave 1 关闭。</p>
+<h2 id="section-16">构建离线页</h2>
+<p><code>node docs/design/render-framework.mjs /absolute/path/to/marked/lib/marked.esm.js</code></p>
+<p>renderer 使用调用者提供的 Markdown 渲染依赖，不改变应用依赖或锁文件。HTML 内嵌 SVG、完整研究和参考算法源码；运行时不依赖 Markdown 库、CDN、字体服务器或本地旁路文件。下载 SVG/Mermaid/研究原文/算法源码来自已内嵌的相同字节。</p>
+</article></section>
+</main><footer><div class="wrap">Soul · 使用闭环与算法设计 / 2026-10-15 · PR #66 工作分支，未合入 main。<br>所有实验均为合成数据与非生产参考模型。<a href="https://github.com/Xhhemoing/Soul/pull/66" target="_blank" rel="noreferrer">查看 GitHub 草稿 PR</a></div></footer>
+<noscript><p>脚本已禁用；总览仍可阅读。完整研究源文见仓库 docs/design/2026-10-15-usage-framework.md。</p></noscript>
+<script>
+/**
+ * Executable DESIGN MODEL, not a Soul runtime module or security boundary.
+ * Synthetic metadata only. No I/O, database, tokenizer, HTTP, crypto or LLM.
+ * All calls are atomic in this single-threaded model. A Rust integration must
+ * provide the synchronization and trusted adapters specified in the design.
+ */
+
+const integer = (n, name, min = 0) => {
+  if (!Number.isSafeInteger(n) || n < min) throw new TypeError(name);
+};
+const order = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+const strings = xs => Array.isArray(xs) && xs.every(x => typeof x === 'string' && x.trim().length > 0);
+const originValue = value => {
+  if (value === null) return;
+  if (typeof value !== 'string') throw new TypeError('canonical origin');
+  let url;
+  try { url = new URL(value); } catch { throw new TypeError('canonical origin'); }
+  if (!['http:', 'https:'].includes(url.protocol) || url.origin !== value) {
+    throw new TypeError('canonical origin');
+  }
+};
+
+/** Page ownership. Editing invalidates a preview without freeing an in-flight slot. */
+class DraftFlow {
+  #live = true;
+  #revision = 0;
+  #serial = 0;
+  #active = null;
+  #preview = null;
+
+  edit() { this.#revision += 1; this.#preview = null; }
+  dispose() { this.#live = false; this.#preview = null; }
+  begin(preview = undefined) {
+    if (!this.#live || this.#active !== null) return null;
+    if (preview !== undefined && preview !== this.#preview) return null;
+    const ticket = Object.freeze({ serial: ++this.#serial, revision: this.#revision });
+    this.#active = ticket;
+    this.#preview = null;
+    return ticket;
+  }
+  owns(ticket) {
+    return this.#live && ticket !== null && this.#active === ticket
+      && ticket.revision === this.#revision;
+  }
+  finish(ticket, prepared = undefined) {
+    const accepted = this.owns(ticket);
+    if (this.#active === ticket) this.#active = null;
+    if (accepted && prepared !== undefined) this.#preview = prepared;
+    return accepted;
+  }
+  // UI-only hide. Real discard IPC must be drained before a new preparation,
+  // or gain an explicitly approved identity-scoped core API in a later change.
+  abandon() {
+    if (!this.#live || this.#active !== null) return false;
+    this.#preview = null;
+    this.#revision += 1;
+    return true;
+  }
+}
+
+/**
+ * Proposed control-plane semantics. DISPATCH means permit issuance, not first
+ * socket byte. Revocation cannot retract a previously issued permit or bytes.
+ * In-flight cancelled work retains its physical capacity until settlement.
+ */
+class OperationControl {
+  #epoch = 0;
+  #dataVersion = 0;
+  #writing = false;
+  #origin;
+  #capacity;
+  #operations = new Map();
+  #used = new Set();
+  #now = 0;
+
+  constructor({ origin, capacity }) {
+    integer(capacity, 'capacity', 1);
+    originValue(origin);
+    this.#origin = origin;
+    this.#capacity = capacity;
+  }
+  #clock(now) {
+    integer(now, 'monotonic time');
+    if (now < this.#now) throw new RangeError('clock regressed');
+    this.#now = now;
+  }
+  snapshot() {
+    return Object.freeze({ epoch: this.#epoch, dataVersion: this.#dataVersion,
+      origin: this.#origin, writing: this.#writing });
+  }
+  #valid(snapshot) {
+    return !this.#writing && snapshot.writing === false
+      && snapshot.epoch === this.#epoch && snapshot.dataVersion === this.#dataVersion
+      && snapshot.origin === this.#origin;
+  }
+  configure(origin) {
+    originValue(origin);
+    this.#epoch += 1; this.#origin = origin;
+    this.#sweepPrepared(this.#now);
+  }
+  revoke() { this.configure(null); }
+  beginMutation() {
+    if (this.#writing) throw new Error('single writer already active');
+    this.#writing = true;
+    this.#dataVersion += 1; // Failed writes conservatively invalidate too.
+    this.#sweepPrepared(this.#now);
+  }
+  endMutation() {
+    if (!this.#writing) throw new Error('no mutation');
+    this.#writing = false;
+  }
+  prepare({ id, snapshot, deadline, now }) {
+    this.#clock(now); integer(deadline, 'deadline');
+    this.#sweepPrepared(now);
+    if (typeof id !== 'string' || id.length === 0) throw new TypeError('id');
+    if (this.#used.has(id)) return { ok: false, reason: 'duplicate_id' };
+    if (!this.#valid(snapshot)) return { ok: false, reason: 'source_changed' };
+    if (this.#origin === null) return { ok: false, reason: 'not_configured' };
+    if (now >= deadline) return { ok: false, reason: 'expired' };
+    if (this.#operations.size >= this.#capacity) return { ok: false, reason: 'busy' };
+    this.#used.add(id);
+    this.#operations.set(id, { snapshot: Object.freeze({ ...snapshot }), deadline,
+      phase: 'prepared', cancelled: false });
+    return { ok: true };
+  }
+  #reason(op, now) {
+    if (op.cancelled) return 'cancelled';
+    if (now >= op.deadline) return 'expired';
+    if (op.snapshot.epoch !== this.#epoch || this.#origin === null) return 'revoked';
+    if (!this.#valid(op.snapshot)) return 'source_changed';
+    return null;
+  }
+  #sweepPrepared(now) {
+    // Stale queued work has no physical worker. Dispatched work must settle.
+    for (const [id, op] of this.#operations) {
+      if (op.phase === 'prepared' && this.#reason(op, now) !== null) {
+        this.#operations.delete(id);
+      }
+    }
+  }
+  dispatch(id, now) {
+    this.#clock(now);
+    const op = this.#operations.get(id);
+    if (!op || op.phase !== 'prepared') return { ok: false, reason: 'not_prepared' };
+    const reason = this.#reason(op, now);
+    if (reason !== null) { this.#operations.delete(id); return { ok: false, reason }; }
+    op.phase = 'dispatched'; // Single linearization point; one permit maximum.
+    return { ok: true, permit: Object.freeze({ id, origin: op.snapshot.origin }) };
+  }
+  cancel(id) {
+    const op = this.#operations.get(id);
+    if (!op) return false;
+    op.cancelled = true;
+    if (op.phase === 'prepared') this.#operations.delete(id);
+    return true;
+  }
+  complete(id, now) {
+    this.#clock(now);
+    const op = this.#operations.get(id);
+    if (!op || op.phase !== 'dispatched') return { ok: false, reason: 'not_dispatched' };
+    const reason = this.#reason(op, now);
+    this.#operations.delete(id); // Physical worker has actually settled.
+    return reason === null ? { ok: true } : { ok: false, reason };
+  }
+  get occupied() { return this.#operations.size; }
+}
+
+/**
+ * Permission-first rank fusion experiment. Every row is a TRUSTED ADAPTER'S
+ * decision descriptor, never raw imported JSON or a model-generated grant.
+ * cost is caller-measured budget units, not an estimated token count.
+ * Null/missing time does not become zero. Query time is supplied, never Date.now.
+ */
+function selectContext({ rows, rankings, purpose, asOf, knownAt,
+  limit, budget, perSource, rrfK }) {
+  integer(limit, 'limit'); integer(budget, 'budget');
+  integer(perSource, 'perSource', 1); integer(rrfK, 'rrfK', 1);
+  integer(knownAt, 'knownAt');
+  if (asOf !== null) integer(asOf, 'asOf');
+  if (typeof purpose !== 'string' || purpose.length === 0) throw new TypeError('purpose');
+  if (!Array.isArray(rankings) || !rankings.every(strings)) throw new TypeError('rankings');
+  const retrieved = new Set(rankings.flat());
+  const records = new Map();
+  const excluded = [];
+  const eligible = new Map();
+  for (const row of rows) {
+    if (typeof row.id !== 'string' || row.id.length === 0 || records.has(row.id)) {
+      throw new TypeError('unique row id required');
+    }
+    records.set(row.id, row);
+    integer(row.cost, 'cost', 1);
+    let reason = null;
+    if (row.active !== true || row.readable !== true) reason = 'unavailable';
+    else if (row.granted !== true || !strings(row.purposes) || !row.purposes.includes(purpose)) reason = 'not_allowed';
+    else if (!strings(row.citations) || !row.citations.length || row.evidenceValid !== true) reason = 'no_evidence';
+    else if (!Number.isSafeInteger(row.recordedAt) || row.recordedAt > knownAt
+      || row.recordedAt < 0) reason = 'unknown_or_future_record';
+    else if (asOf !== null && (!Number.isSafeInteger(row.validFrom)
+      || row.validFrom < 0 || row.validFrom > asOf
+      || (row.validTo !== null && (!Number.isSafeInteger(row.validTo)
+        || row.validTo <= asOf)))) reason = 'outside_or_unknown_time';
+    else if (typeof row.source !== 'string' || row.source.length === 0) reason = 'unknown_source';
+    else if (!retrieved.has(row.id)) reason = 'not_retrieved';
+    if (reason) excluded.push({ id: row.id, reason });
+    else eligible.set(row.id, row);
+  }
+  // Contradictions are considered over the union of eligible retrieval hits,
+  // not merely the first K. Unrelated records cannot force clarification.
+  // Keys/values must be normalized by a trusted layer.
+  const groups = new Map();
+  for (const row of eligible.values()) {
+    if (row.claimKey !== undefined) {
+      if (typeof row.claimKey !== 'string' || typeof row.claimValue !== 'string') {
+        throw new TypeError('structured claim key/value');
+      }
+      const group = groups.get(row.claimKey) ?? [];
+      group.push(row); groups.set(row.claimKey, group);
+    }
+  }
+  const conflicts = [];
+  for (const [key, group] of groups) {
+    if (new Set(group.map(row => row.claimValue)).size > 1) {
+      conflicts.push(key);
+      for (const row of group) {
+        eligible.delete(row.id); excluded.push({ id: row.id, reason: 'conflict' });
+      }
+    }
+  }
+  const scores = new Map();
+  for (const list of rankings) {
+    const seen = new Set(); let rank = 0;
+    for (const id of list) {
+      if (!eligible.has(id) || seen.has(id)) continue;
+      seen.add(id); rank += 1;
+      scores.set(id, (scores.get(id) ?? 0) + 1 / (rrfK + rank));
+    }
+  }
+  const ranked = [...scores].sort((a, b) => b[1] - a[1] || order(a[0], b[0]));
+  const selected = []; let used = 0;
+  const sourceCounts = new Map();
+  for (const [id] of ranked) {
+    const row = eligible.get(id);
+    const count = sourceCounts.get(row.source) ?? 0;
+    if (selected.length >= limit) { excluded.push({ id, reason: 'limit' }); continue; }
+    if (count >= perSource) { excluded.push({ id, reason: 'source_cap' }); continue; }
+    if (used + row.cost > budget) { excluded.push({ id, reason: 'budget' }); continue; }
+    selected.push({ id, citations: [...row.citations], cost: row.cost });
+    used += row.cost; sourceCounts.set(row.source, count + 1);
+  }
+  return { selected, used, conflicts: conflicts.sort(order),
+    excluded: excluded.sort((a, b) => order(a.id, b.id)),
+    disposition: conflicts.length ? 'clarify' : selected.length ? 'context' : 'abstain' };
+}
+
+/** Existing correction-priority principle only; not an A0/A1 reimplementation. */
+function resolveField({ locked, userValue, machineValue, evidenceValid }) {
+  if (locked === true) return userValue == null
+    ? { state: 'unknown', source: 'user_lock_without_value' }
+    : { state: 'known', source: 'user', value: userValue };
+  if (evidenceValid !== true || machineValue == null) return { state: 'unknown', source: 'none' };
+  return { state: 'known', source: 'machine', value: machineValue };
+}
+
+const downloads = {"source":"/**\n * Executable DESIGN MODEL, not a Soul runtime module or security boundary.\n * Synthetic metadata only. No I/O, database, tokenizer, HTTP, crypto or LLM.\n * All calls are atomic in this single-threaded model. A Rust integration must\n * provide the synchronization and trusted adapters specified in the design.\n */\n\nconst integer = (n, name, min = 0) =\u003e {\n  if (!Number.isSafeInteger(n) || n \u003c min) throw new TypeError(name);\n};\nconst order = (a, b) =\u003e (a \u003c b ? -1 : a \u003e b ? 1 : 0);\nconst strings = xs =\u003e Array.isArray(xs) \u0026\u0026 xs.every(x =\u003e typeof x === 'string' \u0026\u0026 x.trim().length \u003e 0);\nconst originValue = value =\u003e {\n  if (value === null) return;\n  if (typeof value !== 'string') throw new TypeError('canonical origin');\n  let url;\n  try { url = new URL(value); } catch { throw new TypeError('canonical origin'); }\n  if (!['http:', 'https:'].includes(url.protocol) || url.origin !== value) {\n    throw new TypeError('canonical origin');\n  }\n};\n\n/** Page ownership. Editing invalidates a preview without freeing an in-flight slot. */\nexport class DraftFlow {\n  #live = true;\n  #revision = 0;\n  #serial = 0;\n  #active = null;\n  #preview = null;\n\n  edit() { this.#revision += 1; this.#preview = null; }\n  dispose() { this.#live = false; this.#preview = null; }\n  begin(preview = undefined) {\n    if (!this.#live || this.#active !== null) return null;\n    if (preview !== undefined \u0026\u0026 preview !== this.#preview) return null;\n    const ticket = Object.freeze({ serial: ++this.#serial, revision: this.#revision });\n    this.#active = ticket;\n    this.#preview = null;\n    return ticket;\n  }\n  owns(ticket) {\n    return this.#live \u0026\u0026 ticket !== null \u0026\u0026 this.#active === ticket\n      \u0026\u0026 ticket.revision === this.#revision;\n  }\n  finish(ticket, prepared = undefined) {\n    const accepted = this.owns(ticket);\n    if (this.#active === ticket) this.#active = null;\n    if (accepted \u0026\u0026 prepared !== undefined) this.#preview = prepared;\n    return accepted;\n  }\n  // UI-only hide. Real discard IPC must be drained before a new preparation,\n  // or gain an explicitly approved identity-scoped core API in a later change.\n  abandon() {\n    if (!this.#live || this.#active !== null) return false;\n    this.#preview = null;\n    this.#revision += 1;\n    return true;\n  }\n}\n\n/**\n * Proposed control-plane semantics. DISPATCH means permit issuance, not first\n * socket byte. Revocation cannot retract a previously issued permit or bytes.\n * In-flight cancelled work retains its physical capacity until settlement.\n */\nexport class OperationControl {\n  #epoch = 0;\n  #dataVersion = 0;\n  #writing = false;\n  #origin;\n  #capacity;\n  #operations = new Map();\n  #used = new Set();\n  #now = 0;\n\n  constructor({ origin, capacity }) {\n    integer(capacity, 'capacity', 1);\n    originValue(origin);\n    this.#origin = origin;\n    this.#capacity = capacity;\n  }\n  #clock(now) {\n    integer(now, 'monotonic time');\n    if (now \u003c this.#now) throw new RangeError('clock regressed');\n    this.#now = now;\n  }\n  snapshot() {\n    return Object.freeze({ epoch: this.#epoch, dataVersion: this.#dataVersion,\n      origin: this.#origin, writing: this.#writing });\n  }\n  #valid(snapshot) {\n    return !this.#writing \u0026\u0026 snapshot.writing === false\n      \u0026\u0026 snapshot.epoch === this.#epoch \u0026\u0026 snapshot.dataVersion === this.#dataVersion\n      \u0026\u0026 snapshot.origin === this.#origin;\n  }\n  configure(origin) {\n    originValue(origin);\n    this.#epoch += 1; this.#origin = origin;\n    this.#sweepPrepared(this.#now);\n  }\n  revoke() { this.configure(null); }\n  beginMutation() {\n    if (this.#writing) throw new Error('single writer already active');\n    this.#writing = true;\n    this.#dataVersion += 1; // Failed writes conservatively invalidate too.\n    this.#sweepPrepared(this.#now);\n  }\n  endMutation() {\n    if (!this.#writing) throw new Error('no mutation');\n    this.#writing = false;\n  }\n  prepare({ id, snapshot, deadline, now }) {\n    this.#clock(now); integer(deadline, 'deadline');\n    this.#sweepPrepared(now);\n    if (typeof id !== 'string' || id.length === 0) throw new TypeError('id');\n    if (this.#used.has(id)) return { ok: false, reason: 'duplicate_id' };\n    if (!this.#valid(snapshot)) return { ok: false, reason: 'source_changed' };\n    if (this.#origin === null) return { ok: false, reason: 'not_configured' };\n    if (now \u003e= deadline) return { ok: false, reason: 'expired' };\n    if (this.#operations.size \u003e= this.#capacity) return { ok: false, reason: 'busy' };\n    this.#used.add(id);\n    this.#operations.set(id, { snapshot: Object.freeze({ ...snapshot }), deadline,\n      phase: 'prepared', cancelled: false });\n    return { ok: true };\n  }\n  #reason(op, now) {\n    if (op.cancelled) return 'cancelled';\n    if (now \u003e= op.deadline) return 'expired';\n    if (op.snapshot.epoch !== this.#epoch || this.#origin === null) return 'revoked';\n    if (!this.#valid(op.snapshot)) return 'source_changed';\n    return null;\n  }\n  #sweepPrepared(now) {\n    // Stale queued work has no physical worker. Dispatched work must settle.\n    for (const [id, op] of this.#operations) {\n      if (op.phase === 'prepared' \u0026\u0026 this.#reason(op, now) !== null) {\n        this.#operations.delete(id);\n      }\n    }\n  }\n  dispatch(id, now) {\n    this.#clock(now);\n    const op = this.#operations.get(id);\n    if (!op || op.phase !== 'prepared') return { ok: false, reason: 'not_prepared' };\n    const reason = this.#reason(op, now);\n    if (reason !== null) { this.#operations.delete(id); return { ok: false, reason }; }\n    op.phase = 'dispatched'; // Single linearization point; one permit maximum.\n    return { ok: true, permit: Object.freeze({ id, origin: op.snapshot.origin }) };\n  }\n  cancel(id) {\n    const op = this.#operations.get(id);\n    if (!op) return false;\n    op.cancelled = true;\n    if (op.phase === 'prepared') this.#operations.delete(id);\n    return true;\n  }\n  complete(id, now) {\n    this.#clock(now);\n    const op = this.#operations.get(id);\n    if (!op || op.phase !== 'dispatched') return { ok: false, reason: 'not_dispatched' };\n    const reason = this.#reason(op, now);\n    this.#operations.delete(id); // Physical worker has actually settled.\n    return reason === null ? { ok: true } : { ok: false, reason };\n  }\n  get occupied() { return this.#operations.size; }\n}\n\n/**\n * Permission-first rank fusion experiment. Every row is a TRUSTED ADAPTER'S\n * decision descriptor, never raw imported JSON or a model-generated grant.\n * cost is caller-measured budget units, not an estimated token count.\n * Null/missing time does not become zero. Query time is supplied, never Date.now.\n */\nexport function selectContext({ rows, rankings, purpose, asOf, knownAt,\n  limit, budget, perSource, rrfK }) {\n  integer(limit, 'limit'); integer(budget, 'budget');\n  integer(perSource, 'perSource', 1); integer(rrfK, 'rrfK', 1);\n  integer(knownAt, 'knownAt');\n  if (asOf !== null) integer(asOf, 'asOf');\n  if (typeof purpose !== 'string' || purpose.length === 0) throw new TypeError('purpose');\n  if (!Array.isArray(rankings) || !rankings.every(strings)) throw new TypeError('rankings');\n  const retrieved = new Set(rankings.flat());\n  const records = new Map();\n  const excluded = [];\n  const eligible = new Map();\n  for (const row of rows) {\n    if (typeof row.id !== 'string' || row.id.length === 0 || records.has(row.id)) {\n      throw new TypeError('unique row id required');\n    }\n    records.set(row.id, row);\n    integer(row.cost, 'cost', 1);\n    let reason = null;\n    if (row.active !== true || row.readable !== true) reason = 'unavailable';\n    else if (row.granted !== true || !strings(row.purposes) || !row.purposes.includes(purpose)) reason = 'not_allowed';\n    else if (!strings(row.citations) || !row.citations.length || row.evidenceValid !== true) reason = 'no_evidence';\n    else if (!Number.isSafeInteger(row.recordedAt) || row.recordedAt \u003e knownAt\n      || row.recordedAt \u003c 0) reason = 'unknown_or_future_record';\n    else if (asOf !== null \u0026\u0026 (!Number.isSafeInteger(row.validFrom)\n      || row.validFrom \u003c 0 || row.validFrom \u003e asOf\n      || (row.validTo !== null \u0026\u0026 (!Number.isSafeInteger(row.validTo)\n        || row.validTo \u003c= asOf)))) reason = 'outside_or_unknown_time';\n    else if (typeof row.source !== 'string' || row.source.length === 0) reason = 'unknown_source';\n    else if (!retrieved.has(row.id)) reason = 'not_retrieved';\n    if (reason) excluded.push({ id: row.id, reason });\n    else eligible.set(row.id, row);\n  }\n  // Contradictions are considered over the union of eligible retrieval hits,\n  // not merely the first K. Unrelated records cannot force clarification.\n  // Keys/values must be normalized by a trusted layer.\n  const groups = new Map();\n  for (const row of eligible.values()) {\n    if (row.claimKey !== undefined) {\n      if (typeof row.claimKey !== 'string' || typeof row.claimValue !== 'string') {\n        throw new TypeError('structured claim key/value');\n      }\n      const group = groups.get(row.claimKey) ?? [];\n      group.push(row); groups.set(row.claimKey, group);\n    }\n  }\n  const conflicts = [];\n  for (const [key, group] of groups) {\n    if (new Set(group.map(row =\u003e row.claimValue)).size \u003e 1) {\n      conflicts.push(key);\n      for (const row of group) {\n        eligible.delete(row.id); excluded.push({ id: row.id, reason: 'conflict' });\n      }\n    }\n  }\n  const scores = new Map();\n  for (const list of rankings) {\n    const seen = new Set(); let rank = 0;\n    for (const id of list) {\n      if (!eligible.has(id) || seen.has(id)) continue;\n      seen.add(id); rank += 1;\n      scores.set(id, (scores.get(id) ?? 0) + 1 / (rrfK + rank));\n    }\n  }\n  const ranked = [...scores].sort((a, b) =\u003e b[1] - a[1] || order(a[0], b[0]));\n  const selected = []; let used = 0;\n  const sourceCounts = new Map();\n  for (const [id] of ranked) {\n    const row = eligible.get(id);\n    const count = sourceCounts.get(row.source) ?? 0;\n    if (selected.length \u003e= limit) { excluded.push({ id, reason: 'limit' }); continue; }\n    if (count \u003e= perSource) { excluded.push({ id, reason: 'source_cap' }); continue; }\n    if (used + row.cost \u003e budget) { excluded.push({ id, reason: 'budget' }); continue; }\n    selected.push({ id, citations: [...row.citations], cost: row.cost });\n    used += row.cost; sourceCounts.set(row.source, count + 1);\n  }\n  return { selected, used, conflicts: conflicts.sort(order),\n    excluded: excluded.sort((a, b) =\u003e order(a.id, b.id)),\n    disposition: conflicts.length ? 'clarify' : selected.length ? 'context' : 'abstain' };\n}\n\n/** Existing correction-priority principle only; not an A0/A1 reimplementation. */\nexport function resolveField({ locked, userValue, machineValue, evidenceValid }) {\n  if (locked === true) return userValue == null\n    ? { state: 'unknown', source: 'user_lock_without_value' }\n    : { state: 'known', source: 'user', value: userValue };\n  if (evidenceValid !== true || machineValue == null) return { state: 'unknown', source: 'none' };\n  return { state: 'known', source: 'machine', value: machineValue };\n}\n","markdown":"# Soul：从实际使用到框架与算法\n\n日期：2026-10-15。审查源码：PR #66 工作分支 `6e8f3c06b7fd0cbc7920766337572301319b021a`。这是后续架构设计与可执行参考实验，**不是生产接线完成、算法解冻或正式验收**。原来的 [系统架构](../ARCHITECTURE.md) 继续描述现有实现；[交互研究页](../framework-design.html) 展示本文和可操作的反例。\n\n## 1. 先回答：日常使用究竟缺哪一环？\n\n目标不是让 Soul 多运行几个 agent，而是让它在用户交代事情时可靠地完成：理解本次意图 → 使用获准且当前有效的个人资料 → 展示依据 → 由用户控制生成 → 接收纠正或遗忘 → 下一次行为随之改变。\n\n本次没有访问真实聊天、个人数据库或端点，也没有做用户访谈。下面是依据产品承诺和当前源码构造的使用场景，频率与真实满意度均未测；静态反例与已运行的参考测试分别标注。\n\n| 使用场景 | 当前事实 / 源码定位 | 问题与研究点 | 预期可观察结果 |\n|---|---|---|---|\n| 第一次使用，没有数据或模型端点 | `soul-draft/src/template.rs` 是确定性骨架；`ProfileBrief::neutral` 无轴断言 | 用户是否能分清“语气骨架”与“理解消息后的回复”？ | 无数据仍可用；缺失不填零，不声称已理解其人格 |\n| 粘贴 A，等待预览时又改成 B | `apps/desktop/src/routes/Draft.tsx` 的 `describe` 回调无输入代次；textarea 只 `setPasted` | 输入、预览、批准和原文豁免怎样绑定？ | A 的迟到预览不能覆盖 B；改回 A 也不会复活旧批准 |\n| 起草前纠正“我希望简短、正式” | `ProfileBrief::from_view` 读取 voice/axes；`Session::set_voice` 写资料，未使已有准备失效 | 纠正如何穿过快照、生成、返回各阶段？ | 新请求采用用户生效值；旧快照结果不能被当作新纠正后的答案 |\n| 希望回忆“我上次为什么拒绝这个安排” | `SoulMemory` 与 `MemoryStore` 是 CRUD/密封引用；起草 brief 没有记忆入口 | 检索什么、凭什么使用、怎样引用、无证据怎样回答？ | 先选可用资料，再生成；可查看所选记忆及来源；不足时澄清 |\n| 请求较慢，用户关闭端点 | Tauri `SessionState(Mutex\u003cSession\u003e)`，`generate_draft` 同步到 blocking HTTP | 撤权能否绕过慢工作；派发边界是什么？ | 撤权不排在整段 HTTP 后；撤权之后不再发新许可，旧结果不被接收 |\n| 忘掉一段经历，旧任务随后返回 | 已有精确 `ForgetScope`，但还没有通用任务来源版本 | 数据主键未变、正文已变，如何识别旧快照？ | 内容密钥销毁仍由 store 执行；依赖已变的任务被拒收 |\n| 导入/遗忘确认后窗口丢失回执 | import 有事务，forget 有 commit/cleanup/audit 分离回执 | “未知”是否被错误显示为失败并自动重做？ | 不把未知当未执行；区分事务提交、清理、审计、UI 收到四件事 |\n| 问“现在住哪里”，历史有两个地址 | 目前记忆没有完整有效时间/知识时间和适用范围契约 | 最近记录是否一定是真实最新？冲突如何处理？ | 不用文件导入时间覆盖事实时间；未消解冲突先澄清 |\n\n现有能力应保留：问卷与纠正锁、图谱判档与证据、记忆 CRUD/遗忘、默认占位的 E1、确定性起草回退、只读文件计划。**获准记忆自动参与起草仍是后续产品能力，不是 v0.1 漏做的承诺。**\n\n## 2. 研究问题、证据与取舍\n\n| 研究问题 | 一手依据 | 对 Soul 的推论 | 不可外推的结论 |\n|---|---|---|---|\n| 长记忆该怎样评估？ | [LongMemEval](https://arxiv.org/abs/2410.10813) 分别研究提取、跨会话、时间、更新、拒答，并拆开索引/检索/阅读 | 分开测“选对证据”与“读对证据”；加入纠正、时间、无答案轨迹 | 论文分数不等于 Soul 的中文个人数据准确率 |\n| 对话能否直接当人格真值？ | [LoCoMo，ACL 2024](https://aclanthology.org/2024.acl-long.747/) 用长对话、时间事件与 QA/摘要任务研究记忆 | 保留原始出处与事件关联；摘要是可撤销派生物 | 合成对话 QA 不是人格科学有效性，也不是临床结论 |\n| 静态问答测够了吗？ | [AMemGym 预印本，2026](https://arxiv.org/abs/2603.01966) 研究状态演化和交互式记忆评估 | 用“创建→纠正→检索→遗忘→迟到返回”的轨迹测状态变化 | 模拟用户与自动裁判不能替代本人确认的实际效用 |\n| 多路检索分数如何合并？ | [RRF 原论文](https://cormack.uwaterloo.ca/cormacksigir09-rrf.pdf) 融合排序位置 | 候选试验可合并关键词/结构化结果，避免直接相加不同尺度分数 | RRF 不是可信度、真值或授权；不能替代准入过滤 |\n| 换异步锁能否解决撤权？ | [Tokio shared state](https://tokio.rs/tokio/tutorial/shared-state)、[Tauri state](https://v2.tauri.app/develop/state-management/) | 分开控制状态和慢任务；改变临界区范围比换锁类型更关键 | 异步锁不会让持锁 HTTP 期间的另一个命令获得同一把锁 |\n| abort 能否取消阻塞请求？ | [Tokio 1.53.1 spawn_blocking](https://docs.rs/tokio/1.53.1/tokio/task/fn.spawn_blocking.html)，与当前 Cargo.lock 解析版本一致 | 取消先使结果不可接收；物理 worker 退出前仍占并发额度 | 不能声称 abort 撤回 HTTP 或释放正在运行的线程 |\n| 重试如何避免重复副作用？ | [AWS Builders’ Library](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/) 区分请求意图与相同参数 | 操作回执标识与消息去重标识分开设计 | 不能用正文 hash 猜测用户是否希望重复导入 |\n| 事务为何不能自动解决旧预览？ | [SQLite isolation](https://www.sqlite.org/isolation.html) 说明单 writer 与快照可见性 | 应用必须复验读时依据；短事务保护写入一致性 | 不应把应用一把锁描述成 SQLite 只允许一个连接 |\n\n以上采用的是方法和故障机制；本报告不引用外部论文的提升百分比来预测本项目收益。研究读取日为 2026-10-15；LongMemEval 细节对照原论文 v1，未宣称覆盖其全部后续版本。\n\n## 3. Brainstorm：四种整体路线\n\n| 路线 | 实际收益 | 主要代价 / 反例 | 结论 |\n|---|---|---|---|\n| 全量资料塞进长上下文 | 接入看似快，少建索引 | 过量出网、旧事实冲突、遗忘派生物追踪困难、成本随全库增长 | 不采用为默认路径 |\n| 向量库 + 自动记忆 agent | 同义语义召回潜力；可自动整理 | 新模型/索引/密钥生命周期，自动写入可能把误读固化；无法先解决撤权 | 保留为有实测需求后的候选 |\n| 拆成微服务或多 agent 总线 | 可分布式伸缩 | 当前本机单用户更需要原子性；引入部署、消息重复、跨服务权限问题 | 当前不采用 |\n| **现有模块 + 用例编排 + 证据上下文** | 复用 18 crates、冻结算法、密封存储和策略；逐用例迁移 | 需要明确任务与来源版本，处理结果未知；保守失效会增加重新准备次数 | **本轮选定的设计方向** |\n\n检索内部也不一次定死：先“本次手动选择记忆”建立可解释闭环，再比较本地关键词/结构化召回，最后才评估本地向量召回。RRF 是多路候选的试验组合器；单路足够时不用为了架构而加第二路。自动抽取先存候选并由用户确认，不能悄悄改写档案锁。\n\n## 4. 目标框架：在现有边界内增加三段用例\n\n**准备 prepare → 锁外执行 execute → 校验接收 complete** 是应用层内部组织方式。不是新的 agent 产品框架，也不新增 crate 或持久化系统。\n\n| 层 / 建议位置 | 接收与产出 | 所有权和禁止事项 |\n|---|---|---|\n| React 起草页 | 编辑代次、页面 ticket、预览 ID → 用户意图 | 同步准入；忽略迟到回调；不能伪造核心撤权 |\n| `soulcore::commands` 用例编排 | `DraftInput` → `PreparedDraft` → `DraftOutcome` | 仍是唯一组合者；持有不可变准备体，不在发送时从 UI 重建 |\n| 拟议 `soulcore::operations` | 任务 ID、epoch、deadline、状态 → 接收/拒绝 | 私有 Rust 类型；控制锁只保护短内存操作，不等 store/HTTP/审计 |\n| 拟议 `soul-memory::selection` | 用途、查询、可读候选 → `ContextSelection` | 可信适配器先判用途/证据/遗忘；排序服务不能批准使用 |\n| `soul-profile` / `soul-graph` / 两算法 crate | 当前生效档案、既有 T4D/A0–A3 输出 | 用户锁优先；不新增关系分数，不重算第二套判档 |\n| `soul-policy` + `soul-egress` | 已审查准备、现有一次性能力与 redacted body → HTTP 结果 | 继续精确 origin、默认占位、固定指令、拒绝路径；不让模型自行授权 |\n| `soul-store` + `soul-store-api` | 原始记录、密封引用、事务、遗忘 → 有来源的快照 | 单 writer 不变；密钥、事务、清理仍由 store 管；不把正文抄到审计 |\n\n最小接口草图（**设计稿，不是新增 IPC/schema 定义**）：\n\n```rust\nstruct PreparedDraft { /* existing preparation_id, body, plan_hash, origin;\n                          internal source revision + expiry + operation identity */ }\nenum Completion\u003cT\u003e { Accepted(T), Stale, Cancelled, Expired, Unconfirmed }\nfn prepare_draft(input: DraftInput, deps: \u0026Services) -\u003e Result\u003cPreparedDraft\u003e;\nfn execute_draft(job: OwnedDispatch, worker: \u0026BoundedExecutor) -\u003e WorkResult;\nfn complete_draft(job: OperationId, result: WorkResult, deps: \u0026Services) -\u003e Completion\u003cDraft\u003e;\n```\n\n类型中的来源版本只在内存内跟踪已有单 writer 变更；不会新建正文 hash、schema 锁或版本基线。已有 preparation ID 继续区分“相同段数但不同正文”；已有 plan hash 不删除，不被新的通用 hash 替代。重启不恢复旧授权或旧内存任务。\n\n## 5. 算法一：输入—预览—批准归属\n\n状态为 `live, edit_revision, serial, active_ticket, preview_identity`。开始请求先同步占槽，再调用 IPC；不能只依赖 React 下一次渲染才禁用按钮。\n\n1. 每次编辑递增 revision 并隐藏旧确认面板。A→B→A 仍是三个不同编辑状态。\n2. 开始请求保存 ticket 和 revision；同页面已有请求则拒绝第二次准入。\n3. 回调仅在页面仍存活、ticket 相同、revision 未变时可更新界面。\n4. 旧回调只能释放它自己的槽；不能释放新任务。编辑不释放在途槽，避免用“视觉取消”无限启动工作。\n5. 批准/原文豁免必须传入当前预览的对象身份，不能从旧闭包批准新输入。核心仍校验 preparation ID/hash/origin。\n6. `discardDraft()` 当前不带 preparation ID。初步接线采用串行 drain：隐藏 UI 后等待 discard 结束才准入新 prepare；若回执未知，不自动再次 discard。以后若需要按 ID 丢弃，先决定 IPC 语义。**参考模型的 abandon 仅模拟 UI，未模拟 discard IPC 排序。**\n\n参考实现 `DraftFlow` 每步 O(1)。它证明归属规则可执行，不意味着 `Draft.tsx` 已接线。本次发现的 A/B 错配是静态源级风险；没有把它描述为生产端点双发，因为核心现有 `pending.take()` 已防同一准备重复消费。\n\n## 6. 算法二：可撤权的慢任务与结果接收\n\n拟议状态：prepared → dispatched → accepted / rejected；prepared 可取消；dispatched 可标记取消，但 worker 未退出前不得释放物理槽。时间使用单调时钟的 deadline，判定 `now \u003e= deadline` 已过期；与人脉算法的数据 `as_of` 无关。\n\n快照 `S = (control_epoch, data_version, origin, writing=false)`。当前实现没有这个通用版本层；参考模型通过显式输入验证它，生产接线需另作决定。\n\n**准入条件**：有 origin，来源快照与当前状态一致，未到 deadline，未使用过本次任务 ID，队列容量未满。`prepare` 接受读资料时的快照，禁止“读旧资料后再用当前版本号冒充新快照”。\n\n**派发条件**：仍为 prepared，未取消/过期，epoch、origin、data_version 均一致。检查、现有一次性能力消费及派发资格的发放在同一个控制临界区内完成；临界区内禁止 HTTP、数据库等待和审计。不能把“检查 epoch”和“另一个线程随后发许可”拆开。\n\n**接收条件**：确实已派发，未被取消，未过期，授权和来源仍一致，结果结构/禁止词/证据校验及必要审计处理已完成。最后接收点再次校验，再向 UI 返回。Accepted 是核心逻辑接收点，不是 UI 已显示的证明：在它之后、IPC 抵达之前发生变更，页面也必须根据核心版本/失效事件拒绝旧结果；事件先后需原生集成测试。已经展示的结果在资料变更后标注失效或清除。未来若有真正的领域写入，不能 complete 返回 ok 后放开保护再提交；必须把验证与提交纳入同一受保护边界。\n\n**撤权的精确定义（待决定）**：撤权提交之后不再发新的派发许可，并拒收该 epoch 的晚到结果。许可已经发放的 worker 可能尚未开始网络发送，也可能已把字节送出；此时只能尽力中止，不保证撤回。若产品要求“撤权确认后绝无首字节发出”，必须把边界推进到传输层并做 socket 级测试，本模型不提供该保证。\n\n### 锁顺序与写入版本，避免新的死锁\n\n- 控制锁从不获取 store 锁、不等待 worker、不写审计。撤权只需控制锁。\n- 读快照：读控制版本 C0 → 单独持 store 锁复制最小所需数据 → 放开 store → 再读控制 C1；只有 C0=C1 且无写入进行中才注册准备，否则重做或明确要求重新准备。\n- 单 writer 的写路径：获得 store guard 后，短暂取得控制锁，置 writing=true 并递增 data_version；释放控制锁再执行事务；事务成功或失败后清除 writing。失败也保守使旧任务失效。清除必须由 Rust guard/RAII 保证；panic 后不得留下“看似可用”的错误状态。\n- complete 的最后判断仅在控制锁内做；写事务从“宣布变更”起会令旧结果失效。引用读取/结果审计在最后判断之前完成，且不持控制锁做 I/O。验收必须覆盖审计阶段插入纠正/撤权。\n- 当前全局 data_version 会使无关记忆编辑也让任务失效，这是第一版保守代价。确认所有写入口均参与后才考虑按依赖 ID 分版本；不能现在遗漏 import、forget、联系人/脱敏词表、profile 等入口而宣称完整保护。\n- 该纪律只覆盖同进程唯一 writer。多进程/多端支持需要单独协议，不能凭内存 epoch 推广。\n\n参考 `OperationControl` 单项查找/派发/接收平均 O(1)，准入与失效时扫描最多 Q 个排队项，O(Q)，Q 受容量限制。过期、撤权或资料失效的 prepared 项没有真实 worker，立即或在下次准入前回收；已 dispatched 的工作必须等实际结束。模型的 used-ID 集合保留至实例结束，仅用于有限实验；生产不得把它做成无限任务账本，应复用一次性准备生命周期并有界回收终态。模型没有实际线程、Socket、SQLite 或审计，穷举只检查事件线性顺序。\n\n## 7. 算法三：先获准、后相关的证据上下文\n\n### 7.1 数据适配先于检索\n\n`SoulMemory` 目前没有普遍的用途许可、revision 或双时间字段；`SoulEvidence.privacy` 可为空，`source_refs` 还是领域定义的 opaque 值。因此参考模型里的 `granted, recordedAt, validFrom, validTo, claimKey, cost` **不是已落库字段**，更不能由导入 JSON 或模型自行填写后就获得权限。\n\n第一步建议从“本次手动选择记忆”得到临时用途许可，复用已有 memory/blob/evidence ID；本次选择不授予研究用途或 E1 原文出网权。无来源的手写记忆可把本条用户记录及密封 blob 作为一手出处，不凭空制造外部证据。自动选择、长期用途许可及时间字段的持久化另行决定；未决定前不把缺失 privacy 当 allow。\n\n查询只在本次意图确定的候选范围内执行。结构化范围（人、事情、时间）不明确时先问一个能缩小范围的问题，避免全库解密。第一阶段可本地扫描有上限的用户选中集合；加密索引/中文分词/embedding 尚未实现，不能把这里的排名输入当作真实召回。\n\n### 7.2 可执行选择算法\n\n输入：可信适配器提供的候选、每路去重排名、用途 p、事实时间 t（可为空）、知识截止时间 k、预算 B、条数 L、来源上限 C、试验参数 rrfK。\n\n1. **硬过滤**：active 且可解密；本次用途明确获准；引用非空且可解引用；记录时间已知且不晚于 k；若问特定时间，则必须满足 `validFrom \u003c= t \u003c validTo`（null 的 validTo 明确代表无结束）。缺失时间不是 0；撤权/遗忘/孤立证据直接排除。\n2. **冲突检查**：只在合格召回并集里检查同一已规范化的主体+属性+范围内、当前时间同时有效却有不同值 → 不靠分数投票，转澄清。检查在截断 top-K 之前，不能把反证排到第 K+1 名就假装没有冲突；未被召回的无关记录不能触发本题澄清。无时间问题遇到历史变化可保守澄清。若反证根本未召回，本算法无法发现，所以反证召回率必须单独评估。\n3. **候选融合**：各路仅对合格 ID 压缩重排，一路中同 ID 只计一次；`RRF(d) = Σ 1 / (rrfK + rank_i(d))`。平局按稳定 ID 排序。未知 ID 忽略。RRF 只作内部选材，不展示为人格/可信度分数。\n4. **预算选择**：按融合顺序遍历；达到 L 停选；同来源超过 C 则略过；累计费用加当前费用超过 B 则略过，继续尝试后面的短材料。每条保留引用；不能为塞进预算切断出处或否定词。预算须预留固定指令、分隔符和输出空间，由调用者使用真实序列化体/目标 tokenizer 计量；组装后重新核算整个请求，超限则移除完整材料并重算。单项 token 数相加不天然等于最终 token 数；演示只用抽象单位。\n5. **产出**：selected + citations + exclusion reasons + context/clarify/abstain。无合格证据仍可用原有模板，但不能补写个人事实；有冲突先澄清，不让 LLM 自行选一个事实。\n6. **生成前后复验**：选择只是候选结果，发送前按算法二复验所有依赖；E1 再走原有 redactor/一次批准。模型输出的引用必须属于本次选择集合且仍有效；“ID 有效”只证明出处存在，不证明正文支持主张，语义蕴含需人工样本与额外验证器研究。\n\n复杂度：N 个候选、R 条排名项、U 个融合候选，过滤/融合 O(N+R)，融合排序 O(U log U)，选择 O(U)；参考实现还排序排除项/冲突列表，因此总时间保守为 O(N log N + R + U log U)，含召回集合的额外空间 O(N+R+U)（引用总长度另计）。来源上限是可解释的去重复近似，不能宣称等价于 MMR 或最优背包；长材料会被跳过而造成召回损失，需记录预算排除率。\n\nRRF 的演示参数 60、来源上限 1 只是合成实验配置，不是产品常量，更不是对 T4D/A0–A3 的修改。真实方案需要比较不融合 / RRF、不同候选粒度及预算，不能从这组测试宣布最佳参数。\n\n### 7.3 用户纠正与时间的两条独立轴\n\n现有档案字段：`effective = locked ? user_value : supported_machine_value`；锁定但值缺失时显示 unknown，不回退机器猜测。`resolveField` 仅演示这个优先原则，未重写 A0/A1。\n\n时间性事实：事件发生时间、有效起止、系统获知时间与任务单调超时分别保存语义；不能用导入日期代替发生日期，也不能用“最新记录”推翻限定场景的用户纠正。候选文本的 claimKey/claimValue 规范化、代词消解、否定/假设识别尚未实现；未获用户确认的抽取不能自动覆盖现有事实。\n\n## 8. 算法四：未知结果与恢复路径\n\n这个部分给出协议设计，**未新增数据库表或可执行持久化实现**。\n\n| 已知事实 | 用户看到的状态 | 允许下一步 | 禁止的推断 |\n|---|---|---|---|\n| 准入前确定拒绝 | 未开始，附原因 | 修正后重新准备 | 不能声称已发生写入 |\n| 有明确提交回执，cleanup 失败 | 已提交，清理待完成 | 现有 cleanup-only 重试 | 不能再次销毁或重导来“修复清理” |\n| 提交确认，但 audit 未确认 | 已提交，审计未确认 | 保留三分结果，按既有恢复能力处理 | 不能把审计失败改成事务回滚 |\n| IPC/进程中断，没有可靠回执 | 结果未知 | 查询可证明的持久事实/要求核对 | 不自动重发不可逆动作；墓碑不等于完整历史回执 |\n| 未来有同事务写入的操作回执 | 可据操作 ID 查状态 | 相同意图 ID 返回已有结果 | 回执未找到也可能尚在执行，需所有权/生命周期判定 |\n\n未来导入回执流程：接收客户端意图 ID → 查已存在回执 → 验证相同参数/相同导入意图 → 单事务写领域数据和无正文回执 → commit → 返回。事务与回执要原子；外部 HTTP 不在这个事务里，也不能假称 exactly-once。操作 ID 解决“同一点击的重试”，来源稳定消息 ID 解决“不同导出文件含同一条消息”，两者不可替代。\n\nD55 仍为后续 P1。迁移、稳定消息键、编辑过的消息、撤回消息、遗忘后重导（允许重建、拒绝或用户再次批准）、回执保留期需先明确决定。不能用新正文哈希或保留可逆内容指纹绕开遗忘。\n\n## 9. 评价：先测正确性，再测召回，再测实际价值\n\n| 层次 | 应测内容与指标 | 本轮证据 |\n|---|---|---|\n| 状态正确性 | 重复准入次数、失效结果接收数、撤权后新许可数、物理槽占用 | 可执行模型与对抗轨迹，见验证记录 |\n| 选材正确性 | 禁用资料入选数、引用可解析率、冲突漏报、时间错用、预算越界 | 合成描述符测试；不是自然语言召回或安全红队验收 |\n| 检索效用 | 按人/会话留出；标注相关和反证，分别报 Recall@K、反证召回、拒答精确率/覆盖率 | 未测，需真实检索适配器；不得只用平均 QA 分数 |\n| 生成效用 | 档案-only、手选记忆、关键词、混合四组；盲评事实正确/语气/是否愿采用，记录改写量 | 未测；本轮无真实 LLM 调用或用户试验 |\n| 运行成本 | 同一机器候选量增长下 p50/p95、峰值内存、锁占用、撤权确认耗时、上下文字节/token | 未测；不把微型 JS 执行时间当 Windows Rust 性能 |\n\n评估集先由合成轨迹构造：单事实、跨会话、过去/现在更新、本人纠正、否定/假设、相似姓名、第三人/研究用途、遗忘、重启/未知提交。每条同时标正证据与反证，冻结测试拆分后才调参；不要把同一人的相邻片段分到训练/测试两侧。真实数据只在另行获得授权后本地处理。\n\n研发停止条件按具体用例判断：当前迁移不破坏既有产品承诺，新增对抗断言满足，独立审查无阻塞，再进相应原有平台验证。这里不新建 Goal 1 gate，也不替代 G-L/G-W/G-M。\n\n## 10. 落地顺序与需要拍板的精确边界\n\n| 顺序 | 可独立交付的切片 | 修改位置 | 验证重点 | 语义决定 |\n|---|---|---|---|---|\n| 1 | 起草页输入/预览归属，明确模板是骨架 | Draft.tsx 与现有请求协调模式 | A/B/A、同轮双击、卸载、原文豁免绑定、discard drain；React + 原生 IPC | 不把 UI 隐藏解释为核心取消 |\n| 2 | 只迁移起草一个慢用例 | Session/draft/policy、Tauri state | 短锁、控制路径可达、单次许可、来源变更、审计插入、真实 mock 请求计数 | 采用本报告“撤权后无新许可”的定义，是否接受已发许可余量 |\n| 3 | 手选记忆作为上下文，完整证据预览 | soul-memory/soul-draft/起草页 | 本次用途、出处、遗忘后失效、默认 E1 占位 | 记忆用途和出网批准范围；不借研究许可 |\n| 4 | 比较关键词/结构化/RRF，必要时本地向量 | 受控 selection 适配器 | 中文召回、反证、预算、时序；保留无记忆对照 | 索引加密与密钥生命周期、时间字段迁移 |\n| 5 | 操作回执、D55、摘要/扫描推广 | store/import/commands | crash 前后、消息键、回执/审计独立、未知结果 | 迁移与遗忘重导语义 |\n\n这些是可评审提案，未写入 DECISIONS 伪装为已批准。不因既有 Goal 1 平台验收受阻而停止设计和合成实验；也不把本轮设计工作称作 Goal 2 正式完成。\n\n## 11. 本轮交付与复核位置\n\n- [参考算法](framework-algorithms.mjs)：页面归属、任务控制、证据选择、纠正优先；纯 JS、无依赖、无 I/O。\n- [对抗测试](framework-algorithms.test.mjs)：运行 `node --test docs/design/framework-algorithms.test.mjs`。\n- [验证与独立评审](2026-10-15-framework-validation.md)：真实运行范围、修订和未覆盖项。\n- [离线 HTML](../framework-design.html)：研究结论、目标图和复用相同算法源码的交互反例。\n\n所有产品事实以本文开头的固定提交和仓库既有权威为准。本轮没有改 PRODUCT_LOCK、DECISIONS、冻结算法、schema、Cargo/pnpm 锁、IPC 或生产 Rust/React 代码。先把可验证的设计闭环做好，再按上表逐用例接线。\n","svg":"\u003csvg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 960 660\" role=\"img\" aria-labelledby=\"title desc\"\u003e\n\u003ctitle id=\"title\"\u003eSoul 用例编排与证据上下文目标设计\u003c/title\u003e\n\u003cdesc id=\"desc\"\u003e尚未接入生产。意图进入快照准备、证据选择、用户批准和控制状态，再锁外执行并检查最新状态；撤权直接更新控制状态，结果反馈用户。\u003c/desc\u003e\n\u003cdefs\u003e\u003cmarker id=\"arrow\" markerWidth=\"10\" markerHeight=\"10\" refX=\"8\" refY=\"3\" orient=\"auto\"\u003e\u003cpath d=\"M0 0L8 3L0 6Z\" fill=\"#638179\"/\u003e\u003c/marker\u003e\u003c/defs\u003e\n\u003crect width=\"960\" height=\"660\" fill=\"#f4f7f3\" rx=\"24\"/\u003e\n\u003cg fill=\"none\" stroke=\"#638179\" stroke-width=\"2\" marker-end=\"url(#arrow)\"\u003e\n\u003cpath d=\"M480 104V138\"/\u003e\u003cpath d=\"M270 176H340\"/\u003e\u003cpath d=\"M480 216V250\"/\u003e\u003cpath d=\"M480 328V362\"/\u003e\n\u003cpath d=\"M480 440V474\"/\u003e\u003cpath d=\"M690 512H620\"/\u003e\u003cpath d=\"M340 512H270\"/\u003e\n\u003cpath d=\"M150 550V616H340\"/\u003e\u003cpath d=\"M480 550V594\"/\u003e\n\u003cpath d=\"M620 616H810V440\"/\u003e\u003cpath d=\"M810 362V66H620\"/\u003e\n\u003c/g\u003e\n\u003cg font-family=\"Noto Sans CJK SC, Microsoft YaHei, system-ui, sans-serif\" text-anchor=\"middle\"\u003e\n\u003cg fill=\"#173e35\"\u003e\u003crect x=\"340\" y=\"26\" width=\"280\" height=\"78\" rx=\"14\"/\u003e\u003crect x=\"340\" y=\"474\" width=\"280\" height=\"76\" rx=\"14\"/\u003e\u003c/g\u003e\n\u003cg fill=\"#fff\" stroke=\"#cedbd5\"\u003e\u003crect x=\"340\" y=\"138\" width=\"280\" height=\"78\" rx=\"14\"/\u003e\u003crect x=\"340\" y=\"250\" width=\"280\" height=\"78\" rx=\"14\"/\u003e\u003crect x=\"340\" y=\"362\" width=\"280\" height=\"78\" rx=\"14\"/\u003e\u003crect x=\"30\" y=\"138\" width=\"240\" height=\"78\" rx=\"14\"/\u003e\u003crect x=\"30\" y=\"474\" width=\"240\" height=\"76\" rx=\"14\"/\u003e\u003crect x=\"690\" y=\"474\" width=\"240\" height=\"76\" rx=\"14\"/\u003e\u003crect x=\"690\" y=\"362\" width=\"240\" height=\"78\" rx=\"14\"/\u003e\u003c/g\u003e\n\u003cg fill=\"#fff\" font-size=\"20\" font-weight=\"650\"\u003e\u003ctext x=\"480\" y=\"59\"\u003e用户意图\u003c/text\u003e\u003ctext x=\"480\" y=\"507\"\u003e控制状态\u003c/text\u003e\u003c/g\u003e\n\u003cg fill=\"#c7e2d5\" font-size=\"14\"\u003e\u003ctext x=\"480\" y=\"83\"\u003e编辑代次 · 页面归属\u003c/text\u003e\u003ctext x=\"480\" y=\"530\"\u003e版本 · 超时 · 一次许可\u003c/text\u003e\u003c/g\u003e\n\u003cg fill=\"#173e35\" font-size=\"19\" font-weight=\"600\"\u003e\u003ctext x=\"480\" y=\"172\"\u003e准备资料快照\u003c/text\u003e\u003ctext x=\"480\" y=\"284\"\u003e选择证据上下文\u003c/text\u003e\u003ctext x=\"480\" y=\"396\"\u003e材料预览与批准\u003c/text\u003e\u003ctext x=\"150\" y=\"172\"\u003e现有领域与存储\u003c/text\u003e\u003ctext x=\"150\" y=\"507\"\u003e锁外执行\u003c/text\u003e\u003ctext x=\"810\" y=\"507\"\u003e撤权 / 来源变化\u003c/text\u003e\u003ctext x=\"810\" y=\"396\"\u003e草稿与证据\u003c/text\u003e\u003c/g\u003e\n\u003cg fill=\"#60706b\" font-size=\"14\"\u003e\u003ctext x=\"480\" y=\"196\"\u003e不可变准备体 + 来源版本\u003c/text\u003e\u003ctext x=\"480\" y=\"308\"\u003e用途 → 冲突 → 排序 → 预算\u003c/text\u003e\u003ctext x=\"480\" y=\"420\"\u003e本次批准 · 默认占位\u003c/text\u003e\u003ctext x=\"150\" y=\"196\"\u003e密封记录 · 档案 · 图谱\u003c/text\u003e\u003ctext x=\"150\" y=\"530\"\u003e既有策略 + 出网边界\u003c/text\u003e\u003ctext x=\"810\" y=\"530\"\u003e独立短路径\u003c/text\u003e\u003ctext x=\"810\" y=\"420\"\u003e或拒收、澄清、结果未知\u003c/text\u003e\u003c/g\u003e\n\u003crect x=\"340\" y=\"594\" width=\"280\" height=\"44\" rx=\"12\" fill=\"#e8d9b7\"/\u003e\u003ctext x=\"480\" y=\"622\" fill=\"#4d422a\" font-size=\"17\"\u003e结果接收前复验最新状态\u003c/text\u003e\n\u003c/g\u003e\u003c/svg\u003e\n","diagram":"flowchart TD\n  UI[\"用户意图与编辑代次\"] --\u003e PREP[\"准备：档案与证据快照\"]\n  STORE[\"现有密封存储与领域服务\"] --\u003e PREP\n  PREP --\u003e SELECT[\"用途过滤、冲突检查、预算选择\"]\n  SELECT --\u003e REVIEW[\"材料预览与本次批准\"]\n  REVIEW --\u003e CTRL[\"控制状态：版本、超时、一次许可\"]\n  REVOKE[\"撤权或来源变化\"] --\u003e CTRL\n  CTRL --\u003e WORK[\"锁外执行：既有策略与出网\"]\n  WORK --\u003e CHECK[\"校验结果与最新状态\"]\n  CTRL --\u003e CHECK\n  CHECK --\u003e RESULT[\"草稿与证据，或拒收与澄清\"]\n  RESULT --\u003e UI\n"};
+function showTab(id){document.querySelectorAll('.panel').forEach(p=>p.hidden=p.id!==id);document.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tab===id)));}
+document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
+document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>{showTab(b.dataset.open);scrollTo(0,0);}));
+function download(name,text,type){const u=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),500);}
+document.querySelector('#download-svg').onclick=()=>download('Soul-framework-flow.svg',downloads.svg,'image/svg+xml');
+document.querySelector('#download-mmd').onclick=()=>download('Soul-framework-flow.mmd',downloads.diagram,'text/plain');
+document.querySelector('#download-md').onclick=()=>download('Soul-usage-framework.md',downloads.markdown,'text/markdown');
+document.querySelector('#download-code').onclick=()=>download('framework-algorithms.mjs',downloads.source,'text/javascript');
+const scenarios={normal:['prepare','dispatch','complete'],before:['prepare','revoke','dispatch'],after:['prepare','dispatch','revoke','complete'],change:['prepare','dispatch','change','complete'],cancel:['prepare','dispatch','cancel','retry','complete','retry'],expire:['prepare','expire','retry']};
+const labels={prepare:'准备任务 A',dispatch:'申请派发 A',complete:'worker A 结束，尝试接收',revoke:'撤销端点许可',change:'用户纠正资料',cancel:'取消任务 A',retry:'尝试准备任务 B',expire:'推进到超时边界'};
+const reasons={not_prepared:'准备已失效',revoked:'许可已撤销',source_changed:'资料已变更',cancelled:'任务已取消',expired:'已过期',busy:'物理槽仍被占用',duplicate_id:'任务编号已使用',not_dispatched:'没有已派发任务'};
+let demo,steps,position,now,permits,accepted;
+function reset(){demo=new OperationControl({origin:'https://model.example',capacity:1});steps=scenarios[document.querySelector('#scenario').value];position=0;now=0;permits=0;accepted=0;document.querySelector('#timeline').replaceChildren();document.querySelector('#step').disabled=false;updateCounts();}
+function updateCounts(){document.querySelector('#permits').textContent=permits;document.querySelector('#accepted').textContent=accepted;document.querySelector('#occupied').textContent=demo.occupied;}
+function step(){if(position>=steps.length)return;const action=steps[position++];let result={ok:true};now++;
+if(action==='prepare'||action==='retry')result=demo.prepare({id:action==='prepare'?'a':'b',snapshot:demo.snapshot(),deadline:action==='prepare'?6:now+6,now});
+if(action==='dispatch'){result=demo.dispatch('a',now);if(result.ok)permits++;}
+if(action==='complete'){result=demo.complete('a',now);if(result.ok)accepted++;}
+if(action==='revoke')demo.revoke();if(action==='change'){demo.beginMutation();demo.endMutation();}
+if(action==='cancel')demo.cancel('a');if(action==='expire')now=6;
+const li=document.createElement('li');li.className=result.ok?'':'deny';li.textContent=position+'. '+labels[action]+' → '+(result.ok?'完成':reasons[result.reason]||result.reason);document.querySelector('#timeline').append(li);updateCounts();document.querySelector('#step').disabled=position===steps.length;}
+document.querySelector('#step').onclick=step;document.querySelector('#reset').onclick=reset;document.querySelector('#scenario').onchange=reset;reset();
+const titles={research:'研究专用记录（排名最高）',short:'我希望回复简短',tone:'工作场景偏好正式语气',old:'已失去出处的旧摘要',free:'周三晚上有空',busy:'周三晚上已有安排'};
+const exclusion={not_allowed:'本次用途未获准',unavailable:'已遗忘 / 不可读',no_evidence:'证据失效',conflict:'冲突，需澄清',budget:'超过预算',limit:'条数上限',source_cap:'同来源上限',not_retrieved:'未召回'};
+function memoryDemo(){const base=id=>({id,active:true,readable:true,granted:true,purposes:['draft'],evidenceValid:true,citations:['e-'+id],source:id,recordedAt:1,validFrom:1,validTo:null,cost:2});const rows=[{...base('research'),purposes:['research']},{...base('short'),granted:document.querySelector('#allow-memory').checked,active:!document.querySelector('#forget-memory').checked},base('tone'),{...base('old'),evidenceValid:false}];if(document.querySelector('#conflicting').checked)rows.push({...base('free'),claimKey:'wed-evening',claimValue:'free'},{...base('busy'),claimKey:'wed-evening',claimValue:'busy'});const budget=Number(document.querySelector('#budget').value);const result=selectContext({rows,rankings:[rows.map(r=>r.id)],purpose:'draft',asOf:5,knownAt:5,limit:3,budget,perSource:1,rrfK:60});document.querySelector('#budget-label').textContent=budget;document.querySelector('#selection-state').textContent=(result.disposition==='clarify'?'先澄清冲突，暂不生成':result.disposition==='abstain'?'没有可用证据，保留模板回退':'可使用以下证据')+' · 入选 '+result.selected.length+' 条 · 材料占用 '+result.used+'/'+budget;const box=document.querySelector('#memory-rows');box.replaceChildren();for(const row of rows){const chosen=result.selected.some(x=>x.id===row.id);const div=document.createElement('div');div.className='memory-row'+(chosen?' selected':'');const title=document.createElement('span');title.textContent=titles[row.id];const reason=document.createElement('span');reason.className='reason';reason.textContent=chosen?'入选 · '+row.citations[0]:exclusion[result.excluded.find(x=>x.id===row.id)?.reason]||'未入选';div.append(title,reason);box.append(div);}}
+for(const id of ['allow-memory','forget-memory','conflicting','budget'])document.getElementById(id).addEventListener('input',memoryDemo);memoryDemo();
+</script></body></html>
