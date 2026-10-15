@@ -6,7 +6,7 @@
 
 状态（2026-10-15）：Goal 1、正式 Goal 2 与 Wave 1 均未关闭。PR #66 工作分支新增销毁前精确范围重校验、Memory 写入输入保护、Import 旧结果失效修复。338 项前端和 65 项定向 Rust 测试，以及类型检查、lint、生产 build 已通过，独立只读复审未发现阻塞项。独立撤权执行模型、原生桌面与完整平台验收仍待完成。见 [docs/STATUS.md](docs/STATUS.md) 与 [验证记录](docs/reviews/2026-10-15-validation.md)。
 
-架构导航：[系统架构与设计图](docs/ARCHITECTURE.md)（当前分层、遗忘流程、页面请求生命周期和待实施的执行架构；附 Mermaid 源文件与 SVG）。设计依据和取舍见 [架构审查报告](docs/reviews/2026-10-15-architecture-review.md)。
+架构导航：[离线 HTML 架构地图](docs/architecture.html)（下载后用浏览器打开；四图切换、节点说明、缩放、模块筛选和图源下载），或阅读 [系统架构与设计图](docs/ARCHITECTURE.md)（附 Mermaid 源文件与 SVG）。HTML 是固定在 `b47ddfa` 的单文件说明快照，不自动联网。设计依据和取舍见 [架构审查报告](docs/reviews/2026-10-15-architecture-review.md)。
 
 历史展示：[架构与项目进度展示页](docs/project-overview.html)（单文件 HTML，保存后用浏览器打开；包含架构、18 个 Rust 模块、能力筛选、验证账本与剩余任务）。页面是固定在 `6a8ad64` 的说明快照，不是 Soul 客户端，不实时更新，不读取个人数据，不自动联网。最新架构见上述架构导航，最新状态以 STATUS 和对应源码证据为准。
 

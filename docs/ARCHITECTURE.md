@@ -1,5 +1,7 @@
 # Soul 架构与演进图
 
+[打开离线 HTML 架构地图](architecture.html)：下载后在浏览器打开，可切换四张图、点击节点阅读职责、缩放浏览、筛选 18 个模块，并下载 SVG 或 Mermaid 源文件。页面内嵌全部资源，不自动联网；说明固定在 `b47ddfa`，不是实时状态或 Soul 客户端。
+
 更新日期：2026-10-15。本文描述固定基线 `9d3cd300c19c996f9edabf337c9d359fcb594bc3` 加本轮已实现改动；“已实现”指源码能力，不代表已合入 main 或通过全部平台验收。详细依据见[架构审查](reviews/2026-10-15-architecture-review.md)和[验证记录](reviews/2026-10-15-validation.md)。
 
 Soul 是本地桌面应用：React WebView 负责表达，Tauri 连接同一应用的 Rust 核心，领域 crate 在核心进程内协作。下图中的分组不是微服务，也不代表独立部署。WebView 的平台进程安排由 Tauri/WebView 运行时决定；这里不把整个桌面应用说成严格的单操作系统进程。
