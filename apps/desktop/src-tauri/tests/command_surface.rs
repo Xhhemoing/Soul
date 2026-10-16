@@ -140,18 +140,26 @@ fn the_shell_never_reads_an_endpoint_address_itself() {
 #[test]
 fn the_command_layer_stays_thin() {
     for name in COMMAND_NAMES {
-        if *name == "generate_draft" {
-            // Scheduling is the single exception. Policy/body construction
+        if matches!(*name, "generate_draft" | "person_summary") {
+            // Scheduling is the exception. Policy/body construction
             // must still be in core, and no Session guard may cross execute.
-            let start = COMMANDS_RS.find("pub async fn generate_draft(").unwrap();
+            let start = COMMANDS_RS.find(&format!("pub async fn {name}(")).unwrap();
             let body = COMMANDS_RS[start..]
                 .split("#[tauri::command]")
                 .next()
                 .unwrap();
             assert!(body.contains("tauri::async_runtime::spawn_blocking(move ||"));
-            assert!(body.contains("let work = session.held().begin_draft(&approval)?;"));
+            let (begin, complete) = if *name == "generate_draft" {
+                ("begin_draft(&approval)", "complete_draft(completed)")
+            } else {
+                (
+                    "begin_person_summary(&contact_id)",
+                    "complete_person_summary(completed)",
+                )
+            };
+            assert!(body.contains(&format!("let work = session.held().{begin}?;")));
             assert!(body.contains("let completed = work.execute();"));
-            assert!(body.contains("session.held().complete_draft(completed)"));
+            assert!(body.contains(&format!("session.held().{complete}")));
             for forbidden in [
                 "issue_token",
                 "authorize_e1",
@@ -161,7 +169,7 @@ fn the_command_layer_stays_thin() {
             ] {
                 assert!(
                     !body.contains(forbidden),
-                    "draft scheduling grew policy or a held guard"
+                    "{name} scheduling grew policy or a held guard"
                 );
             }
             continue;

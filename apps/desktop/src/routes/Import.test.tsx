@@ -18,9 +18,14 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
-import { Import } from "./Import";
+import { Import as ImportRoute } from "./Import";
+import { ImportDelivery } from "./importDelivery";
+
+let delivery: ImportDelivery;
+beforeEach(() => { delivery = new ImportDelivery(); });
+function Import(): React.JSX.Element { return <ImportRoute delivery={delivery} />; }
 import { IMPORT_OVER_BYTE_BUDGET_NOTICE, MAX_IMPORT_BYTES } from "../core";
 import type { ImportPreview, ImportReceipt } from "../core";
 import { denylistHits, diagnosticTerms, renderedText } from "../test/denylist";
@@ -152,6 +157,7 @@ describe("导入页", () => {
     expect(await screen.findByTestId("receipt-contacts")).toHaveTextContent("新建 4 个人");
     expect(screen.getByTestId("receipt-events")).toHaveTextContent("写进 16 条往来记录");
     expect(screen.getByTestId("receipt-ties")).toHaveTextContent("重算出 3 条关系");
+    expect(screen.getByTestId("receipt-ties")).toHaveTextContent("包含已有关系的重算");
     expect(core.callsTo("commit_soul_import_v1")[0]?.payload).toEqual({ text: JSONL });
     expect(renderedText()).not.toContain(A_SENTENCE);
     expect(screen.queryByRole("button", { name: "确认导入" })).toBeNull();

@@ -8,7 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { describe, expect, it } from "vitest";
 
-import type { PeopleGraph, PersonSummary } from "../core";
+import { clearUserEndpoint, setUserEndpoint, setVoice, type PeopleGraph, type PersonSummary } from "../core";
 import { aPeopleGraph, aPersonSummary } from "../test/fakeCore";
 import { Graph } from "./Graph";
 
@@ -221,13 +221,16 @@ describe("graph lifecycle across IPC responses", () => {
       previous.unmount();
       render(<Graph />);
       await user.click((await peopleButtons())[0]!);
-      expect(await screen.findByTestId("summary-text")).toHaveTextContent("FRESH");
+      expect(screen.queryByTestId("summary-text")).toBeNull();
+      expect(screen.getByRole("status")).toHaveTextContent("资料或端点已变更");
       await act(async () => {
         if (outcome === "success") pending.resolve(graph);
         else pending.reject({ reason_code: "ROUTINE", explanation: "old write" });
       });
-      expect(screen.getByTestId("summary-text")).toHaveTextContent("FRESH");
+      expect(screen.queryByTestId("summary-text")).toBeNull();
       expect(screen.queryByTestId("tie-refusal-code")).toBeNull();
+      await user.click((await peopleButtons())[0]!);
+      expect(await screen.findByTestId("summary-text")).toHaveTextContent("FRESH");
     },
   );
 
@@ -242,5 +245,69 @@ describe("graph lifecycle across IPC responses", () => {
     render(<StrictMode><Graph /></StrictMode>);
     await user.click((await peopleButtons())[0]!);
     expect(await screen.findByTestId("summary-text")).toHaveTextContent("STRICT_MODE");
+  });
+
+  it.each(["shown", "pending"] as const)("clears a %s summary when the endpoint is withdrawn, without a fake backend refusal", async (phase) => {
+    const { graph, firstId } = fixture();
+    const pending = deferred<PersonSummary>();
+    mockIPC((command) => {
+      if (command === "people_graph") return graph;
+      if (command === "clear_user_endpoint") return undefined;
+      if (command === "person_summary") return phase === "shown"
+        ? aPersonSummary({ contact_id: firstId, text: "STALE_SUMMARY" }) : pending.promise;
+      throw new Error(`unexpected command: ${command}`);
+    });
+    const user = userEvent.setup();
+    render(<Graph />);
+    await user.click((await peopleButtons())[0]!);
+    if (phase === "shown") await screen.findByTestId("summary-text");
+    await act(async () => { await clearUserEndpoint(); });
+    if (phase === "pending") await act(async () => pending.resolve(aPersonSummary({ contact_id: firstId, text: "STALE_SUMMARY" })));
+    expect(screen.queryByTestId("summary-text")).toBeNull();
+    expect(screen.queryByTestId("summary-refusal-code")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("旧摘要已清除");
+    expect((await peopleButtons())[0]).toBeEnabled();
+  });
+
+  it("keeps rejecting old IPC after an endpoint changes A to B to A", async () => {
+    const { graph, firstId } = fixture();
+    const pending = deferred<PersonSummary>();
+    mockIPC((command) => {
+      if (command === "people_graph") return graph;
+      if (command === "set_user_endpoint") return undefined;
+      if (command === "person_summary") return pending.promise;
+      throw new Error(`unexpected command: ${command}`);
+    });
+    const user = userEvent.setup();
+    render(<Graph />);
+    await user.click((await peopleButtons())[0]!);
+    await act(async () => {
+      await setUserEndpoint("http://127.0.0.1:8124");
+      await setUserEndpoint("http://127.0.0.1:8123");
+    });
+    await act(async () => pending.resolve(aPersonSummary({ contact_id: firstId, text: "OLD_A" })));
+    expect(screen.queryByText("OLD_A")).toBeNull();
+    expect(screen.queryByTestId("summary-refusal-code")).toBeNull();
+  });
+
+  it("does not invoke summary while a source mutation is still pending", async () => {
+    const { graph } = fixture();
+    const changed = deferred<never>();
+    let summaryCalls = 0;
+    mockIPC((command) => {
+      if (command === "people_graph") return graph;
+      if (command === "set_voice") return changed.promise;
+      if (command === "person_summary") { summaryCalls += 1; return aPersonSummary(); }
+      throw new Error(`unexpected command: ${command}`);
+    });
+    const user = userEvent.setup();
+    render(<Graph />);
+    await peopleButtons();
+    let mutation!: Promise<unknown>;
+    await act(async () => { mutation = setVoice("length", "short").catch(() => undefined); });
+    await user.click((await peopleButtons())[0]!);
+    expect(summaryCalls).toBe(0);
+    expect(screen.getByRole("status")).toHaveTextContent("资料或端点已变更");
+    await act(async () => { changed.reject({ reason_code: "ROUTINE", explanation: "synthetic" }); await mutation; });
   });
 });

@@ -113,11 +113,20 @@ pub fn people_graph(session: State<'_, SessionState>) -> Result<PeopleGraphView,
 }
 
 #[tauri::command]
-pub fn person_summary(
+pub async fn person_summary(
     session: State<'_, SessionState>,
     contact_id: String,
 ) -> Result<PersonSummaryView, SessionRefusal> {
-    session.held().person_summary(&contact_id)
+    let session = session.inner().clone();
+    // The owned closure completes and audits even if the IPC waiter leaves.
+    tauri::async_runtime::spawn_blocking(move || {
+        let work = session.held().begin_person_summary(&contact_id)?;
+        let completed = work.execute();
+        let result = session.held().complete_person_summary(completed);
+        result
+    })
+    .await
+    .map_err(|_| SessionRefusal::from(DraftRefusal::WorkerFailed))?
 }
 
 #[tauri::command]

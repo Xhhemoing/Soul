@@ -51,9 +51,12 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   correctTie,
+  getDraftSourceRevision,
   peopleGraph,
   personSummary,
   releaseTie,
+  subscribeDraftSource,
+  SummarySourceChangedError,
   type PeopleGraph,
   type PersonNode,
   type PersonSummary,
@@ -123,11 +126,22 @@ export function Graph(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const requests = useRef(new GraphRequests());
   const [summaryContact, setSummaryContact] = useState<string | null>(null);
+  const [summaryChanged, setSummaryChanged] = useState(false);
 
   useEffect(() => {
     const lifecycle = requests.current;
     lifecycle.activate();
     let live = true;
+    let source = getDraftSourceRevision();
+    const unsubscribe = subscribeDraftSource((next) => {
+      if (next === source) return;
+      source = next;
+      lifecycle.invalidateSummary();
+      setSummary(null);
+      setSummaryRefusal(null);
+      setSummaryContact(null);
+      setSummaryChanged(true);
+    });
     peopleGraph().then(
       (value) => {
         if (live) setGraph(value);
@@ -138,6 +152,7 @@ export function Graph(): React.JSX.Element {
     );
     return () => {
       live = false;
+      unsubscribe();
       lifecycle.deactivate();
     };
   }, []);
@@ -181,6 +196,7 @@ export function Graph(): React.JSX.Element {
     setSummary(null);
     setSummaryRefusal(null);
     setSummaryContact(contactId);
+    setSummaryChanged(false);
     void (async () => {
       try {
         const value = await personSummary(contactId);
@@ -197,7 +213,8 @@ export function Graph(): React.JSX.Element {
       } catch (error: unknown) {
         if (!requests.current.finishSummary(request)) return;
         setSummaryContact(null);
-        setSummaryRefusal(asRefusal(error));
+        if (error instanceof SummarySourceChangedError) setSummaryChanged(true);
+        else setSummaryRefusal(asRefusal(error));
       }
     })();
   };
@@ -299,6 +316,7 @@ export function Graph(): React.JSX.Element {
         </section>
       )}
 
+      {summaryChanged ? <p className="badge" role="status">资料或端点已变更，请重新选择联系人查看摘要。旧摘要已清除。</p> : null}
       {summaryRefusal === null ? null : (
         <Refused
           title="这个人的摘要没有出来"

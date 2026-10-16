@@ -32,6 +32,10 @@ import {
 } from "../core";
 import { asRefusal, Refused } from "../refusal";
 import { ImportRequests, type ImportFormat as Format, type ImportRead } from "./importRequests";
+import {
+  ImportCommitBlockedError, ImportCommitUnknownError, ImportDelivery, importDelivery,
+  type ImportDeliveryState,
+} from "./importDelivery";
 
 interface StagedImport {
   readonly request: ImportRead;
@@ -67,16 +71,22 @@ function chosen(format: Format): FormatChoice {
   return FORMATS.find((choice) => choice.format === format) ?? (FORMATS[0] as FormatChoice);
 }
 
-export function Import(): React.JSX.Element {
+export function Import({ delivery = importDelivery }: { readonly delivery?: ImportDelivery } = {}): React.JSX.Element {
   const [format, setFormat] = useState<Format>("soul-import-v1");
   /** Only a successfully previewed file can be committed, with its own format. */
   const [staged, setStaged] = useState<StagedImport | null>(null);
   const [characters, setCharacters] = useState(0);
-  const [receipt, setReceipt] = useState<ImportReceipt | null>(null);
+  const [receipt, setReceipt] = useState<ImportReceipt | null>(() => delivery.snapshot().receipt);
+  const [deliveryState, setDeliveryState] = useState<ImportDeliveryState>(() => delivery.snapshot());
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [busy, setBusy] = useState(false);
   const requests = useRef(new ImportRequests());
   const fileInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => delivery.subscribe((state) => {
+    setDeliveryState(state);
+    setReceipt(state.receipt);
+  }), [delivery]);
 
   useEffect(() => {
     const current = requests.current;
@@ -100,6 +110,7 @@ export function Import(): React.JSX.Element {
   };
 
   const read = async (file: File | undefined): Promise<void> => {
+    if (delivery.snapshot().status !== "ready") return;
     if (file === undefined) {
       if (requests.current.clearSelection()) clearPreview();
       return;
@@ -143,21 +154,30 @@ export function Import(): React.JSX.Element {
     setBusy(true);
     setRefusal(null);
     try {
-      const value = await (staged.request.format === "telegram-desktop"
+      await delivery.run(staged.request.format, () => staged.request.format === "telegram-desktop"
         ? commitTelegram(staged.text)
         : commitSoulImportV1(staged.text));
       if (!requests.current.finishCommit(request, true)) return;
-      setReceipt(value);
       setStaged(null);
       setCharacters(0);
       if (fileInput.current !== null) fileInput.current.value = "";
       setBusy(false);
     } catch (error: unknown) {
       if (!requests.current.finishCommit(request, false)) return;
-      setRefusal(asRefusal(error));
+      if (error instanceof ImportCommitUnknownError || error instanceof ImportCommitBlockedError) {
+        // Approval cannot be replayed after an unacknowledged commit. The shared
+        // delivery state keeps this true even after this page is unmounted.
+        setStaged(null);
+        setCharacters(0);
+        if (fileInput.current !== null) fileInput.current.value = "";
+      } else {
+        setRefusal(asRefusal(error));
+      }
       setBusy(false);
     }
   };
+
+  const blocked = busy || deliveryState.status !== "ready";
 
   return (
     <>
@@ -177,7 +197,7 @@ export function Import(): React.JSX.Element {
                   name="import-format"
                   value={choice.format}
                   checked={format === choice.format}
-                  disabled={busy}
+                  disabled={blocked}
                   onChange={() => {
                     if (forget()) setFormat(choice.format);
                   }}
@@ -198,10 +218,10 @@ export function Import(): React.JSX.Element {
           className="text-input"
           type="file"
           accept={chosen(format).accept}
-          disabled={busy}
+          disabled={blocked}
           onChange={(event) => void read(event.target.files?.[0])}
         />
-        {busy ? (
+        {busy || deliveryState.status === "pending" ? (
           <p className="muted" role="status">
             正在读取或导入文件，请稍候。
           </p>
@@ -213,15 +233,24 @@ export function Import(): React.JSX.Element {
         )}
       </section>
 
+      {deliveryState.status !== "unknown" ? null : (
+        <section className="panel refusal" role="alert" aria-labelledby="import-unknown-heading">
+          <h2 id="import-unknown-heading">导入结果尚未确认</h2>
+          <p>没有收到可确认的回执，文件可能已经写入。这次运行暂停继续导入，请先查看人脉图与审计；它们可帮助核对，但不能证明这一次提交是否成功。</p>
+          <p>重启会清除本页的等待状态，不代表上次没有导入。再次导入相同文件仍可能重复写入往来记录和证据。</p>
+          <p><a href="#/graph">查看人脉图与证据</a> · <a href="#/audit">查看审计</a></p>
+        </section>
+      )}
+
       {refusal === null ? null : (
         <Refused title="这个文件没有读成" refusal={refusal} testId="import-refusal-code" />
       )}
 
       {staged === null ? null : (
-        <Preview preview={staged.preview} busy={busy} onCommit={() => void commit()} onAbandon={forget} />
+        <Preview preview={staged.preview} busy={blocked} onCommit={() => void commit()} onAbandon={forget} />
       )}
 
-      {receipt === null ? null : <Receipt receipt={receipt} />}
+      {receipt === null || deliveryState.status !== "ready" ? null : <Receipt receipt={receipt} />}
     </>
   );
 }
@@ -317,7 +346,8 @@ interface ReceiptProps {
 function Receipt({ receipt }: ReceiptProps): React.JSX.Element {
   return (
     <section className="panel" aria-labelledby="import-receipt-heading">
-      <h2 id="import-receipt-heading">导入完成</h2>
+      <h2 id="import-receipt-heading">导入完成 · 最近收到的回执</h2>
+      <p className="muted">本次运行最近一次收到的成功提交回执，切换页面后仍可查看；它不是完整导入历史。</p>
       <ul className="facts">
         <li data-testid="receipt-source">
           格式：<code>{receipt.source}</code>
@@ -329,7 +359,7 @@ function Receipt({ receipt }: ReceiptProps): React.JSX.Element {
           写进 {receipt.events_written} 条往来记录，{receipt.evidence_written} 条证据。
         </li>
         <li data-testid="receipt-ties">
-          人脉图重算出 {receipt.ties_rebuilt} 条关系，可以到「人脉图」和「灵魂档案」去看。
+          这次按全库有效证据重算出 {receipt.ties_rebuilt} 条关系并写回（包含已有关系的重算）。
         </li>
         <li data-testid="receipt-injection">
           {receipt.messages_with_injection_markers === 0
@@ -340,6 +370,7 @@ function Receipt({ receipt }: ReceiptProps): React.JSX.Element {
           这一版不记得哪份文件导过：把同一份文件再导一遍，人会对上不会重复，但上面这些往来记录和证据会再写一遍，人脉图的往来次数和关系强度也会跟着涨。
         </li>
       </ul>
+      <p><a href="#/graph">查看人脉图、统计与证据</a> · <a href="#/audit">查看导入审计</a></p>
       <p className="badge" data-testid="receipt-notice">
         {receipt.notice}
       </p>

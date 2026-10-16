@@ -15,7 +15,11 @@ import {
   type ImportReceipt,
 } from "../core";
 import { anImportPreview, anImportReceipt } from "../test/fakeCore";
-import { Import } from "./Import";
+import { Import as ImportRoute } from "./Import";
+import { ImportDelivery } from "./importDelivery";
+
+let delivery: ImportDelivery;
+function Import(): React.JSX.Element { return <ImportRoute delivery={delivery} />; }
 
 vi.mock("../core", async (importOriginal) => ({
   // The real module first, so the screen's non-IPC exports — the byte budget
@@ -61,6 +65,7 @@ function controlledFile(reading: Deferred<string>): File {
 }
 
 beforeEach(() => {
+  delivery = new ImportDelivery();
   vi.resetAllMocks();
   vi.mocked(previewSoulImportV1).mockResolvedValue(anImportPreview());
   vi.mocked(previewTelegram).mockResolvedValue(anImportPreview({ source: "telegram-desktop" }));
@@ -222,7 +227,7 @@ describe("导入页异步交互", () => {
     await user.click(screen.getByRole("radio", { name: "Telegram Desktop 的 result.json" }));
     expect(screen.getByTestId("preview-source")).toHaveTextContent("soul-import-v1");
     await act(async () => writing.resolve(anImportReceipt()));
-    expect(screen.getAllByRole("heading", { name: "导入完成" })).toHaveLength(1);
+    expect(screen.getAllByRole("heading", { name: "导入完成 · 最近收到的回执" })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "确认导入" })).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
     expect(commitSoulImportV1).toHaveBeenCalledTimes(1);

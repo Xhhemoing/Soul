@@ -17,7 +17,11 @@ import {
   type ImportReceipt,
 } from "../core";
 import { anImportPreview, anImportReceipt } from "../test/fakeCore";
-import { Import } from "./Import";
+import { Import as ImportRoute } from "./Import";
+import { ImportDelivery } from "./importDelivery";
+
+let delivery: ImportDelivery;
+function Import(): React.JSX.Element { return <ImportRoute delivery={delivery} />; }
 
 vi.mock("../core", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../core")>()),
@@ -50,6 +54,7 @@ async function stage(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElem
 }
 
 beforeEach(() => {
+  delivery = new ImportDelivery();
   vi.resetAllMocks();
   vi.mocked(previewSoulImportV1).mockResolvedValue(anImportPreview());
   vi.mocked(previewTelegram).mockResolvedValue(anImportPreview({ source: "telegram-desktop" }));
@@ -126,7 +131,7 @@ describe("import confirmation lifecycle", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("unlocks confirmation after a synchronously throwing core wrapper", async () => {
+  it("treats a non-structured synchronous transport failure as unknown, without replay", async () => {
     vi.mocked(commitSoulImportV1).mockImplementationOnce(() => {
       throw new Error("synthetic synchronous refusal");
     });
@@ -134,11 +139,11 @@ describe("import confirmation lifecycle", () => {
     render(<Import />);
     await user.click(await stage(user));
     await screen.findByRole("alert");
-    const confirm = screen.getByRole("button", { name: "确认导入" });
-    expect(confirm).toBeEnabled();
-    await user.click(confirm);
-    await screen.findByTestId("receipt-events");
-    expect(commitSoulImportV1).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("button", { name: "确认导入" })).toBeNull();
+    expect(screen.getByLabelText("选择文件")).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("导入结果尚未确认");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("synthetic synchronous refusal");
+    expect(commitSoulImportV1).toHaveBeenCalledTimes(1);
   });
 
   it("releases a budget-refused read before another file is chosen", async () => {
@@ -189,7 +194,7 @@ describe("import confirmation lifecycle", () => {
   );
 
   it.each(["success", "failure"] as const)(
-    "does not present an unmounted commit %s as the fresh page's result",
+    "keeps an unmounted commit %s owned until it settles, and labels its acknowledged receipt",
     async (outcome) => {
       const pending = deferred<ImportReceipt>();
       vi.mocked(commitSoulImportV1).mockReturnValueOnce(pending.promise);
@@ -198,13 +203,20 @@ describe("import confirmation lifecycle", () => {
       await user.click(await stage(user));
       previous.unmount();
       render(<Import />);
-      await stage(user);
+      expect(screen.getByLabelText("选择文件")).toBeDisabled();
+      expect(screen.queryByRole("button", { name: "确认导入" })).toBeNull();
       await act(async () => {
         if (outcome === "success") pending.resolve(anImportReceipt());
         else pending.reject({ reason_code: "ROUTINE", explanation: "旧的合成失败。" });
       });
-      expect(screen.getByTestId("preview-counts")).toBeVisible();
-      expect(screen.queryByTestId("receipt-events")).toBeNull();
+      expect(screen.queryByTestId("preview-counts")).toBeNull();
+      if (outcome === "success") {
+        expect(screen.getByTestId("receipt-events")).toBeVisible();
+        expect(screen.getByText(/本次运行最近一次收到的成功提交回执/)).toBeVisible();
+      } else {
+        expect(screen.queryByTestId("receipt-events")).toBeNull();
+      }
+      expect(screen.getByLabelText("选择文件")).toBeEnabled();
       expect(screen.queryByRole("alert")).toBeNull();
       expect(commitSoulImportV1).toHaveBeenCalledTimes(1);
     },
@@ -216,5 +228,28 @@ describe("import confirmation lifecycle", () => {
     await user.click(await stage(user));
     await screen.findByTestId("receipt-events");
     expect(commitSoulImportV1).toHaveBeenCalledExactlyOnceWith(TEXT);
+  });
+
+  it("shows an unknown IPC outcome on a new mount and never offers the old approval again", async () => {
+    const pending = deferred<ImportReceipt>();
+    vi.mocked(commitSoulImportV1).mockReturnValueOnce(pending.promise);
+    const user = userEvent.setup();
+    const previous = render(<Import />);
+    await user.click(await stage(user));
+    previous.unmount();
+    const next = render(<Import />);
+    expect(screen.getByLabelText("选择文件")).toBeDisabled();
+    await act(async () => pending.reject(new Error("PRIVATE FILE BODY / SECRET PATH")));
+    expect(screen.getByRole("alert")).toHaveTextContent("文件可能已经写入");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("PRIVATE");
+    expect(screen.queryByTestId("preview-counts")).toBeNull();
+    expect(screen.queryByTestId("receipt-events")).toBeNull();
+    expect(screen.getByRole("link", { name: "查看人脉图与证据" })).toHaveAttribute("href", "#/graph");
+    expect(screen.getByRole("link", { name: "查看审计" })).toHaveAttribute("href", "#/audit");
+    next.unmount();
+    render(<Import />);
+    expect(screen.getByLabelText("选择文件")).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("重启会清除本页的等待状态，不代表上次没有导入");
+    expect(commitSoulImportV1).toHaveBeenCalledTimes(1);
   });
 });

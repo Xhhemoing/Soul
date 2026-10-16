@@ -415,6 +415,7 @@ pub struct Session {
     policy: PolicySession,
     /// In-memory source/authority generation, never a content fingerprint.
     draft_revision: Uuid,
+    /// The one physical E1 worker, shared by drafting and person summaries.
     active_draft: Option<ActiveDraft>,
     /// The last forget impact the user was shown, and for which memory.
     ///
@@ -444,7 +445,14 @@ pub struct Session {
 #[derive(Debug)]
 struct ActiveDraft {
     id: Uuid,
+    kind: E1WorkerKind,
     finished: Arc<AtomicBool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum E1WorkerKind {
+    Draft,
+    PersonSummary,
 }
 
 /// A lease is released only when the owned work or its completion is dropped.
@@ -472,6 +480,50 @@ pub struct SessionDraftCompletion {
     _lease: DraftLease,
     expires_at: Instant,
     execution: draft::DraftExecution,
+}
+
+/// A summary snapshot; only an actual E1 dispatch occupies the shared slot.
+pub struct SessionSummaryWork {
+    id: Option<Uuid>,
+    revision: Uuid,
+    lease: Option<DraftLease>,
+    work: draft::SummaryWork,
+}
+
+/// Owned by the worker until the same Session accounts for its request.
+pub struct SessionSummaryCompletion {
+    id: Option<Uuid>,
+    revision: Uuid,
+    _lease: Option<DraftLease>,
+    execution: draft::SummaryExecution,
+}
+
+impl std::fmt::Debug for SessionSummaryWork {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionSummaryWork")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for SessionSummaryCompletion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionSummaryCompletion")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SessionSummaryWork {
+    /// HTTP and answer parsing borrow neither the Session nor the store.
+    pub fn execute(self) -> SessionSummaryCompletion {
+        SessionSummaryCompletion {
+            id: self.id,
+            revision: self.revision,
+            _lease: self.lease,
+            execution: self.work.execute(),
+        }
+    }
 }
 
 impl std::fmt::Debug for SessionDraftWork {
@@ -804,14 +856,29 @@ impl Session {
         &mut self,
         contact_id: &str,
     ) -> Result<PersonSummaryView, SessionRefusal> {
+        let work = self.begin_person_summary(contact_id)?;
+        self.complete_person_summary(work.execute())
+    }
+
+    /// Snapshot the existing evidence and issue a permit while serialized
+    /// with source changes. The store guard never leaves this method.
+    pub fn begin_person_summary(
+        &mut self,
+        contact_id: &str,
+    ) -> Result<SessionSummaryWork, SessionRefusal> {
         let contact_id = Uuid::parse_str(contact_id).map_err(|_| SessionRefusal {
             reason_code: ReasonCode::Routine.as_str().to_owned(),
             explanation: "这不是一个认得出来的人的编号。".to_owned(),
         })?;
-        let summarized = {
+        // Local counts remain available after withdrawal even while the old
+        // physical E1 worker is draining. They do not take or release its slot.
+        if self.policy.guard().config().e1_endpoint().is_some() {
+            self.require_draft_slot()?;
+        }
+        let work = {
             let store = self.opened_store()?;
             let store = hold(&store);
-            draft::summarize_person(
+            draft::prepare_person_summary(
                 &self.draft,
                 &mut self.policy,
                 &store,
@@ -820,8 +887,49 @@ impl Session {
                 now_unix_millis(),
             )?
         };
-        self.append_audit(&summarized.audit)?;
-        Ok(summarized.view)
+        let (id, lease) = if work.needs_worker() {
+            let id = Uuid::now_v7();
+            let finished = Arc::new(AtomicBool::new(false));
+            self.active_draft = Some(ActiveDraft {
+                id,
+                kind: E1WorkerKind::PersonSummary,
+                finished: finished.clone(),
+            });
+            (Some(id), Some(DraftLease(finished)))
+        } else {
+            (None, None)
+        };
+        Ok(SessionSummaryWork {
+            id,
+            revision: self.draft_revision,
+            lease,
+            work,
+        })
+    }
+
+    /// Record the attempt before rejecting stale statistics or endpoint prose.
+    pub fn complete_person_summary(
+        &mut self,
+        completed: SessionSummaryCompletion,
+    ) -> Result<PersonSummaryView, SessionRefusal> {
+        if let Some(id) = completed.id {
+            if !self
+                .active_draft
+                .as_ref()
+                .is_some_and(|active| active.id == id && active.kind == E1WorkerKind::PersonSummary)
+            {
+                return Err(self.refuse_draft(DraftRefusal::SourceChanged));
+            }
+            self.active_draft = None;
+        }
+        self.append_audit(&completed.execution.audit)?;
+        if completed.revision != self.draft_revision {
+            return Err(self.refuse_draft(DraftRefusal::SourceChanged));
+        }
+        completed
+            .execution
+            .result
+            .map_err(|refusal| self.refuse_draft(refusal))
     }
 
     /// AC-17: a draft written on this machine, with no request body built.
@@ -921,6 +1029,7 @@ impl Session {
         let finished = Arc::new(AtomicBool::new(false));
         self.active_draft = Some(ActiveDraft {
             id,
+            kind: E1WorkerKind::Draft,
             finished: finished.clone(),
         });
         Ok(SessionDraftWork {
@@ -940,7 +1049,7 @@ impl Session {
         if !self
             .active_draft
             .as_ref()
-            .is_some_and(|active| active.id == completed.id)
+            .is_some_and(|active| active.id == completed.id && active.kind == E1WorkerKind::Draft)
         {
             return Err(self.refuse_draft(DraftRefusal::SourceChanged));
         }
@@ -973,7 +1082,7 @@ impl Session {
 
     /// Before source writes (including failed writes), but after a valid
     /// endpoint parse. Background foreground-duration events are not inputs
-    /// to the current profile/paste draft and do not use this revision.
+    /// to the current draft or person summary and do not use this revision.
     fn invalidate_drafts(&mut self) -> bool {
         let changed = self.draft.discard()
             || self

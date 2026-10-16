@@ -743,6 +743,23 @@ pub fn summarize_person(
     origin: RequestOrigin,
     now_ms: u64,
 ) -> Result<Summarized, DraftRefusal> {
+    let execution =
+        prepare_person_summary(drafting, policy, store, contact_id, origin, now_ms)?.execute();
+    Ok(Summarized {
+        view: execution.result?,
+        audit: execution.audit,
+    })
+}
+
+/// Read the evidence and issue a permit without doing any network work.
+pub(crate) fn prepare_person_summary(
+    drafting: &DraftSession,
+    policy: &mut PolicySession,
+    store: &SqlCipherStore,
+    contact_id: Uuid,
+    origin: RequestOrigin,
+    now_ms: u64,
+) -> Result<SummaryWork, DraftRefusal> {
     allow(policy, ActionKind::AnalysePeople, origin, now_ms)?;
 
     let graph = soul_graph::load(store)?;
@@ -755,29 +772,90 @@ pub fn summarize_person(
     let resolved = soul_graph::resolve_evidence(store, &edge)?;
 
     let counts = analysis::summarize_person(&graph, contact_id, &resolved)?;
-    if policy.guard().config().e1_endpoint().is_none() {
-        return Ok(Summarized {
-            view: PersonSummaryView::of(&counts)?,
-            audit: Vec::new(),
-        });
-    }
-
-    // Cloned because `phrase_with` needs the redactor while the generator
-    // below holds the session mutably. It is the same set either way.
     let redactor = policy.redactor().clone();
     let mut rephraser = Rephraser {
-        model: drafting.model().to_owned(),
-        policy,
-        now_ms,
+        dispatch: None,
+        material: String::new(),
         audit: Vec::new(),
     };
-    let phrased = analysis::phrase_with(&counts, &redactor, &mut rephraser).ok();
-    let audit = std::mem::take(&mut rephraser.audit);
+    if policy.guard().config().e1_endpoint().is_some() {
+        let body = analysis::summary_body(&counts, &redactor);
+        rephraser.material = body.as_str().to_owned();
+        let plan = PlanHash::of(&e1_plan(
+            drafting.model(),
+            policy.guard().config().e1_endpoint(),
+            &body,
+        ));
+        let prepared = policy
+            .issue_token(CapabilityScope::E1Generate, plan, now_ms)
+            .map_err(DraftRefusal::Token)
+            .and_then(|token| {
+                policy
+                    .prepare_e1_for(
+                        E1Purpose::PersonSummary,
+                        drafting.model(),
+                        body,
+                        token.token_id(),
+                        now_ms,
+                    )
+                    .map_err(Into::into)
+            });
+        match prepared {
+            Ok(dispatch) => rephraser.dispatch = Some(dispatch),
+            Err(refusal) => rephraser.audit.extend(refusal.audit()),
+        }
+    }
 
-    Ok(Summarized {
-        view: PersonSummaryView::of(phrased.as_ref().unwrap_or(&counts))?,
-        audit,
+    Ok(SummaryWork {
+        counts,
+        redactor,
+        rephraser,
     })
+}
+
+/// An immutable evidence snapshot and, optionally, one owned E1 permit.
+pub(crate) struct SummaryWork {
+    counts: PersonSummary,
+    redactor: Redactor,
+    rephraser: Rephraser,
+}
+
+pub(crate) struct SummaryExecution {
+    pub(crate) result: Result<PersonSummaryView, DraftRefusal>,
+    pub(crate) audit: Vec<AuditContent>,
+}
+
+impl SummaryWork {
+    pub(crate) fn needs_worker(&self) -> bool {
+        self.rephraser.dispatch.is_some()
+    }
+
+    pub(crate) fn execute(self) -> SummaryExecution {
+        self.execute_with(|counts, redactor, rephraser| {
+            analysis::phrase_with(counts, redactor, rephraser).ok()
+        })
+    }
+
+    fn execute_with(
+        mut self,
+        phrase: impl FnOnce(&PersonSummary, &Redactor, &mut Rephraser) -> Option<PersonSummary>,
+    ) -> SummaryExecution {
+        // Keep the generator outside the unwind boundary: a parse panic must
+        // not lose the request audit it recorded before returning the body.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let phrased = if self.rephraser.dispatch.is_some() {
+                phrase(&self.counts, &self.redactor, &mut self.rephraser)
+            } else {
+                None
+            };
+            PersonSummaryView::of(phrased.as_ref().unwrap_or(&self.counts))
+        }))
+        .unwrap_or(Err(DraftRefusal::WorkerFailed));
+        SummaryExecution {
+            result,
+            audit: self.rephraser.audit,
+        }
+    }
 }
 
 /// What the person summary's rephrasing is told when the endpoint did not
@@ -789,25 +867,23 @@ const REPHRASING_REFUSED: &str = "the summary rephrasing did not come back";
 ///
 /// The purpose is [`E1Purpose::PersonSummary`], which is the whole of what
 /// separates this from a draft: the body is counts and the system instruction
-/// asks for a rewrite of them. Drafting keeps using [`PolicySession::e1_generate`].
+/// asks for a rewrite of them. Drafting uses the same permit protocol with
+/// [`E1Purpose::Draft`].
 ///
-/// A [`ReplyGenerator`] rather than a free function because
-/// [`analysis::phrase_with`] is what builds the body, and the capability token
-/// has to be minted against the body that is actually going out rather than
-/// against one assembled a second time beside it.
+/// `phrase_with` rebuilds the same statistical material for its answer check.
+/// It must equal the prepared body before the owned dispatch can execute.
 ///
 /// The audit entries are collected rather than returned, because the trait's
 /// error type carries no room for one and because the entries are owed either
 /// way: a request that left owes `egress.request`, and one that was refused
 /// owes whatever [`DraftRefusal::audit`] already names.
-struct Rephraser<'a> {
-    policy: &'a mut PolicySession,
-    model: String,
-    now_ms: u64,
+struct Rephraser {
+    dispatch: Option<E1Dispatch>,
+    material: String,
     audit: Vec<AuditContent>,
 }
 
-impl Rephraser<'_> {
+impl Rephraser {
     /// Record what the chain is owed, and say no without quoting anything.
     fn refused(&mut self, refusal: DraftRefusal) -> GenerationRefused {
         self.audit.extend(refusal.audit());
@@ -815,25 +891,16 @@ impl Rephraser<'_> {
     }
 }
 
-impl ReplyGenerator for Rephraser<'_> {
+impl ReplyGenerator for Rephraser {
     fn generate(&mut self, body: RedactedBody) -> Result<String, GenerationRefused> {
-        let plan = PlanHash::of(&e1_plan(
-            &self.model,
-            self.policy.guard().config().e1_endpoint(),
-            &body,
-        ));
-        let scope = CapabilityScope::E1Generate;
-        let token_id = match self.policy.issue_token(scope, plan, self.now_ms) {
-            Ok(token) => token.token_id(),
-            Err(refused) => return Err(self.refused(DraftRefusal::Token(refused))),
+        if body.as_str() != self.material {
+            self.dispatch = None;
+            return Err(self.refused(DraftRefusal::WorkerFailed));
+        }
+        let Some(dispatch) = self.dispatch.take() else {
+            return Err(self.refused(DraftRefusal::WorkerFailed));
         };
-        match self.policy.e1_generate_for(
-            E1Purpose::PersonSummary,
-            &self.model,
-            body,
-            token_id,
-            self.now_ms,
-        ) {
+        match dispatch.execute() {
             Ok(outcome) => {
                 self.audit.push(outcome.audit());
                 Ok(outcome.body)
@@ -942,13 +1009,13 @@ pub enum DraftRefusal {
     Token(TokenRefused),
     #[error("nothing has been prepared, so there is no request to approve")]
     NothingPrepared,
-    #[error("上一次起草仍在结束，请等它结束后重新准备；没有发送新的请求。")]
+    #[error("上一次模型请求仍在结束，请等它结束后重试；没有发送新的请求。")]
     Busy,
-    #[error("资料或端点已变化，或这次准备已撤回；旧回复不再显示，请重新准备。")]
+    #[error("资料或端点已变化，或这次请求已撤回；旧结果不再显示，请重新发起。")]
     SourceChanged,
     #[error("这份准备已超过两分钟，请重新准备并核对后再生成。")]
     Expired,
-    #[error("起草任务没有正常结束，未返回草稿；请重新准备。")]
+    #[error("模型请求没有正常结束，未返回结果；请重新发起。")]
     WorkerFailed,
     #[error("the approval names a request that is no longer the prepared one")]
     NotThePreparedRequest,
@@ -1081,5 +1148,85 @@ mod expiry_tests {
         assert!(matches!(execution.result, Err(DraftRefusal::Expired)));
         assert!(execution.egress_audit.is_empty());
         assert_eq!(endpoint.request_count(), 0);
+    }
+}
+
+#[cfg(test)]
+mod summary_worker_tests {
+    use super::*;
+    use soul_schema::common::{NotAClinicalClaim, SupportedBand};
+
+    fn work(endpoint: &str) -> SummaryWork {
+        let (draft, mut policy) = closed_session();
+        policy.set_user_endpoint(endpoint).unwrap();
+        let counts = PersonSummary {
+            contact_id: Uuid::now_v7(),
+            relationship_id: Uuid::now_v7(),
+            points: vec![analysis::SummaryPoint::new(
+                "你们有 2 次一对一往来。",
+                SupportedBand::Weak,
+                vec![Uuid::now_v7()],
+            )
+            .unwrap()],
+            source: SummarySource::Counts,
+            narrative: None,
+            notice: soul_policy::clinical::WORKING_HYPOTHESIS_NOTICE.to_owned(),
+            clinical_claim: NotAClinicalClaim,
+        };
+        let redactor = policy.redactor().clone();
+        let body = analysis::summary_body(&counts, &redactor);
+        let material = body.as_str().to_owned();
+        let plan = PlanHash::of(&e1_plan(
+            draft.model(),
+            policy.guard().config().e1_endpoint(),
+            &body,
+        ));
+        let token = policy
+            .issue_token(CapabilityScope::E1Generate, plan, 0)
+            .unwrap();
+        let dispatch = policy
+            .prepare_e1_for(
+                E1Purpose::PersonSummary,
+                draft.model(),
+                body,
+                token.token_id(),
+                0,
+            )
+            .unwrap();
+        SummaryWork {
+            counts,
+            redactor,
+            rephraser: Rephraser {
+                dispatch: Some(dispatch),
+                material,
+                audit: Vec::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn mismatched_summary_material_falls_back_without_executing_the_permit() {
+        let endpoint = soul_testkit::mock_llm::MockLlm::start().unwrap();
+        let mut work = work(&endpoint.base_url());
+        let counts = PersonSummaryView::of(&work.counts).unwrap();
+        work.rephraser.material.push_str(" changed");
+        let execution = work.execute();
+        assert_eq!(execution.result.unwrap(), counts);
+        assert_eq!(endpoint.request_count(), 0);
+        assert_eq!(execution.audit.len(), 1);
+    }
+
+    #[test]
+    fn a_parse_panic_retains_the_already_recorded_request_audit() {
+        let endpoint = soul_testkit::mock_llm::MockLlm::start().unwrap();
+        let execution = work(&endpoint.base_url()).execute_with(|counts, redactor, generator| {
+            generator
+                .generate(analysis::summary_body(counts, redactor))
+                .unwrap();
+            panic!("synthetic parser failure");
+        });
+        assert!(matches!(execution.result, Err(DraftRefusal::WorkerFailed)));
+        assert_eq!(endpoint.request_count(), 1);
+        assert_eq!(execution.audit.len(), 1);
     }
 }

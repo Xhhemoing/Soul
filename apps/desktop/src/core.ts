@@ -694,6 +694,13 @@ export class DraftSourceChangedError extends Error {
   }
 }
 
+export class SummarySourceChangedError extends Error {
+  constructor() {
+    super("摘要依据或端点正在变更或已变更，请重新选择联系人查看摘要。");
+    this.name = "SummarySourceChangedError";
+  }
+}
+
 function invalidateDraftSource(): void {
   draftSourceRevision = Symbol("draft source");
   for (const listener of [...draftSourceListeners]) listener(draftSourceRevision);
@@ -717,12 +724,13 @@ async function mutateDraftSource<T>(command: string, args?: Record<string, unkno
   }
 }
 
-function currentDraftResult<T>(command: string, args: Record<string, unknown>): Promise<T> {
-  if (pendingDraftSourceMutations !== 0) return Promise.reject(new DraftSourceChangedError());
+function currentDraftResult<T>(command: string, args: Record<string, unknown>,
+  changed: () => Error = () => new DraftSourceChangedError()): Promise<T> {
+  if (pendingDraftSourceMutations !== 0) return Promise.reject(changed());
   const source = draftSourceRevision;
   return invoke<T>(command, args).then((value) => {
     if (pendingDraftSourceMutations !== 0 || source !== draftSourceRevision) {
-      throw new DraftSourceChangedError();
+      throw changed();
     }
     return value;
   });
@@ -779,7 +787,8 @@ export function peopleGraph(): Promise<PeopleGraph> {
 
 /** Everything Soul will say about one person, and what each line rests on. */
 export function personSummary(contactId: string): Promise<PersonSummary> {
-  return invoke<PersonSummary>(COMMANDS.personSummary, { contactId });
+  return currentDraftResult<PersonSummary>(COMMANDS.personSummary, { contactId },
+    () => new SummarySourceChangedError());
 }
 
 export function correctTie(relationshipId: string, band: string): Promise<PeopleGraph> {

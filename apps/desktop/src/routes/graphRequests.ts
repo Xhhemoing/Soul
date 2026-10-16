@@ -56,4 +56,10 @@ export class GraphRequests {
     this.summary = null;
     return true;
   }
+
+  /** Invalidate only summary delivery; an outstanding write keeps its owner. */
+  invalidateSummary(): void {
+    this.summary = null;
+    this.sequence += 1;
+  }
 }
