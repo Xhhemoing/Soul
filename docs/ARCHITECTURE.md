@@ -1,5 +1,8 @@
 # Soul 架构与演进图
 
+
+**2026-10-16 更新：** 起草页归属与起草慢任务现已按使用框架接入。最新 [HTML](framework-design.html)、[生产起草流程图](design/draft-runtime-flow.svg) 与 [实现/验证记录](design/2026-10-16-draft-implementation.md) 描述这一切片。下方系统图及 architecture.html 保留 10 月 15 日固定基线，不应把其中“起草 HTTP 仍占锁”当作最新状态。其他长任务未在本次迁移。
+
 [打开离线 HTML 架构地图](architecture.html)：下载后在浏览器打开，可切换四张图、点击节点阅读职责、缩放浏览、筛选 18 个模块，并下载 SVG 或 Mermaid 源文件。页面内嵌全部资源，不自动联网；说明固定在 `b47ddfa`，不是实时状态或 Soul 客户端。
 
 后续使用框架与算法提案：[交互研究 HTML](framework-design.html) / [详细设计](design/2026-10-15-usage-framework.md)。包含独立评审后的非生产参考算法、目标流程 SVG/Mermaid 与验证记录；不改变本页“当前实现”的含义。

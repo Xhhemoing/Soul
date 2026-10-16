@@ -48,7 +48,9 @@
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -411,6 +413,9 @@ pub struct Session {
     issuer: TokenIssuer,
     draft: DraftSession,
     policy: PolicySession,
+    /// In-memory source/authority generation, never a content fingerprint.
+    draft_revision: Uuid,
+    active_draft: Option<ActiveDraft>,
     /// The last forget impact the user was shown, and for which memory.
     ///
     /// Forgetting is irreversible and the numbers behind it are a live query,
@@ -434,6 +439,83 @@ pub struct Session {
     /// On anything that is not Windows the answer is that this build has no
     /// foreground source, which is a fact about the build rather than a fault.
     collect_problem: Option<String>,
+}
+
+#[derive(Debug)]
+struct ActiveDraft {
+    id: Uuid,
+    finished: Arc<AtomicBool>,
+}
+
+/// A lease is released only when the owned work or its completion is dropped.
+/// Invalidating a source never releases a still-running physical worker.
+struct DraftLease(Arc<AtomicBool>);
+
+impl Drop for DraftLease {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
+/// One dispatch, owned by the worker. Neither Clone nor an IPC value.
+pub struct SessionDraftWork {
+    id: Uuid,
+    revision: Uuid,
+    lease: DraftLease,
+    work: draft::DraftWork,
+}
+
+/// Must be returned to the same Session, even if the invoking page disappeared.
+pub struct SessionDraftCompletion {
+    id: Uuid,
+    revision: Uuid,
+    _lease: DraftLease,
+    expires_at: Instant,
+    execution: draft::DraftExecution,
+}
+
+impl std::fmt::Debug for SessionDraftWork {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionDraftWork")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for SessionDraftCompletion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionDraftCompletion")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SessionDraftWork {
+    /// Blocking network and parsing only. A panic becomes a fixed refusal;
+    /// the panic payload never crosses IPC or enters the audit chain.
+    pub fn execute(self) -> SessionDraftCompletion {
+        self.execute_with(|work| work.execute())
+    }
+
+    fn execute_with(
+        self,
+        execute: impl FnOnce(draft::DraftWork) -> draft::DraftExecution,
+    ) -> SessionDraftCompletion {
+        let expires_at = self.work.expires_at;
+        let execution =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| execute(self.work)))
+                .unwrap_or_else(|_| draft::DraftExecution {
+                    result: Err(DraftRefusal::WorkerFailed),
+                    egress_audit: Vec::new(),
+                });
+        SessionDraftCompletion {
+            id: self.id,
+            revision: self.revision,
+            _lease: self.lease,
+            expires_at,
+            execution,
+        }
+    }
 }
 
 /// One running collector, and the label of the source feeding it.
@@ -506,6 +588,8 @@ impl Session {
             issuer: TokenIssuer::new(),
             draft,
             policy,
+            draft_revision: Uuid::now_v7(),
+            active_draft: None,
             held_forget: None,
             consent: ConsentHandle::closed(),
             collector: None,
@@ -671,6 +755,7 @@ impl Session {
         relationship_id: &str,
         band: &str,
     ) -> Result<PeopleGraphView, SessionRefusal> {
+        self.invalidate_drafts();
         let relationship_id = Uuid::parse_str(relationship_id).map_err(|_| SessionRefusal {
             reason_code: ReasonCode::Routine.as_str().to_owned(),
             explanation: "这不是一条认得出来的关系编号。".to_owned(),
@@ -691,6 +776,7 @@ impl Session {
         &mut self,
         relationship_id: &str,
     ) -> Result<PeopleGraphView, SessionRefusal> {
+        self.invalidate_drafts();
         let relationship_id = Uuid::parse_str(relationship_id).map_err(|_| SessionRefusal {
             reason_code: ReasonCode::Routine.as_str().to_owned(),
             explanation: "这不是一条认得出来的关系编号。".to_owned(),
@@ -781,6 +867,7 @@ impl Session {
         pasted: &str,
         include_original: Option<bool>,
     ) -> Result<E1DraftPlan, SessionRefusal> {
+        self.require_draft_slot()?;
         // Read every time, for the reason `owner_brief` is: a cached set is a
         // set that does not have the person imported five minutes ago in it,
         // and their name is what this call is deciding whether to send.
@@ -794,7 +881,12 @@ impl Session {
             include_original == Some(true),
         );
         let plan = prepared.map_err(|refusal| self.refuse_draft(refusal))?;
-        self.note_injection(injection::scan(&UntrustedText::new(pasted)).len() as u64)?;
+        if let Err(refusal) =
+            self.note_injection(injection::scan(&UntrustedText::new(pasted)).len() as u64)
+        {
+            self.draft.discard();
+            return Err(refusal);
+        }
         Ok(plan)
     }
 
@@ -812,10 +904,84 @@ impl Session {
     /// about generations that succeeded and nothing at all about the ones that
     /// were stopped.
     pub fn generate_draft(&mut self, approval: &Approval) -> Result<DraftValue, SessionRefusal> {
-        let generated = draft::generate_prepared(&mut self.draft, &mut self.policy, approval);
-        let drafted = generated.map_err(|refusal| self.refuse_draft(refusal))?;
-        self.append_audit(&drafted.audit)?;
-        Ok(drafted.draft)
+        // Compatibility for synchronous core callers. The desktop shell uses
+        // begin/execute/complete to release its Session mutex during HTTP.
+        let work = self.begin_draft(approval)?;
+        self.complete_draft(work.execute())
+    }
+
+    /// Serialized with mutations and withdrawal by the shell's Session lock.
+    pub fn begin_draft(&mut self, approval: &Approval) -> Result<SessionDraftWork, SessionRefusal> {
+        self.require_draft_slot()?;
+        let work = self
+            .draft
+            .dispatch(&mut self.policy, approval, now_unix_millis())
+            .map_err(|refusal| self.refuse_draft(refusal))?;
+        let id = Uuid::now_v7();
+        let finished = Arc::new(AtomicBool::new(false));
+        self.active_draft = Some(ActiveDraft {
+            id,
+            finished: finished.clone(),
+        });
+        Ok(SessionDraftWork {
+            id,
+            revision: self.draft_revision,
+            lease: DraftLease(finished),
+            work,
+        })
+    }
+
+    /// Account for the request before deciding whether its result is current.
+    /// Completion and mutations share one lock; no content escapes on refusal.
+    pub fn complete_draft(
+        &mut self,
+        completed: SessionDraftCompletion,
+    ) -> Result<DraftValue, SessionRefusal> {
+        if !self
+            .active_draft
+            .as_ref()
+            .is_some_and(|active| active.id == completed.id)
+        {
+            return Err(self.refuse_draft(DraftRefusal::SourceChanged));
+        }
+        self.active_draft = None;
+        self.append_audit(&completed.execution.egress_audit)?;
+        // Transport refusals still owe their audit even after withdrawal.
+        let draft = completed
+            .execution
+            .result
+            .map_err(|refusal| self.refuse_draft(refusal))?;
+        if completed.revision != self.draft_revision {
+            return Err(self.refuse_draft(DraftRefusal::SourceChanged));
+        }
+        if Instant::now() >= completed.expires_at {
+            return Err(self.refuse_draft(DraftRefusal::Expired));
+        }
+        self.append_audit(&draft.audit())?;
+        Ok(draft)
+    }
+
+    fn require_draft_slot(&mut self) -> Result<(), SessionRefusal> {
+        if let Some(active) = &self.active_draft {
+            if !active.finished.load(Ordering::Acquire) {
+                return Err(self.refuse_draft(DraftRefusal::Busy));
+            }
+            self.active_draft = None;
+        }
+        Ok(())
+    }
+
+    /// Before source writes (including failed writes), but after a valid
+    /// endpoint parse. Background foreground-duration events are not inputs
+    /// to the current profile/paste draft and do not use this revision.
+    fn invalidate_drafts(&mut self) -> bool {
+        let changed = self.draft.discard()
+            || self
+                .active_draft
+                .as_ref()
+                .is_some_and(|active| !active.finished.load(Ordering::Acquire));
+        self.draft_revision = Uuid::now_v7();
+        changed
     }
 
     /// Write down what a refused draft owes the chain, and hand it back.
@@ -883,7 +1049,7 @@ impl Session {
 
     /// The honest answer to a user who read the plan and said no.
     pub fn discard_draft(&mut self) -> bool {
-        self.draft.discard()
+        self.invalidate_drafts()
     }
 
     // ------------------------------------------------- WP08: the endpoint ---
@@ -933,7 +1099,7 @@ impl Session {
             })?;
         // After the parse, so an address that is not one leaves both the guard
         // and the confirmation screen exactly as they were.
-        self.draft.discard();
+        self.invalidate_drafts();
         self.config.llm_endpoint = self
             .policy
             .guard()
@@ -956,7 +1122,7 @@ impl Session {
     /// an approval can still be given for.
     pub fn clear_user_endpoint(&mut self) -> ConfigSnapshot {
         self.policy.clear_user_endpoint();
-        self.draft.discard();
+        self.invalidate_drafts();
         self.config.llm_endpoint = None;
         self.snapshot()
     }
@@ -1020,6 +1186,7 @@ impl Session {
         &mut self,
         text: &str,
     ) -> Result<ImportReceiptView, SessionRefusal> {
+        self.invalidate_drafts();
         import_commands::within_byte_budget(text).map_err(over_budget)?;
         let staged = import_commands::read_soul_import_v1(text)?;
         import_commands::within_staged_budget(&staged).map_err(over_budget)?;
@@ -1028,6 +1195,7 @@ impl Session {
 
     /// Seal a Telegram export into the store. AC-05.
     pub fn commit_telegram(&mut self, text: &str) -> Result<ImportReceiptView, SessionRefusal> {
+        self.invalidate_drafts();
         import_commands::within_byte_budget(text).map_err(over_budget)?;
         let staged = import_commands::read_telegram(&telegram_document(text)?)?;
         import_commands::within_staged_budget(&staged).map_err(over_budget)?;
@@ -1120,6 +1288,7 @@ impl Session {
         &mut self,
         answers: &[GivenAnswer],
     ) -> Result<IntakeReceipt, SessionRefusal> {
+        self.invalidate_drafts();
         if answers.iter().all(|answer| answer.given.trim().is_empty()) {
             return Err(SessionRefusal {
                 reason_code: ReasonCode::Routine.as_str().to_owned(),
@@ -1155,6 +1324,7 @@ impl Session {
         axis_id: &str,
         position: &str,
     ) -> Result<ProfileScreen, SessionRefusal> {
+        self.invalidate_drafts();
         let axis_id = profile_commands::axis_named(axis_id).ok_or_else(|| SessionRefusal {
             reason_code: ReasonCode::Routine.as_str().to_owned(),
             explanation: "这不是这一版档案里的那五条轴之一。".to_owned(),
@@ -1180,6 +1350,7 @@ impl Session {
         field: &str,
         option: &str,
     ) -> Result<ProfileScreen, SessionRefusal> {
+        self.invalidate_drafts();
         let setting =
             profile_commands::voice_setting_named(field, option).ok_or_else(|| SessionRefusal {
                 reason_code: ReasonCode::Routine.as_str().to_owned(),
@@ -1213,6 +1384,7 @@ impl Session {
 
     /// Write a memory the user typed.
     pub fn write_memory(&mut self, new: &NewMemory) -> Result<MemoryDetail, SessionRefusal> {
+        self.invalidate_drafts();
         let at = now_unix_seconds();
         let store = self.opened_store()?;
         let mut store = hold(&store);
@@ -1228,6 +1400,7 @@ impl Session {
         memory_id: &str,
         change: &MemoryChange,
     ) -> Result<MemoryDetail, SessionRefusal> {
+        self.invalidate_drafts();
         let memory_id = parse_id(memory_id, "记忆")?;
         let at = now_unix_seconds();
         let store = self.opened_store()?;
@@ -1282,6 +1455,7 @@ impl Session {
         &mut self,
         confirmation: &ForgetConfirmation,
     ) -> Result<ForgetReceiptView, SessionRefusal> {
+        self.invalidate_drafts();
         if !self.forget_was_previewed(confirmation) {
             return Err(self.refuse_forget());
         }
@@ -1885,5 +2059,51 @@ impl From<soul_store_api::types::StoreError> for SessionRefusal {
             reason_code: ReasonCode::Routine.as_str().to_owned(),
             explanation: error.to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod draft_worker_tests {
+    use super::*;
+    use soul_testkit::mock_llm::MockLlm;
+
+    #[test]
+    fn a_worker_panic_is_a_fixed_refusal_and_its_slot_is_reclaimed() {
+        let directory = tempfile::tempdir().unwrap();
+        let endpoint = MockLlm::start().unwrap();
+        let mut session = Session::open(directory.path());
+        session.set_user_endpoint(&endpoint.base_url()).unwrap();
+        let plan = session.prepare_draft("synthetic paste", None).unwrap();
+        let work = session.begin_draft(&plan.approval()).unwrap();
+        let completed = work.execute_with(|_| panic!("synthetic panic payload"));
+        let refusal = session.complete_draft(completed).unwrap_err();
+        assert!(!refusal.explanation.contains("synthetic panic payload"));
+        assert_eq!(refusal.reason_code, "ROUTINE");
+        let next = session.prepare_draft("synthetic next", None).unwrap();
+        session.generate_draft(&next.approval()).unwrap();
+        assert_eq!(endpoint.request_count(), 1);
+    }
+
+    #[test]
+    fn expiry_at_acceptance_accounts_for_http_without_creating_a_draft() {
+        let directory = tempfile::tempdir().unwrap();
+        let endpoint = MockLlm::start().unwrap();
+        let mut session = Session::open(directory.path());
+        session.set_user_endpoint(&endpoint.base_url()).unwrap();
+        let plan = session.prepare_draft("synthetic paste", None).unwrap();
+        let mut completed = session.begin_draft(&plan.approval()).unwrap().execute();
+        completed.expires_at = Instant::now();
+        let refusal = session.complete_draft(completed).unwrap_err();
+        assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+        let entries = session.audit().unwrap().entries;
+        assert_eq!(
+            entries
+                .iter()
+                .filter(|e| e.action == "egress.request")
+                .count(),
+            1
+        );
+        assert!(!entries.iter().any(|e| e.action == "draft.create"));
+        assert_eq!(endpoint.request_count(), 1);
     }
 }

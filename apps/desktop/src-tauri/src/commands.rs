@@ -1,9 +1,8 @@
 //! The IPC surface, and nothing else.
 //!
-//! Every function here is one line long by design: it takes what the WebView
-//! sent, hands it to `soulcore::commands`, and returns what came back. No
-//! decision is made in this file, so there is nothing in it for a test to
-//! catch — which is the point. The decisions have tests, in `soulcore`.
+//! Commands forward to `soulcore::commands`. Endpoint drafting additionally
+//! schedules its owned work on the blocking pool: the Session mutex protects
+//! preparation/acceptance, never the HTTP wait. Policy decisions stay in core.
 //!
 //! One thing this file does *not* do is open a database. WP07 leftover 8 says
 //! the process gets one `SqlCipherStore` handle to keep key material,
@@ -13,9 +12,11 @@
 //! borrows it through [`SessionState`]. `tests/one_store.rs` reads this file
 //! and `lib.rs` back to check that no second opening has appeared.
 
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
-use soulcore::commands::draft::{Approval, DraftValue, E1DraftPlan, PersonSummaryView};
+use soulcore::commands::draft::{
+    Approval, DraftRefusal, DraftValue, E1DraftPlan, PersonSummaryView,
+};
 use soulcore::commands::fileplan::PlanPreview;
 use soulcore::commands::graph::PeopleGraphView;
 use soulcore::commands::import::{ImportPreview, ImportReceiptView};
@@ -37,12 +38,12 @@ use tauri::State;
 /// data directory is depends on the machine and a test must be able to say
 /// "somewhere else". `lib.rs` builds the real one; `tests/ipc_roundtrip.rs`
 /// builds one in a scratch directory and gets the same commands.
-#[derive(Debug)]
-pub struct SessionState(Mutex<Session>);
+#[derive(Debug, Clone)]
+pub struct SessionState(Arc<Mutex<Session>>);
 
 impl SessionState {
     pub fn new(session: Session) -> SessionState {
-        SessionState(Mutex::new(session))
+        SessionState(Arc::new(Mutex::new(session)))
     }
 
     /// The session, with a poisoned lock recovered rather than propagated.
@@ -163,11 +164,21 @@ pub fn prepare_draft(
 /// Step two: the user read the counts on screen and approved this exact
 /// preparation. An approval that does not echo both halves sends nothing.
 #[tauri::command]
-pub fn generate_draft(
+pub async fn generate_draft(
     session: State<'_, SessionState>,
     approval: Approval,
 ) -> Result<DraftValue, SessionRefusal> {
-    session.held().generate_draft(&approval)
+    let session = session.inner().clone();
+    // The closure owns the Session handle and completes/audits even when the
+    // IPC future is dropped. Aborting an await must not abandon a live worker.
+    tauri::async_runtime::spawn_blocking(move || {
+        let work = session.held().begin_draft(&approval)?;
+        let completed = work.execute();
+        let result = session.held().complete_draft(completed);
+        result
+    })
+    .await
+    .map_err(|_| SessionRefusal::from(DraftRefusal::WorkerFailed))?
 }
 
 /// The user read the plan and said no.
@@ -444,3 +455,29 @@ pub const COMMAND_NAMES: &[&str] = &[
     "grant_collect_consent",
     "revoke_collect_consent",
 ];
+
+#[cfg(test)]
+mod shared_state_tests {
+    use super::*;
+
+    #[test]
+    fn worker_clone_uses_the_same_session_and_store() {
+        let directory =
+            std::env::temp_dir().join(format!("soul-state-clone-{}", std::process::id()));
+        let state = SessionState::new(Session::open(&directory));
+        let worker = state.clone();
+        assert!(Arc::ptr_eq(&state.0, &worker.0));
+        state
+            .held()
+            .set_user_endpoint("http://127.0.0.1:9")
+            .unwrap();
+        assert!(worker.held().snapshot().llm_endpoint_configured);
+        worker.held().clear_user_endpoint();
+        assert!(!state.held().snapshot().llm_endpoint_configured);
+        let first = state.held().store().expect("synthetic store opens");
+        let second = worker.held().store().expect("same store opens");
+        assert!(Arc::ptr_eq(&first, &second));
+        drop((first, second, worker, state));
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+}

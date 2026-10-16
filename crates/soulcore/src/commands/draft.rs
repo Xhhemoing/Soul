@@ -43,6 +43,7 @@
 //! did not. Nothing new is claimed on behalf of the summary itself.
 
 use serde::{Deserialize, Serialize};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use soul_draft::analysis::{self, PersonSummary, SummarySource};
@@ -68,7 +69,7 @@ use soul_store::SqlCipherStore;
 use soul_store_api::types::StoreResult;
 use soul_store_api::{BlobStore, GraphStore};
 
-use crate::commands::policy::{e1_plan, E1Refusal, PolicySession, TokenRefused};
+use crate::commands::policy::{e1_plan, E1Dispatch, E1Refusal, PolicySession, TokenRefused};
 
 pub use soul_draft::draft::{
     DraftSource, NeverSent, DEGRADED_NOTICE, ENDPOINT_NOTICE, NOT_SENT_NOTICE, TEMPLATE_NOTICE,
@@ -125,7 +126,8 @@ pub const E1_PLAN_ENDPOINT_HEAD: &str = "这一次会发到你在设置里填的
 
 /// And the second half: what the address being named actually buys.
 pub const E1_PLAN_ENDPOINT_TAIL: &str = "。这份准备只对这一个地址有效——\
-     中途在设置里换了地址或者清掉它，这份准备就作废，要重新准备一次给你看。";
+     中途在设置里换了地址或者清掉它，这份准备就作废，要重新准备一次给你看。\
+     从准备起两分钟内有效；资料变化或撤回后，旧回复也不会显示。";
 
 /// The same sentence for a session that has no address to name.
 ///
@@ -162,15 +164,14 @@ pub struct DraftSession {
 #[derive(Debug)]
 struct Pending {
     id: Uuid,
+    expires_at: Instant,
     request: DraftRequest,
     body: RedactedBody,
     facts: BodyFacts,
     plan_hash: PlanHash,
     /// The E1 origin this body was described against, if there was one.
     ///
-    /// Not in the plan hash, because the hash is taken over what
-    /// `PolicySession::e1_generate` rebuilds and that is the shape of the
-    /// request rather than its destination. It is held here instead, and
+    /// Also included in the plan hash by `e1_plan`. It is held here so
     /// [`DraftSession::generate`] compares it: an approval is an answer to a
     /// sentence that named an address, so it authorizes that address and no
     /// other. `None` is a preparation described while 设置 was empty, which
@@ -273,6 +274,8 @@ impl DraftSession {
         // sit around waiting for a token that was issued for another one.
         self.pending = Some(Pending {
             id,
+            expires_at: Instant::now()
+                + Duration::from_millis(soul_policy::hitl::DEFAULT_TOKEN_TTL_MS),
             request,
             body,
             facts,
@@ -329,6 +332,20 @@ impl DraftSession {
         approval: &Approval,
         now_ms: u64,
     ) -> Result<Drafted, DraftRefusal> {
+        let execution = self.dispatch(policy, approval, now_ms)?.execute();
+        let draft = execution.result?;
+        let mut audit = execution.egress_audit;
+        audit.extend(draft.audit());
+        Ok(Drafted { draft, audit })
+    }
+
+    /// Match and consume the held body, without waiting on the endpoint.
+    pub(crate) fn dispatch(
+        &mut self,
+        policy: &mut PolicySession,
+        approval: &Approval,
+        now_ms: u64,
+    ) -> Result<DraftWork, DraftRefusal> {
         let Some(held) = self.pending.as_ref() else {
             return Err(DraftRefusal::NothingPrepared);
         };
@@ -341,6 +358,10 @@ impl DraftSession {
                 current: held.plan_hash.as_str().to_owned(),
             }
             .into());
+        }
+        if Instant::now() >= held.expires_at {
+            self.pending = None;
+            return Err(DraftRefusal::Expired);
         }
 
         let described = held.origin.clone();
@@ -367,15 +388,59 @@ impl DraftSession {
                 now_ms,
             )
             .map_err(DraftRefusal::Token)?;
-        let outcome =
-            policy.e1_generate(self.drafter.model(), pending.body, token.token_id(), now_ms)?;
+        let dispatch = policy.prepare_e1_for(
+            E1Purpose::Draft,
+            self.drafter.model(),
+            pending.body,
+            token.token_id(),
+            now_ms,
+        )?;
+        Ok(DraftWork {
+            drafter: self.drafter.clone(),
+            request: pending.request,
+            facts: pending.facts,
+            expires_at: pending.expires_at,
+            dispatch,
+        })
+    }
+}
 
-        let draft = self
-            .drafter
-            .finish_reply(&pending.request, pending.facts, &outcome.body)?;
-        let mut audit = vec![outcome.audit()];
-        audit.extend(draft.audit());
-        Ok(Drafted { draft, audit })
+/// An immutable snapshot; it borrows neither Session, PolicySession nor store.
+pub(crate) struct DraftWork {
+    drafter: Drafter,
+    request: DraftRequest,
+    facts: BodyFacts,
+    pub(crate) expires_at: Instant,
+    dispatch: E1Dispatch,
+}
+
+pub(crate) struct DraftExecution {
+    pub(crate) result: Result<Draft, DraftRefusal>,
+    /// Kept even when parsing or later source validation rejects the reply.
+    pub(crate) egress_audit: Vec<AuditContent>,
+}
+
+impl DraftWork {
+    pub(crate) fn execute(self) -> DraftExecution {
+        if Instant::now() >= self.expires_at {
+            return DraftExecution {
+                egress_audit: Vec::new(),
+                result: Err(DraftRefusal::Expired),
+            };
+        }
+        match self.dispatch.execute() {
+            Ok(outcome) => DraftExecution {
+                egress_audit: vec![outcome.audit()],
+                result: self
+                    .drafter
+                    .finish_reply(&self.request, self.facts, &outcome.body)
+                    .map_err(Into::into),
+            },
+            Err(refusal) => DraftExecution {
+                egress_audit: Vec::new(),
+                result: Err(refusal.into()),
+            },
+        }
     }
 }
 
@@ -877,6 +942,14 @@ pub enum DraftRefusal {
     Token(TokenRefused),
     #[error("nothing has been prepared, so there is no request to approve")]
     NothingPrepared,
+    #[error("上一次起草仍在结束，请等它结束后重新准备；没有发送新的请求。")]
+    Busy,
+    #[error("资料或端点已变化，或这次准备已撤回；旧回复不再显示，请重新准备。")]
+    SourceChanged,
+    #[error("这份准备已超过两分钟，请重新准备并核对后再生成。")]
+    Expired,
+    #[error("起草任务没有正常结束，未返回草稿；请重新准备。")]
+    WorkerFailed,
     #[error("the approval names a request that is no longer the prepared one")]
     NotThePreparedRequest,
     #[error(
@@ -894,11 +967,13 @@ impl DraftRefusal {
             DraftRefusal::E1(refusal) => refusal.reason_code(),
             DraftRefusal::Token(refused) => refused.reason,
             DraftRefusal::Draft(error) => error.reason_code().unwrap_or(ReasonCode::Routine),
-            DraftRefusal::NothingPrepared | DraftRefusal::NotThePreparedRequest => {
-                ReasonCode::PlanHashMismatch
-            }
+            DraftRefusal::NothingPrepared
+            | DraftRefusal::NotThePreparedRequest
+            | DraftRefusal::SourceChanged
+            | DraftRefusal::Expired => ReasonCode::PlanHashMismatch,
             DraftRefusal::NotThePreparedEndpoint => ReasonCode::E1OriginMismatch,
             DraftRefusal::Profile(_) | DraftRefusal::Graph(_) => ReasonCode::Routine,
+            DraftRefusal::Busy | DraftRefusal::WorkerFailed => ReasonCode::Routine,
         }
     }
 
@@ -924,6 +999,10 @@ impl DraftRefusal {
             DraftRefusal::Hitl(_)
             | DraftRefusal::NothingPrepared
             | DraftRefusal::NotThePreparedRequest
+            | DraftRefusal::Busy
+            | DraftRefusal::SourceChanged
+            | DraftRefusal::Expired
+            | DraftRefusal::WorkerFailed
             | DraftRefusal::NotThePreparedEndpoint => Some(AuditContent::denied(
                 AuditAction::HitlDeny,
                 self.reason_code(),
@@ -955,5 +1034,52 @@ impl DraftRefusalView {
             reason_code: refusal.reason_code().as_str().to_owned(),
             explanation: refusal.to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod expiry_tests {
+    use super::*;
+
+    #[test]
+    fn an_expired_preparation_is_consumed_without_issuing_a_dispatch() {
+        let (mut draft, mut policy) = closed_session();
+        policy.set_user_endpoint("http://127.0.0.1:9").unwrap();
+        let plan = prepare_pasted(
+            &mut draft,
+            &mut policy,
+            ProfileBrief::neutral(),
+            "synthetic",
+            false,
+        )
+        .unwrap();
+        draft.pending.as_mut().unwrap().expires_at = Instant::now();
+        let refusal = draft
+            .dispatch(&mut policy, &plan.approval(), 0)
+            .err()
+            .unwrap();
+        assert!(matches!(refusal, DraftRefusal::Expired));
+        assert!(draft.pending.is_none());
+    }
+
+    #[test]
+    fn an_expired_issued_work_does_not_contact_the_endpoint() {
+        let endpoint = soul_testkit::mock_llm::MockLlm::start().unwrap();
+        let (mut draft, mut policy) = closed_session();
+        policy.set_user_endpoint(&endpoint.base_url()).unwrap();
+        let plan = prepare_pasted(
+            &mut draft,
+            &mut policy,
+            ProfileBrief::neutral(),
+            "synthetic",
+            false,
+        )
+        .unwrap();
+        let mut work = draft.dispatch(&mut policy, &plan.approval(), 0).unwrap();
+        work.expires_at = Instant::now();
+        let execution = work.execute();
+        assert!(matches!(execution.result, Err(DraftRefusal::Expired)));
+        assert!(execution.egress_audit.is_empty());
+        assert_eq!(endpoint.request_count(), 0);
     }
 }

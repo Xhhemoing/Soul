@@ -663,6 +663,71 @@ export const COMMANDS = {
   revokeCollectConsent: "revoke_collect_consent",
 } as const;
 
+/**
+ * Display ownership within this WebView, not an authorization token. The core
+ * independently validates its own source revision and one-use approval.
+ * A fresh identity also distinguishes setting the same endpoint again and A/B/A.
+ */
+export type DraftSourceRevision = symbol;
+let draftSourceRevision: DraftSourceRevision = Symbol("draft source");
+let pendingDraftSourceMutations = 0;
+const draftSourceListeners = new Set<(revision: DraftSourceRevision) => void>();
+
+export function getDraftSourceRevision(): DraftSourceRevision {
+  return draftSourceRevision;
+}
+
+/** Subscribe synchronously, including the current value so mounting has no gap. */
+export function subscribeDraftSource(
+  listener: (revision: DraftSourceRevision) => void,
+): () => void {
+  draftSourceListeners.add(listener);
+  listener(draftSourceRevision);
+  return () => { draftSourceListeners.delete(listener); };
+}
+
+/** A local delivery refusal; deliberately not a backend `Refusal` or rollback. */
+export class DraftSourceChangedError extends Error {
+  constructor() {
+    super("起草依据或授权正在变更或已变更，请重新准备。这次旧结果不再展示。");
+    this.name = "DraftSourceChangedError";
+  }
+}
+
+function invalidateDraftSource(): void {
+  draftSourceRevision = Symbol("draft source");
+  for (const listener of [...draftSourceListeners]) listener(draftSourceRevision);
+}
+
+/**
+ * Invalidate before IPC, even when the request fails or its outcome is unknown.
+ * Pending mutations block draft admission and delivery. Settle invalidates
+ * again before making the latest source available to a new request.
+ * This covers calls through this module in one WebView, not other windows or
+ * direct native callers. It does not cancel a request or retract sent bytes.
+ */
+async function mutateDraftSource<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  pendingDraftSourceMutations += 1;
+  try {
+    invalidateDraftSource();
+    return await invoke<T>(command, args);
+  } finally {
+    pendingDraftSourceMutations -= 1;
+    invalidateDraftSource();
+  }
+}
+
+function currentDraftResult<T>(command: string, args: Record<string, unknown>): Promise<T> {
+  if (pendingDraftSourceMutations !== 0) return Promise.reject(new DraftSourceChangedError());
+  const source = draftSourceRevision;
+  return invoke<T>(command, args).then((value) => {
+    if (pendingDraftSourceMutations !== 0 || source !== draftSourceRevision) {
+      throw new DraftSourceChangedError();
+    }
+    return value;
+  });
+}
+
 export function configSnapshot(): Promise<ConfigSnapshot> {
   return invoke<ConfigSnapshot>(COMMANDS.configSnapshot);
 }
@@ -674,7 +739,7 @@ export function sessionStatus(): Promise<SessionStatus> {
 
 /** Finish the first-run wizard. The core refuses to return an open config. */
 export function completeWizard(answers: WizardAnswers): Promise<ConfigSnapshot> {
-  return invoke<ConfigSnapshot>(COMMANDS.completeWizard, { answers });
+  return mutateDraftSource<ConfigSnapshot>(COMMANDS.completeWizard, { answers });
 }
 
 /**
@@ -718,11 +783,11 @@ export function personSummary(contactId: string): Promise<PersonSummary> {
 }
 
 export function correctTie(relationshipId: string, band: string): Promise<PeopleGraph> {
-  return invoke<PeopleGraph>(COMMANDS.correctTie, { relationshipId, band });
+  return mutateDraftSource<PeopleGraph>(COMMANDS.correctTie, { relationshipId, band });
 }
 
 export function releaseTie(relationshipId: string): Promise<PeopleGraph> {
-  return invoke<PeopleGraph>(COMMANDS.releaseTie, { relationshipId });
+  return mutateDraftSource<PeopleGraph>(COMMANDS.releaseTie, { relationshipId });
 }
 
 /**
@@ -734,7 +799,7 @@ export function releaseTie(relationshipId: string): Promise<PeopleGraph> {
  * takes one.
  */
 export function draftReply(pasted: string): Promise<Draft> {
-  return invoke<Draft>(COMMANDS.draftReply, { pasted });
+  return currentDraftResult<Draft>(COMMANDS.draftReply, { pasted });
 }
 
 export function draftNotices(): Promise<DraftNotices> {
@@ -757,7 +822,7 @@ export function prepareDraft(
   pasted: string,
   includeOriginal = false,
 ): Promise<E1DraftPlan> {
-  return invoke<E1DraftPlan>(COMMANDS.prepareDraft, { pasted, includeOriginal });
+  return currentDraftResult<E1DraftPlan>(COMMANDS.prepareDraft, { pasted, includeOriginal });
 }
 
 /**
@@ -768,12 +833,12 @@ export function prepareDraft(
  * and `soulcore` refuses an approval whose two halves do not match.
  */
 export function generateDraft(approval: Approval): Promise<Draft> {
-  return invoke<Draft>(COMMANDS.generateDraft, { approval });
+  return currentDraftResult<Draft>(COMMANDS.generateDraft, { approval });
 }
 
 /** The user read the plan and said no. Returns whether there was one. */
 export function discardDraft(): Promise<boolean> {
-  return invoke<boolean>(COMMANDS.discardDraft);
+  return mutateDraftSource<boolean>(COMMANDS.discardDraft);
 }
 
 /**
@@ -787,12 +852,12 @@ export function discardDraft(): Promise<boolean> {
  * one — the approval on the drafting page, or 看这个人的摘要 on the graph.
  */
 export function setUserEndpoint(url: string): Promise<ConfigSnapshot> {
-  return invoke<ConfigSnapshot>(COMMANDS.setUserEndpoint, { url });
+  return mutateDraftSource<ConfigSnapshot>(COMMANDS.setUserEndpoint, { url });
 }
 
 /** The user took the address away. The core goes back to reaching nothing. */
 export function clearUserEndpoint(): Promise<ConfigSnapshot> {
-  return invoke<ConfigSnapshot>(COMMANDS.clearUserEndpoint);
+  return mutateDraftSource<ConfigSnapshot>(COMMANDS.clearUserEndpoint);
 }
 
 /**
@@ -819,11 +884,11 @@ export function previewTelegram(text: string): Promise<ImportPreview> {
  * produce the same counts.
  */
 export function commitSoulImportV1(text: string): Promise<ImportReceipt> {
-  return invoke<ImportReceipt>(COMMANDS.commitSoulImportV1, { text });
+  return mutateDraftSource<ImportReceipt>(COMMANDS.commitSoulImportV1, { text });
 }
 
 export function commitTelegram(text: string): Promise<ImportReceipt> {
-  return invoke<ImportReceipt>(COMMANDS.commitTelegram, { text });
+  return mutateDraftSource<ImportReceipt>(COMMANDS.commitTelegram, { text });
 }
 
 /** The eleven questions the wizard draws. Answerable with the store shut. */
@@ -840,7 +905,7 @@ export function questionnaire(): Promise<readonly Question[]> {
 export function answerQuestionnaire(
   answers: readonly GivenAnswer[],
 ): Promise<IntakeReceipt> {
-  return invoke<IntakeReceipt>(COMMANDS.answerQuestionnaire, { answers });
+  return mutateDraftSource<IntakeReceipt>(COMMANDS.answerQuestionnaire, { answers });
 }
 
 /** The profile: axes, voice, and the pointers to what the user stated. */
@@ -850,12 +915,12 @@ export function profileScreen(): Promise<ProfileScreen> {
 
 /** The user read an axis and said it is wrong. The core pins it. */
 export function correctAxis(axisId: string, position: string): Promise<ProfileScreen> {
-  return invoke<ProfileScreen>(COMMANDS.correctAxis, { axisId, position });
+  return mutateDraftSource<ProfileScreen>(COMMANDS.correctAxis, { axisId, position });
 }
 
 /** The user set one voice field by hand. Inference stops touching it. */
 export function setVoice(field: string, option: string): Promise<ProfileScreen> {
-  return invoke<ProfileScreen>(COMMANDS.setVoice, { field, option });
+  return mutateDraftSource<ProfileScreen>(COMMANDS.setVoice, { field, option });
 }
 
 /** Every memory, with the prose still sealed. */
@@ -869,11 +934,11 @@ export function memoryDetail(memoryId: string): Promise<MemoryDetail> {
 }
 
 export function createMemory(memory: NewMemory): Promise<MemoryDetail> {
-  return invoke<MemoryDetail>(COMMANDS.createMemory, { memory });
+  return mutateDraftSource<MemoryDetail>(COMMANDS.createMemory, { memory });
 }
 
 export function updateMemory(memoryId: string, change: MemoryChange): Promise<MemoryDetail> {
-  return invoke<MemoryDetail>(COMMANDS.updateMemory, { memoryId, change });
+  return mutateDraftSource<MemoryDetail>(COMMANDS.updateMemory, { memoryId, change });
 }
 
 /**
@@ -895,7 +960,7 @@ export function previewForget(memoryId: string): Promise<ForgetPreview> {
  * it does not execute the file plans that belong to AC-27.
  */
 export function forgetMemory(confirmation: ForgetConfirmation): Promise<ForgetReceipt> {
-  return invoke<ForgetReceipt>(COMMANDS.forgetMemory, { confirmation });
+  return mutateDraftSource<ForgetReceipt>(COMMANDS.forgetMemory, { confirmation });
 }
 
 /** Only the WAL cleanup. Never reuses a destructive confirmation or writes audit. */
@@ -934,10 +999,10 @@ export function collectStatus(): Promise<CollectStatus> {
  * recorded and nothing is watched, and the notice says so.
  */
 export function grantCollectConsent(): Promise<CollectStatus> {
-  return invoke<CollectStatus>(COMMANDS.grantCollectConsent);
+  return mutateDraftSource<CollectStatus>(COMMANDS.grantCollectConsent);
 }
 
 /** The user took it back. Nothing further is written within a second. */
 export function revokeCollectConsent(): Promise<CollectStatus> {
-  return invoke<CollectStatus>(COMMANDS.revokeCollectConsent);
+  return mutateDraftSource<CollectStatus>(COMMANDS.revokeCollectConsent);
 }

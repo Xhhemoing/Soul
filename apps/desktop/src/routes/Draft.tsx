@@ -23,25 +23,34 @@
  * this file. What is decided here is layout.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import {
   discardDraft,
   draftNotices,
   draftReply,
+  DraftSourceChangedError,
   generateDraft,
+  getDraftSourceRevision,
   prepareDraft,
+  subscribeDraftSource,
   type Draft as DraftValue,
   type DraftNotices,
   type E1DraftPlan,
   type Refusal,
 } from "../core";
 import { asRefusal, Refused } from "../refusal";
+import {
+  draftLane, DraftRequests, isDraftRefusal,
+  type DraftQuote, type DraftRequestKind, type DraftTicket,
+} from "./draftRequests";
 
 /** What the core said, in the shape the screen renders it. */
 type Outcome =
   | { readonly kind: "none" }
   | { readonly kind: "working" }
+  | { readonly kind: "unknown" }
+  | { readonly kind: "source_changed" }
   | { readonly kind: "draft"; readonly draft: DraftValue }
   | { readonly kind: "refused"; readonly refusal: Refusal };
 
@@ -52,16 +61,28 @@ const DEGRADED: Record<string, string> = {
 };
 
 export function Draft(): React.JSX.Element {
-  const [pasted, setPasted] = useState("");
+  const [input, setInput] = useState({ text: "", revision: 0 });
+  const [requests] = useState(() => new DraftRequests());
+  const lane = useSyncExternalStore(draftLane.subscribe, draftLane.snapshot);
   const [outcome, setOutcome] = useState<Outcome>({ kind: "none" });
   const [notices, setNotices] = useState<DraftNotices | null>(null);
   /** The request the user is being asked about, if there is one. */
-  const [plan, setPlan] = useState<E1DraftPlan | null>(null);
+  const [quote, setQuote] = useState<DraftQuote | null>(null);
   /** Keys [`Result`], so a second draft arrives in a box that was reset. */
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let live = true;
+    requests.activate();
+    let source = getDraftSourceRevision();
+    const unsubscribe = subscribeDraftSource((next) => {
+      if (next === source) return;
+      source = next;
+      const revision = requests.invalidate();
+      setInput((previous) => ({ ...previous, revision }));
+      setQuote(null);
+      setOutcome({ kind: "none" });
+    });
     draftNotices().then(
       (value) => {
         if (live) setNotices(value);
@@ -74,17 +95,53 @@ export function Draft(): React.JSX.Element {
     );
     return () => {
       live = false;
+      unsubscribe();
+      requests.dispose();
     };
-  }, []);
+  }, [requests]);
+
+  const start = (kind: DraftRequestKind, expected?: DraftQuote): DraftTicket | null => {
+    const ticket = requests.begin(kind, input.revision, expected);
+    if (ticket === null) return null;
+    setOutcome({ kind: "working" });
+    setQuote(null);
+    setAttempt((previous) => previous + 1);
+    return ticket;
+  };
+
+  const failed = (ticket: DraftTicket, error: unknown): void => {
+    const known = isDraftRefusal(error);
+    const changed = error instanceof DraftSourceChangedError;
+    if (requests.finish(ticket, !known && !changed)) {
+      setOutcome(changed ? { kind: "source_changed" }
+        : known ? { kind: "refused", refusal: asRefusal(error) } : { kind: "unknown" });
+    }
+  };
+
+  // Admission happens before React renders disabled buttons. Ownership is
+  // checked again at the microtask that actually starts IPC, so a synchronous
+  // edit/unmount cannot accidentally start a stale approval or exemption.
+  const run = (ticket: DraftTicket, work: () => Promise<void>): void => {
+    void Promise.resolve().then(async () => {
+      if (!requests.owns(ticket)) {
+        requests.finish(ticket);
+        return;
+      }
+      try {
+        await work();
+      } catch (error: unknown) {
+        failed(ticket, error);
+      }
+    });
+  };
 
   const write = (): void => {
-    setOutcome({ kind: "working" });
-    setPlan(null);
-    setAttempt((previous) => previous + 1);
-    draftReply(pasted).then(
-      (draft) => setOutcome({ kind: "draft", draft }),
-      (error: unknown) => setOutcome({ kind: "refused", refusal: asRefusal(error) }),
-    );
+    const ticket = start("local");
+    if (ticket === null) return;
+    run(ticket, async () => {
+      const draft = await draftReply(ticket.text);
+      if (requests.finish(ticket)) setOutcome({ kind: "draft", draft });
+    });
   };
 
   /**
@@ -95,36 +152,45 @@ export function Draft(): React.JSX.Element {
    * same paste with it set, and every later preparation starts from false
    * again because there is no variable here that survives one.
    */
-  const describe = (includeOriginal = false): void => {
-    setOutcome({ kind: "working" });
-    setPlan(null);
-    prepareDraft(pasted, includeOriginal).then(
-      (prepared) => {
-        setPlan(prepared);
+  const describe = (expected?: DraftQuote): void => {
+    const ticket = start(expected === undefined ? "prepare" : "original", expected);
+    if (ticket === null) return;
+    run(ticket, async () => {
+      const prepared = await prepareDraft(ticket.text, expected !== undefined);
+      const next = requests.remember(ticket, prepared);
+      if (requests.finish(ticket) && next !== null) {
+        setQuote(next);
         setOutcome({ kind: "none" });
-      },
-      (error: unknown) => setOutcome({ kind: "refused", refusal: asRefusal(error) }),
-    );
+      }
+    });
   };
 
   /** Step two: hand back the value that was on screen, unchanged. */
-  const approve = (approved: E1DraftPlan): void => {
-    setOutcome({ kind: "working" });
-    setPlan(null);
-    setAttempt((previous) => previous + 1);
-    generateDraft({
-      preparation_id: approved.preparation_id,
-      plan_hash: approved.plan_hash,
-    }).then(
-      (draft) => setOutcome({ kind: "draft", draft }),
-      (error: unknown) => setOutcome({ kind: "refused", refusal: asRefusal(error) }),
-    );
+  const approve = (approved: DraftQuote): void => {
+    const ticket = start("generate", approved);
+    if (ticket === null) return;
+    run(ticket, async () => {
+      const draft = await generateDraft({
+        preparation_id: approved.plan.preparation_id,
+        plan_hash: approved.plan.plan_hash,
+      });
+      if (requests.finish(ticket)) setOutcome({ kind: "draft", draft });
+    });
   };
 
-  const abandon = (): void => {
-    setPlan(null);
+  const abandon = (abandoned: DraftQuote): void => {
+    const ticket = start("discard", abandoned);
+    if (ticket === null) return;
+    run(ticket, async () => {
+      await discardDraft();
+      if (requests.finish(ticket)) setOutcome({ kind: "none" });
+    });
+  };
+
+  const edit = (text: string): void => {
+    setInput({ text, revision: requests.edit(text) });
+    setQuote(null);
     setOutcome({ kind: "none" });
-    void discardDraft();
   };
 
   return (
@@ -143,8 +209,8 @@ export function Draft(): React.JSX.Element {
           id="pasted"
           className="paste-box"
           rows={6}
-          value={pasted}
-          onChange={(event) => setPasted(event.target.value)}
+          value={input.text}
+          onChange={(event) => edit(event.target.value)}
           placeholder="把对方发给你的消息贴在这里"
         />
         <div className="switch-row">
@@ -152,14 +218,14 @@ export function Draft(): React.JSX.Element {
             type="button"
             className="primary"
             onClick={write}
-            disabled={pasted.trim() === "" || outcome.kind === "working"}
+            disabled={input.text.trim() === "" || lane.busy}
           >
             写一版草稿
           </button>
           <button
             type="button"
             onClick={() => describe()}
-            disabled={pasted.trim() === "" || outcome.kind === "working"}
+            disabled={input.text.trim() === "" || lane.busy || lane.uncertain}
           >
             用你自己的模型端点写
           </button>
@@ -169,19 +235,38 @@ export function Draft(): React.JSX.Element {
             </span>
           )}
         </div>
+        {lane.busy ? (
+          <p role="status">正在等待本次操作结束。修改原文会使旧结果失效，不会取消已经开始的操作。</p>
+        ) : null}
+        {lane.uncertain ? (
+          <p role="alert" data-testid="draft-recovery">
+            上一次端点操作的结果未能确认。为避免旧操作影响新的准备，端点起草已暂停，
+            不会自动重试。请保留原文，完全退出并重新打开应用后再准备；本机模板仍可使用。
+          </p>
+        ) : null}
       </section>
 
-      {plan === null ? null : (
+      {quote === null ? null : (
         <Confirm
-          plan={plan}
-          onApprove={approve}
-          onCarryOriginal={() => describe(true)}
-          onAbandon={abandon}
+          plan={quote.plan}
+          onApprove={() => approve(quote)}
+          onCarryOriginal={() => describe(quote)}
+          onAbandon={() => abandon(quote)}
         />
       )}
 
       {outcome.kind === "refused" ? (
-        <Refused title="这一次没有写成" refusal={outcome.refusal} testId="refusal-code" />
+        <Refused title="这一次未得到可用草稿" refusal={outcome.refusal} testId="refusal-code" />
+      ) : null}
+
+      {outcome.kind === "unknown" && !lane.uncertain ? (
+        <p role="alert">未能确认这次操作的结果。原文仍然保留，请核对后再决定下一步。</p>
+      ) : null}
+
+      {outcome.kind === "source_changed" ? (
+        <p role="status" data-testid="draft-source-changed">
+          资料或端点正在更新，或已经发生变化。请等相关操作完成后重新准备；原文仍然保留。
+        </p>
       ) : null}
 
       {outcome.kind === "draft" ? <Result key={attempt} draft={outcome.draft} /> : null}

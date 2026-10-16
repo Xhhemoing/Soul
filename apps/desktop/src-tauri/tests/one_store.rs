@@ -73,7 +73,7 @@ fn the_shell_opens_a_session_once_and_a_database_never() {
 #[test]
 fn every_command_borrows_the_one_session() {
     assert!(
-        COMMANDS_RS.contains("pub struct SessionState(Mutex<Session>)"),
+        COMMANDS_RS.contains("pub struct SessionState(Arc<Mutex<Session>>)"),
         "the shared state is no longer a single session",
     );
     assert!(
@@ -88,6 +88,7 @@ fn every_command_borrows_the_one_session() {
         }
         let position = COMMANDS_RS
             .find(&format!("pub fn {name}("))
+            .or_else(|| COMMANDS_RS.find(&format!("pub async fn {name}(")))
             .expect("the command is defined");
         let signature_end = COMMANDS_RS[position..]
             .find('{')

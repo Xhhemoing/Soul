@@ -51,6 +51,7 @@ fn every_named_command_is_actually_a_command() {
         let declaration = format!("pub fn {name}(");
         let position = COMMANDS_RS
             .find(&declaration)
+            .or_else(|| COMMANDS_RS.find(&format!("pub async fn {name}(")))
             .unwrap_or_else(|| panic!("{name} is listed but not defined"));
         let before = &COMMANDS_RS[..position];
         assert!(
@@ -72,7 +73,13 @@ fn no_command_exists_outside_the_list() {
         .match_indices("#[tauri::command]")
         .filter_map(|(at, _)| {
             let rest = &COMMANDS_RS[at..];
-            let start = rest.find("pub fn ")? + "pub fn ".len();
+            let declaration = rest.lines().find(|line| line.starts_with("pub "))?;
+            let prefix = if declaration.starts_with("pub async fn ") {
+                "pub async fn "
+            } else {
+                "pub fn "
+            };
+            let start = rest.find(prefix)? + prefix.len();
             let end = rest[start..].find('(')? + start;
             Some(rest[start..end].trim())
         })
@@ -133,6 +140,32 @@ fn the_shell_never_reads_an_endpoint_address_itself() {
 #[test]
 fn the_command_layer_stays_thin() {
     for name in COMMAND_NAMES {
+        if *name == "generate_draft" {
+            // Scheduling is the single exception. Policy/body construction
+            // must still be in core, and no Session guard may cross execute.
+            let start = COMMANDS_RS.find("pub async fn generate_draft(").unwrap();
+            let body = COMMANDS_RS[start..]
+                .split("#[tauri::command]")
+                .next()
+                .unwrap();
+            assert!(body.contains("tauri::async_runtime::spawn_blocking(move ||"));
+            assert!(body.contains("let work = session.held().begin_draft(&approval)?;"));
+            assert!(body.contains("let completed = work.execute();"));
+            assert!(body.contains("session.held().complete_draft(completed)"));
+            for forbidden in [
+                "issue_token",
+                "authorize_e1",
+                "RedactedBody",
+                "let mut guard",
+                "let guard",
+            ] {
+                assert!(
+                    !body.contains(forbidden),
+                    "draft scheduling grew policy or a held guard"
+                );
+            }
+            continue;
+        }
         let position = COMMANDS_RS
             .find(&format!("pub fn {name}("))
             .expect("the command is defined");
