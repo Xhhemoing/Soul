@@ -140,7 +140,14 @@ fn the_shell_never_reads_an_endpoint_address_itself() {
 #[test]
 fn the_command_layer_stays_thin() {
     for name in COMMAND_NAMES {
-        if matches!(*name, "generate_draft" | "person_summary" | "preview_plan") {
+        if matches!(
+            *name,
+            "generate_draft"
+                | "person_summary"
+                | "preview_plan"
+                | "prepare_import"
+                | "confirm_import"
+        ) {
             // Scheduling is the exception. Policy/body construction
             // must still be in core, and no Session guard may cross execute.
             let start = COMMANDS_RS.find(&format!("pub async fn {name}(")).unwrap();
@@ -156,8 +163,18 @@ fn the_command_layer_stays_thin() {
                     "begin_person_summary(&contact_id)",
                     "complete_person_summary(completed)",
                 )
-            } else {
+            } else if *name == "preview_plan" {
                 ("begin_file_plan(&path)", "complete_file_plan(completed)")
+            } else if *name == "prepare_import" {
+                (
+                    "begin_import_prepare_request(request)",
+                    "complete_import_prepare(completed)",
+                )
+            } else {
+                (
+                    "begin_import(&operation_id, &preview_id)",
+                    "complete_import(completed)",
+                )
             };
             assert!(body.contains(&format!("let work = session.held().{begin}?;")));
             assert!(body.contains("let completed = work.execute();"));
@@ -182,15 +199,26 @@ fn the_command_layer_stays_thin() {
         let body = &COMMANDS_RS[position..];
         let open = body.find('{').expect("a body");
         let close = body[open..].find('}').expect("the body ends") + open;
-        let statements = body[open + 1..close]
+        let expression = body[open + 1..close]
             .lines()
             .map(str::trim)
             .filter(|line| !line.is_empty() && !line.starts_with("//"))
-            .count();
+            .collect::<String>()
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect::<String>();
+        let forwarded = if *name == "draft_notices" {
+            expression == "DraftNotices::of_this_build()"
+        } else if *name == "retry_forget_cleanup" {
+            expression == "soulcore::commands::memory::retry_cleanup_for_session(&session.held())"
+        } else {
+            expression.starts_with("session.held().")
+                && expression.ends_with(')')
+                && expression.matches("session.held()").count() == 1
+        };
         assert!(
-            statements <= 1,
-            "{name} has {statements} statements; a command that does more than forward \
-             is business logic in the shell",
+            forwarded && !expression.contains([';', '{', '}']),
+            "{name} must be one forwarding expression, regardless of rustfmt line breaks",
         );
     }
 }

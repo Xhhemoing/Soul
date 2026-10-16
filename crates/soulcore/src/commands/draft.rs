@@ -50,6 +50,7 @@ use soul_draft::analysis::{self, PersonSummary, SummarySource};
 use soul_draft::brief::ProfileBrief;
 use soul_draft::draft::{BodyFacts, Draft, DraftRequest, Drafter, ReplyGenerator};
 use soul_draft::error::{DraftError, GenerationRefused};
+use soul_draft::memory_context::{MemoryContext, MemoryContextError};
 use soul_graph::GraphError;
 use soul_policy::audit::AuditContent;
 use soul_policy::e1::E1Purpose;
@@ -144,6 +145,12 @@ pub const E1_PLAN_NO_ENDPOINT_NOTICE: &str = "设置里现在没有填模型端�
 /// nobody to send a model name to. Naming it plainly beats an empty string
 /// that would look like a bug in a request log.
 pub const UNNAMED_MODEL: &str = "unnamed-model";
+
+/// A byte ceiling on the real serialized generation request, not an
+/// estimated tokenizer budget and not an algorithm-family constant.
+pub const MAX_MEMORY_REQUEST_BYTES: usize = 64 * 1024;
+
+pub const MEMORY_PLAN_NOTICE: &str = "本次记忆参考独立于档案；保存的记录未经事实、当前性或语义冲突核验。只有你另行勾选的本人记忆原文会作为素材提供给端点，其余记忆正文占位；粘贴消息的原文豁免不覆盖记忆。下方请求材料预览与保留引用来自最终实际请求，超出字节预算的整条材料已移除。";
 
 /// The drafting state one Soul session carries.
 ///
@@ -260,6 +267,59 @@ impl DraftSession {
         allow(policy, ActionKind::GenerateWithUserEndpoint, origin, now_ms)?;
 
         let body = self.drafter.redact(&request, exemption)?;
+        Ok(self.hold_prepared(policy, request, body))
+    }
+
+    /// Build once, then remove complete memory suffix entries until the
+    /// actual transport serializer fits. The base original-turn exemption
+    /// is consumed exactly once; memory redaction never receives it.
+    pub fn prepare_with_memory(
+        &mut self,
+        policy: &mut PolicySession,
+        request: DraftRequest,
+        memory: &MemoryContext,
+        exemption: Option<OneShotExemption>,
+        origin: RequestOrigin,
+        now_ms: u64,
+    ) -> Result<MemoryPrepared, DraftRefusal> {
+        allow(policy, ActionKind::GenerateWithUserEndpoint, origin, now_ms)?;
+        // An unsuccessful replacement must not leave an older preparation
+        // available for an approval that the new screen no longer describes.
+        self.pending = None;
+        let mut material = self
+            .drafter
+            .redact_memory_context(&request, memory, exemption)?;
+        loop {
+            let body = material.body()?;
+            let encoded_bytes =
+                soul_policy::e1::encoded_chat_body(E1Purpose::Draft, self.drafter.model(), &body)
+                    .len();
+            if encoded_bytes <= MAX_MEMORY_REQUEST_BYTES {
+                let body_preview = body.as_str().to_owned();
+                let retained_memory_ids = material.retained_memory_ids();
+                let endpoint_owner_ids = material.endpoint_owner_ids();
+                let mut plan = self.hold_prepared(policy, request, body);
+                plan.notice.push_str(MEMORY_PLAN_NOTICE);
+                return Ok(MemoryPrepared {
+                    plan,
+                    retained_memory_ids,
+                    endpoint_owner_ids,
+                    encoded_bytes,
+                    body_preview,
+                });
+            }
+            if !material.trim_last() {
+                return Err(DraftRefusal::RequestTooLarge);
+            }
+        }
+    }
+
+    fn hold_prepared(
+        &mut self,
+        policy: &PolicySession,
+        request: DraftRequest,
+        body: RedactedBody,
+    ) -> E1DraftPlan {
         let facts = BodyFacts::of(&body);
         let plan_hash = PlanHash::of(&e1_plan(
             self.drafter.model(),
@@ -283,7 +343,7 @@ impl DraftSession {
             origin: endpoint,
         });
 
-        Ok(E1DraftPlan {
+        E1DraftPlan {
             preparation_id: id.to_string(),
             plan_hash: plan_hash.as_str().to_owned(),
             model: self.drafter.model().to_owned(),
@@ -292,7 +352,7 @@ impl DraftSession {
             carries_exempted_original: facts.carries_exempted_original,
             notice,
             not_sent_notice: NOT_SENT_NOTICE.to_owned(),
-        })
+        }
     }
 
     /// Step two: the user approved this exact preparation, so run it.
@@ -473,6 +533,29 @@ pub struct Drafted {
     pub audit: Vec<AuditContent>,
 }
 
+/// The helper's local preview is separate from the ordinary draft schema.
+/// Debug deliberately carries no request material.
+#[derive(Clone, PartialEq, Eq, Serialize)]
+pub struct MemoryPrepared {
+    pub plan: E1DraftPlan,
+    pub retained_memory_ids: Vec<Uuid>,
+    pub endpoint_owner_ids: Vec<Uuid>,
+    pub encoded_bytes: usize,
+    pub body_preview: String,
+}
+
+impl std::fmt::Debug for MemoryPrepared {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("MemoryPrepared")
+            .field("plan", &self.plan)
+            .field("retained_memory_ids", &self.retained_memory_ids)
+            .field("endpoint_owner_ids", &self.endpoint_owner_ids)
+            .field("encoded_bytes", &self.encoded_bytes)
+            .finish_non_exhaustive()
+    }
+}
+
 /// What the user reads before deciding whether anything may leave.
 ///
 /// Counts, a model name and two sentences. There is no field here that could
@@ -631,6 +714,35 @@ pub fn draft_pasted(
     )
 }
 
+/// The template remains a template. Selected prose and citations are
+/// returned separately by the Session adapter, never pasted into its text.
+pub fn draft_pasted_with_memory(
+    drafting: &DraftSession,
+    policy: &mut PolicySession,
+    brief: ProfileBrief,
+    pasted: &str,
+    memory: &MemoryContext,
+) -> Result<Drafted, DraftRefusal> {
+    let request = DraftRequest::from_paste(brief, pasted);
+    memory.validate_for(&request)?;
+    let mut result = drafting.draft_offline(
+        policy,
+        &request,
+        RequestOrigin::User,
+        soul_policy::clock::now_unix_millis(),
+    )?;
+    result.draft.injection_signals.extend(
+        memory
+            .injection_signals()
+            .into_iter()
+            .map(|signal| signal.as_str().to_owned()),
+    );
+    result.draft.injection_signals.sort();
+    result.draft.injection_signals.dedup();
+    result.audit = result.draft.audit();
+    Ok(result)
+}
+
 /// Step one of the endpoint path, for something a person pasted.
 ///
 /// The sibling of [`draft_pasted`], and the two make the same two decisions:
@@ -676,6 +788,33 @@ pub fn prepare_pasted(
     drafting.prepare(
         policy,
         request,
+        exemption,
+        RequestOrigin::User,
+        soul_policy::clock::now_unix_millis(),
+    )
+}
+
+pub fn prepare_pasted_with_memory(
+    drafting: &mut DraftSession,
+    policy: &mut PolicySession,
+    brief: ProfileBrief,
+    pasted: &str,
+    include_original: bool,
+    memory: &MemoryContext,
+) -> Result<MemoryPrepared, DraftRefusal> {
+    let request = DraftRequest::from_paste(brief, pasted);
+    let exemption = if include_original {
+        request
+            .third_party_turn_ids()
+            .first()
+            .and_then(|turn_id| ExemptionRequest::for_turn(*turn_id).confirm(true))
+    } else {
+        None
+    };
+    drafting.prepare_with_memory(
+        policy,
+        request,
+        memory,
         exemption,
         RequestOrigin::User,
         soul_policy::clock::now_unix_millis(),
@@ -996,6 +1135,10 @@ fn allow(
 #[derive(Debug, thiserror::Error)]
 pub enum DraftRefusal {
     #[error(transparent)]
+    MemoryContext(#[from] MemoryContextError),
+    #[error("请求材料超过本次起草的字节预算，请缩短粘贴内容后重新准备；没有发送请求。")]
+    RequestTooLarge,
+    #[error(transparent)]
     Hitl(#[from] HitlDenial),
     #[error(transparent)]
     Draft(#[from] DraftError),
@@ -1041,6 +1184,7 @@ impl DraftRefusal {
             DraftRefusal::NotThePreparedEndpoint => ReasonCode::E1OriginMismatch,
             DraftRefusal::Profile(_) | DraftRefusal::Graph(_) => ReasonCode::Routine,
             DraftRefusal::Busy | DraftRefusal::WorkerFailed => ReasonCode::Routine,
+            DraftRefusal::MemoryContext(_) | DraftRefusal::RequestTooLarge => ReasonCode::Routine,
         }
     }
 
@@ -1070,6 +1214,8 @@ impl DraftRefusal {
             | DraftRefusal::SourceChanged
             | DraftRefusal::Expired
             | DraftRefusal::WorkerFailed
+            | DraftRefusal::MemoryContext(_)
+            | DraftRefusal::RequestTooLarge
             | DraftRefusal::NotThePreparedEndpoint => Some(AuditContent::denied(
                 AuditAction::HitlDeny,
                 self.reason_code(),
@@ -1101,6 +1247,139 @@ impl DraftRefusalView {
             reason_code: refusal.reason_code().as_str().to_owned(),
             explanation: refusal.to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod memory_preparation_tests {
+    use super::*;
+    use soul_draft::memory_context::{EndpointMemoryUse, MemoryContextEntry, MemoryContextPrivacy};
+    use soul_testkit::mock_llm::MockLlm;
+
+    fn context(count: usize, summary_chars: usize) -> MemoryContext {
+        MemoryContext::new(
+            (0..count)
+                .map(|index| {
+                    MemoryContextEntry::new(
+                        Uuid::now_v7(),
+                        Uuid::now_v7(),
+                        MemoryContextPrivacy::Owner,
+                        format!("memory-{index}"),
+                        format!("synthetic-{index}:{}", "x".repeat(summary_chars)),
+                        EndpointMemoryUse::OwnerExcerpt,
+                    )
+                    .unwrap()
+                })
+                .collect(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn final_real_json_budget_trims_whole_entries_and_the_held_body_matches_preview() {
+        let endpoint = MockLlm::start().unwrap();
+        let mut policy =
+            PolicySession::with_user_endpoint(&endpoint.base_url(), KnownIdentifiers::new())
+                .unwrap();
+        let mut drafting = DraftSession::new("模型\"\\", KnownIdentifiers::new());
+        let memory = context(8, 12_000);
+        let prepared = prepare_pasted_with_memory(
+            &mut drafting,
+            &mut policy,
+            ProfileBrief::neutral(),
+            "synthetic paste",
+            false,
+            &memory,
+        )
+        .unwrap();
+        assert_eq!(endpoint.request_count(), 0);
+        assert!(prepared.retained_memory_ids.len() < memory.entries().len());
+        assert!(!prepared.retained_memory_ids.is_empty());
+        assert_eq!(prepared.endpoint_owner_ids, prepared.retained_memory_ids);
+        assert!(prepared.encoded_bytes <= MAX_MEMORY_REQUEST_BYTES);
+        for (index, entry) in memory.entries().iter().enumerate() {
+            assert_eq!(
+                prepared
+                    .body_preview
+                    .contains(&format!("synthetic-{index}:")),
+                prepared.retained_memory_ids.contains(&entry.memory_id())
+            );
+        }
+        assert!(!format!("{prepared:?}").contains("synthetic-0:"));
+        let expected_material = prepared.body_preview.clone();
+        let expected_bytes = prepared.encoded_bytes;
+        drafting
+            .generate(
+                &mut policy,
+                &prepared.plan.approval(),
+                soul_policy::clock::now_unix_millis(),
+            )
+            .unwrap();
+        let requests = endpoint.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].body.len(), expected_bytes);
+        let actual: serde_json::Value = serde_json::from_str(&requests[0].body).unwrap();
+        assert_eq!(
+            actual["messages"][1]["content"],
+            format!(
+                "{}\n{}\n{}",
+                soul_policy::e1::QUOTE_OPEN,
+                expected_material,
+                soul_policy::e1::QUOTE_CLOSE
+            )
+        );
+    }
+
+    #[test]
+    fn an_oversized_base_refuses_without_retaining_a_stale_preparation_or_sending() {
+        let endpoint = MockLlm::start().unwrap();
+        let mut policy =
+            PolicySession::with_user_endpoint(&endpoint.base_url(), KnownIdentifiers::new())
+                .unwrap();
+        let mut drafting = DraftSession::new("model", KnownIdentifiers::new());
+        prepare_pasted(
+            &mut drafting,
+            &mut policy,
+            ProfileBrief::neutral(),
+            "old paste",
+            false,
+        )
+        .unwrap();
+        let result = prepare_pasted_with_memory(
+            &mut drafting,
+            &mut policy,
+            ProfileBrief::neutral(),
+            &"原文\"\\".repeat(20_000),
+            true,
+            &MemoryContext::default(),
+        );
+        assert!(matches!(result, Err(DraftRefusal::RequestTooLarge)));
+        assert!(drafting.pending_plan_hash().is_none());
+        assert_eq!(endpoint.request_count(), 0);
+    }
+
+    #[test]
+    fn local_memory_reference_does_not_change_or_append_to_the_template() {
+        let mut policy = PolicySession::closed();
+        let drafting = DraftSession::new("model", KnownIdentifiers::new());
+        let memory = context(1, 20);
+        let plain = draft_pasted(
+            &drafting,
+            &mut policy,
+            ProfileBrief::neutral(),
+            "same paste",
+        )
+        .unwrap();
+        let selected = draft_pasted_with_memory(
+            &drafting,
+            &mut policy,
+            ProfileBrief::neutral(),
+            "same paste",
+            &memory,
+        )
+        .unwrap();
+        assert_eq!(plain.draft.text, selected.draft.text);
+        assert!(!selected.draft.text.contains("synthetic-0:"));
     }
 }
 

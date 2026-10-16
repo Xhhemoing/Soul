@@ -461,8 +461,8 @@ where
         if current != selected.snapshot {
             return Err(SelectionError::SourceChanged);
         }
-        let resolved = resolve(store, current, usize::MAX)
-            .map_err(|_| SelectionError::SourceChanged)?;
+        let resolved =
+            resolve(store, current, usize::MAX).map_err(|_| SelectionError::SourceChanged)?;
         if resolved.preview != selected.preview {
             return Err(SelectionError::SourceChanged);
         }
@@ -514,10 +514,8 @@ fn resolve<S: BlobStore>(
     if title_ref.content_key_id != memory.content_key_id
         || summary_ref.content_key_id != memory.content_key_id
         || title_ref.blob_id == summary_ref.blob_id
-        || title_ref.aad.as_deref()
-            != Some(field_aad(&memory.memory_id, TITLE_FIELD).as_str())
-        || summary_ref.aad.as_deref()
-            != Some(field_aad(&memory.memory_id, SUMMARY_FIELD).as_str())
+        || title_ref.aad.as_deref() != Some(field_aad(&memory.memory_id, TITLE_FIELD).as_str())
+        || summary_ref.aad.as_deref() != Some(field_aad(&memory.memory_id, SUMMARY_FIELD).as_str())
     {
         return Err(reject(ExclusionReason::InvalidSealedReference));
     }
@@ -577,6 +575,5 @@ fn open_utf8<S: BlobStore>(
         StoreError::Backend(_) => ResolveFailure::StoreUnavailable,
         _ => ResolveFailure::Exclude(ExclusionReason::Unreadable),
     })?;
-    String::from_utf8(bytes)
-        .map_err(|_| ResolveFailure::Exclude(ExclusionReason::NotUtf8))
+    String::from_utf8(bytes).map_err(|_| ResolveFailure::Exclude(ExclusionReason::NotUtf8))
 }

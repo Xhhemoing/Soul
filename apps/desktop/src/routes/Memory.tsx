@@ -39,6 +39,7 @@ import { asRefusal, Refused } from "../refusal";
 import { cleanupStatus, type ForgetCleanup } from "../forgetOutcome";
 import { ForgetResult } from "../components/ForgetResult";
 import { MemoryRequests } from "./memoryRequests";
+import { draftMemoryCandidates } from "./draftMemorySelection";
 
 /** `memory.schema.json`'s kinds. The core sends which ones exist. */
 const KIND: Record<string, string> = {
@@ -266,6 +267,9 @@ export function Memory(): React.JSX.Element {
         <p className="muted" data-testid="forget-notice">{list.forget_notice}</p>
       </section>
 
+      {open === null ? null : (
+        <section className="panel"><button type="button" disabled={busy || list.memories.find((row) => row.memory_id === open.memory_id)?.forget_state !== "active"} onClick={() => draftMemoryCandidates.add(open.memory_id)}>用于本次起草</button>{" "}<a href="#/draft">前往起草并预览本次用途和出处</a></section>
+      )}
       {open === null ? null : (
         <Edit key={open.memory_id} detail={open} types={list.memory_types} busy={busy}
           onSave={(change) => act(() => updateMemory(open.memory_id, change))} />
@@ -512,6 +516,7 @@ function Price({ preview, busy, onForget, onKeep }: PriceProps): React.JSX.Eleme
           条推断会失去依据。
         </li>
         <li>{preview.audit_entries_retained} 条审计记录会留着：链子不记内容，也不该挡住遗忘。</li>
+        <li>将撤销导入来源：{preview.import_namespaces_revoked ?? "未提供"}；将失效本地洞察：{preview.local_insights_invalidated ?? "未提供"}。来源撤销后禁止继续重导。</li>
         <li data-testid="forget-preview-id">
           这份预览的编号：<code>{preview.preview_id}</code>
         </li>

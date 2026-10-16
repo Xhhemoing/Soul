@@ -119,7 +119,9 @@ pub fn within_staged_budget(staged: &StagedImport) -> Result<(), String> {
         .filter(|message| message.body.char_count() > MAX_MESSAGE_CHARS)
         .count();
     match over_long > 0 {
-        true => Err(format!("{IMPORT_MESSAGE_TOO_LONG_NOTICE}（{over_long} 条超长）")),
+        true => Err(format!(
+            "{IMPORT_MESSAGE_TOO_LONG_NOTICE}（{over_long} 条超长）"
+        )),
         false => Ok(()),
     }
 }
@@ -347,8 +349,14 @@ mod tests {
             message_of(MAX_MESSAGE_CHARS + 1),
         ]);
         let refusal = within_staged_budget(&over).expect_err("two bodies are over");
-        assert!(refusal.contains(IMPORT_MESSAGE_TOO_LONG_NOTICE), "{refusal}");
+        assert!(
+            refusal.contains(IMPORT_MESSAGE_TOO_LONG_NOTICE),
+            "{refusal}"
+        );
         assert!(refusal.contains("2 条超长"), "{refusal}");
-        assert!(!refusal.contains("aaa"), "a refusal must not quote the file");
+        assert!(
+            !refusal.contains("aaa"),
+            "a refusal must not quote the file"
+        );
     }
 }

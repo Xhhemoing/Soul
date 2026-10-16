@@ -41,6 +41,14 @@ pub struct ForgetImpact {
     /// Audit entries that mention the unit and are deliberately kept. The
     /// audit chain carries no prose, and it must never block a forget.
     pub audit_entries_retained: u64,
+    /// Data sources that will no longer accept imports after this forget.
+    #[serde(default)]
+    pub import_namespaces_revoked: u64,
+    /// Active local insight snapshots invalidated by namespace revocation.
+    /// Existing ignored feedback is retained; corrupt auxiliary rows may be
+    /// removed without blocking the destruction of content keys.
+    #[serde(default)]
+    pub local_insights_invalidated: u64,
 }
 
 /// Proof of what a completed forget actually did.
@@ -139,7 +147,10 @@ mod outcome_tests {
             checkpointed_frames: 0,
         };
         assert!(complete.confirms_truncate());
-        assert_eq!(ForgetCleanup::from_checkpoint(complete), ForgetCleanup::Complete);
+        assert_eq!(
+            ForgetCleanup::from_checkpoint(complete),
+            ForgetCleanup::Complete
+        );
         for (busy, log_frames, checkpointed_frames) in [
             (1, 5, 3),
             (1, 5, 5),

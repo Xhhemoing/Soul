@@ -45,6 +45,7 @@ use soul_schema::common::SealedSubject;
 
 use crate::brief::ProfileBrief;
 use crate::error::{DraftResult, GenerationRefused};
+use crate::memory_context::{MemoryContext, MemoryContextError, RedactedMemoryContext};
 use crate::reply::{self, ReplyDefect};
 use crate::template::{self, TemplateContext};
 
@@ -345,6 +346,43 @@ impl Drafter {
                 .redact_for_e1_with_exemption(&turns, exemption),
             None => self.redactor.redact_for_e1(&turns),
         })
+    }
+
+    /// Redact the conversation once and every memory independently without
+    /// an exemption. The caller can then trim whole entries against the real
+    /// serialized request without copying an original-turn grant.
+    pub fn redact_memory_context(
+        &self,
+        request: &DraftRequest,
+        memory: &MemoryContext,
+        exemption: Option<OneShotExemption>,
+    ) -> Result<RedactedMemoryContext, MemoryContextError> {
+        memory.validate_for(request)?;
+        if exemption.as_ref().is_some_and(|exemption| {
+            !request
+                .turns()
+                .iter()
+                .any(|turn| turn.is_third_party() && turn.turn_id == exemption.turn_id())
+        }) {
+            return Err(MemoryContextError::ExemptionOutsideConversation);
+        }
+        let base = self
+            .redact(request, exemption)
+            .map_err(|_| MemoryContextError::Composition)?;
+        Ok(RedactedMemoryContext::new(
+            base,
+            memory.redact_entries(&self.redactor),
+        ))
+    }
+
+    pub fn redact_with_memory(
+        &self,
+        request: &DraftRequest,
+        memory: &MemoryContext,
+        exemption: Option<OneShotExemption>,
+    ) -> Result<RedactedBody, MemoryContextError> {
+        self.redact_memory_context(request, memory, exemption)?
+            .body()
     }
 
     /// AC-17: no endpoint, no model, no socket.

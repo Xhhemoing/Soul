@@ -24,6 +24,20 @@ import type {
   ForgetReceipt,
   ImportPreview,
   ImportReceipt,
+  ImportCounts,
+  ImportNamespace,
+  ImportOperation,
+  ImportOperationView,
+  ImportPrepareRequest,
+  PreparedImport,
+  ImportRecoveryState,
+  LocalInsight,
+  MemoryContextRequest,
+  MemoryContextView,
+  MemoryDraftPlan,
+  MemoryDraftValue,
+  MemorySelectionPreview,
+  SelectedMemory,
   IntakeReceipt,
   MemoryChange,
   MemoryDetail,
@@ -279,6 +293,53 @@ export function anImportReceipt(overrides: Partial<ImportReceipt> = {}): ImportR
     notice: IMPORT_LOCAL_ONLY_NOTICE,
     ...overrides,
   };
+}
+
+export const IMPORT_NAMESPACE_ID = "0192f000-0000-7000-8000-00000000aa01";
+export const IMPORT_OPERATION_ID = "0192f000-0000-7000-8000-00000000bb01";
+export const IMPORT_PREVIEW_ID = "0192f000-0000-7000-8000-00000000cc01";
+
+export function anImportCounts(overrides: Partial<ImportCounts> = {}): ImportCounts {
+  return { participants: 4, messages: 16, duplicates: 0, contacts_created: 4, contacts_matched: 0,
+    events_written: 16, evidence_written: 16, messages_with_injection_markers: 1, ties_rebuilt: 3, ...overrides };
+}
+
+export function anImportOperation(overrides: Partial<ImportOperation> = {}): ImportOperation {
+  return { operation_id: IMPORT_OPERATION_ID, preview_id: IMPORT_PREVIEW_ID, source: "soul-import-v1",
+    namespace_id: IMPORT_NAMESPACE_ID, legacy_choice: "reject", state: "reserved", preview: anImportCounts(),
+    receipt: null, error_code: null, audit_state: "not_applicable", created_at: 1_800_000_000, ...overrides };
+}
+
+export function anImportOperationView(overrides: Partial<ImportOperationView> = {}): ImportOperationView {
+  return { operation: anImportOperation(), namespace_revoked: false, prepared_here: true, ...overrides };
+}
+
+export function aPreparedImport(overrides: Partial<PreparedImport> = {}): PreparedImport {
+  return { operation: anImportOperation(), preview: anImportPreview(), legacy_events: 0,
+    notice: IMPORT_LOCAL_ONLY_NOTICE, ...overrides };
+}
+
+export const DRAFT_MEMORY_ID = "0192f000-0000-7000-8000-00000000ee11";
+export const DRAFT_CONTEXT_ID = "0192f000-0000-7000-8000-00000000dd11";
+export function aSelectedMemory(overrides: Partial<SelectedMemory> = {}): SelectedMemory {
+  const id = overrides.memory_id ?? DRAFT_MEMORY_ID;
+  return { memory_id: id, memory_type: "preference", title: "合成图书馆偏好", summary: "这次想在合成图书馆学习。", privacy_class: "owner",
+    citation: { memory_id: id, title_blob_id: "0192f000-0000-7000-8000-00000000e001", summary_blob_id: "0192f000-0000-7000-8000-00000000e002" }, ...overrides };
+}
+export function aMemorySelection(overrides: Partial<MemorySelectionPreview> = {}): MemorySelectionPreview {
+  return { selected: [aSelectedMemory()], excluded: [], outcome: "context", notice: "本次本地记忆参考；未核验事实时间和语义冲突，不授予研究或端点原文许可。", ...overrides };
+}
+export function aMemoryContextView(overrides: Partial<MemoryContextView> = {}): MemoryContextView {
+  return { context_id: DRAFT_CONTEXT_ID, preview: aMemorySelection(), ...overrides };
+}
+export function aMemoryDraftPlan(overrides: Partial<MemoryDraftPlan> = {}): MemoryDraftPlan {
+  return { prepared: { plan: anE1Plan(), retained_memory_ids: [DRAFT_MEMORY_ID], endpoint_owner_ids: [],
+    encoded_bytes: 1024, body_preview: "[本次记忆仅供本地参考，正文未向端点提供]" }, context: aMemorySelection(), ...overrides };
+}
+export const LOCAL_INSIGHT_ID = "0192f000-0000-7000-8000-000000001511";
+export function aLocalInsight(overrides: Partial<LocalInsight> = {}): LocalInsight {
+  return { bundle_id: LOCAL_INSIGHT_ID, operation_id: IMPORT_OPERATION_ID, namespace_id: IMPORT_NAMESPACE_ID,
+    validity: "active", ignored: false, counts: anImportCounts(), summaries: [aPersonSummary()], notice: "合成本地统计候选，未经模型出网。", ...overrides };
 }
 
 /** `soulcore::commands::session::NO_ANSWERS_NOTICE`. */
@@ -836,9 +897,25 @@ export interface FakeCoreOptions {
    */
   readonly preparing?: (pasted: string, includeOriginal: boolean) => E1DraftPlan;
   readonly generating?: (approval: { preparation_id: string; plan_hash: string }) => Draft;
+  readonly discardingDraft?: () => boolean | Promise<boolean>;
   /** Able to throw: a file that does not parse arrives as a refusal value. */
   readonly readingImport?: (format: string, text: string) => ImportPreview;
   readonly importing?: (format: string, text: string) => ImportReceipt;
+  readonly importNamespaces?: readonly ImportNamespace[];
+  readonly importOperations?: readonly ImportOperationView[];
+  readonly preparingImport?: (request: ImportPrepareRequest) => PreparedImport | Promise<PreparedImport>;
+  readonly confirmingImport?: (operationId: string, previewId: string) => ImportOperationView | Promise<ImportOperationView>;
+  readonly discardingImport?: (operationId: string) => ImportOperationView | Promise<ImportOperationView>;
+  readonly lookingUpImport?: (operationId: string) => ImportOperationView | Promise<ImportOperationView>;
+  readonly recentImports?: () => readonly ImportOperationView[] | Promise<readonly ImportOperationView[]>;
+  readonly recoveringImport?: () => ImportRecoveryState | Promise<ImportRecoveryState>;
+  readonly preparingMemory?: (request: MemoryContextRequest) => MemoryContextView | Promise<MemoryContextView>;
+  readonly draftingMemory?: (pasted: string, contextId: string) => MemoryDraftValue | Promise<MemoryDraftValue>;
+  readonly preparingDraftMemory?: (pasted: string, contextId: string, ownerIds: readonly string[], includeOriginal: boolean) => MemoryDraftPlan | Promise<MemoryDraftPlan>;
+  readonly insights?: readonly LocalInsight[];
+  readonly readingInsights?: () => readonly LocalInsight[] | Promise<readonly LocalInsight[]>;
+  readonly ignoringInsight?: (bundleId: string) => LocalInsight | Promise<LocalInsight>;
+  readonly recomputingInsight?: (bundleId: string) => LocalInsight | Promise<LocalInsight>;
   readonly questions?: readonly Question[];
   /** Able to throw, because a questionnaire with nothing in it is refused. */
   readonly recording?: (answers: readonly { question_id: string; given: string }[]) =>
@@ -998,6 +1075,13 @@ export function installFakeCore(
   let profile: ProfileScreen | null = null;
   let graphHeld: PeopleGraph = options.graph ?? EMPTY_GRAPH;
   const spentForgetPreviews = new Set<string>();
+  const importOperations = new Map<string, ImportOperationView>(
+    (options.importOperations ?? []).map((view) => [view.operation.operation_id, view]),
+  );
+  let importSequence = importOperations.size;
+  let heldMemory: MemoryContextView | null = null;
+  let insights = [...(options.insights ?? [])];
+  let insightSequence = 0;
 
   /** Read on demand, so a `profile` option that refuses still refuses. */
   const profileNow = (): ProfileScreen => {
@@ -1118,7 +1202,50 @@ export function installFakeCore(
           (payload as { approval: { preparation_id: string; plan_hash: string } }).approval,
         );
       case "discard_draft":
-        return true;
+        return options.discardingDraft?.() ?? true;
+      case "prepare_memory_context": {
+        const request = (payload as { request: MemoryContextRequest }).request;
+        return (async () => { heldMemory = await (options.preparingMemory?.(request) ?? aMemoryContextView()); return heldMemory; })();
+      }
+      case "draft_reply_with_memory": {
+        const asked = payload as { pasted: string; contextId: string };
+        if (options.draftingMemory !== undefined) return options.draftingMemory(asked.pasted, asked.contextId);
+        if (heldMemory?.context_id !== asked.contextId) throw { reason_code: "PLAN_HASH_MISMATCH", explanation: "没有这次记忆参考许可。" };
+        return { draft: drafting(asked.pasted), context: heldMemory.preview } satisfies MemoryDraftValue;
+      }
+      case "prepare_draft_with_memory": {
+        const asked = payload as { pasted: string; contextId: string; ownerIds: readonly string[]; includeOriginal: boolean };
+        if (options.preparingDraftMemory !== undefined) return options.preparingDraftMemory(asked.pasted, asked.contextId, asked.ownerIds, asked.includeOriginal);
+        if (heldMemory?.context_id !== asked.contextId || asked.ownerIds.some((id) => !heldMemory?.preview.selected.some((entry) => entry.memory_id === id && entry.privacy_class === "owner"))) {
+          throw { reason_code: "PLAN_HASH_MISMATCH", explanation: "记忆原文选择不在当前本人记录范围。" };
+        }
+        return aMemoryDraftPlan({ context: heldMemory.preview, prepared: {
+          plan: anE1Plan({ carries_exempted_original: asked.includeOriginal }),
+          retained_memory_ids: heldMemory.preview.selected.map((entry) => entry.memory_id), endpoint_owner_ids: asked.ownerIds,
+          encoded_bytes: 1024, body_preview: asked.ownerIds.length === 0 ? "[本次记忆仅供本地参考]" : heldMemory.preview.selected.filter((entry) => asked.ownerIds.includes(entry.memory_id)).map((entry) => entry.summary).join("\n"),
+        } });
+      }
+      case "local_insights":
+        return options.readingInsights?.() ?? insights;
+      case "ignore_local_insight": {
+        const id = (payload as { bundleId: string }).bundleId;
+        return (async () => {
+          const held = insights.find((row) => row.bundle_id === id);
+          if (held === undefined && options.ignoringInsight === undefined) throw { reason_code: "ROUTINE", explanation: "没有这个本地候选。" };
+          const result = await (options.ignoringInsight?.(id) ?? { ...held!, ignored: true });
+          insights = insights.map((row) => row.bundle_id === id ? result : row); return result;
+        })();
+      }
+      case "recompute_local_insight": {
+        const id = (payload as { bundleId: string }).bundleId;
+        return (async () => {
+          const held = insights.find((row) => row.bundle_id === id);
+          if (held === undefined && options.recomputingInsight === undefined) throw { reason_code: "ROUTINE", explanation: "没有这个本地候选。" };
+          insightSequence += 1;
+          const result = await (options.recomputingInsight?.(id) ?? { ...held!, bundle_id: `0192f000-0000-7000-8000-${(0x1600 + insightSequence).toString(16).padStart(12, "0")}`, validity: "active" as const, ignored: false });
+          insights = [...insights.map((row) => row.bundle_id === id ? { ...row, validity: "invalidated" as const } : row), result]; return result;
+        })();
+      }
       case "set_user_endpoint":
         configuration = (options.endpointing ?? savedEndpoint)(
           (payload as { url?: string }).url ?? "",
@@ -1145,6 +1272,73 @@ export function installFakeCore(
           format,
           text,
         );
+      }
+      case "list_import_namespaces":
+        return options.importNamespaces ?? [];
+      case "recent_import_operations":
+        return options.recentImports?.() ?? [...importOperations.values()];
+      case "import_recovery_state": {
+        const operations = [...importOperations.values()];
+        const reserved = operations.filter((view) => view.operation.state === "reserved");
+        const running = operations.filter((view) => view.operation.state === "running");
+        const held = reserved.find((view) => view.prepared_here)?.operation.operation_id ?? null;
+        return options.recoveringImport?.() ?? { active_worker: running.length > 0,
+          reserved_operations: reserved.length, running_operations: running.length, held_operation_id: held,
+          can_start_new_intent: running.length === 0 && held === null };
+      }
+      case "import_operation": {
+        const id = (payload as { operationId: string }).operationId;
+        const found = options.lookingUpImport?.(id) ?? importOperations.get(id);
+        if (found === undefined) throw { reason_code: "IMPORT_OPERATION_NOT_FOUND", explanation: "未找到该操作；不代表此前没有发生。" };
+        return found;
+      }
+      case "prepare_import": {
+        const request = (payload as { request: ImportPrepareRequest }).request;
+        return (async () => {
+          if ([...importOperations.values()].some((view) => view.prepared_here && view.operation.state === "reserved")) {
+            throw { reason_code: "IMPORT_PREPARATION_HELD", explanation: "先精确丢弃当前旧准备，再建立新意图。" };
+          }
+          importSequence += 1;
+          const preview = (options.readingImport ?? ((source: string) => anImportPreview({ source })))(request.source, request.text);
+          const prepared = await (options.preparingImport?.(request) ?? aPreparedImport({
+            preview,
+            legacy_events: request.legacy_choice === "forward_only" ? 7 : 0,
+            operation: anImportOperation({
+              operation_id: `0192f000-0000-7000-8000-${(0xbb00 + importSequence).toString(16).padStart(12, "0")}`,
+              preview_id: `0192f000-0000-7000-8000-${(0xcc00 + importSequence).toString(16).padStart(12, "0")}`,
+              source: request.source, namespace_id: request.namespace_id ?? IMPORT_NAMESPACE_ID,
+              legacy_choice: request.legacy_choice,
+              preview: anImportCounts({ participants: preview.participants, messages: preview.messages,
+                events_written: preview.messages, messages_with_injection_markers: preview.messages_with_injection_markers }),
+            }),
+          }));
+          importOperations.set(prepared.operation.operation_id, anImportOperationView({ operation: prepared.operation }));
+          return prepared;
+        })();
+      }
+      case "confirm_import": {
+        const asked = payload as { operationId: string; previewId: string };
+        return (async () => {
+          const held = importOperations.get(asked.operationId);
+          if (held === undefined || held.operation.preview_id !== asked.previewId || held.operation.state !== "reserved") {
+            throw { reason_code: "IMPORT_PREVIEW_MISMATCH", explanation: "这不是当前尚未消费的准备。" };
+          }
+          importOperations.set(asked.operationId, { ...held, operation: { ...held.operation, state: "running" } });
+          const view = await (options.confirmingImport?.(asked.operationId, asked.previewId)
+            ?? anImportOperationView({ operation: { ...held.operation, state: "committed", receipt: held.operation.preview,
+              audit_state: "recorded" }, prepared_here: false }));
+          importOperations.set(asked.operationId, view);
+          return view;
+        })();
+      }
+      case "discard_import": {
+        const id = (payload as { operationId: string }).operationId;
+        return (async () => {
+          const held = importOperations.get(id);
+          if (held === undefined || held.operation.state !== "reserved") throw { reason_code: "IMPORT_PREVIEW_MISMATCH", explanation: "没有可丢弃的准备。" };
+          const view = await (options.discardingImport?.(id) ?? anImportOperationView({ operation: { ...held.operation, state: "discarded" }, prepared_here: false }));
+          importOperations.set(id, view); return view;
+        })();
       }
       case "questionnaire":
         return questions;

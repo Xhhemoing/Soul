@@ -1,13 +1,29 @@
 # Soul 架构与演进图
 
 
-**2026-10-16 更新：** 起草页归属与起草慢任务已先接入，后续又将人物摘要改为锁外 HTTP，与起草共用一个 E1 物理槽；来源变化后拒收旧摘要，前端同时清除旧展示。导入页增加跨页面交付状态、未知结果保护与最近计数回执。最新 [HTML](framework-design.html)、[生产起草流程图](design/draft-runtime-flow.svg)、[起草验证](design/2026-10-16-draft-implementation.md) 与 [导入/摘要逐模块计划和验证](design/2026-10-16-import-summary-continuation.md) 分别描述其范围。下方系统图及 architecture.html 保留 10 月 15 日固定基线，不应把其中“起草 HTTP 仍占锁”当作最新状态。扫描、导入长任务仍待迁移，自动洞察与持久任务恢复未接通。
+**2026-10-16 当前框架：** 在 `b66f093a1407887eb873fe33defe984906252d29` 上续写的 W1–W5 已接入，并经过逐模块规划与独立源码复审。最终检查结果以 [STATUS](STATUS.md) 为准；源码完成不等于已合入 main 或完整平台验收。入口为 [HTML 框架页](framework-design.html) 与[剩余模块计划](design/2026-10-16-remaining-implementation.md)。
+
+| 模块 | 当前实现与边界 | 源码入口 |
+| --- | --- | --- |
+| W1 扫描 owned 工作 | Session 内准入并移交唯一 file-plan ledger，锁外执行原只读扫描，完成时归还资源、审计并重验来源。扫描与 E1/导入共用物理慢工作槽，失效不提前释放 worker；页面校验输入及挂载归属 | [Session](../crates/soulcore/src/commands/session.rs)、[Files](../apps/desktop/src/routes/Files.tsx) |
+| W2 本次记忆上下文 | 最多 32 个明确候选 UUID；只在本次候选内按关键词、类型选择。缺少事实有效时间时，特定时间问题返回 Clarify。完整本地出处可预览，默认 local；只有本快照中明确 Owner 的单独勾选项可进入既有 E1 批准，paste 豁免不扩给 memory | [selection](../crates/soul-memory/src/selection.rs)、[Session memory](../crates/soulcore/src/commands/session_memory.rs)、[DraftMemory](../apps/desktop/src/routes/DraftMemory.tsx) |
+| W3 持久导入与恢复 | core 持有唯一不可变 StagedImport；交付预览前持久记录 reserved，确认只带 operation/preview UUID。锁外工作完成领域、图谱、原导入审计及 committed 回执同事务。OS lease 保持到真实 store/worker 所有者结束；重启只查询终态或 interrupted，不恢复正文、批准或自动重放 | [Session import](../crates/soulcore/src/commands/session_import.rs)、[import operations](../crates/soul-store/src/import_ops.rs)、[durableImport](../apps/desktop/src/routes/durableImport.ts) |
+| W4 自然键去重与迁移 | schema 3 原子迁移；按 namespace + conversation ID + external message ID 匹配，任意外部 ID 封存在既有内容密钥下，不新增正文 hash。Telegram 绑定稳定本人账号，JSONL 明确选择来源；同键内容/元数据变化整次冲突。旧行缺 ID 默认拒绝，显式 forward-only 只建立本次及后续索引，历史可能重叠。遗忘同事务销毁密钥、删除封存索引并撤销相关 namespace，墓碑/撤销状态阻止重导复活 | [indexed import](../crates/soul-import/src/indexed.rs)、[schema](../crates/soul-store/src/sql.rs)、[forget](../crates/soul-store/src/forget.rs) |
+| W5 自动本地反馈 | 导入提交事务内生成既有 A2 人物统计，不调用端点或另造评分。依赖快照保存 UUID、数值、固定状态及既有 conversation_ref 的规范字节编码；读取/重启时重验关系、完整证据和事件密钥可读性。变化后不展示旧摘要，历史操作计数可保留；ignore 只影响该 bundle，不训练或改事实；recompute 新建同操作的新 UUID，缺失/已遗忘/撤销来源拒绝重算 | [insights service](../crates/soulcore/src/commands/insights.rs)、[insight store](../crates/soul-store/src/insights.rs)、[LocalInsights](../apps/desktop/src/routes/LocalInsights.tsx) |
+
+W2 的 64 KiB 上限由实际请求所用 JSON serializer 计算完整脱敏请求的字节数；超限按整条记忆裁剪，并重算预览、引用、保留 UUID 与 Owner 勾选。它不是 token 数，也不授予长期用途或研究许可。起草及人物摘要继续使用 prepare / 锁外 execute / complete，先审计已发生请求再决定接收；旧结果和已显示来源在相关变更后失效。已发许可仍可能完成出网，失效不等于撤回已发字节。
+
+本轮未改变 T4D/A0–A3、默认出网或只起草不代发边界。静态 Tauri 命令断言不能当作原生 IPC；当前环境缺原生 GTK/WebKit 开发依赖。完整 G-L 继续暂缓，G-W/G-M 未运行，Goal 1、正式 Goal 2 与 Wave 1 均未关闭。最终测试数量由 STATUS 记录，本页不预报。
+
+## 固定历史图与研究基线
+
+以下系统图、操作图及 [architecture.html](architecture.html) 保留 10 月 15 日固定基线；其中“待迁移”“尚未接入”只描述当时版本。起草图和[起草验证](design/2026-10-16-draft-implementation.md)、[导入/摘要接线记录](design/2026-10-16-import-summary-continuation.md)也各有自己的版本范围，不能替代上方 W1–W5 现状。
 
 [打开离线 HTML 架构地图](architecture.html)：下载后在浏览器打开，可切换四张图、点击节点阅读职责、缩放浏览、筛选 18 个模块，并下载 SVG 或 Mermaid 源文件。页面内嵌全部资源，不自动联网；说明固定在 `b47ddfa`，不是实时状态或 Soul 客户端。
 
-后续使用框架与算法提案：[交互研究 HTML](framework-design.html) / [详细设计](design/2026-10-15-usage-framework.md)。包含独立评审后的非生产参考算法、目标流程 SVG/Mermaid 与验证记录；不改变本页“当前实现”的含义。
+历史使用框架与算法提案：[交互研究 HTML](framework-design.html) / [详细设计](design/2026-10-15-usage-framework.md)。独立评审的参考算法、目标流程 SVG/Mermaid 与实验记录保持非生产研究范围；HTML 顶部另列最新接线状态。
 
-更新日期：2026-10-15。本文描述固定基线 `9d3cd300c19c996f9edabf337c9d359fcb594bc3` 加本轮已实现改动；“已实现”指源码能力，不代表已合入 main 或通过全部平台验收。详细依据见[架构审查](reviews/2026-10-15-architecture-review.md)和[验证记录](reviews/2026-10-15-validation.md)。
+历史图更新日期：2026-10-15。以下各图描述固定基线 `9d3cd300c19c996f9edabf337c9d359fcb594bc3` 的改动；“已实现”指该版本源码能力，不代表当前全部实现或全部平台验收。依据见[架构审查](reviews/2026-10-15-architecture-review.md)和[验证记录](reviews/2026-10-15-validation.md)。
 
 Soul 是本地桌面应用：React WebView 负责表达，Tauri 连接同一应用的 Rust 核心，领域 crate 在核心进程内协作。下图中的分组不是微服务，也不代表独立部署。WebView 的平台进程安排由 Tauri/WebView 运行时决定；这里不把整个桌面应用说成严格的单操作系统进程。
 
@@ -61,7 +77,7 @@ flowchart TD
 - [core.ts](../apps/desktop/src/core.ts) 是前端唯一 Tauri API 包装；[commands.rs](../apps/desktop/src-tauri/src/commands.rs) 持有 `Mutex<Session>` 并转发命令。
 - [Session](../crates/soulcore/src/commands/session.rs) 组合领域服务和共享 store。[PolicySession](../crates/soulcore/src/commands/policy.rs) 通过 `soul-policy` 完成校验，最终调用 [soul-egress](../crates/soul-egress/src/lib.rs)；图中没有把 `soul-policy` 误画成直接持有 HTTP 客户端。
 - [soul-draft](../crates/soul-draft/Cargo.toml) 的生产依赖不含 HTTP 客户端；生成能力由调用者注入。[store-api](../crates/soul-store-api/src/lib.rs) 与 [store](../crates/soul-store/src/lib.rs) 分别表达接口和实现。
-- 当前长任务仍可能占用 Session 锁。下面第 4 图是解决方向，不是现有独立撤权能力。
+- 此固定基线的长任务仍可能占用 Session 锁；第 4 图保留当时解决方向。最新生产路径见上方 W1–W5 与各自实现记录。
 
 ## 2. 已实现：遗忘范围重验与结果分离
 
@@ -146,11 +162,11 @@ flowchart TD
 
 “忽略旧结果”只发生在页面层：已经启动的文件读取、核心调用或网络传输可能继续。它不等于取消核心工作、撤销权限或回滚事务。保存保留输入也不证明写入没有发生，因此没有加入自动重发。
 
-导入未知提交结果的恢复仍受 D55 设计边界约束：当前没有消息级幂等，回执丢失后重复提交可能重复写入。本轮没有借请求状态修复改变重导、遗忘后重导或授权语义。原四项迟到结果断言保留，新增提交期间清空选择的保护反例，见[导入组件测试](../apps/desktop/src/routes/Import.test.tsx)与[状态机测试](../apps/desktop/src/routes/importRequests.test.ts)。
+在这张历史图对应的版本中，D55 仍是后续设计：没有消息级幂等，丢回执后重复提交可能重复写入。该阶段请求状态修复未改变重导或授权语义；现行 W3/W4 则按 D73–D75 引入不可变预览、持久回执、自然键及遗忘撤销。图中旧页面协调模型不代表新持久协议的全部状态。
 
-## 4. 设计中，尚未实施：短锁执行与独立撤权
+## 4. 历史目标图：短锁执行与独立撤权
 
-以下所有 operation 登记、epoch、独立撤权通路和有界执行器均为目标设计，尚未接入当前生产代码。现有起草虽然已有“准备／确认”业务步骤，但不等于已经实现图中的锁外 execute 与 complete 重验。
+以下为 10 月 15 日未接线时的目标图，保留原图及一般化提案。此后起草、人物摘要、扫描和导入已逐用例接线；W1–W5 没有把它实现为一个通用调度引擎。图内“尚未实施”和下表建议边界只属于该历史设计，当前锁与事务边界以顶部源码入口为准。
 
 ```mermaid
 flowchart TD
@@ -197,6 +213,6 @@ flowchart TD
 
 [PRODUCT_LOCK](PRODUCT_LOCK.md)、[DECISIONS](DECISIONS.md)、[算法决议](algorithms/DECISION.md)、[SECURITY](SECURITY.md) 和 [ACCEPTANCE](ACCEPTANCE.md) 继续作为权威。无 E0；E1 保留用户指定 origin、redactor、单次批准与拒绝；只起草不发送；文件功能只读预览；审计不含正文；推断证据可解引用；用户纠正优先。
 
-本轮具体测试和限制以[验证记录](reviews/2026-10-15-validation.md)为准。根 Rust workspace 测试不能代替独立 Tauri workspace；局部通过不代替 G-L、G-W 或真实人工 G-M，也不宣布 Goal 1、正式 Goal 2 或 Wave 1 关闭。
+历史图对应测试见[验证记录](reviews/2026-10-15-validation.md)，最新实现与验证见 [STATUS](STATUS.md)。根 Rust workspace 测试不能代替独立 Tauri workspace；局部通过不代替 G-L、G-W 或真实人工 G-M，也不宣布 Goal 1、正式 Goal 2 或 Wave 1 关闭。
 
 四个 `.mmd` 是对应图的可编辑源文件；本文内嵌 Mermaid 与其保持一致，SVG 为同源导出展示版本。

@@ -54,6 +54,7 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+pub use uuid::Uuid as ContextMemoryId;
 
 use soul_fileplan::{Refusal, ScanLimits};
 use soul_policy::audit::{append_or_store_error, AuditContent};
@@ -92,6 +93,19 @@ use crate::commands::profile::{
 use crate::commands::shell::{self, CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
 use crate::commands::store::{self as store_commands, AuditChainView, ResearchPreviewView};
 use crate::config::Config;
+
+#[path = "session_import.rs"]
+mod import_work;
+pub use import_work::{
+    ImportNamespaceView, ImportOperationView, ImportPrepareRequest, ImportRecoveryState,
+    PreparedImportView, SessionImportCompletion, SessionImportPrepareCompletion,
+    SessionImportPrepareWork, SessionImportWork,
+};
+#[path = "session_memory.rs"]
+mod memory_context;
+pub use memory_context::{
+    MemoryContextRequest, MemoryContextView, MemoryDraftPlan, MemoryDraftValue,
+};
 
 /// The environment variable that names the data directory outright.
 ///
@@ -417,6 +431,12 @@ pub struct Session {
     draft_revision: Uuid,
     /// The one physical E1 worker, shared by drafting and person summaries.
     active_draft: Option<ActiveDraft>,
+    import_runtime: Option<Arc<soul_store::import_ops::ImportRuntimeLease>>,
+    held_import: Option<import_work::HeldImport>,
+    stale_import: Option<Uuid>,
+    deferred_revoke: Option<(AuditContent, i64)>,
+    held_memory: Option<memory_context::HeldMemory>,
+    pending_memory: Option<memory_context::PendingMemory>,
     /// The last forget impact the user was shown, and for which memory.
     ///
     /// Forgetting is irreversible and the numbers behind it are a live query,
@@ -454,6 +474,7 @@ enum E1WorkerKind {
     Draft,
     PersonSummary,
     Scan,
+    Import,
 }
 
 /// A read-only scan owns the file-plan ledger and authorization snapshot.
@@ -560,6 +581,7 @@ pub struct SessionDraftWork {
     revision: Uuid,
     lease: DraftLease,
     work: draft::DraftWork,
+    memory: Option<soul_memory::ContextSelection>,
 }
 
 /// Must be returned to the same Session, even if the invoking page disappeared.
@@ -569,6 +591,7 @@ pub struct SessionDraftCompletion {
     _lease: DraftLease,
     expires_at: Instant,
     execution: draft::DraftExecution,
+    memory: Option<soul_memory::ContextSelection>,
 }
 
 /// A summary snapshot; only an actual E1 dispatch occupies the shared slot.
@@ -655,6 +678,7 @@ impl SessionDraftWork {
             _lease: self.lease,
             expires_at,
             execution,
+            memory: self.memory,
         }
     }
 }
@@ -711,7 +735,18 @@ impl Session {
             .collect();
 
         let (keys, key_protection) = key_provider(&directory);
-        let store = match store_commands::open_store(&directory, keys.as_ref()) {
+        let mut import_runtime = None;
+        let opened = (|| -> Result<SqlCipherStore, soul_store_api::types::StoreError> {
+            let runtime = Arc::new(soul_store::import_ops::ImportRuntimeLease::claim(
+                store_commands::database_path(&directory),
+            )?);
+            let mut store = store_commands::open_store(&directory, keys.as_ref())?;
+            store.recover_import_operations(&runtime)?;
+            store.attach_import_runtime(Arc::clone(&runtime))?;
+            import_runtime = Some(runtime);
+            Ok(store)
+        })();
+        let store = match opened {
             Ok(store) => StoreHandle::Open(share(store)),
             Err(error) => StoreHandle::Unavailable(error.to_string()),
         };
@@ -731,6 +766,12 @@ impl Session {
             policy,
             draft_revision: Uuid::now_v7(),
             active_draft: None,
+            import_runtime,
+            held_import: None,
+            stale_import: None,
+            deferred_revoke: None,
+            held_memory: None,
+            pending_memory: None,
             held_forget: None,
             consent: ConsentHandle::closed(),
             collector: None,
@@ -757,6 +798,9 @@ impl Session {
     /// second connection, and `Session::open` is the only place that opens the
     /// first.
     pub fn store(&self) -> Option<Arc<Mutex<SqlCipherStore>>> {
+        if self.import_busy() {
+            return None;
+        }
         match &self.store {
             StoreHandle::Open(store) => Some(Arc::clone(store)),
             StoreHandle::Unavailable(_) => None,
@@ -1058,6 +1102,7 @@ impl Session {
     /// did not open leaves the neutral voice, which is what a blank profile
     /// would have said anyway.
     pub fn draft_pasted(&mut self, pasted: &str) -> Result<DraftValue, SessionRefusal> {
+        self.require_store_idle()?;
         let brief = self.owner_brief();
         let drafted = draft::draft_pasted(&self.draft, &mut self.policy, brief, pasted)?;
         self.append_audit(&drafted.audit)?;
@@ -1093,7 +1138,10 @@ impl Session {
         pasted: &str,
         include_original: Option<bool>,
     ) -> Result<E1DraftPlan, SessionRefusal> {
+        self.require_store_idle()?;
         self.require_draft_slot()?;
+        self.pending_memory = None;
+        self.held_memory = None;
         // Read every time, for the reason `owner_brief` is: a cached set is a
         // set that does not have the person imported five minutes ago in it,
         // and their name is what this call is deciding whether to send.
@@ -1139,10 +1187,17 @@ impl Session {
     /// Serialized with mutations and withdrawal by the shell's Session lock.
     pub fn begin_draft(&mut self, approval: &Approval) -> Result<SessionDraftWork, SessionRefusal> {
         self.require_draft_slot()?;
+        let memory = self
+            .memory_for_dispatch(approval)
+            .map_err(|_| self.refuse_draft(DraftRefusal::SourceChanged))?;
         let work = self
             .draft
             .dispatch(&mut self.policy, approval, now_unix_millis())
             .map_err(|refusal| self.refuse_draft(refusal))?;
+        if memory.is_some() {
+            self.pending_memory = None;
+            self.held_memory = None;
+        }
         let id = Uuid::now_v7();
         let finished = Arc::new(AtomicBool::new(false));
         self.active_draft = Some(ActiveDraft {
@@ -1155,6 +1210,7 @@ impl Session {
             revision: self.draft_revision,
             lease: DraftLease(finished),
             work,
+            memory,
         })
     }
 
@@ -1180,6 +1236,10 @@ impl Session {
             .map_err(|refusal| self.refuse_draft(refusal))?;
         if completed.revision != self.draft_revision {
             return Err(self.refuse_draft(DraftRefusal::SourceChanged));
+        }
+        if let Some(selection) = &completed.memory {
+            self.revalidate_memory(selection)
+                .map_err(|_| self.refuse_draft(DraftRefusal::SourceChanged))?;
         }
         if Instant::now() >= completed.expires_at {
             return Err(self.refuse_draft(DraftRefusal::Expired));
@@ -1218,6 +1278,11 @@ impl Session {
     /// endpoint parse. Background foreground-duration events are not inputs
     /// to the current draft or person summary and do not use this revision.
     fn invalidate_drafts(&mut self) -> bool {
+        self.held_memory = None;
+        self.pending_memory = None;
+        if let Some(held) = self.held_import.take() {
+            self.stale_import = Some(held.operation.operation_id);
+        }
         let changed = self.draft.discard()
             || self
                 .active_draft
@@ -1857,6 +1922,14 @@ impl Session {
         // showing a capability as open.
         self.config.collect_enabled = false;
 
+        if self.import_busy() {
+            if self.deferred_revoke.is_none() {
+                self.deferred_revoke = Some((entry, at));
+            }
+            self.collect_problem = Some("权限已撤回，撤回审计等待当前导入结束后记录。".to_owned());
+            return Ok(self.collect_status());
+        }
+
         // Stopping is what the user asked for, and it happens whether or not
         // the chain can be written to. A store that has gone away is reported
         // in the notice; it is not a reason to leave a collector running.
@@ -1889,6 +1962,8 @@ impl Session {
         if self.running_collector().is_some() {
             return Ok(self.collect_status());
         }
+
+        self.flush_deferred_revoke()?;
 
         let store = self.opened_store()?;
         let at = now_unix_seconds();
@@ -1998,6 +2073,7 @@ impl Session {
         if entries.is_empty() {
             return Ok(());
         }
+        self.require_store_idle()?;
         let StoreHandle::Open(store) = &self.store else {
             return Ok(());
         };
@@ -2035,6 +2111,7 @@ impl Session {
     }
 
     fn opened_store(&self) -> Result<Arc<Mutex<SqlCipherStore>>, SessionRefusal> {
+        self.require_store_idle()?;
         match &self.store {
             StoreHandle::Open(store) => Ok(Arc::clone(store)),
             StoreHandle::Unavailable(reason) => Err(SessionRefusal {

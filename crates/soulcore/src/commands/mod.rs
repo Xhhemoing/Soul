@@ -40,6 +40,7 @@ pub mod draft;
 pub mod fileplan;
 pub mod graph;
 pub mod import;
+pub mod insights;
 pub mod memory;
 pub mod policy;
 pub mod profile;

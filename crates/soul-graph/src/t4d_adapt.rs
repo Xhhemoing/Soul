@@ -80,7 +80,8 @@ fn intern<K: Ord>(ids: &mut BTreeMap<K, u64>, key: K) -> u64 {
     *ids.entry(key).or_insert(next)
 }
 
-fn rfc3339_to_unix(timestamp: &str) -> Result<i64, AdaptError> {
+/// Parse an instant with the same clock rules used by the frozen graph adapter.
+pub fn rfc3339_to_unix(timestamp: &str) -> Result<i64, AdaptError> {
     parse_rfc3339(timestamp).ok_or_else(|| AdaptError::InvalidTimestamp {
         timestamp: timestamp.to_owned(),
     })

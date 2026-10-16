@@ -20,13 +20,16 @@ use soulcore::commands::draft::{
 use soulcore::commands::fileplan::PlanPreview;
 use soulcore::commands::graph::PeopleGraphView;
 use soulcore::commands::import::{ImportPreview, ImportReceiptView};
+use soulcore::commands::insights::LocalInsightView;
 use soulcore::commands::memory::{
     ForgetCleanupView, ForgetConfirmation, ForgetPreview, ForgetReceiptView, MemoryChange,
     MemoryDetail, MemoryList, NewMemory,
 };
 use soulcore::commands::profile::{GivenAnswer, IntakeReceipt, ProfileScreen, QuestionView};
 use soulcore::commands::session::{
-    CollectStatus, FilesView, Session, SessionRefusal, SessionStatus,
+    CollectStatus, ContextMemoryId, FilesView, ImportNamespaceView, ImportOperationView,
+    ImportPrepareRequest, ImportRecoveryState, MemoryContextRequest, MemoryContextView,
+    MemoryDraftPlan, MemoryDraftValue, PreparedImportView, Session, SessionRefusal, SessionStatus,
 };
 use soulcore::commands::shell::{CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
 use soulcore::commands::store::{AuditChainView, ResearchPreviewView};
@@ -61,6 +64,131 @@ impl SessionState {
 #[tauri::command]
 pub fn config_snapshot(session: State<'_, SessionState>) -> ConfigSnapshot {
     session.held().snapshot()
+}
+
+#[tauri::command]
+pub fn local_insights(
+    session: State<'_, SessionState>,
+) -> Result<Vec<LocalInsightView>, SessionRefusal> {
+    session.held().local_insights()
+}
+
+#[tauri::command]
+pub fn ignore_local_insight(
+    session: State<'_, SessionState>,
+    bundle_id: String,
+) -> Result<LocalInsightView, SessionRefusal> {
+    session.held().ignore_local_insight(&bundle_id)
+}
+
+#[tauri::command]
+pub fn recompute_local_insight(
+    session: State<'_, SessionState>,
+    bundle_id: String,
+) -> Result<LocalInsightView, SessionRefusal> {
+    session.held().recompute_local_insight(&bundle_id)
+}
+
+#[tauri::command]
+pub fn prepare_memory_context(
+    session: State<'_, SessionState>,
+    request: MemoryContextRequest,
+) -> Result<MemoryContextView, SessionRefusal> {
+    session.held().prepare_memory_context(request)
+}
+
+#[tauri::command]
+pub fn draft_reply_with_memory(
+    session: State<'_, SessionState>,
+    pasted: String,
+    context_id: String,
+) -> Result<MemoryDraftValue, SessionRefusal> {
+    session
+        .held()
+        .draft_pasted_with_memory(&pasted, &context_id)
+}
+
+#[tauri::command]
+pub fn prepare_draft_with_memory(
+    session: State<'_, SessionState>,
+    pasted: String,
+    context_id: String,
+    owner_ids: Vec<ContextMemoryId>,
+    include_original: bool,
+) -> Result<MemoryDraftPlan, SessionRefusal> {
+    session
+        .held()
+        .prepare_draft_with_memory(&pasted, &context_id, &owner_ids, include_original)
+}
+
+#[tauri::command]
+pub fn list_import_namespaces(
+    session: State<'_, SessionState>,
+) -> Result<Vec<ImportNamespaceView>, SessionRefusal> {
+    session.held().import_namespaces()
+}
+
+#[tauri::command]
+pub fn import_recovery_state(
+    session: State<'_, SessionState>,
+) -> Result<ImportRecoveryState, SessionRefusal> {
+    session.held().import_recovery_state()
+}
+
+#[tauri::command]
+pub fn recent_import_operations(
+    session: State<'_, SessionState>,
+) -> Result<Vec<ImportOperationView>, SessionRefusal> {
+    session.held().recent_import_operations()
+}
+
+#[tauri::command]
+pub fn import_operation(
+    session: State<'_, SessionState>,
+    operation_id: String,
+) -> Result<ImportOperationView, SessionRefusal> {
+    session.held().import_operation(&operation_id)
+}
+
+#[tauri::command]
+pub fn discard_import(
+    session: State<'_, SessionState>,
+    operation_id: String,
+) -> Result<ImportOperationView, SessionRefusal> {
+    session.held().discard_import(&operation_id)
+}
+
+#[tauri::command]
+pub async fn prepare_import(
+    session: State<'_, SessionState>,
+    request: ImportPrepareRequest,
+) -> Result<PreparedImportView, SessionRefusal> {
+    let session = session.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let work = session.held().begin_import_prepare_request(request)?;
+        let completed = work.execute();
+        let result = session.held().complete_import_prepare(completed);
+        result
+    })
+    .await
+    .map_err(|_| SessionRefusal::from(DraftRefusal::WorkerFailed))?
+}
+
+#[tauri::command]
+pub async fn confirm_import(
+    session: State<'_, SessionState>,
+    operation_id: String,
+    preview_id: String,
+) -> Result<ImportOperationView, SessionRefusal> {
+    let session = session.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let work = session.held().begin_import(&operation_id, &preview_id)?;
+        let completed = work.execute();
+        let result = session.held().complete_import(completed);
+        result
+    })
+    .await
+    .map_err(|_| SessionRefusal::from(DraftRefusal::WorkerFailed))?
 }
 
 /// Whether the wizard has been through before, and whether there is a
@@ -228,7 +356,7 @@ pub fn preview_soul_import_v1(
     session: State<'_, SessionState>,
     text: String,
 ) -> Result<ImportPreview, SessionRefusal> {
-    session.held().preview_soul_import_v1(&text)
+    session.held().refuse_legacy_preview(&text)
 }
 
 /// The same for a Telegram Desktop `result.json`. Writes nothing.
@@ -237,7 +365,7 @@ pub fn preview_telegram(
     session: State<'_, SessionState>,
     text: String,
 ) -> Result<ImportPreview, SessionRefusal> {
-    session.held().preview_telegram(&text)
+    session.held().refuse_legacy_preview(&text)
 }
 
 /// Seal a `soul-import-v1` file into the store. AC-04.
@@ -246,7 +374,7 @@ pub fn commit_soul_import_v1(
     session: State<'_, SessionState>,
     text: String,
 ) -> Result<ImportReceiptView, SessionRefusal> {
-    session.held().commit_soul_import_v1(&text)
+    session.held().refuse_legacy_import(&text)
 }
 
 /// Seal a Telegram Desktop export into the store. AC-05.
@@ -255,7 +383,7 @@ pub fn commit_telegram(
     session: State<'_, SessionState>,
     text: String,
 ) -> Result<ImportReceiptView, SessionRefusal> {
-    session.held().commit_telegram(&text)
+    session.held().refuse_legacy_import(&text)
 }
 
 /// The eleven questions the wizard draws, with their options.
@@ -432,6 +560,19 @@ impl DraftNotices {
 /// `apps/desktop/src/core.ts`, which is the only place the other side names
 /// them. A command added to one and not the other is a failing test.
 pub const COMMAND_NAMES: &[&str] = &[
+    "local_insights",
+    "ignore_local_insight",
+    "recompute_local_insight",
+    "import_recovery_state",
+    "prepare_memory_context",
+    "draft_reply_with_memory",
+    "prepare_draft_with_memory",
+    "list_import_namespaces",
+    "recent_import_operations",
+    "import_operation",
+    "discard_import",
+    "prepare_import",
+    "confirm_import",
     "config_snapshot",
     "session_status",
     "complete_wizard",

@@ -52,6 +52,19 @@ pub fn configure<R: tauri::Runtime>(
     builder
         .manage(session)
         .invoke_handler(tauri::generate_handler![
+            commands::local_insights,
+            commands::ignore_local_insight,
+            commands::recompute_local_insight,
+            commands::import_recovery_state,
+            commands::prepare_memory_context,
+            commands::draft_reply_with_memory,
+            commands::prepare_draft_with_memory,
+            commands::list_import_namespaces,
+            commands::recent_import_operations,
+            commands::import_operation,
+            commands::discard_import,
+            commands::prepare_import,
+            commands::confirm_import,
             commands::config_snapshot,
             commands::session_status,
             commands::complete_wizard,

@@ -188,6 +188,8 @@ pub struct SqlCipherStore {
     pub(crate) kek: SecretKey,
     path: PathBuf,
     key_provider_label: String,
+    /// Raw store handles may outlive Session (for example a collector).
+    pub(crate) import_runtime: Option<std::sync::Arc<crate::import_ops::ImportRuntimeLease>>,
 }
 
 impl SqlCipherStore {
@@ -207,7 +209,7 @@ impl SqlCipherStore {
         let dek = keys.database_key().map_err(backend)?;
         let kek = keys.key_encryption_key().map_err(backend)?;
 
-        let conn = Connection::open(&path).map_err(backend)?;
+        let mut conn = Connection::open(&path).map_err(backend)?;
         // The raw-key form. A passphrase would be run through key derivation
         // by SQLCipher; the DEK is already 32 bytes of key material.
         conn.execute_batch(&format!("PRAGMA key = \"x'{}'\";", dek.to_hex()))
@@ -275,16 +277,30 @@ impl SqlCipherStore {
                  asked for 1, so a destroyed content key would stay legible in a free page"
             )));
         }
-        conn.execute_batch(sql::DDL).map_err(backend)?;
+        let migration = conn.transaction().map_err(backend)?;
+        migration.execute_batch(sql::DDL).map_err(backend)?;
+        // The old formats never stored external message ids. Record that gap
+        // once; later indexed imports must not turn into new legacy history.
+        for (source, event_source) in [
+            ("soul-import-v1", "import.soul_import_v1"),
+            ("telegram-desktop", "import.telegram_desktop"),
+        ] {
+            migration.execute(
+                "INSERT OR IGNORE INTO meta(key,value) SELECT ?1,CAST(count(*) AS TEXT) FROM events WHERE source=?2",
+                rusqlite::params![format!("import.legacy.{source}"),event_source],
+            ).map_err(backend)?;
+        }
         // Only ever reached for a file at or below this version, so this moves
         // the stamp forward — 1 to 2 once the additive DDL above has given the
         // file what version 2 means — and never back down.
-        conn.execute(
-            "INSERT INTO meta (key, value) VALUES ('schema_version', ?1)
+        migration
+            .execute(
+                "INSERT INTO meta (key, value) VALUES ('schema_version', ?1)
              ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-            [sql::STORE_SCHEMA_VERSION.to_string()],
-        )
-        .map_err(backend)?;
+                [sql::STORE_SCHEMA_VERSION.to_string()],
+            )
+            .map_err(backend)?;
+        migration.commit().map_err(backend)?;
 
         Ok(SqlCipherStore {
             conn,
@@ -293,11 +309,18 @@ impl SqlCipherStore {
             kek,
             path,
             key_provider_label: keys.describe(),
+            import_runtime: None,
         })
     }
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Recovery must not mistake a row visible only in a failed transaction
+    /// for a durable commit acknowledgement.
+    pub fn transaction_in_progress(&self) -> bool {
+        !self.conn.is_autocommit()
     }
 
     /// Which provider supplied the root secrets. Never key material.

@@ -36,6 +36,214 @@ pub(crate) struct ForgetPlan {
     pub(crate) contacts: Vec<Uuid>,
     pub(crate) evidence: Vec<Uuid>,
     pub(crate) inferences: Vec<Uuid>,
+    pub(crate) import_namespaces: Vec<(Uuid, String)>,
+    pub(crate) import_participants: Vec<Uuid>,
+    pub(crate) import_messages: Vec<Uuid>,
+    pub(crate) local_insights: Vec<Uuid>,
+}
+
+#[cfg(test)]
+mod auxiliary_forget_tests {
+    use super::*;
+    use crate::TestKeyProvider;
+    use soul_schema::common::SealedSubject;
+    use soul_store_api::import::{
+        ImportCoverage, ImportIndexStore, ImportNamespace, ImportNamespaceState,
+        ImportParticipantIdentity, ImportSourceKind,
+    };
+    use soul_store_api::insight::{InsightValidity, LocalInsightBundle};
+    use soul_store_api::types::SealRequest;
+    use soul_store_api::BlobStore;
+
+    fn namespace() -> ImportNamespace {
+        ImportNamespace {
+            namespace_id: Uuid::now_v7(),
+            source: ImportSourceKind::SoulImportV1,
+            state: ImportNamespaceState::Active,
+            coverage: ImportCoverage::FullFromCreation,
+            owner_contact_id: None,
+            account_ref: None,
+        }
+    }
+
+    fn bundle(namespace: Uuid) -> LocalInsightBundle {
+        LocalInsightBundle {
+            bundle_id: Uuid::now_v7(),
+            operation_id: Uuid::now_v7(),
+            namespace_id: namespace,
+            created_at: 1,
+            validity: InsightValidity::Active,
+            ignored: true,
+            counts: Default::default(),
+            dependency_uuids: Vec::new(),
+            dependency_values: Vec::new(),
+            dependency_flags: Vec::new(),
+        }
+    }
+
+    fn insert_bundle(store: &SqlCipherStore, bundle: &LocalInsightBundle, doc: &str) {
+        store.conn.execute("INSERT INTO local_insights(bundle_id,operation_id,namespace_id,created_at,validity,ignored,doc) VALUES(?1,?2,?3,?4,?5,?6,?7)",
+            rusqlite::params![bundle.bundle_id.to_string(),bundle.operation_id.to_string(),bundle.namespace_id.to_string(),bundle.created_at,enum_text(&bundle.validity).unwrap(),bundle.ignored,doc]).unwrap();
+    }
+
+    fn anchor(
+        store: &mut SqlCipherStore,
+        namespace: &ImportNamespace,
+        key: Uuid,
+    ) -> soul_schema::common::SealedText {
+        let contact = Uuid::now_v7();
+        let sealed = store
+            .seal(SealRequest::new(
+                key,
+                contact,
+                "import_participant_identity",
+                SealedSubject::ThirdParty,
+                b"[\"uid\",\"synthetic\"]".to_vec(),
+            ))
+            .unwrap();
+        store.put_import_namespace(namespace).unwrap();
+        store
+            .put_import_participant(&ImportParticipantIdentity {
+                identity_id: Uuid::now_v7(),
+                namespace_id: namespace.namespace_id,
+                contact_id: contact,
+                content_key_id: key,
+                identity_ref: sealed.clone(),
+            })
+            .unwrap();
+        sealed
+    }
+
+    #[test]
+    fn damaged_auxiliary_json_cannot_block_key_destruction_or_reactivate_a_source_after_reopen() {
+        for (bad_namespace, bad_insight) in [(true, false), (false, true), (true, true)] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("auxiliary.db");
+            let keys = TestKeyProvider::from_seed("auxiliary forget corruption");
+            let mut store = SqlCipherStore::open(&path, &keys).unwrap();
+            let ns = namespace();
+            let key = Uuid::now_v7();
+            let sealed = anchor(&mut store, &ns, key);
+            let insight = bundle(ns.namespace_id);
+            let doc = if bad_insight {
+                "{corrupt".to_owned()
+            } else {
+                crate::insights::encode(&insight).unwrap()
+            };
+            insert_bundle(&store, &insight, &doc);
+            let mut old = bundle(ns.namespace_id);
+            old.validity = InsightValidity::Invalidated;
+            old.ignored = false;
+            insert_bundle(&store, &old, &crate::insights::encode(&old).unwrap());
+            if bad_namespace {
+                store
+                    .conn
+                    .execute(
+                        "UPDATE import_namespaces SET doc='{corrupt' WHERE namespace_id=?1",
+                        [ns.namespace_id.to_string()],
+                    )
+                    .unwrap();
+            }
+            let outcome = store
+                .execute_forget_outcome(ForgetUnit::ContentKey(key))
+                .unwrap();
+            assert_eq!(outcome.receipt.impact.import_namespaces_revoked, 1);
+            assert_eq!(outcome.receipt.impact.local_insights_invalidated, 1);
+            assert!(!store.has_content_key(key));
+            assert!(store.open(&sealed).is_err());
+            let state: String = store
+                .conn
+                .query_row(
+                    "SELECT state FROM import_namespaces WHERE namespace_id=?1",
+                    [ns.namespace_id.to_string()],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(state, "revoked");
+            if bad_insight {
+                assert!(store.local_insight(insight.bundle_id).is_err());
+            } else {
+                let retained = store.local_insight(insight.bundle_id).unwrap();
+                assert_eq!(retained.validity, InsightValidity::Invalidated);
+                assert!(retained.ignored);
+            }
+            assert_eq!(store.local_insight(old.bundle_id).unwrap(), old);
+            drop(store);
+            let mut reopened = SqlCipherStore::open(&path, &keys).unwrap();
+            assert!(!reopened.has_content_key(key));
+            assert!(reopened.open(&sealed).is_err());
+            if bad_namespace {
+                assert!(reopened.import_namespace(ns.namespace_id).is_err());
+            } else {
+                assert_eq!(
+                    reopened.import_namespace(ns.namespace_id).unwrap().state,
+                    ImportNamespaceState::Revoked
+                );
+            }
+            assert!(reopened.put_import_namespace(&ns).is_err());
+        }
+    }
+
+    #[test]
+    fn a_same_count_insight_replacement_invalidates_the_exact_forget_quote() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = SqlCipherStore::open(
+            dir.path().join("scope.db"),
+            &TestKeyProvider::from_seed("insight scope"),
+        )
+        .unwrap();
+        let ns = namespace();
+        let key = Uuid::now_v7();
+        anchor(&mut store, &ns, key);
+        let first = bundle(ns.namespace_id);
+        insert_bundle(&store, &first, &crate::insights::encode(&first).unwrap());
+        let quote = store
+            .preview_forget_scope(ForgetUnit::ContentKey(key))
+            .unwrap();
+        assert_eq!(quote.impact().local_insights_invalidated, 1);
+        store
+            .conn
+            .execute(
+                "DELETE FROM local_insights WHERE bundle_id=?1",
+                [first.bundle_id.to_string()],
+            )
+            .unwrap();
+        let replacement = bundle(ns.namespace_id);
+        insert_bundle(
+            &store,
+            &replacement,
+            &crate::insights::encode(&replacement).unwrap(),
+        );
+        assert_eq!(
+            store.preview_impact(ForgetUnit::ContentKey(key)).unwrap(),
+            *quote.impact()
+        );
+        assert!(!store.forget_scope_is_current(&quote).unwrap());
+        assert!(store.has_content_key(key));
+    }
+
+    #[test]
+    fn genuine_auxiliary_sql_failures_still_roll_back_the_key_deletion() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = SqlCipherStore::open(
+            dir.path().join("sql-failure.db"),
+            &TestKeyProvider::from_seed("auxiliary sql failure"),
+        )
+        .unwrap();
+        let ns = namespace();
+        let key = Uuid::now_v7();
+        let sealed = anchor(&mut store, &ns, key);
+        store.conn.execute_batch("CREATE TEMP TRIGGER fail_namespace_revoke BEFORE UPDATE ON import_namespaces BEGIN SELECT RAISE(ABORT,'synthetic SQL failure'); END;").unwrap();
+        assert!(store
+            .execute_forget_outcome(ForgetUnit::ContentKey(key))
+            .is_err());
+        assert!(store.has_content_key(key));
+        assert!(store.open(&sealed).is_ok());
+        assert_eq!(
+            store.import_namespace(ns.namespace_id).unwrap().state,
+            ImportNamespaceState::Active
+        );
+    }
 }
 
 /// An in-memory quote of the exact rows affected by a forget.
@@ -226,12 +434,49 @@ impl SqlCipherStore {
             )?;
         }
 
+        let import_participants=self.uuid_column(
+            &format!("SELECT identity_id FROM import_participants WHERE content_key_id IN ({key_slots}) ORDER BY identity_id"),&key_text)?;
+        let import_messages=self.uuid_column(
+            &format!("SELECT identity_id FROM import_message_keys WHERE content_key_id IN ({key_slots}) ORDER BY identity_id"),&key_text)?;
+        let mut bound = key_text.clone();
+        bound.extend(key_text.clone());
+        let mut statement=self.conn.prepare(&format!(
+            "SELECT namespace_id,state FROM import_namespaces WHERE state != 'revoked' AND (
+                namespace_id IN (SELECT namespace_id FROM import_participants WHERE content_key_id IN ({key_slots})) OR
+                namespace_id IN (SELECT namespace_id FROM import_message_keys WHERE content_key_id IN ({key_slots}))) ORDER BY namespace_id"
+        )).map_err(backend)?;
+        let rows = statement
+            .query_map(rusqlite::params_from_iter(bound.iter()), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(backend)?;
+        let mut import_namespaces = Vec::new();
+        for row in rows {
+            let (id, state) = row.map_err(backend)?;
+            import_namespaces.push((id.parse().map_err(backend)?, state));
+        }
+        drop(statement);
+        let local_insights = if import_namespaces.is_empty() {
+            Vec::new()
+        } else {
+            let namespaces = as_text(
+                &import_namespaces
+                    .iter()
+                    .map(|(id, _)| *id)
+                    .collect::<Vec<_>>(),
+            );
+            self.uuid_column(&format!("SELECT bundle_id FROM local_insights WHERE validity='active' AND namespace_id IN ({}) ORDER BY bundle_id",placeholders(namespaces.len())),&namespaces)?
+        };
         Ok(ForgetPlan {
             content_keys,
             memories,
             contacts,
             evidence,
             inferences,
+            import_namespaces,
+            import_participants,
+            import_messages,
+            local_insights,
         })
     }
 
@@ -279,6 +524,8 @@ impl SqlCipherStore {
             sealed_blobs_destroyed,
             inferences_orphaned: plan.inferences.len() as u64,
             audit_entries_retained,
+            import_namespaces_revoked: plan.import_namespaces.len() as u64,
+            local_insights_invalidated: plan.local_insights.len() as u64,
         })
     }
 }
@@ -390,6 +637,69 @@ impl ForgetOutcomeOps for SqlCipherStore {
             tx.execute(
                 "UPDATE inferences SET state = ?2 WHERE inference_id = ?1",
                 rusqlite::params![inference_id.to_string(), orphaned],
+            )
+            .map_err(backend)?;
+        }
+
+        // Revocation survives removal of the sealed matching ids. Otherwise
+        // their absence would turn a re-import into fresh, readable content.
+        for (namespace_id, _) in &plan.import_namespaces {
+            let doc: String = tx
+                .query_row(
+                    "SELECT doc FROM import_namespaces WHERE namespace_id=?1",
+                    [namespace_id.to_string()],
+                    |row| row.get(0),
+                )
+                .map_err(backend)?;
+            let repaired = serde_json::from_str::<soul_store_api::import::ImportNamespace>(&doc)
+                .ok()
+                .filter(|namespace| namespace.namespace_id == *namespace_id)
+                .and_then(|mut namespace| {
+                    namespace.state = soul_store_api::import::ImportNamespaceState::Revoked;
+                    serde_json::to_string(&namespace).ok()
+                });
+            // SQL state is authoritative even when auxiliary JSON is corrupt.
+            // Retaining its unreadable doc makes readers fail closed instead
+            // of silently restoring an active source or blocking key erasure.
+            tx.execute("UPDATE import_namespaces SET state='revoked',doc=COALESCE(?2,doc) WHERE namespace_id=?1",
+                rusqlite::params![namespace_id.to_string(),repaired]).map_err(backend)?;
+        }
+        for bundle_id in &plan.local_insights {
+            let doc: String = tx
+                .query_row(
+                    "SELECT doc FROM local_insights WHERE bundle_id=?1",
+                    [bundle_id.to_string()],
+                    |row| row.get(0),
+                )
+                .map_err(backend)?;
+            match crate::insights::decode(&doc) {
+                Ok(mut bundle) if bundle.bundle_id == *bundle_id => {
+                    bundle.validity = soul_store_api::insight::InsightValidity::Invalidated;
+                    let encoded = crate::insights::encode(&bundle)?;
+                    tx.execute("UPDATE local_insights SET validity='invalidated',doc=?2 WHERE bundle_id=?1",
+                        rusqlite::params![bundle_id.to_string(),encoded]).map_err(backend)?;
+                }
+                _ => {
+                    // Insight bundles contain no prose. A malformed cache
+                    // record may be discarded; genuine SQL errors still abort
+                    // the transaction and are never mistaken for JSON damage.
+                    tx.execute(
+                        "DELETE FROM local_insights WHERE bundle_id=?1",
+                        [bundle_id.to_string()],
+                    )
+                    .map_err(backend)?;
+                }
+            }
+        }
+        for key in &plan.content_keys {
+            tx.execute(
+                "DELETE FROM import_participants WHERE content_key_id=?1",
+                [key.to_string()],
+            )
+            .map_err(backend)?;
+            tx.execute(
+                "DELETE FROM import_message_keys WHERE content_key_id=?1",
+                [key.to_string()],
             )
             .map_err(backend)?;
         }

@@ -493,6 +493,8 @@ export interface ForgetPreview {
   readonly contacts_affected: number;
   readonly sealed_blobs_destroyed: number;
   readonly inferences_orphaned: number;
+  readonly import_namespaces_revoked?: number;
+  readonly local_insights_invalidated?: number;
   readonly audit_entries_retained: number;
   readonly destroys_anything: false;
   readonly notice: string;
@@ -509,6 +511,8 @@ export interface ForgetReceipt {
   readonly content_keys_destroyed: number;
   readonly sealed_blobs_destroyed: number;
   readonly inferences_orphaned: number;
+  readonly import_namespaces_revoked?: number;
+  readonly local_insights_invalidated?: number;
   /** Whether the receipt charges what the preview quoted. */
   readonly matched_preview: boolean;
   /** Missing fields from a legacy peer stay unconfirmed, never default true. */
@@ -622,6 +626,19 @@ export interface CollectStatus {
  * rather than a button that does nothing.
  */
 export const COMMANDS = {
+  listImportNamespaces: "list_import_namespaces",
+  recentImportOperations: "recent_import_operations",
+  importOperation: "import_operation",
+  discardImport: "discard_import",
+  prepareImport: "prepare_import",
+  confirmImport: "confirm_import",
+  importRecoveryState: "import_recovery_state",
+  prepareMemoryContext: "prepare_memory_context",
+  draftReplyWithMemory: "draft_reply_with_memory",
+  prepareDraftWithMemory: "prepare_draft_with_memory",
+  localInsights: "local_insights",
+  ignoreLocalInsight: "ignore_local_insight",
+  recomputeLocalInsight: "recompute_local_insight",
   configSnapshot: "config_snapshot",
   sessionStatus: "session_status",
   completeWizard: "complete_wizard",
@@ -662,6 +679,104 @@ export const COMMANDS = {
   grantCollectConsent: "grant_collect_consent",
   revokeCollectConsent: "revoke_collect_consent",
 } as const;
+
+export type ImportSource = "soul-import-v1" | "telegram-desktop";
+export interface SelectedMemory {
+  readonly memory_id: string; readonly memory_type: string; readonly title: string; readonly summary: string;
+  readonly privacy_class: "owner" | "third_party" | "mixed" | "unknown";
+  readonly citation: { readonly memory_id: string; readonly title_blob_id: string; readonly summary_blob_id: string };
+}
+export interface MemorySelectionPreview {
+  readonly selected: readonly SelectedMemory[];
+  readonly excluded: readonly { readonly memory_id: string; readonly reason: string }[];
+  readonly outcome: "context" | "clarify" | "abstain"; readonly notice: string;
+}
+export interface MemoryContextView { readonly context_id: string | null; readonly preview: MemorySelectionPreview }
+export interface MemoryContextRequest {
+  readonly candidate_ids: readonly string[]; readonly query: string | null; readonly memory_type: string | null; readonly time_specific: boolean;
+}
+export interface MemoryDraftValue { readonly draft: Draft; readonly context: MemorySelectionPreview }
+export interface MemoryDraftPlan {
+  readonly prepared: { readonly plan: E1DraftPlan; readonly retained_memory_ids: readonly string[]; readonly endpoint_owner_ids: readonly string[]; readonly encoded_bytes: number; readonly body_preview: string };
+  readonly context: MemorySelectionPreview;
+}
+/** Revoke old display ownership before requesting a new, read-only local grant. */
+export function prepareMemoryContext(request: MemoryContextRequest): Promise<MemoryContextView> {
+  invalidateDraftSource();
+  return currentDraftResult(COMMANDS.prepareMemoryContext, { request });
+}
+export function draftReplyWithMemory(pasted: string, contextId: string): Promise<MemoryDraftValue> {
+  return currentDraftResult(COMMANDS.draftReplyWithMemory, { pasted, contextId });
+}
+export function prepareDraftWithMemory(pasted: string, contextId: string, ownerIds: readonly string[], includeOriginal = false): Promise<MemoryDraftPlan> {
+  return currentDraftResult(COMMANDS.prepareDraftWithMemory, { pasted, contextId, ownerIds, includeOriginal });
+}
+export interface ImportCounts {
+  readonly participants: number; readonly messages: number; readonly duplicates: number;
+  readonly contacts_created: number; readonly contacts_matched: number; readonly events_written: number;
+  readonly evidence_written: number; readonly messages_with_injection_markers: number; readonly ties_rebuilt: number;
+}
+export interface LocalInsight {
+  readonly bundle_id: string; readonly operation_id: string; readonly namespace_id: string;
+  readonly validity: "active" | "invalidated"; readonly ignored: boolean; readonly counts: ImportCounts;
+  readonly summaries: readonly PersonSummary[]; readonly notice: string;
+}
+export function localInsights(): Promise<readonly LocalInsight[]> {
+  return currentDraftResult(COMMANDS.localInsights, {});
+}
+export function ignoreLocalInsight(bundleId: string): Promise<LocalInsight> {
+  return currentDraftResult(COMMANDS.ignoreLocalInsight, { bundleId });
+}
+export function recomputeLocalInsight(bundleId: string): Promise<LocalInsight> {
+  return currentDraftResult(COMMANDS.recomputeLocalInsight, { bundleId });
+}
+export interface ImportNamespace {
+  readonly namespace_id: string; readonly source: ImportSource;
+  readonly state: "active" | "revoked"; readonly coverage: "full_from_creation" | "forward_only";
+}
+export interface ImportOperation {
+  readonly operation_id: string; readonly preview_id: string; readonly source: ImportSource;
+  readonly namespace_id: string; readonly legacy_choice: "reject" | "forward_only";
+  readonly state: "reserved" | "running" | "committed" | "rejected" | "discarded" | "invalidated" | "interrupted";
+  readonly preview: ImportCounts; readonly receipt: ImportCounts | null; readonly error_code: string | null;
+  readonly audit_state: "not_applicable" | "recorded" | "unconfirmed"; readonly created_at: number;
+}
+export interface ImportOperationView {
+  readonly operation: ImportOperation; readonly namespace_revoked: boolean; readonly prepared_here: boolean;
+}
+export interface ImportRecoveryState {
+  readonly active_worker: boolean; readonly reserved_operations: number | null; readonly running_operations: number | null;
+  readonly held_operation_id: string | null; readonly can_start_new_intent: boolean;
+}
+export function importRecoveryState(): Promise<ImportRecoveryState> {
+  return invoke(COMMANDS.importRecoveryState);
+}
+export interface PreparedImport {
+  readonly operation: ImportOperation; readonly preview: ImportPreview; readonly legacy_events: number; readonly notice: string;
+}
+export interface ImportPrepareRequest {
+  readonly text: string; readonly source: ImportSource; readonly namespace_id: string | null;
+  readonly legacy_choice: "reject" | "forward_only";
+}
+
+export function listImportNamespaces(): Promise<readonly ImportNamespace[]> {
+  return invoke(COMMANDS.listImportNamespaces);
+}
+export function recentImportOperations(): Promise<readonly ImportOperationView[]> {
+  return invoke(COMMANDS.recentImportOperations);
+}
+export function importOperation(operationId: string): Promise<ImportOperationView> {
+  return invoke(COMMANDS.importOperation, { operationId });
+}
+export function prepareImport(request: ImportPrepareRequest): Promise<PreparedImport> {
+  return mutateDraftSource(COMMANDS.prepareImport, { request });
+}
+export function confirmImport(operationId: string, previewId: string): Promise<ImportOperationView> {
+  return mutateDraftSource(COMMANDS.confirmImport, { operationId, previewId });
+}
+export function discardImport(operationId: string): Promise<ImportOperationView> {
+  return mutateDraftSource(COMMANDS.discardImport, { operationId });
+}
 
 /**
  * Display ownership within this WebView, not an authorization token. The core

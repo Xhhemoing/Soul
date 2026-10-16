@@ -1,13 +1,13 @@
 # 计划索引（30 秒定位权威文件）
 
-核于 2026-09-27。本页只导航到当前仓库实际存在的权威文件；历史分支说明不作为当前进度。AI 开发先读项目级 [AGENTS.md](../AGENTS.md)，其职责是协作和执行导航，不是第二份产品规范。
+核于 2026-10-16。本页只导航到当前仓库实际存在的权威文件；历史分支说明不作为当前进度。AI 开发先读项目级 [AGENTS.md](../AGENTS.md)，其职责是协作和执行导航，不是第二份产品规范。
 
 ## 一、先读四份
 
 | 文件 | 唯一权威范围 |
 |---|---|
 | [PRODUCT_LOCK.md](PRODUCT_LOCK.md) | 产品边界、v0.1 十三条垂直切片、出网分级、不可协商约束 |
-| [DECISIONS.md](DECISIONS.md) | 已拍板的选择；本地门禁为 D61–D63，文档清理为 D64，平台定位为 D65，长期目标与并行规划为 D66–D67，受阻验收期间的预备支线边界为 D68 |
+| [DECISIONS.md](DECISIONS.md) | 已拍板的选择；本地门禁为 D61–D63，文档清理为 D64，平台定位为 D65，长期目标与并行规划为 D66–D67，预备支线为 D68，近期框架与记忆/持久导入/自然键/遗忘语义见 D69 起的逐项决定 |
 | [algorithms/DECISION.md](algorithms/DECISION.md) | T4D、A0/A1/A2/A3、常量、as_of 纪律与回退链 |
 | [ACCEPTANCE.md](ACCEPTANCE.md) | Goal 1 验收矩阵、工作包、红线与关闭条件 |
 
@@ -17,8 +17,11 @@
 |---|---|
 | 现在到哪一步、还有哪些缺口 | [STATUS.md](STATUS.md) 顶部当前状态；历史段按当时日期阅读 |
 | 当前分层、操作流程与后续执行架构图 | [ARCHITECTURE.md](ARCHITECTURE.md)；明确区分已实现与设计中，图源在 [architecture/](architecture/) |
-| 从实际使用出发的后续框架、候选算法与反例实验 | [使用框架设计](design/2026-10-15-usage-framework.md) / [交互 HTML](framework-design.html)；非生产参考，授权/迁移语义未改变 |
-| 导入交付和人物摘要的下一轮生产接线 | [逐模块计划与验证](design/2026-10-16-import-summary-continuation.md)；D70，先规划复核再编码，保留持久幂等与平台验证边界 |
+| 最新框架 W1–W5 的已接线能力与边界 | [ARCHITECTURE 当前表](ARCHITECTURE.md) / [HTML 顶部当前框架](framework-design.html) / [剩余模块计划](design/2026-10-16-remaining-implementation.md)：owned 扫描、本次候选记忆、持久导入/恢复、封存自然键去重/迁移、本地 A2 反馈；实际验证看 STATUS |
+| 本次记忆用途、过滤/澄清与实际请求预算 | [剩余模块计划的 W2 节](design/2026-10-16-remaining-implementation.md)；明确候选内的关键词/类型选择，缺事实时间先 Clarify，默认 local，真实 JSON serializer 64 KiB 与整条裁剪/引用复验 |
+| 持久回执、不可变预览确认、OS lease 与去重迁移 | [W3/W4 计划](design/2026-10-16-remaining-implementation.md)；确认只带 IDs，schema 3，同事务回执/原审计；forward-only 不代表全历史去重，遗忘撤销 namespace |
+| 从实际使用出发的候选算法与反例实验 | [10 月 15 日使用框架研究](design/2026-10-15-usage-framework.md) / [交互 HTML 的历史研究区](framework-design.html)；参考算法、SVG 与实验保持固定历史范围，不覆盖顶部生产状态 |
+| 导入交付与人物摘要的此前生产切片 | [逐模块计划与验证](design/2026-10-16-import-summary-continuation.md)；D70，先规划复核再编码；后续持久幂等/恢复以 W3/W4 为准，平台验证单独记录 |
 | v0.1 是否做某个功能 | [PRODUCT_LOCK.md](PRODUCT_LOCK.md) 的最小垂直切片与砍/留 |
 | 一件事怎样算完成 | [ACCEPTANCE.md](ACCEPTANCE.md)；矩阵与产品十三条切片同时满足 |
 | Goal 1 的实现拆分与依赖 | [GOAL1_PLAN.md](GOAL1_PLAN.md) |
@@ -34,12 +37,15 @@
 
 ## 三、仓库与验收状态
 
+- 当前续写基于 `b66f093a1407887eb873fe33defe984906252d29`，W1–W5 已接入并逐模块独立源码复审；源码完成不等于已合入 main。最终测试数量由 [STATUS](STATUS.md) 记录。
+- W5 依赖并非“只有计数”：还保存 UUID、固定状态与既有 conversation_ref 的规范字节编码，完整来源复验失败后展示仅保留历史操作计数。忽略不训练，重算创建同操作的新 bundle。
 - 本地主干记录 `8aae8f3` 已合入 M0-2 收敛，仓库包含核心与桌面实现；不再是只有计划和算法 crate。
 - M0-3 安装修复基线为 `95ff7d6`：继承 `1eb471a` / `e2fdf16`，新增注册路径解码、临时副本卸载及完整目录消失判定；隔离 G-W 与受控回归通过。实际安装首次失败、部分恢复仍有残留，见 [安装修复记录](gates/20260925-95ff7d6-win.md)。
 - D68 独立集成源码 `ebff0c9` 的完整 G-W 与补充检查已通过，见 [四包集成门禁记录](gates/20260925-ebff0c9-win.md)。此前记录的同源码 NSIS 外部证据目录当前缺失，不能代勾 G-M 0；真实安装/卸载按用户要求 `NOT RUN`，G-M / G-L 未齐，Goal 1、Q2-00、正式 Q2-05 与 Goal 2 均未关闭。
 - 根 Cargo workspace 与 `apps/desktop/src-tauri` 是两个独立 workspace。根目录测试不覆盖桌面壳。
 - 计划冻结、代码实现、平台门禁通过、Goal 1 关闭分别记录。旧版本的绿不能替代当前版本的证据。
 - 本轮按用户指示暂时跳过 Linux 门禁；这不是豁免 Goal 1 的 G-L 关闭条件。
+- 当前环境缺原生 GTK/WebKit 开发依赖，静态 Tauri 命令断言不等于原生构建/IPC。完整 G-L 继续暂缓，本轮 G-W/G-M 未运行，Goal 1、正式 Goal 2 与 Wave 1 均未关闭。
 
 ## 四、历史材料的边界
 

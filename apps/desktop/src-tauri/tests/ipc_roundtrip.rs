@@ -101,6 +101,23 @@ impl Shell {
         self.invoke_from(command, body, None)
     }
 
+    fn import(&self, source: &str, text: &str) -> Result<Value, Value> {
+        let prepared = self.invoke(
+            "prepare_import",
+            json!({ "request": {
+                "text": text, "source": source, "namespace_id": null, "legacy_choice": "reject"
+            }}),
+        )?;
+        let committed = self.invoke(
+            "confirm_import",
+            json!({
+                "operationId": prepared["operation"]["operation_id"],
+                "previewId": prepared["operation"]["preview_id"]
+            }),
+        )?;
+        Ok(committed["operation"]["receipt"].clone())
+    }
+
     fn invoke_from(
         &self,
         command: &str,
@@ -1159,7 +1176,7 @@ fn an_imported_name_is_placeheld_over_the_ipc_even_in_a_body_the_user_confirmed(
     let shell = Shell::on(scratch());
     let text = fixture("import/telegram/result_basic.json");
 
-    let receipt = match shell.invoke("commit_telegram", json!({ "text": text })) {
+    let receipt = match shell.import("telegram-desktop", &text) {
         Ok(receipt) => receipt,
         // No key, no store, no import — and the screen has to be told which.
         Err(refusal) => {
@@ -1394,7 +1411,7 @@ fn a_person_summary_is_rephrased_over_the_ipc_by_the_endpoint_the_user_configure
     let shell = Shell::on(scratch());
     let text = fixture("import/telegram/result_basic.json");
 
-    let receipt = match shell.invoke("commit_telegram", json!({ "text": text })) {
+    let receipt = match shell.import("telegram-desktop", &text) {
         Ok(receipt) => receipt,
         // No key, no store, no import — and the screen has to be told which.
         Err(refusal) => {
@@ -1463,7 +1480,7 @@ fn a_rephrasing_that_reads_like_a_diagnosis_leaves_the_counts_standing_over_the_
     let shell = Shell::on(scratch());
     let text = fixture("import/telegram/result_basic.json");
 
-    let receipt = match shell.invoke("commit_telegram", json!({ "text": text })) {
+    let receipt = match shell.import("telegram-desktop", &text) {
         Ok(receipt) => receipt,
         // No key, no store, no import — and the screen has to be told which.
         Err(refusal) => {
@@ -1892,24 +1909,33 @@ fn an_export_crosses_the_ipc_as_counts_and_becomes_people() {
     let text = fixture("import/soul-import-v1/three_partners.jsonl");
     let shell = Shell::on(scratch());
 
-    let preview = match shell.invoke("preview_soul_import_v1", json!({ "text": text })) {
-        Ok(preview) => preview,
+    let prepared = match shell.invoke("prepare_import", json!({ "request": {
+        "text": text, "source": "soul-import-v1", "namespace_id": null, "legacy_choice": "reject"
+    }})) {
+        Ok(prepared) => prepared,
         // No key, no store, no import — and the screen has to be told which.
         Err(refusal) => {
             assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
             return;
         }
     };
+    let preview = prepared["preview"].clone();
     assert_eq!(preview["source"], json!("soul-import-v1"));
     assert_eq!(preview["participants"], json!(5));
     assert_eq!(preview["messages"], json!(16));
     assert_eq!(preview["writes_anything"], json!(false));
 
-    let receipt = shell
-        .invoke("commit_soul_import_v1", json!({ "text": text }))
-        .expect("the same text commits");
+    let committed = shell.invoke("confirm_import", json!({
+        "operationId": prepared["operation"]["operation_id"], "previewId": prepared["operation"]["preview_id"]
+    })).expect("only the exact immutable preparation commits");
+    let receipt = committed["operation"]["receipt"].clone();
     assert_eq!(receipt["contacts_created"], json!(5));
     assert_eq!(receipt["events_written"], json!(16));
+    assert_eq!(receipt["evidence_written"], json!(15));
+    assert_eq!(
+        prepared["operation"]["preview"]["evidence_written"],
+        json!(15)
+    );
     assert_eq!(receipt["ties_rebuilt"], json!(4));
 
     let graph = shell.invoke("people_graph", json!({})).expect("a graph");

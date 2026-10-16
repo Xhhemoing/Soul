@@ -7,9 +7,9 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use soul_memory::{
-    create, forget, revalidate_selection, select_for_draft, update, ExclusionReason,
-    MemoryDraft, MemoryEdit, MemoryPrivacyClass, MemorySelectionRequest, MemoryTimeScope,
-    SelectionError, SelectionLimits, SelectionOutcome,
+    create, forget, revalidate_selection, select_for_draft, update, ExclusionReason, MemoryDraft,
+    MemoryEdit, MemoryPrivacyClass, MemorySelectionRequest, MemoryTimeScope, SelectionError,
+    SelectionLimits, SelectionOutcome,
 };
 use soul_schema::common::{SealedSubject, SealedText};
 use soul_schema::memory::{ForgetState, MemoryType, SoulMemory};
@@ -253,7 +253,11 @@ fn invalid_reference_unreadable_missing_and_bad_utf8_are_distinct_exclusions() {
         SelectionLimits::default(),
     )
     .unwrap();
-    let reasons: Vec<_> = selection.excluded().iter().map(|item| item.reason).collect();
+    let reasons: Vec<_> = selection
+        .excluded()
+        .iter()
+        .map(|item| item.reason)
+        .collect();
     assert_eq!(
         reasons,
         vec![
@@ -274,8 +278,7 @@ fn missing_classification_is_unknown_and_mixed_fields_never_become_owner() {
     store.rows.insert(unknown.memory_id, unknown.clone());
     let mixed = create(
         &mut store.inner,
-        &MemoryDraft::own(MemoryType::Episodic, "混合", "第三人内容。")
-            .about(SealedSubject::Mixed),
+        &MemoryDraft::own(MemoryType::Episodic, "混合", "第三人内容。").about(SealedSubject::Mixed),
         common::NOW,
     )
     .unwrap();
@@ -292,9 +295,18 @@ fn missing_classification_is_unknown_and_mixed_fields_never_become_owner() {
         SelectionLimits::default(),
     )
     .unwrap();
-    assert_eq!(selection.selected()[0].privacy_class(), MemoryPrivacyClass::Unknown);
-    assert_eq!(selection.selected()[1].privacy_class(), MemoryPrivacyClass::Mixed);
-    assert_eq!(selection.selected()[2].privacy_class(), MemoryPrivacyClass::ThirdParty);
+    assert_eq!(
+        selection.selected()[0].privacy_class(),
+        MemoryPrivacyClass::Unknown
+    );
+    assert_eq!(
+        selection.selected()[1].privacy_class(),
+        MemoryPrivacyClass::Mixed
+    );
+    assert_eq!(
+        selection.selected()[2].privacy_class(),
+        MemoryPrivacyClass::ThirdParty
+    );
 }
 
 #[test]
@@ -304,12 +316,19 @@ fn keywords_match_only_inside_the_scope_with_stable_title_first_ordering() {
     let title_hit = store.add("LIBRARY 图书馆", "安静学习。");
     let unrelated = store.add("其它", "运动安排。");
     let _outside_scope = store.add("Library 图书馆", "本次不允许读取的反例。");
-    let mut scoped = request(&[summary_hit.memory_id, unrelated.memory_id, title_hit.memory_id]);
+    let mut scoped = request(&[
+        summary_hit.memory_id,
+        unrelated.memory_id,
+        title_hit.memory_id,
+    ]);
     scoped.query = Some("library 图书馆".to_owned());
     let selection = select_for_draft(&store, &scoped, SelectionLimits::default()).unwrap();
     assert_eq!(selection.selected()[0].memory_id(), title_hit.memory_id);
     assert_eq!(selection.selected()[1].memory_id(), summary_hit.memory_id);
-    assert_eq!(selection.excluded()[0].reason, ExclusionReason::KeywordMismatch);
+    assert_eq!(
+        selection.excluded()[0].reason,
+        ExclusionReason::KeywordMismatch
+    );
     assert_eq!(store.reads.borrow().len(), 3);
     scoped.memory_type = Some(MemoryType::Commitment);
     store.opens.borrow_mut().clear();
@@ -336,7 +355,9 @@ fn exact_serialized_budget_accounts_for_chinese_escaping_and_skips_whole_entries
     let budget = only_small.serialized_context_bytes().unwrap();
     assert_eq!(
         budget,
-        serde_json::to_vec(&only_small.preview().selected).unwrap().len()
+        serde_json::to_vec(&only_small.preview().selected)
+            .unwrap()
+            .len()
     );
     let limits = SelectionLimits {
         max_context_bytes: budget,
@@ -351,10 +372,16 @@ fn exact_serialized_budget_accounts_for_chinese_escaping_and_skips_whole_entries
     .unwrap();
     assert_eq!(selection.selected().len(), 1);
     assert_eq!(selection.selected()[0].memory_id(), small.memory_id);
-    assert_eq!(selection.selected()[0].summary(), "完整否定：我不接受这个安排。");
+    assert_eq!(
+        selection.selected()[0].summary(),
+        "完整否定：我不接受这个安排。"
+    );
     assert!(selection.serialized_context_bytes().unwrap() <= budget);
     assert_eq!(selection.preview().selected.len(), 1);
-    assert_eq!(selection.excluded()[0].reason, ExclusionReason::ContextBudget);
+    assert_eq!(
+        selection.excluded()[0].reason,
+        ExclusionReason::ContextBudget
+    );
 }
 
 #[test]
@@ -375,7 +402,10 @@ fn per_entry_and_selection_count_limits_preserve_manual_order() {
     .unwrap();
     assert_eq!(selection.selected()[0].memory_id(), second.memory_id);
     assert_eq!(selection.excluded()[0].reason, ExclusionReason::EntryBudget);
-    assert_eq!(selection.excluded()[1].reason, ExclusionReason::SelectionLimit);
+    assert_eq!(
+        selection.excluded()[1].reason,
+        ExclusionReason::SelectionLimit
+    );
     assert!(!store
         .opens
         .borrow()
@@ -457,7 +487,10 @@ fn final_request_trimming_updates_the_same_snapshot_and_rejects_scope_expansion(
     assert_eq!(selection.selected().len(), 1);
     assert_eq!(selection.preview().selected[0].memory_id, second.memory_id);
     assert_eq!(selection.excluded()[0].memory_id, first.memory_id);
-    assert_eq!(selection.excluded()[0].reason, ExclusionReason::FinalRequestBudget);
+    assert_eq!(
+        selection.excluded()[0].reason,
+        ExclusionReason::FinalRequestBudget
+    );
     selection.retain_ids(&[]).unwrap();
     assert_eq!(selection.outcome(), SelectionOutcome::Abstain);
 }

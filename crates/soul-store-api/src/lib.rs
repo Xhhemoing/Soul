@@ -20,6 +20,8 @@
 pub mod conformance;
 pub mod fake;
 pub mod forget;
+pub mod import;
+pub mod insight;
 pub mod research;
 pub mod types;
 

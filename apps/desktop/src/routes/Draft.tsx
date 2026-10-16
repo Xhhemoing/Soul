@@ -23,7 +23,7 @@
  * this file. What is decided here is layout.
  */
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import {
   discardDraft,
@@ -33,17 +33,22 @@ import {
   generateDraft,
   getDraftSourceRevision,
   prepareDraft,
+  draftReplyWithMemory,
+  prepareDraftWithMemory,
   subscribeDraftSource,
   type Draft as DraftValue,
   type DraftNotices,
   type E1DraftPlan,
   type Refusal,
+  type MemoryDraftPlan,
 } from "../core";
 import { asRefusal, Refused } from "../refusal";
 import {
   draftLane, DraftRequests, isDraftRefusal,
   type DraftQuote, type DraftRequestKind, type DraftTicket,
 } from "./draftRequests";
+import { DraftMemory, MemoryReferences, type MemoryTask } from "./DraftMemory";
+import { requestDraftDiscard } from "./draftDiscard";
 
 /** What the core said, in the shape the screen renders it. */
 type Outcome =
@@ -70,6 +75,9 @@ export function Draft(): React.JSX.Element {
   const [quote, setQuote] = useState<DraftQuote | null>(null);
   /** Keys [`Result`], so a second draft arrives in a box that was reset. */
   const [attempt, setAttempt] = useState(0);
+  const [memory, setMemory] = useState<MemoryTask | null>(null);
+  const [memoryPlan, setMemoryPlan] = useState<MemoryDraftPlan | null>(null);
+  const pasteGeneration = useRef(0);
 
   useEffect(() => {
     let live = true;
@@ -82,6 +90,8 @@ export function Draft(): React.JSX.Element {
       setInput((previous) => ({ ...previous, revision }));
       setQuote(null);
       setOutcome({ kind: "none" });
+      setMemory(null);
+      setMemoryPlan(null);
     });
     draftNotices().then(
       (value) => {
@@ -139,8 +149,12 @@ export function Draft(): React.JSX.Element {
     const ticket = start("local");
     if (ticket === null) return;
     run(ticket, async () => {
-      const draft = await draftReply(ticket.text);
-      if (requests.finish(ticket)) setOutcome({ kind: "draft", draft });
+      const result = memory?.context.context_id === undefined || memory.context.context_id === null
+        ? { draft: await draftReply(ticket.text), context: null } : await draftReplyWithMemory(ticket.text, memory.context.context_id);
+      if (requests.finish(ticket)) {
+        setOutcome({ kind: "draft", draft: result.draft });
+        if (result.context !== null) setMemory({ context: { context_id: null, preview: result.context }, owner_ids: [] });
+      }
     });
   };
 
@@ -156,11 +170,18 @@ export function Draft(): React.JSX.Element {
     const ticket = start(expected === undefined ? "prepare" : "original", expected);
     if (ticket === null) return;
     run(ticket, async () => {
-      const prepared = await prepareDraft(ticket.text, expected !== undefined);
+      const material = memory?.context.context_id === undefined || memory.context.context_id === null
+        ? null : await prepareDraftWithMemory(ticket.text, memory.context.context_id, memory.owner_ids, expected !== undefined);
+      const prepared = material === null ? await prepareDraft(ticket.text, expected !== undefined) : material.prepared.plan;
       const next = requests.remember(ticket, prepared);
       if (requests.finish(ticket) && next !== null) {
         setQuote(next);
         setOutcome({ kind: "none" });
+        setMemoryPlan(material);
+        if (material !== null) setMemory({
+          context: { context_id: memory?.context.context_id ?? null, preview: material.context },
+          owner_ids: material.prepared.endpoint_owner_ids,
+        });
       }
     });
   };
@@ -174,7 +195,10 @@ export function Draft(): React.JSX.Element {
         preparation_id: approved.plan.preparation_id,
         plan_hash: approved.plan.plan_hash,
       });
-      if (requests.finish(ticket)) setOutcome({ kind: "draft", draft });
+      if (requests.finish(ticket)) {
+        setOutcome({ kind: "draft", draft });
+        if (memory !== null) setMemory({ ...memory, context: { ...memory.context, context_id: null }, owner_ids: [] });
+      }
     });
   };
 
@@ -183,15 +207,28 @@ export function Draft(): React.JSX.Element {
     if (ticket === null) return;
     run(ticket, async () => {
       await discardDraft();
-      if (requests.finish(ticket)) setOutcome({ kind: "none" });
+      if (requests.finish(ticket)) {
+        setOutcome({ kind: "none" });
+        setMemory(null); setMemoryPlan(null);
+      }
     });
   };
 
   const edit = (text: string): void => {
+    pasteGeneration.current += 1;
+    if (quote !== null || memory !== null || draftLane.isPreparing()) requestDraftDiscard();
     setInput({ text, revision: requests.edit(text) });
     setQuote(null);
     setOutcome({ kind: "none" });
+    setMemory(null); setMemoryPlan(null);
   };
+
+  const memoryEdit = (): void => {
+    if (quote !== null || memory !== null || draftLane.isPreparing()) requestDraftDiscard();
+    setMemory(null); setMemoryPlan(null); setQuote(null); setOutcome({ kind: "none" });
+    setInput((previous) => ({ ...previous, revision: requests.invalidate() }));
+  };
+  const unusableMemory = memory !== null && memory.context.context_id === null;
 
   return (
     <>
@@ -218,14 +255,14 @@ export function Draft(): React.JSX.Element {
             type="button"
             className="primary"
             onClick={write}
-            disabled={input.text.trim() === "" || lane.busy}
+            disabled={input.text.trim() === "" || lane.busy || unusableMemory}
           >
             写一版草稿
           </button>
           <button
             type="button"
             onClick={() => describe()}
-            disabled={input.text.trim() === "" || lane.busy || lane.uncertain}
+            disabled={input.text.trim() === "" || lane.busy || lane.uncertain || unusableMemory}
           >
             用你自己的模型端点写
           </button>
@@ -246,6 +283,15 @@ export function Draft(): React.JSX.Element {
         ) : null}
       </section>
 
+      <DraftMemory value={memory} busy={lane.busy || lane.uncertain} hasQuote={quote !== null} getPasteGeneration={() => pasteGeneration.current} onEdit={memoryEdit} onChange={(value) => {
+        setMemory(value); setQuote(null); setMemoryPlan(null); setOutcome({ kind: "none" });
+        setInput((previous) => ({ ...previous, revision: requests.invalidate() }));
+      }} />
+      {memoryPlan === null ? null : <section className="panel"><h2>这份准备实际保留的记忆与端点材料</h2>
+        <MemoryReferences preview={memoryPlan.context} /><p>完整请求 UTF-8 JSON：{memoryPlan.prepared.encoded_bytes} 字节（含固定指令和围栏，不是 token 数）。</p>
+        <p>明确提供的本人记录：{memoryPlan.prepared.endpoint_owner_ids.join("、") || "无，记忆正文保持本地"}</p>
+        <details><summary>查看实际脱敏材料</summary><pre className="pre-wrap">{memoryPlan.prepared.body_preview}</pre></details>
+      </section>}
       {quote === null ? null : (
         <Confirm
           plan={quote.plan}

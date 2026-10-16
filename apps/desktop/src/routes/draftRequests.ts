@@ -30,6 +30,10 @@ export class DraftLane {
 
   readonly snapshot = (): LaneState => this.state;
 
+  isPreparing(): boolean {
+    return this.active?.kind === "prepare" || this.active?.kind === "original";
+  }
+
   begin(kind: DraftRequestKind): Slot | null {
     if (this.active !== null || (this.state.uncertain && kind !== "local")) return null;
     const slot = { kind };

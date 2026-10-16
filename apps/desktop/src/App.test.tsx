@@ -109,8 +109,8 @@ describe("桌面壳", () => {
 
     expect(screen.queryByTestId("pending-owner")).toBeNull();
     expect(await screen.findByText(/soul-import-v1 JSONL/)).toBeVisible();
-    expect(screen.getByText(/Telegram Desktop 的 result.json/)).toBeVisible();
-    expect(screen.getByLabelText("选择文件")).toHaveAttribute("type", "file");
+    expect(screen.getByText(/Telegram Desktop result.json/, { selector: "option" })).toBeVisible();
+    expect(screen.getByLabelText("选择导出文件")).toHaveAttribute("type", "file");
   });
 
   it("人脉图页有内容了，不再是空路由", async () => {

@@ -197,6 +197,56 @@ impl RedactedBody {
     }
 }
 
+/// A composition refusal carries counts/codes only, never any material.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum RedactedBodyCombinationError {
+    #[error("a composed body cannot carry more than one original-turn exemption")]
+    MultipleExemptions,
+    #[error("the composed body exceeds its representable size")]
+    SizeOverflow,
+}
+
+/// Join material that has already passed the redactor. No arbitrary string
+/// can enter here, and a one-shot exemption is never cloned or reconstructed.
+/// The same one-newline boundary as `Redactor::build` is retained.
+pub fn combine_redacted(
+    parts: &[&RedactedBody],
+) -> Result<RedactedBody, RedactedBodyCombinationError> {
+    let mut third_party_turns = 0usize;
+    let mut placeheld_turns = 0usize;
+    let mut exempted_turn = None;
+    let mut bytes = parts.len().saturating_sub(1);
+    for part in parts {
+        third_party_turns = third_party_turns
+            .checked_add(part.third_party_turns)
+            .ok_or(RedactedBodyCombinationError::SizeOverflow)?;
+        placeheld_turns = placeheld_turns
+            .checked_add(part.placeheld_turns)
+            .ok_or(RedactedBodyCombinationError::SizeOverflow)?;
+        bytes = bytes
+            .checked_add(part.text.len())
+            .ok_or(RedactedBodyCombinationError::SizeOverflow)?;
+        if let Some(turn) = part.exempted_turn {
+            if exempted_turn.replace(turn).is_some() {
+                return Err(RedactedBodyCombinationError::MultipleExemptions);
+            }
+        }
+    }
+    let mut text = String::with_capacity(bytes);
+    for (index, part) in parts.iter().enumerate() {
+        if index != 0 {
+            text.push('\n');
+        }
+        text.push_str(&part.text);
+    }
+    Ok(RedactedBody {
+        text,
+        third_party_turns,
+        placeheld_turns,
+        exempted_turn,
+    })
+}
+
 /// Step one of the two-step confirmation.
 ///
 /// Holding this proves the user was asked. It is not permission yet, and it

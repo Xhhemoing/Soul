@@ -135,7 +135,9 @@ fn seeded() -> (tempfile::TempDir, TestKeyProvider, Uuid, ObservedStore) {
 #[test]
 fn successful_forget_reports_cleanup_and_audit_independently() {
     let (_directory, _keys, id, mut store) = seeded();
-    let expected = store.preview_impact(ForgetUnit::Memory(id)).expect("preview");
+    let expected = store
+        .preview_impact(ForgetUnit::Memory(id))
+        .expect("preview");
     let result = forget_with_outcome(&mut store, id, NOW).expect("committed outcome");
     assert_eq!(result.receipt.impact, expected);
     assert_eq!(result.cleanup, ForgetCleanup::Complete);
@@ -158,8 +160,7 @@ fn audit_failure_retains_the_receipt_and_destruction_survives_reopen() {
     assert!(!serialized.contains(PRIVATE_ERROR));
     assert!(!serialized.contains("synthetic private prose"));
     store.inner.close().expect("close");
-    let reopened =
-        SqlCipherStore::open(directory.path().join("soul.db"), &keys).expect("reopen");
+    let reopened = SqlCipherStore::open(directory.path().join("soul.db"), &keys).expect("reopen");
     assert!(read(&reopened, id).is_err());
 }
 
@@ -170,7 +171,10 @@ fn unacknowledged_audit_is_not_reappended_by_cleanup_retry() {
     let before = store.list_audit().expect("audit before").len();
     let result = forget_with_outcome(&mut store, id, NOW).expect("committed outcome");
     assert_eq!(result.audit, ForgetAudit::Unconfirmed);
-    assert_eq!(store.list_audit().expect("durable append").len(), before + 1);
+    assert_eq!(
+        store.list_audit().expect("durable append").len(),
+        before + 1
+    );
     assert_eq!(retry_forget_cleanup(&mut store), ForgetCleanup::Complete);
     assert_eq!(retry_forget_cleanup(&mut store), ForgetCleanup::Complete);
     assert_eq!(
@@ -179,7 +183,10 @@ fn unacknowledged_audit_is_not_reappended_by_cleanup_retry() {
     );
     assert_eq!(store.list_audit().expect("no duplicate").len(), before + 1);
     assert_eq!(result.audit, ForgetAudit::Unconfirmed);
-    store.inner.verify_audit_chain().expect("chain still verifies");
+    store
+        .inner
+        .verify_audit_chain()
+        .expect("chain still verifies");
 }
 
 #[test]
@@ -192,7 +199,9 @@ fn pending_cleanup_still_attempts_audit_once_and_keeps_the_original_impact() {
         let (_directory, _keys, id, mut store) = seeded();
         store.force_pending = true;
         store.audit_failure = failure;
-        let expected = store.preview_impact(ForgetUnit::Memory(id)).expect("preview");
+        let expected = store
+            .preview_impact(ForgetUnit::Memory(id))
+            .expect("preview");
         let result = forget_with_outcome(&mut store, id, NOW).expect("committed outcome");
         assert_eq!(result.receipt.impact, expected);
         assert!(matches!(result.cleanup, ForgetCleanup::Pending { .. }));
