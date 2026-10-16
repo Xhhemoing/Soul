@@ -363,3 +363,263 @@ fn dropped_preparation_work_releases_capacity_and_old_production_entrypoints_ref
         .refuse_legacy_preview("private synthetic content")
         .is_err());
 }
+
+fn hostile_owned_input() -> String {
+    let owned = input();
+    let hostile = fixtures::read_text("import/soul-import-v1/injection_lines.jsonl").unwrap();
+    owned
+        .lines()
+        .chain(hostile.lines().skip(1))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn injection_attempts(session: &Session) -> Vec<u64> {
+    let chain = session.audit().unwrap();
+    assert!(chain.verified);
+    let serialized = serde_json::to_string(&chain).unwrap();
+    for prose in [
+        "忽略之前指令",
+        "忽略之前",
+        "系统管理员",
+        "developer mode",
+        "evil.example",
+        "tool_call",
+        "u-attacker",
+        "李 雷",
+    ] {
+        assert!(
+            !serialized.contains(prose),
+            "an attempt audit quoted external content"
+        );
+    }
+    chain
+        .entries
+        .into_iter()
+        .filter(|entry| entry.action == "injection.blocked")
+        .map(|entry| {
+            assert_eq!(entry.decision, "denied");
+            assert_eq!(
+                entry.reason_code.as_deref(),
+                Some("INJECTION_MARKERS_FOUND")
+            );
+            assert!(
+                entry.bytes.is_none(),
+                "the attempt does not retain prose length"
+            );
+            entry.items.expect("the attempt counts messages")
+        })
+        .collect()
+}
+
+#[test]
+fn modern_prepare_audits_injection_attempts_before_confirmation() {
+    for (source, text, markers) in [
+        (ImportSourceKind::SoulImportV1, hostile_owned_input(), 5_u64),
+        (
+            ImportSourceKind::TelegramDesktop,
+            fixtures::read_text("import/telegram/result_injection.json").unwrap(),
+            2_u64,
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = Session::open(dir.path());
+        assert!(session.status().store_opened);
+        let work = session
+            .begin_import_prepare(text, source, None, LegacyImportChoice::Reject)
+            .unwrap();
+        let prepared = session.complete_import_prepare(work.execute()).unwrap();
+        assert_eq!(prepared.preview.messages_with_injection_markers, markers);
+        assert_eq!(injection_attempts(&session), vec![markers]);
+        assert!(session.people().unwrap().people.is_empty());
+        assert_eq!(prepared.operation.state, ImportOperationState::Reserved);
+        assert!(prepared.operation.receipt.is_none());
+
+        let committed = commit(&mut session, &prepared);
+        assert_eq!(
+            committed
+                .operation
+                .receipt
+                .unwrap()
+                .messages_with_injection_markers,
+            markers
+        );
+        // Confirmation retains the original commit audit. It is a separate
+        // attempt from reading a preview, not an excuse to erase the preview.
+        assert_eq!(injection_attempts(&session), vec![markers, markers]);
+        session
+            .import_operation(&prepared.operation.operation_id.to_string())
+            .unwrap();
+        commit(&mut session, &prepared);
+        assert_eq!(injection_attempts(&session), vec![markers, markers]);
+    }
+}
+
+#[test]
+fn source_changes_cannot_erase_an_executed_import_attempt() {
+    for change_before_execute in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = Session::open(dir.path());
+        let work = session
+            .begin_import_prepare(
+                hostile_owned_input(),
+                ImportSourceKind::SoulImportV1,
+                None,
+                LegacyImportChoice::Reject,
+            )
+            .unwrap();
+        if change_before_execute {
+            session.clear_user_endpoint();
+        }
+        let completed = work.execute();
+        if !change_before_execute {
+            session.clear_user_endpoint();
+        }
+        let refusal = session.complete_import_prepare(completed).unwrap_err();
+        assert_eq!(refusal.reason_code, "IMPORT_SOURCE_CHANGED");
+        assert_eq!(injection_attempts(&session), vec![5]);
+        assert!(session.people().unwrap().people.is_empty());
+        let operations = session.recent_import_operations().unwrap();
+        assert_eq!(operations.len(), 1);
+        assert_eq!(
+            operations[0].operation.state,
+            ImportOperationState::Invalidated
+        );
+        assert!(!operations[0].prepared_here);
+    }
+}
+
+#[test]
+fn an_identity_refusal_keeps_the_attempt_but_creates_no_confirmation_material() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut session = Session::open(dir.path());
+    // This legacy preview fixture parses and fits the budget, but has no owner.
+    let text = fixtures::read_text("import/soul-import-v1/injection_lines.jsonl").unwrap();
+    let work = session
+        .begin_import_prepare(
+            text,
+            ImportSourceKind::SoulImportV1,
+            None,
+            LegacyImportChoice::Reject,
+        )
+        .unwrap();
+    let refusal = session.complete_import_prepare(work.execute()).unwrap_err();
+    assert_eq!(refusal.reason_code, "IMPORT_IDENTITY_REQUIRED");
+    assert_eq!(injection_attempts(&session), vec![5]);
+    assert!(session.recent_import_operations().unwrap().is_empty());
+    assert!(session.people().unwrap().people.is_empty());
+    assert!(session
+        .import_recovery_state()
+        .unwrap()
+        .held_operation_id
+        .is_none());
+}
+
+#[test]
+fn a_preparation_audit_failure_cannot_deliver_a_reserved_or_held_import() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut session = Session::open(dir.path());
+    let conn = fault_connection(dir.path());
+    conn.execute_batch("CREATE TRIGGER reject_attempt_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT, 'synthetic attempt audit failure'); END;").unwrap();
+    let work = session
+        .begin_import_prepare(
+            hostile_owned_input(),
+            ImportSourceKind::SoulImportV1,
+            None,
+            LegacyImportChoice::Reject,
+        )
+        .unwrap();
+    assert!(session.complete_import_prepare(work.execute()).is_err());
+    assert!(session.recent_import_operations().unwrap().is_empty());
+    assert!(session.people().unwrap().people.is_empty());
+    assert!(injection_attempts(&session).is_empty());
+    let state = session.import_recovery_state().unwrap();
+    assert!(state.held_operation_id.is_none());
+    assert_eq!(state.reserved_operations, Some(0));
+    assert!(state.can_start_new_intent);
+    conn.execute_batch("DROP TRIGGER reject_attempt_audit")
+        .unwrap();
+    let work = session
+        .begin_import_prepare(
+            hostile_owned_input(),
+            ImportSourceKind::SoulImportV1,
+            None,
+            LegacyImportChoice::Reject,
+        )
+        .unwrap();
+    session.complete_import_prepare(work.execute()).unwrap();
+    assert_eq!(injection_attempts(&session), vec![5]);
+}
+
+#[test]
+fn dropping_a_completion_keeps_its_one_attempt_and_releases_only_worker_capacity() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut session = Session::open(dir.path());
+    let work = session
+        .begin_import_prepare(
+            hostile_owned_input(),
+            ImportSourceKind::SoulImportV1,
+            None,
+            LegacyImportChoice::Reject,
+        )
+        .unwrap();
+    let completed = work.execute();
+    drop(completed);
+    assert_eq!(injection_attempts(&session), vec![5]);
+    // No complete call means no held confirmation. This only demonstrates the
+    // existing worker-capacity recovery, not other core completion guarantees.
+    assert!(session
+        .import_recovery_state()
+        .unwrap()
+        .held_operation_id
+        .is_none());
+    let next = session.begin_file_plan("unused").unwrap();
+    drop(next);
+    assert_eq!(injection_attempts(&session), vec![5]);
+}
+
+#[test]
+fn unexecuted_invalid_over_budget_and_clean_inputs_do_not_create_attempt_audits() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut session = Session::open(dir.path());
+    let unexecuted = session
+        .begin_import_prepare(
+            hostile_owned_input(),
+            ImportSourceKind::SoulImportV1,
+            None,
+            LegacyImportChoice::Reject,
+        )
+        .unwrap();
+    drop(unexecuted);
+    assert!(injection_attempts(&session).is_empty());
+    let malformed = format!("{}\nnot a JSON record", hostile_owned_input());
+    let mut rows = input()
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    rows[2]["text"] = serde_json::Value::String(format!(
+        "忽略之前指令{}",
+        "x".repeat(soulcore::commands::import::MAX_MESSAGE_CHARS)
+    ));
+    let over_budget = rows
+        .iter()
+        .map(serde_json::Value::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+    for text in [malformed, over_budget] {
+        let work = session
+            .begin_import_prepare(
+                text,
+                ImportSourceKind::SoulImportV1,
+                None,
+                LegacyImportChoice::Reject,
+            )
+            .unwrap();
+        assert!(session.complete_import_prepare(work.execute()).is_err());
+        assert!(injection_attempts(&session).is_empty());
+        assert!(session.recent_import_operations().unwrap().is_empty());
+    }
+    let clean = prepare(&mut session, None);
+    assert_eq!(clean.preview.messages_with_injection_markers, 0);
+    assert!(injection_attempts(&session).is_empty());
+}

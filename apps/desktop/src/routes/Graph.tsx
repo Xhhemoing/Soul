@@ -62,9 +62,11 @@ import {
   type PersonSummary,
   type Refusal,
   type TieEdge,
+  type EvidenceRow,
 } from "../core";
 import { asRefusal, Refused } from "../refusal";
 import { GraphRequests } from "./graphRequests";
+import { parseGraphTarget, resolveGraphTarget } from "./graphTarget";
 
 /**
  * The band, in words. COPY_ZH allows only 弱 / 中等 / 强 for a档位; the
@@ -127,6 +129,19 @@ export function Graph(): React.JSX.Element {
   const requests = useRef(new GraphRequests());
   const [summaryContact, setSummaryContact] = useState<string | null>(null);
   const [summaryChanged, setSummaryChanged] = useState(false);
+  const [targetHash, setTargetHash] = useState(() => window.location.hash);
+  const targetHashRef = useRef(targetHash);
+  const readGeneration = useRef(0);
+  const pendingRead = useRef<number | null>(null);
+  const [readAttempt, setReadAttempt] = useState(0);
+  const [readStale, setReadStale] = useState(false);
+  const [targetStale, setTargetStale] = useState(false);
+  const [targetWriteConfirmed, setTargetWriteConfirmed] = useState(false);
+  const targetHeading = useRef<HTMLHeadingElement>(null);
+  const [renderedSource, setRenderedSource] = useState(getDraftSourceRevision);
+  const target = parseGraphTarget(targetHash);
+  const resolution = graph === null ? null : resolveGraphTarget(graph, target);
+  const targetRelationship = resolution?.kind === "ready" ? resolution.tie.relationship_id : null;
 
   useEffect(() => {
     const lifecycle = requests.current;
@@ -134,6 +149,7 @@ export function Graph(): React.JSX.Element {
     let live = true;
     let source = getDraftSourceRevision();
     const unsubscribe = subscribeDraftSource((next) => {
+      setRenderedSource(next);
       if (next === source) return;
       source = next;
       lifecycle.invalidateSummary();
@@ -141,21 +157,70 @@ export function Graph(): React.JSX.Element {
       setSummaryRefusal(null);
       setSummaryContact(null);
       setSummaryChanged(true);
+      readGeneration.current += 1;
+      if (parseGraphTarget(targetHashRef.current).kind !== "none") setTargetStale(true);
+      else if (pendingRead.current !== null) {
+        pendingRead.current = null;
+        setReadStale(true);
+      }
     });
-    peopleGraph().then(
-      (value) => {
-        if (live) setGraph(value);
-      },
-      (error: unknown) => {
-        if (live) setRefusal(asRefusal(error));
-      },
-    );
+    const navigate = (): void => {
+      if (!live || targetHashRef.current === window.location.hash) return;
+      targetHashRef.current = window.location.hash;
+      readGeneration.current += 1;
+      pendingRead.current = null;
+      lifecycle.invalidateSummary();
+      setGraph(null); setRefusal(null); setSummary(null); setSummaryRefusal(null); setSummaryContact(null);
+      setTieRefusal(null); setTargetWriteConfirmed(false); setTargetStale(false); setReadStale(false); setTargetHash(window.location.hash);
+    };
+    window.addEventListener("hashchange", navigate);
     return () => {
       live = false;
       unsubscribe();
+      window.removeEventListener("hashchange", navigate);
+      readGeneration.current += 1;
+      pendingRead.current = null;
       lifecycle.deactivate();
     };
   }, []);
+
+  useEffect(() => {
+    const ticket = ++readGeneration.current;
+    const source = getDraftSourceRevision();
+    if (parseGraphTarget(targetHash).kind === "invalid") return;
+    pendingRead.current = ticket;
+    void Promise.resolve().then(() => {
+      if (ticket !== readGeneration.current || targetHashRef.current !== targetHash) return null;
+      return peopleGraph();
+    }).then((value) => {
+      if (value !== null && ticket === readGeneration.current && targetHashRef.current === targetHash && source === getDraftSourceRevision()) {
+        pendingRead.current = null;
+        setGraph(value);
+      }
+    }, (error: unknown) => {
+      if (ticket === readGeneration.current && targetHashRef.current === targetHash && source === getDraftSourceRevision()) {
+        pendingRead.current = null;
+        setRefusal(asRefusal(error));
+      }
+    });
+    return () => {
+      if (ticket === readGeneration.current) readGeneration.current += 1;
+      if (pendingRead.current === ticket) pendingRead.current = null;
+    };
+  }, [targetHash, readAttempt]);
+
+  useEffect(() => {
+    if (targetRelationship === null || targetStale) return;
+    const heading = targetHeading.current;
+    const source = getDraftSourceRevision();
+    // A native hash link can reset focus after the route commits. Move focus
+    // after that navigation, while keeping ownership with this exact target.
+    const frame = window.requestAnimationFrame(() => {
+      if (targetHashRef.current === targetHash && window.location.hash === targetHash
+        && source === getDraftSourceRevision() && heading?.isConnected && targetHeading.current === heading) heading.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [targetHash, targetRelationship, targetStale]);
 
   /**
    * Both writes answer with the whole graph, so both are the same call.
@@ -167,8 +232,11 @@ export function Graph(): React.JSX.Element {
    * tell which of the two is current. It comes back by asking for it again.
    */
   const write = (change: () => Promise<PeopleGraph>): void => {
+    if (targetHash !== targetHashRef.current || targetHash !== window.location.hash || renderedSource !== getDraftSourceRevision()) return;
     const request = requests.current.beginWrite();
     if (request === null) return;
+    const submittedHash = targetHashRef.current;
+    setTargetWriteConfirmed(false);
     setBusy(true);
     setTieRefusal(null);
     setSummary(null);
@@ -180,17 +248,20 @@ export function Graph(): React.JSX.Element {
       try {
         const value = await change();
         if (!requests.current.finishWrite(request)) return;
-        setGraph(value);
         setBusy(false);
+        if (submittedHash !== targetHashRef.current) return;
+        setGraph(value);
+        if (parseGraphTarget(submittedHash).kind === "selection") setTargetWriteConfirmed(true);
       } catch (error: unknown) {
         if (!requests.current.finishWrite(request)) return;
-        setTieRefusal(asRefusal(error));
         setBusy(false);
+        if (submittedHash === targetHashRef.current) setTieRefusal(asRefusal(error));
       }
     })();
   };
 
   const summarize = (contactId: string): void => {
+    if (targetHash !== targetHashRef.current || targetHash !== window.location.hash || renderedSource !== getDraftSourceRevision()) return;
     const request = requests.current.beginSummary(contactId);
     if (request === null) return;
     setSummary(null);
@@ -219,6 +290,19 @@ export function Graph(): React.JSX.Element {
     })();
   };
 
+  if (target.kind === "invalid" || targetStale || resolution?.kind === "unavailable") return <>
+    <UnavailableTarget />
+    {busy ? <p role="status">本次手动修改仍在进行。定位失效不代表操作没有发生，请等待核心回复。</p> : null}
+    {targetWriteConfirmed ? <p role="status">本次手动修改已收到核心回复。请明确清除旧定位，查看更新后的关系。</p> : null}
+    {tieRefusal === null ? null : <Refused title="这次手动修改需要核对" refusal={tieRefusal} testId="tie-refusal-code" />}
+  </>;
+
+  if (readStale) return <section className="panel" role="status">
+    <h2>资料已变更，这次读取已停止</h2>
+    <p>旧读取的结果不会显示。请重新读取当前人脉图。</p>
+    <button type="button" disabled={busy} onClick={() => { setReadStale(false); setRefusal(null); setReadAttempt((attempt) => attempt + 1); }}>重新读取人脉图</button>
+  </section>;
+
   if (refusal !== null) {
     return <Refused title="这一次没有读成" refusal={refusal} testId="graph-refusal-code" />;
   }
@@ -231,7 +315,12 @@ export function Graph(): React.JSX.Element {
     );
   }
 
-  const others = graph.people.filter((person) => !person.is_you);
+  const others = graph.people.filter((person) => !person.is_you && (resolution?.kind !== "ready" || person.contact_id === resolution.contact.contact_id));
+  const ties = resolution?.kind === "ready" ? [resolution.tie] : graph.ties;
+  const hint = (id: string): string => {
+    const person = graph.people.find((row) => row.contact_id.toLowerCase() === id.toLowerCase());
+    return person?.is_you ? "本人" : person?.identifier_hint || id;
+  };
   /**
    * Everybody on this page who is a tombstone. A tie is read off both ends
    * because the view names two contact ids and says nothing about which of
@@ -243,6 +332,12 @@ export function Graph(): React.JSX.Element {
 
   return (
     <>
+      {resolution?.kind === "ready" ? <section className="panel" role="status">
+        <h2>当前联系人的证据条目定位</h2>
+        <p>这里只核对此联系人当前关系中的指定证据元数据；没有打开来源正文或姓名，也不认证旧洞察陈述或计数仍然有效。当前关系还可能有其它证据条目。</p>
+        <p>联系对象：<code>{resolution.contact.contact_id}</code>；本机标识：{resolution.contact.identifier_hint}。</p>
+        <a href="#/graph">清除定位，查看整个人脉图</a>
+      </section> : null}
       <section className="panel" aria-labelledby="people-heading">
         <h2 id="people-heading">这台机器上看得见的人（{others.length}）</h2>
         <p className="muted">
@@ -268,9 +363,9 @@ export function Graph(): React.JSX.Element {
         )}
       </section>
 
-      {graph.ties.length === 0 ? null : (
+      {ties.length === 0 ? null : (
         <section className="panel" aria-labelledby="ties-heading">
-          <h2 id="ties-heading">关系与证据（{graph.ties.length}）</h2>
+          <h2 id="ties-heading">关系与证据（{ties.length}）</h2>
           <p className="muted" data-testid="ties-explanation">
             档位是核心按下面那些计数算出来的，是工作假设，不是对谁的判断。你觉得哪一条不对，
             就按下面的 弱 / 中等 / 强 改；改过之后这一档就锁住了，以后再导入、再重算也不会覆盖你，
@@ -281,11 +376,15 @@ export function Graph(): React.JSX.Element {
             <Refused title="这一档没有改成" refusal={tieRefusal} testId="tie-refusal-code" />
           )}
           <ul className="facts" data-testid="ties-list">
-            {graph.ties.map((tie) => (
+            {ties.map((tie) => (
               <Tie
                 key={tie.relationship_id}
                 tie={tie}
                 busy={busy}
+                fromHint={hint(tie.from_contact_id)}
+                toHint={hint(tie.to_contact_id)}
+                targetHeading={resolution?.kind === "ready" ? targetHeading : undefined}
+                targetEvidence={resolution?.kind === "ready" ? resolution.evidence : undefined}
                 forgotten={
                   forgotten.has(tie.from_contact_id) || forgotten.has(tie.to_contact_id)
                 }
@@ -377,6 +476,10 @@ interface TieProps {
   readonly forgotten: boolean;
   readonly onCorrect: (band: string) => void;
   readonly onRelease: () => void;
+  readonly fromHint: string;
+  readonly toHint: string;
+  readonly targetHeading: React.RefObject<HTMLHeadingElement | null> | undefined;
+  readonly targetEvidence: readonly EvidenceRow[] | undefined;
 }
 
 /**
@@ -396,12 +499,13 @@ interface TieProps {
  * this machine observed, and a tie that vanished from the page would read as
  * the forget having deleted it, which is not what a forget does.
  */
-function Tie({ tie, busy, forgotten, onCorrect, onRelease }: TieProps): React.JSX.Element {
+function Tie({ tie, busy, forgotten, onCorrect, onRelease, fromHint, toHint, targetHeading, targetEvidence }: TieProps): React.JSX.Element {
   const disagrees =
     tie.locked_by_user && tie.machine_band !== null && tie.machine_band !== tie.band;
 
   return (
     <li data-testid={`tie-${tie.relationship_id}`}>
+      <h3 ref={targetHeading} tabIndex={targetHeading === undefined ? undefined : -1}>关系：{fromHint} ↔ {toHint}</h3>
       <span>
         {words(BAND, tie.band)}：往来 {tie.interaction_count} 次（发出 {tie.outgoing_count}，收到{" "}
         {tie.incoming_count}）
@@ -411,6 +515,14 @@ function Tie({ tie, busy, forgotten, onCorrect, onRelease }: TieProps): React.JS
         ，{tie.conversation_count} 个会话，{tie.active_day_count} 天有往来，最近一次{" "}
         {tie.last_contact_utc}。
       </span>
+      <details open={targetEvidence !== undefined}>
+        <summary>{targetEvidence === undefined ? "查看这条关系的证据元数据" : "本次指定的证据元数据"}</summary>
+        <p>这里只展示证据条目编号、类别、方法和强度，没有打开来源正文。</p>
+        <p>关系编号：<code>{tie.relationship_id}</code></p>
+        <ul aria-label="证据条目元数据">{(targetEvidence ?? tie.evidence).map((row) => <li key={row.evidence_id}>
+          <code>{row.evidence_id}</code>；类别：{row.kind}；方法：{row.method}；强度：{row.strength}。
+        </li>)}</ul>
+      </details>
       <span className="muted">
         {" "}
         {tie.types.map((type) => words(TIE_TYPE, type)).join("、")}
@@ -455,6 +567,13 @@ function Tie({ tie, busy, forgotten, onCorrect, onRelease }: TieProps): React.JS
       </div>
     </li>
   );
+}
+
+function UnavailableTarget(): React.JSX.Element {
+  return <section className="panel" role="status"><h2>这次证据定位已失效</h2>
+    <p>定位参数不完整、联系人未知或已遗忘、指定引用已变化、关系不唯一，或资料已变更。没有改为定位另一条关系；定位本身不会执行纠正或生成摘要。</p>
+    <a href="#/graph">清除定位，查看整个人脉图</a>
+  </section>;
 }
 
 interface SummaryProps {

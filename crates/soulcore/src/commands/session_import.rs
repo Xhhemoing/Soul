@@ -170,7 +170,24 @@ impl SessionImportPrepareWork {
                 }
             };
             import_commands::within_staged_budget(&staged).map_err(over_budget)?;
+            let preview = ImportPreview::of(&staged);
             let mut store = hold(&self.store);
+            // Reading an export is an attempt even if identity validation or
+            // later delivery refuses it. Keep this outside the import commit.
+            if preview.messages_with_injection_markers > 0 {
+                append_or_store_error(
+                    &mut *store,
+                    AuditContent::denied(
+                        AuditAction::InjectionBlocked,
+                        ReasonCode::InjectionMarkersFound,
+                    )
+                    .counting(AuditCounts {
+                        items: Some(preview.messages_with_injection_markers),
+                        bytes: None,
+                    }),
+                    now_unix_seconds(),
+                )?;
+            }
             if let Some(id) = self.stale {
                 store.end_import_operation(
                     &self.runtime,
@@ -193,7 +210,6 @@ impl SessionImportPrepareWork {
             };
             let plan = indexed::prepare_indexed(&*store, &staged, namespace, self.choice)
                 .map_err(import_error)?;
-            let preview = ImportPreview::of(&staged);
             let operation = ImportOperation {
                 operation_id: Uuid::now_v7(),
                 preview_id: Uuid::now_v7(),

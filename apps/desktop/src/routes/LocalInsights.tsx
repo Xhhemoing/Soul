@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getDraftSourceRevision, ignoreLocalInsight, localInsights, recomputeLocalInsight, subscribeDraftSource, type LocalInsight } from "../core";
 import { asRefusal } from "../refusal";
+import { graphTargetHash } from "./graphTarget";
 
 /** Automatic local candidates, exact-instance feedback, and explicit recomputation. */
 export function LocalInsights(): React.JSX.Element {
@@ -52,12 +53,18 @@ export function LocalInsights(): React.JSX.Element {
       <h3>本地候选 {row.bundle_id}</h3><p>导入操作：{row.operation_id}</p>
       <p>历史回执：新增 {row.counts.events_written} 条事件、跳过重复 {row.counts.duplicates} 条。状态：{row.validity}；{row.ignored ? "已忽略" : "尚未忽略"}。</p>
       <p>{row.notice}</p>
-      {row.validity !== "active" || row.ignored ? null : row.summaries.map((summary) => <div key={summary.contact_id}>
-        <p>{summary.text}</p><ul>{summary.points.map((point, index) => <li key={index}>{point.statement} <span>依据：{point.evidence_ids.join("、")}</span></li>)}</ul>
-      </div>)}
+      {row.validity !== "active" || row.ignored ? null : row.summaries.map((summary) => {
+        const target = graphTargetHash(summary.contact_id, summary.points.flatMap((point) => point.evidence_ids));
+        return <div key={summary.contact_id}>
+          <p>联系对象：<code>{summary.contact_id}</code></p>
+          <p>{summary.text}</p><ul>{summary.points.map((point, index) => <li key={index}>{point.statement} <span>依据：{point.evidence_ids.join("、")}</span></li>)}</ul>
+          {target === null ? <p>这份摘要的引用为空、格式不支持或超出定位上限，未生成精确定位。请到整个人脉图核对。</p>
+            : <a href={target}>核对此联系人的证据条目（元数据）</a>}
+        </div>;
+      })}
       <button type="button" disabled={busy || row.ignored} onClick={() => run(async () => { await ignoreLocalInsight(row.bundle_id); return localInsights(); })}>忽略候选 {row.bundle_id}</button>
       <button type="button" disabled={busy} onClick={() => run(async () => { await recomputeLocalInsight(row.bundle_id); return localInsights(); })}>重新计算候选 {row.bundle_id}</button>
-      {" "}<a href="#/graph">查看证据并纠正关系档</a>
+      {" "}<a href="#/graph">查看整个人脉图</a>
     </article>)}
   </section>;
 }
