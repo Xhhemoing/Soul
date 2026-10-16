@@ -1,0 +1,14 @@
+{
+  "scope": "standalone_html_only",
+  "tabs": 4,
+  "diagram_nodes": 11,
+  "scenarios": 4,
+  "trace_steps": 23,
+  "viewports": [
+    1440,
+    390
+  ],
+  "runtime_errors": [],
+  "external_requests": [],
+  "passed": true
+}

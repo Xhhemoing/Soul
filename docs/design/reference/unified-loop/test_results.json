@@ -1,0 +1,123 @@
+{
+  "scope": "synthetic_reference_only",
+  "production_integration": false,
+  "real_sqlite_transactions": true,
+  "real_database_reopen": true,
+  "physical_power_loss_tested": false,
+  "network_calls": 0,
+  "tests": 27,
+  "failures": 0,
+  "errors": 0,
+  "passed": true,
+  "duration_seconds": 0.1355,
+  "checks": [
+    {
+      "name": "__main__.LoopTests.test_database_symlink_alias_cannot_bypass_live_owner_lease",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_duplicates_do_not_duplicate_visible_effects",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_each_dependency_change_invalidates_all_outputs",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_feedback_is_typed_scoped_and_idempotent",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_forget_during_external_work_rejects_late_result_and_old_pointer",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_forgotten_status_is_terminal_under_later_goal_and_purpose_changes",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_handled_case_blocks_queued_delivery_and_inflight_result",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_ingest_and_work_rollback_together_at_all_checkpoints",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_initialization_failure_releases_lease_and_database",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_later_cleanup_preserves_historical_result_acceptance",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_live_owner_cannot_be_recovered_by_second_instance",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_notification_navigation_shows_unavailable_instead_of_old_content",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_old_notification_navigates_current_generation_without_transferring_old_actions",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_origin_and_approval_bound_to_one_preparation",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_permission_aba_does_not_restore_old_approval",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_prepared_approval_does_not_resume_after_restart",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_publish_and_completion_rollback_together_then_recover",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_recompute_does_not_disguise_unknown_notification_as_new_send",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_same_lease_cannot_repeat_recovery_and_reclaim_live_work",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_snooze_and_mute_require_current_generation",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_snooze_and_mute_survive_recompute_and_restart",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_snooze_is_rechecked_after_notification_was_queued",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_source_change_during_work_prevents_publish",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_terminal_feedback_cancels_pending_work_without_reopening_or_rewriting_attempts",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_unknown_e1_cannot_retry_or_reuse_approval",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_unknown_notification_is_not_retried_after_reopen",
+      "status": "passed"
+    },
+    {
+      "name": "__main__.LoopTests.test_whole_loop_four_axes_are_independent",
+      "status": "passed"
+    }
+  ]
+}
