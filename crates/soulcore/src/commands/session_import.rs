@@ -380,6 +380,7 @@ impl Session {
         id: &str,
     ) -> Result<crate::commands::insights::LocalInsightView, SessionRefusal> {
         let id = parse_id(id, "本地洞察")?;
+        self.invalidate_drafts();
         let shared = self.opened_store()?;
         let mut store = hold(&shared);
         crate::commands::insights::ignore(&mut store, id)
@@ -390,6 +391,7 @@ impl Session {
         id: &str,
     ) -> Result<crate::commands::insights::LocalInsightView, SessionRefusal> {
         let id = parse_id(id, "本地洞察")?;
+        self.invalidate_drafts();
         let shared = self.opened_store()?;
         let mut store = hold(&shared);
         crate::commands::insights::recompute(&mut store, id, now_unix_seconds())

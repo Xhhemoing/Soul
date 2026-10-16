@@ -7,6 +7,7 @@
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
+use soul_draft::analysis::{PersonSummary, SummarySource};
 use uuid::Uuid;
 
 use soul_graph::interaction::{self, Direction, Venue};
@@ -50,6 +51,137 @@ pub struct LocalInsightView {
     pub counts: ImportCounts,
     pub summaries: Vec<PersonSummaryView>,
     pub notice: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InsightEvidenceSource {
+    pub evidence_id: Uuid,
+    pub kind: EvidenceKind,
+    pub event_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InsightReference {
+    pub bundle_id: Uuid,
+    pub operation_id: Uuid,
+    pub namespace_id: Uuid,
+    pub contact_id: Uuid,
+    pub relationship_id: Uuid,
+    pub summary: PersonSummaryView,
+    pub sources: Vec<InsightEvidenceSource>,
+    pub notice: String,
+}
+
+/// Constructed only from current, fully checked domain counts. Never an IPC input.
+#[derive(Clone)]
+pub(crate) struct SelectedInsightContext {
+    snapshot: LocalInsightBundle,
+    summary: PersonSummary,
+    reference: InsightReference,
+}
+
+impl std::fmt::Debug for SelectedInsightContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SelectedInsightContext")
+            .field("bundle_id", &self.snapshot.bundle_id)
+            .field("contact_id", &self.summary.contact_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SelectedInsightContext {
+    pub(crate) fn reference(&self) -> InsightReference {
+        self.reference.clone()
+    }
+    pub(crate) fn counts(&self) -> &PersonSummary {
+        &self.summary
+    }
+}
+
+/// Exact lookup is independent of the recent-list window. The caller holds the
+/// same store guard through validation, A2 construction and source resolution.
+pub(crate) fn select_context(
+    store: &mut SqlCipherStore,
+    bundle_id: Uuid,
+    contact_id: Uuid,
+) -> Result<SelectedInsightContext, SessionRefusal> {
+    let bundle = store.local_insight(bundle_id)?;
+    if bundle.validity != InsightValidity::Active || bundle.ignored {
+        return Err(unavailable());
+    }
+    let operation = store.import_operation(bundle.operation_id)?;
+    ensure_operation(store, &operation)?;
+    if operation.namespace_id != bundle.namespace_id
+        || operation.receipt.as_ref() != Some(&bundle.counts)
+    {
+        return Err(unavailable());
+    }
+    let contacts = candidates(&bundle).ok_or_else(unavailable)?;
+    if !contacts.contains(&contact_id) {
+        return Err(unavailable());
+    }
+    let built = build(store, &contacts)?;
+    if built.dependencies.uuids != bundle.dependency_uuids
+        || built.dependencies.values != bundle.dependency_values
+        || built.dependencies.flags != bundle.dependency_flags
+    {
+        store.invalidate_local_insight(bundle_id)?;
+        return Err(unavailable());
+    }
+    let summary = built
+        .trusted
+        .into_iter()
+        .find(|summary| summary.contact_id == contact_id)
+        .ok_or_else(unavailable)?;
+    if summary.source != SummarySource::Counts || summary.narrative.is_some() {
+        return Err(unavailable());
+    }
+    let mut sources = Vec::new();
+    for evidence_id in summary.evidence_ids() {
+        let row = store.get_evidence(evidence_id)?;
+        let event_ids = interaction::interactions_in(&row)
+            .into_iter()
+            .map(|reference| reference.event_id)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        sources.push(InsightEvidenceSource {
+            evidence_id,
+            kind: row.kind,
+            event_ids,
+        });
+    }
+    let reference = InsightReference {
+        bundle_id, operation_id: bundle.operation_id, namespace_id: bundle.namespace_id,
+        contact_id, relationship_id: summary.relationship_id,
+        summary: PersonSummaryView::of(&summary)?, sources,
+        notice: "这是本次统计材料的出处，统计描述当前整库的有效关系记录，不限于本次导入；不代表生成草稿逐句已获事实验证。本机模板未使用统计改写，未勾选提供计数时端点也没有这些计数。".to_owned(),
+    };
+    Ok(SelectedInsightContext {
+        snapshot: bundle,
+        summary,
+        reference,
+    })
+}
+
+pub(crate) fn revalidate_context(
+    store: &mut SqlCipherStore,
+    selected: &SelectedInsightContext,
+) -> Result<(), SessionRefusal> {
+    let current = select_context(
+        store,
+        selected.snapshot.bundle_id,
+        selected.summary.contact_id,
+    )?;
+    if current.snapshot != selected.snapshot
+        || current.summary != selected.summary
+        || current.reference != selected.reference
+    {
+        return Err(unavailable());
+    }
+    Ok(())
 }
 
 /// Called inside the same domain transaction that commits the import receipt.
@@ -240,6 +372,7 @@ impl Dependencies {
 struct Built {
     dependencies: Dependencies,
     summaries: Vec<PersonSummaryView>,
+    trusted: Vec<PersonSummary>,
 }
 
 /// The header is version, contact-count; its first N UUIDs are exactly the
@@ -272,13 +405,14 @@ fn build(store: &SqlCipherStore, contacts: &[Uuid]) -> Result<Built, SessionRefu
     }
     let mut groups = Vec::new();
     let mut summaries = Vec::new();
+    let mut trusted = Vec::new();
     let mut selected = Vec::new();
     let mut used = Dependencies::default();
     for id in contacts.iter().copied().collect::<BTreeSet<_>>() {
         if selected.len() == MAX_CONTACTS {
             break;
         }
-        let Some((group, summary)) = contact(store, &graph, id) else {
+        let Some((group, summary, domain)) = contact(store, &graph, id) else {
             continue;
         };
         if used.uuids.len() + group.uuids.len() + MAX_CONTACTS + 1 > MAX_UUIDS
@@ -293,6 +427,7 @@ fn build(store: &SqlCipherStore, contacts: &[Uuid]) -> Result<Built, SessionRefu
         selected.push(id);
         groups.push(group);
         summaries.push(summary);
+        trusted.push(domain);
     }
     let mut dependencies = Dependencies {
         uuids: selected,
@@ -311,6 +446,7 @@ fn build(store: &SqlCipherStore, contacts: &[Uuid]) -> Result<Built, SessionRefu
     Ok(Built {
         dependencies,
         summaries,
+        trusted,
     })
 }
 
@@ -318,7 +454,7 @@ fn contact(
     store: &SqlCipherStore,
     graph: &SoulGraph,
     id: Uuid,
-) -> Option<(Dependencies, PersonSummaryView)> {
+) -> Option<(Dependencies, PersonSummaryView, PersonSummary)> {
     let node = graph.node(id)?;
     if node.is_owner() || node.forget_state != ForgetState::Active {
         return None;
@@ -373,7 +509,7 @@ fn contact(
     if !d.fits() {
         return None;
     }
-    Some((d, PersonSummaryView::of(&summary).ok()?))
+    Some((d, PersonSummaryView::of(&summary).ok()?, summary))
 }
 
 fn edge_dependencies(edge: &TieEdge) -> Option<Dependencies> {

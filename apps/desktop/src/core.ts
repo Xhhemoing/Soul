@@ -634,6 +634,9 @@ export const COMMANDS = {
   confirmImport: "confirm_import",
   importRecoveryState: "import_recovery_state",
   prepareMemoryContext: "prepare_memory_context",
+  prepareInsightContext: "prepare_insight_context",
+  localDraftWithInsight: "local_draft_with_insight",
+  prepareDraftWithInsight: "prepare_draft_with_insight",
   draftReplyWithMemory: "draft_reply_with_memory",
   prepareDraftWithMemory: "prepare_draft_with_memory",
   localInsights: "local_insights",
@@ -716,6 +719,33 @@ export interface ImportCounts {
   readonly contacts_created: number; readonly contacts_matched: number; readonly events_written: number;
   readonly evidence_written: number; readonly messages_with_injection_markers: number; readonly ties_rebuilt: number;
 }
+export interface InsightContextRequest {
+  readonly bundle_id: string; readonly contact_id: string;
+}
+export interface InsightEvidenceSource {
+  readonly evidence_id: string; readonly kind: string; readonly event_ids: readonly string[];
+}
+export interface InsightReference {
+  readonly bundle_id: string; readonly operation_id: string; readonly namespace_id: string;
+  readonly contact_id: string; readonly relationship_id: string; readonly summary: PersonSummary;
+  readonly sources: readonly InsightEvidenceSource[]; readonly notice: string;
+}
+export interface InsightContextView { readonly context_id: string; readonly reference: InsightReference }
+export interface InsightDraftValue { readonly draft: Draft; readonly reference: InsightReference }
+export interface InsightDraftPlan {
+  readonly prepared: { readonly plan: E1DraftPlan; readonly encoded_bytes: number; readonly body_preview: string; readonly includes_counts: boolean };
+  readonly reference: InsightReference;
+}
+export function prepareInsightContext(request: InsightContextRequest): Promise<InsightContextView> {
+  invalidateDraftSource();
+  return currentDraftResult(COMMANDS.prepareInsightContext, { request });
+}
+export function localDraftWithInsight(pasted: string, contextId: string): Promise<InsightDraftValue> {
+  return currentDraftResult(COMMANDS.localDraftWithInsight, { pasted, contextId });
+}
+export function prepareDraftWithInsight(pasted: string, contextId: string, includeCounts = false, includeOriginal = false): Promise<InsightDraftPlan> {
+  return currentDraftResult(COMMANDS.prepareDraftWithInsight, { pasted, contextId, includeCounts, includeOriginal });
+}
 export interface LocalInsight {
   readonly bundle_id: string; readonly operation_id: string; readonly namespace_id: string;
   readonly validity: "active" | "invalidated"; readonly ignored: boolean; readonly counts: ImportCounts;
@@ -725,10 +755,10 @@ export function localInsights(): Promise<readonly LocalInsight[]> {
   return currentDraftResult(COMMANDS.localInsights, {});
 }
 export function ignoreLocalInsight(bundleId: string): Promise<LocalInsight> {
-  return currentDraftResult(COMMANDS.ignoreLocalInsight, { bundleId });
+  return mutateDraftSource(COMMANDS.ignoreLocalInsight, { bundleId });
 }
 export function recomputeLocalInsight(bundleId: string): Promise<LocalInsight> {
-  return currentDraftResult(COMMANDS.recomputeLocalInsight, { bundleId });
+  return mutateDraftSource(COMMANDS.recomputeLocalInsight, { bundleId });
 }
 export interface ImportNamespace {
   readonly namespace_id: string; readonly source: ImportSource;

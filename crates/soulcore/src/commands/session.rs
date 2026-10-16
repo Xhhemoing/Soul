@@ -106,6 +106,11 @@ mod memory_context;
 pub use memory_context::{
     MemoryContextRequest, MemoryContextView, MemoryDraftPlan, MemoryDraftValue,
 };
+#[path = "session_insight.rs"]
+mod insight_context;
+pub use insight_context::{
+    InsightContextRequest, InsightContextView, InsightDraftPlan, InsightDraftValue,
+};
 
 /// The environment variable that names the data directory outright.
 ///
@@ -437,6 +442,8 @@ pub struct Session {
     deferred_revoke: Option<(AuditContent, i64)>,
     held_memory: Option<memory_context::HeldMemory>,
     pending_memory: Option<memory_context::PendingMemory>,
+    held_insight: Option<insight_context::HeldInsight>,
+    pending_insight: Option<insight_context::PendingInsight>,
     /// The last forget impact the user was shown, and for which memory.
     ///
     /// Forgetting is irreversible and the numbers behind it are a live query,
@@ -582,6 +589,7 @@ pub struct SessionDraftWork {
     lease: DraftLease,
     work: draft::DraftWork,
     memory: Option<soul_memory::ContextSelection>,
+    insight: Option<super::insights::SelectedInsightContext>,
 }
 
 /// Must be returned to the same Session, even if the invoking page disappeared.
@@ -592,6 +600,7 @@ pub struct SessionDraftCompletion {
     expires_at: Instant,
     execution: draft::DraftExecution,
     memory: Option<soul_memory::ContextSelection>,
+    insight: Option<super::insights::SelectedInsightContext>,
 }
 
 /// A summary snapshot; only an actual E1 dispatch occupies the shared slot.
@@ -679,6 +688,7 @@ impl SessionDraftWork {
             expires_at,
             execution,
             memory: self.memory,
+            insight: self.insight,
         }
     }
 }
@@ -772,6 +782,8 @@ impl Session {
             deferred_revoke: None,
             held_memory: None,
             pending_memory: None,
+            held_insight: None,
+            pending_insight: None,
             held_forget: None,
             consent: ConsentHandle::closed(),
             collector: None,
@@ -1103,6 +1115,10 @@ impl Session {
     /// would have said anyway.
     pub fn draft_pasted(&mut self, pasted: &str) -> Result<DraftValue, SessionRefusal> {
         self.require_store_idle()?;
+        self.held_insight = None;
+        if self.pending_insight.take().is_some() {
+            self.draft.discard();
+        }
         let brief = self.owner_brief();
         let drafted = draft::draft_pasted(&self.draft, &mut self.policy, brief, pasted)?;
         self.append_audit(&drafted.audit)?;
@@ -1142,6 +1158,8 @@ impl Session {
         self.require_draft_slot()?;
         self.pending_memory = None;
         self.held_memory = None;
+        self.held_insight = None;
+        self.pending_insight = None;
         // Read every time, for the reason `owner_brief` is: a cached set is a
         // set that does not have the person imported five minutes ago in it,
         // and their name is what this call is deciding whether to send.
@@ -1190,6 +1208,12 @@ impl Session {
         let memory = self
             .memory_for_dispatch(approval)
             .map_err(|_| self.refuse_draft(DraftRefusal::SourceChanged))?;
+        let insight = self
+            .insight_for_dispatch(approval)
+            .map_err(|_| self.refuse_draft(DraftRefusal::SourceChanged))?;
+        if memory.is_some() && insight.is_some() {
+            return Err(self.refuse_draft(DraftRefusal::SourceChanged));
+        }
         let work = self
             .draft
             .dispatch(&mut self.policy, approval, now_unix_millis())
@@ -1197,6 +1221,10 @@ impl Session {
         if memory.is_some() {
             self.pending_memory = None;
             self.held_memory = None;
+        }
+        if insight.is_some() {
+            self.pending_insight = None;
+            self.held_insight = None;
         }
         let id = Uuid::now_v7();
         let finished = Arc::new(AtomicBool::new(false));
@@ -1211,6 +1239,7 @@ impl Session {
             lease: DraftLease(finished),
             work,
             memory,
+            insight,
         })
     }
 
@@ -1239,6 +1268,10 @@ impl Session {
         }
         if let Some(selection) = &completed.memory {
             self.revalidate_memory(selection)
+                .map_err(|_| self.refuse_draft(DraftRefusal::SourceChanged))?;
+        }
+        if let Some(selection) = &completed.insight {
+            self.revalidate_insight(selection)
                 .map_err(|_| self.refuse_draft(DraftRefusal::SourceChanged))?;
         }
         if Instant::now() >= completed.expires_at {
@@ -1280,6 +1313,8 @@ impl Session {
     fn invalidate_drafts(&mut self) -> bool {
         self.held_memory = None;
         self.pending_memory = None;
+        self.held_insight = None;
+        self.pending_insight = None;
         if let Some(held) = self.held_import.take() {
             self.stale_import = Some(held.operation.operation_id);
         }

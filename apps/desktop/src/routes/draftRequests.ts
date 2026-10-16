@@ -107,6 +107,8 @@ export class DraftRequests {
     return this.revision;
   }
 
+  hasQuote(): boolean { return this.quote !== null; }
+
   begin(kind: DraftRequestKind, revision: number, quote?: DraftQuote): DraftTicket | null {
     if (!this.live || revision !== this.revision) return null;
     if (kind === "generate" || kind === "original" || kind === "discard") {

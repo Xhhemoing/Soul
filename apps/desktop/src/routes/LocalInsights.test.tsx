@@ -51,4 +51,36 @@ describe("本地洞察与精确实例反馈", () => {
     await act(async () => { pending.resolve([aLocalInsight()]); await pending.promise; });
     expect(screen.queryByRole("heading", { name: `本地候选 ${LOCAL_INSIGHT_ID}` })).toBeNull(); expect(core.callsTo("person_summary")).toHaveLength(0);
   });
+  it("忽略完成后才明确重读，读取绑定操作完成后的来源代次", async () => {
+    const mutation = deferred<LocalInsight>(); const ignored = aLocalInsight({ ignored: true }); let reads = 0;
+    const core = installFakeCore({ ignoringInsight: () => mutation.promise, readingInsights: () => ++reads === 1 ? [aLocalInsight()] : [ignored] });
+    const user = userEvent.setup(); render(<LocalInsights />);
+    await user.click(await screen.findByRole("button", { name: `忽略候选 ${LOCAL_INSIGHT_ID}` }));
+    expect(core.callsTo("local_insights")).toHaveLength(1);
+    expect(screen.queryByRole("heading", { name: `本地候选 ${LOCAL_INSIGHT_ID}` })).toBeNull();
+    await act(async () => { mutation.resolve(ignored); await mutation.promise; });
+    await waitFor(() => expect(screen.getByRole("button", { name: `忽略候选 ${LOCAL_INSIGHT_ID}` })).toBeDisabled());
+    expect(core.callsTo("local_insights")).toHaveLength(2);
+    expect(screen.queryByText(/旧洞察已移出展示/)).toBeNull();
+    expect(core.callsTo("person_summary")).toHaveLength(0);
+  });
+  it.each(["source", "unmount"] as const)("操作后的显式重读遇%s变化仍拒迟到结果，不重新授权旧读取", async (change) => {
+    const read = deferred<readonly LocalInsight[]>(); let reads = 0;
+    const core = installFakeCore({ insights: [aLocalInsight()], readingInsights: () => ++reads === 1 ? [aLocalInsight()] : read.promise });
+    const user = userEvent.setup(); const view = render(<LocalInsights />);
+    await user.click(await screen.findByRole("button", { name: `忽略候选 ${LOCAL_INSIGHT_ID}` }));
+    await waitFor(() => expect(core.callsTo("local_insights")).toHaveLength(2));
+    if (change === "source") await act(async () => { await setUserEndpoint("http://127.0.0.1:9"); }); else view.unmount();
+    await act(async () => { read.resolve([aLocalInsight({ ignored: true })]); await read.promise; });
+    expect(screen.queryByRole("heading", { name: `本地候选 ${LOCAL_INSIGHT_ID}` })).toBeNull();
+    expect(core.callsTo("local_insights")).toHaveLength(2); expect(core.callsTo("generate_draft")).toHaveLength(0);
+    if (change === "source") expect(screen.getByText(/旧洞察已移出展示/)).toBeVisible();
+  });
+  it("忽略拒绝后显示核心原因，不继续读取或自动重发", async () => {
+    const core = installFakeCore({ insights: [aLocalInsight()], ignoringInsight: () => { throw { reason_code: "ROUTINE", explanation: "合成忽略拒绝" }; } });
+    const user = userEvent.setup(); render(<LocalInsights />);
+    await user.click(await screen.findByRole("button", { name: `忽略候选 ${LOCAL_INSIGHT_ID}` }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("合成忽略拒绝");
+    expect(core.callsTo("ignore_local_insight")).toHaveLength(1); expect(core.callsTo("local_insights")).toHaveLength(1);
+  });
 });

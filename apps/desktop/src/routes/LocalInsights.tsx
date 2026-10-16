@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getDraftSourceRevision, ignoreLocalInsight, localInsights, recomputeLocalInsight, subscribeDraftSource, type LocalInsight } from "../core";
 import { asRefusal } from "../refusal";
 import { graphTargetHash } from "./graphTarget";
+import { draftInsightSelection } from "./draftMaterialSelection";
 
 /** Automatic local candidates, exact-instance feedback, and explicit recomputation. */
 export function LocalInsights(): React.JSX.Element {
@@ -10,18 +11,27 @@ export function LocalInsights(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [changed, setChanged] = useState(false);
   const mount = useRef<symbol | null>(null); const active = useRef<symbol | null>(null);
+  const [renderedSource, setRenderedSource] = useState(getDraftSourceRevision); const renderedHash = window.location.hash;
 
-  function run(work: () => Promise<readonly LocalInsight[]>): void {
-    if (active.current !== null) return;
-    const ticket = Symbol(); const life = mount.current; const source = getDraftSourceRevision();
+  function run(mutate?: () => Promise<unknown>): void {
+    if (active.current !== null || renderedSource !== getDraftSourceRevision() || renderedHash !== window.location.hash) return;
+    const ticket = Symbol(); const life = mount.current; const source = renderedSource;
+    const owns = (): boolean => life !== null && life === mount.current && active.current === ticket && renderedHash === window.location.hash;
+    let readSource = source;
     active.current = ticket; setBusy(true); setError(null);
-    void Promise.resolve().then(() => {
-      if (life === null || life !== mount.current || active.current !== ticket || source !== getDraftSourceRevision()) throw new Error("已失效的本地查询");
-      return work();
+    void Promise.resolve().then(async () => {
+      if (!owns() || source !== getDraftSourceRevision()) return null;
+      if (mutate !== undefined) {
+        // Only this explicit mutation's completion starts a fresh read intent.
+        // A read that is already in flight never receives a new revision.
+        try { await mutate(); } finally { readSource = getDraftSourceRevision(); }
+      }
+      if (!owns() || readSource !== getDraftSourceRevision()) return null;
+      return localInsights();
     }).then((value) => {
-      if (life === mount.current && active.current === ticket && source === getDraftSourceRevision()) { setRows(value); setChanged(false); }
+      if (value !== null && owns() && readSource === getDraftSourceRevision()) { setRows(value); setChanged(false); }
     }, (error: unknown) => {
-      if (life === mount.current && source === getDraftSourceRevision()) setError(asRefusal(error).explanation);
+      if (owns() && readSource === getDraftSourceRevision()) setError(asRefusal(error).explanation);
     }).finally(() => {
       if (active.current === ticket && life === mount.current) { active.current = null; setBusy(false); }
     });
@@ -30,6 +40,7 @@ export function LocalInsights(): React.JSX.Element {
     const life = Symbol(); mount.current = life;
     let source = getDraftSourceRevision();
     const unsubscribe = subscribeDraftSource((next) => {
+      setRenderedSource(next);
       if (source === next) return; source = next; setRows(null); setChanged(true); setError(null);
     });
     // A separate ticket owns this mount's first read, including StrictMode.
@@ -45,7 +56,7 @@ export function LocalInsights(): React.JSX.Element {
     <h2>导入后的本地洞察与反馈</h2>
     <p>成功导入后在本机生成统计候选，复用现有图谱和人物摘要算法。不会因为已配置模型端点就自动出网。
       忽略只作用于这一份候选，不改变事实、不训练模型；纠正仍由图谱中的用户锁生效。</p>
-    <button type="button" disabled={busy} onClick={() => run(localInsights)}>核对本地洞察</button>
+    <button type="button" disabled={busy} onClick={() => run()}>核对本地洞察</button>
     {changed ? <p role="status">资料或授权已变更，旧洞察已移出展示。请重新核对；失效候选需明确重新计算。</p> : null}
     {error === null ? null : <p role="alert">{error}</p>}
     {rows?.length === 0 ? <p>还没有持久化本地候选。完成一次新协议导入后会生成。</p> : null}
@@ -60,10 +71,15 @@ export function LocalInsights(): React.JSX.Element {
           <p>{summary.text}</p><ul>{summary.points.map((point, index) => <li key={index}>{point.statement} <span>依据：{point.evidence_ids.join("、")}</span></li>)}</ul>
           {target === null ? <p>这份摘要的引用为空、格式不支持或超出定位上限，未生成精确定位。请到整个人脉图核对。</p>
             : <a href={target}>核对此联系人的证据条目（元数据）</a>}
+          <button type="button" disabled={busy} onClick={() => {
+            if (mount.current === null || renderedSource !== getDraftSourceRevision() || renderedHash !== window.location.hash) return;
+            draftInsightSelection.select(row.bundle_id, summary.contact_id);
+            window.location.hash = "#/draft";
+          }}>选作本次起草统计参考（替换记忆参考）：{summary.contact_id}</button>
         </div>;
       })}
-      <button type="button" disabled={busy || row.ignored} onClick={() => run(async () => { await ignoreLocalInsight(row.bundle_id); return localInsights(); })}>忽略候选 {row.bundle_id}</button>
-      <button type="button" disabled={busy} onClick={() => run(async () => { await recomputeLocalInsight(row.bundle_id); return localInsights(); })}>重新计算候选 {row.bundle_id}</button>
+      <button type="button" disabled={busy || row.ignored} onClick={() => run(() => ignoreLocalInsight(row.bundle_id))}>忽略候选 {row.bundle_id}</button>
+      <button type="button" disabled={busy} onClick={() => run(() => recomputeLocalInsight(row.bundle_id))}>重新计算候选 {row.bundle_id}</button>
       {" "}<a href="#/graph">查看整个人脉图</a>
     </article>)}
   </section>;

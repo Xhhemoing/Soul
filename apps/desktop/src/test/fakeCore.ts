@@ -36,6 +36,11 @@ import type {
   MemoryContextView,
   MemoryDraftPlan,
   MemoryDraftValue,
+  InsightContextRequest,
+  InsightContextView,
+  InsightReference,
+  InsightDraftValue,
+  InsightDraftPlan,
   MemorySelectionPreview,
   SelectedMemory,
   IntakeReceipt,
@@ -340,6 +345,20 @@ export const LOCAL_INSIGHT_ID = "0192f000-0000-7000-8000-000000001511";
 export function aLocalInsight(overrides: Partial<LocalInsight> = {}): LocalInsight {
   return { bundle_id: LOCAL_INSIGHT_ID, operation_id: IMPORT_OPERATION_ID, namespace_id: IMPORT_NAMESPACE_ID,
     validity: "active", ignored: false, counts: anImportCounts(), summaries: [aPersonSummary()], notice: "合成本地统计候选，未经模型出网。", ...overrides };
+}
+export const INSIGHT_CONTEXT_ID = "0192f000-0000-7000-8000-00000000dd21";
+export function anInsightReference(overrides: Partial<InsightReference> = {}): InsightReference {
+  const summary = overrides.summary ?? aPersonSummary();
+  return { bundle_id: LOCAL_INSIGHT_ID, operation_id: IMPORT_OPERATION_ID, namespace_id: IMPORT_NAMESPACE_ID,
+    contact_id: summary.contact_id, relationship_id: "0192f000-0000-7000-8000-00000000000a", summary,
+    sources: [...new Set(summary.points.flatMap((point) => point.evidence_ids))].map((id) => ({ evidence_id: id, kind: "message", event_ids: ["0192f000-0000-7000-8000-00000000ea21"] })),
+    notice: "合成本次统计材料出处，不证明整篇草稿逐句有据。", ...overrides };
+}
+export function anInsightContext(overrides: Partial<InsightContextView> = {}): InsightContextView {
+  return { context_id: INSIGHT_CONTEXT_ID, reference: anInsightReference(), ...overrides };
+}
+export function anInsightDraftPlan(overrides: Partial<InsightDraftPlan> = {}): InsightDraftPlan {
+  return { prepared: { plan: anE1Plan(), encoded_bytes: 1200, body_preview: "[本次统计仅作本地参考]", includes_counts: false }, reference: anInsightReference(), ...overrides };
 }
 
 /** `soulcore::commands::session::NO_ANSWERS_NOTICE`. */
@@ -912,6 +931,9 @@ export interface FakeCoreOptions {
   readonly preparingMemory?: (request: MemoryContextRequest) => MemoryContextView | Promise<MemoryContextView>;
   readonly draftingMemory?: (pasted: string, contextId: string) => MemoryDraftValue | Promise<MemoryDraftValue>;
   readonly preparingDraftMemory?: (pasted: string, contextId: string, ownerIds: readonly string[], includeOriginal: boolean) => MemoryDraftPlan | Promise<MemoryDraftPlan>;
+  readonly preparingInsight?: (request: InsightContextRequest) => InsightContextView | Promise<InsightContextView>;
+  readonly draftingInsight?: (pasted: string, contextId: string) => InsightDraftValue | Promise<InsightDraftValue>;
+  readonly preparingDraftInsight?: (pasted: string, contextId: string, includeCounts: boolean, includeOriginal: boolean) => InsightDraftPlan | Promise<InsightDraftPlan>;
   readonly insights?: readonly LocalInsight[];
   readonly readingInsights?: () => readonly LocalInsight[] | Promise<readonly LocalInsight[]>;
   readonly ignoringInsight?: (bundleId: string) => LocalInsight | Promise<LocalInsight>;
@@ -1080,6 +1102,7 @@ export function installFakeCore(
   );
   let importSequence = importOperations.size;
   let heldMemory: MemoryContextView | null = null;
+  let heldInsight: InsightContextView | null = null;
   let insights = [...(options.insights ?? [])];
   let insightSequence = 0;
 
@@ -1202,9 +1225,33 @@ export function installFakeCore(
           (payload as { approval: { preparation_id: string; plan_hash: string } }).approval,
         );
       case "discard_draft":
-        return options.discardingDraft?.() ?? true;
+        return Promise.resolve(options.discardingDraft?.() ?? true).then((value) => { heldMemory = null; heldInsight = null; return value; });
+      case "prepare_insight_context": {
+        const request = (payload as { request: InsightContextRequest }).request;
+        heldMemory = null;
+        return (async () => {
+          heldInsight = await (options.preparingInsight?.(request) ?? anInsightContext({ reference: anInsightReference({ bundle_id: request.bundle_id, contact_id: request.contact_id,
+            summary: aPersonSummary({ contact_id: request.contact_id }) }) }));
+          return heldInsight;
+        })();
+      }
+      case "local_draft_with_insight": {
+        const asked = payload as { pasted: string; contextId: string };
+        if (options.draftingInsight !== undefined) return options.draftingInsight(asked.pasted, asked.contextId);
+        if (heldInsight?.context_id !== asked.contextId) throw { reason_code: "INSIGHT_CONTEXT_CHANGED", explanation: "没有这次统计材料用途。" };
+        const reference = heldInsight.reference; heldInsight = null;
+        return { draft: drafting(asked.pasted), reference } satisfies InsightDraftValue;
+      }
+      case "prepare_draft_with_insight": {
+        const asked = payload as { pasted: string; contextId: string; includeCounts: boolean; includeOriginal: boolean };
+        if (options.preparingDraftInsight !== undefined) return options.preparingDraftInsight(asked.pasted, asked.contextId, asked.includeCounts, asked.includeOriginal);
+        if (heldInsight?.context_id !== asked.contextId) throw { reason_code: "INSIGHT_CONTEXT_CHANGED", explanation: "没有这次统计材料用途。" };
+        return anInsightDraftPlan({ reference: heldInsight.reference, prepared: { plan: anE1Plan({ carries_exempted_original: asked.includeOriginal }), encoded_bytes: 1200,
+          body_preview: asked.includeCounts ? "[合成匿名 A2 派生计数]" : "[本次统计仅作本地参考]", includes_counts: asked.includeCounts } });
+      }
       case "prepare_memory_context": {
         const request = (payload as { request: MemoryContextRequest }).request;
+        heldInsight = null;
         return (async () => { heldMemory = await (options.preparingMemory?.(request) ?? aMemoryContextView()); return heldMemory; })();
       }
       case "draft_reply_with_memory": {

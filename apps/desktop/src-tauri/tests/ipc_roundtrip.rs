@@ -3785,3 +3785,103 @@ fn foreign_origins_cannot_prepare_imports_consume_contexts_or_ignore_insights() 
         json!(false)
     );
 }
+
+/// Exercises the production configure/handler wire when native prerequisites
+/// are present. Static command inventory checks do not execute this test.
+#[test]
+fn insight_context_commands_bind_exact_ids_and_explicit_counts_on_the_real_handler() {
+    let shell = Shell::on(scratch());
+    let endpoint = MockLlm::start().unwrap();
+    endpoint.set_reply("收到，我们稍后再聊。");
+    shell
+        .invoke("set_user_endpoint", json!({"url": endpoint.base_url()}))
+        .unwrap();
+    shell
+        .import(
+            "soul-import-v1",
+            &fixture("import/soul-import-v1/valid_basic.jsonl"),
+        )
+        .unwrap();
+    let bundles = shell.invoke("local_insights", json!({})).unwrap();
+    let bundle = &bundles[0];
+    let request = json!({"bundle_id": bundle["bundle_id"], "contact_id": bundle["summaries"][0]["contact_id"]});
+    for invalid in [
+        json!({"request": {"bundleId": bundle["bundle_id"], "contact_id": bundle["summaries"][0]["contact_id"]}}),
+        json!({"request": {"bundle_id": bundle["bundle_id"], "contact_id": bundle["summaries"][0]["contact_id"], "text": "untrusted prose"}}),
+    ] {
+        assert!(shell.invoke("prepare_insight_context", invalid).is_err());
+    }
+    let selected = shell
+        .invoke("prepare_insight_context", json!({"request": request}))
+        .unwrap();
+    assert!(selected["context_id"].is_string());
+    assert_eq!(selected["reference"]["bundle_id"], bundle["bundle_id"]);
+    assert_eq!(selected["reference"]["summary"]["source"], "counts");
+    assert!(!selected["reference"]["sources"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    let context_id = selected["context_id"].clone();
+    // Malformed outer casing must not consume this known-good context.
+    assert!(shell
+        .invoke(
+            "local_draft_with_insight",
+            json!({"pasted": "synthetic", "context_id": context_id})
+        )
+        .is_err());
+    assert!(shell.invoke("prepare_draft_with_insight", json!({"pasted": "synthetic", "contextId": context_id, "include_counts": false, "includeOriginal": false})).is_err());
+    let local = shell
+        .invoke(
+            "local_draft_with_insight",
+            json!({"pasted": "synthetic", "contextId": context_id}),
+        )
+        .unwrap();
+    assert_eq!(local["draft"]["source"], "tone_template");
+    assert_eq!(local["draft"]["delivery"], false);
+    assert_eq!(local["reference"], selected["reference"]);
+    assert!(shell
+        .invoke(
+            "local_draft_with_insight",
+            json!({"pasted": "synthetic", "contextId": context_id})
+        )
+        .is_err());
+    assert_eq!(endpoint.request_count(), 0);
+    for include_counts in [false, true] {
+        let selected = shell
+            .invoke("prepare_insight_context", json!({"request": request}))
+            .unwrap();
+        let context_id = selected["context_id"].clone();
+        let body = json!({"pasted": "PASTE_SYNTHETIC_934", "contextId": context_id, "includeCounts": include_counts, "includeOriginal": false});
+        let denied = shell
+            .invoke_from(
+                "prepare_draft_with_insight",
+                body.clone(),
+                Some("https://example.invalid/page"),
+            )
+            .unwrap_err();
+        assert!(denied.to_string().contains("not allowed"));
+        let plan = shell.invoke("prepare_draft_with_insight", body).unwrap();
+        assert_eq!(plan["prepared"]["includes_counts"], include_counts);
+        assert_eq!(plan["reference"], selected["reference"]);
+        assert!(!plan["prepared"]["body_preview"]
+            .as_str()
+            .unwrap()
+            .contains("PASTE_SYNTHETIC_934"));
+        let approval = json!({"preparation_id": plan["prepared"]["plan"]["preparation_id"], "plan_hash": plan["prepared"]["plan"]["plan_hash"]});
+        let draft = shell
+            .invoke("generate_draft", json!({"approval": approval}))
+            .unwrap();
+        assert_eq!(draft["source"], "user_endpoint");
+        assert_eq!(draft["delivery"], false);
+        let recorded = endpoint.requests().pop().unwrap();
+        assert_eq!(
+            recorded.body.len(),
+            plan["prepared"]["encoded_bytes"].as_u64().unwrap() as usize
+        );
+        assert_eq!(recorded.body.contains("本机统计"), include_counts);
+        assert!(!recorded
+            .body
+            .contains(bundle["bundle_id"].as_str().unwrap()));
+    }
+    assert_eq!(endpoint.request_count(), 2);
+}

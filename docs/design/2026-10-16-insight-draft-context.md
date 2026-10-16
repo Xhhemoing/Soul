@@ -25,6 +25,8 @@
 
 独立 Held/PendingInsight 与 Memory 互斥。普通起草、手写记忆准备、统计准备、整体 discard、编辑和来源修改均不能留下另一类旧用途。local 成功或实际派发消费本次 context；prepare 不自动 HTTP。begin 与 complete 再核完整来源，已发生请求先审计再判断可否接收；重启不能恢复上下文或批准。Session ignore/recompute 保守使当前用途失效；直接 store 重算仅创建新 bundle，若旧 bundle 及其依赖仍有效，不宣称它自动撤销旧行。
 
+替换清理针对尚未派发的 Held/Pending 用途。已派发 worker 仍沿用 D69 的许可余量；本轮没有为直接核心调用的普通 local 与已发 HTTP 并行另加状态。页面仍通过同一物理 lane、输入票据和显式 discard 拒绝旧意图交付，不能把清理未派发上下文说成撤回了已发字节。
+
 includeCounts 默认 false，只提供固定本地参考标记；另选 true 才调用既有可信 summary_body 的匿名 A2 派生计数适配。该内部聚合适配不改变原 evidence/event 的 privacy，不调用 Memory/OwnerExcerpt，也不接受 paste 豁免。base paste 的原文豁免只交给 base 一次脱敏，不能命中统计 turn。通过现有 final JSON serializer 核对 64 KiB；整项可容纳则保留全部 points 与引用，否则拒绝，不能静默裁剪一部分统计。
 
 W5 已有来源复验可能打开密封内容以验证存活，立即丢弃；本模块不新增原文 resolver，不向页面或端点交付原文。沿用现有 store、schema、算法、锁和唯一 HTTP 出口。
@@ -49,4 +51,13 @@ Draft 提供独立统计面板，用户点击后取得本地预览和全部来�
 
 ## 实际结果
 
-待实现与真实检查后填写，不预报通过。最终同步现有草稿开发分支，不合并 main、不安装或发布。
+计划在编码前独立复核；核心/IPC/wrappers、UI 与评审修复均完成实际源码复审（REVIEWED）。阶段一的四份契约文档已同步为 `7d4421e253e7493519b5762de12007e6898845bd`，当时明确标 CLAIMED，不把规划当实现。阶段二源码与结果由包含本文的提交标识，PR #66 保持草稿。
+
+- Linux / pwsh 7.4.6 / Rust 1.83.0：最终 `cargo test -p soulcore -p soul-import --all-targets --locked --offline` **52 套件 / 370 通过、0 失败、1 忽略**，退出 0。忽略项仍是既有 Q2-03、要求干净冻结 SHA 与 Windows pwsh 的专项测量，没有新增忽略。首轮在 39 套件后遇到缓存 `session_import_work` ELF 缺执行位、未执行该套件而中断；仅恢复一个构建缓存文件的执行权限后，同命令完整重跑，不把首轮 partial 当通过。
+- 新增 `session_insight_context.rs` **10 项**真实 Session / 临时 SQLCipher / loopback MockLlm 测试均通过。覆盖 exact 引用、recent 窗口外读取、纯匿名 wire、默认未提供计数与明确提供、精确 serializer 字节、同 ID 改计数及同 bundle 另一人变化、实际 HTTP 后遗忘的审计拒收、普通/memory 替换、重算边界、合法 base 可容纳而完整统计超限的整项拒绝、重启。相关六套定向 **42 项**与此前单元 **24 项**也通过，它们是最终测试的子集，不另外累计。
+- 完整前端直接 CLI `vitest run --maxWorkers=2` **41 文件 / 489 测试**通过，TypeScript、ESLint 与临时 `NODE_ENV=production` 的 Vite build 通过。包括 14 项新 UI/真实 wrapper 联合用例、8 项 core wrapper 用例及 4 项本地反馈读取反例。首轮补正新测试 fixture 缺失的既有 band 字段；关联回归还复现 ignore 自身来源变更导致列表永久丢弃，已修复为 mutation 成功后绑定一次新读取，保留旧断言并验证读中变更/卸载/拒绝的因果边界。
+- 首个 Rust 编译节点发现新 revalidate 尾表达式 MutexGuard 生命周期不满足 Rust 1.83，改为显式局部 guard 后编译与单元通过；没有改变存储或授权语义。最终对认领 Rust 文件做定向格式化，根与独立桌面 workspace `cargo fmt --all -- --check` 均退出 0。
+- 三个新增命令接到实际 Tauri 注册与 core wrapper，inventory 实测 **55 项**；原 6 条命令源码断言提取实际 inventory、独立编译执行 **6/6**。新增 native mock handler 测试源码调用三命令并核参数，仅源码复核/格式通过，未编译或执行原生测试。
+- schema-freeze、E0、禁词检查退出 0。E0 实测 **16 shipped crates / 273 源码文件**，禁词实测 94 项 / 132 文件；冻结 JSON schema、持久化 schema、T4D/A0–A3 与依赖锁未改。HTML 历史 script/SVG 字节保持，新增链接和当前说明静态核对通过，未称为新的浏览器交互验收。
+
+全部验证仅用合成材料、临时测试库和 loopback 模型，不读取真实用户库或联系外部人员。当前缺 pkg-config / GTK / WebKit 开发依赖，原生 desktop workspace/IPC 未运行；完整 G-L 继续暂缓，G-W/G-M 未执行。没有安装、发布或合并 main，不标 GATED/INTEGRATED，不关闭 Goal 1、正式 Goal 2 或 Wave 1。后续原文受控本地解引用及真实模型效用须单独规划验证，不能继承这次统计用途或 E1 批准。

@@ -28,8 +28,9 @@ use soulcore::commands::memory::{
 use soulcore::commands::profile::{GivenAnswer, IntakeReceipt, ProfileScreen, QuestionView};
 use soulcore::commands::session::{
     CollectStatus, ContextMemoryId, FilesView, ImportNamespaceView, ImportOperationView,
-    ImportPrepareRequest, ImportRecoveryState, MemoryContextRequest, MemoryContextView,
-    MemoryDraftPlan, MemoryDraftValue, PreparedImportView, Session, SessionRefusal, SessionStatus,
+    ImportPrepareRequest, ImportRecoveryState, InsightContextRequest, InsightContextView,
+    InsightDraftPlan, InsightDraftValue, MemoryContextRequest, MemoryContextView, MemoryDraftPlan,
+    MemoryDraftValue, PreparedImportView, Session, SessionRefusal, SessionStatus,
 };
 use soulcore::commands::shell::{CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
 use soulcore::commands::store::{AuditChainView, ResearchPreviewView};
@@ -87,6 +88,41 @@ pub fn recompute_local_insight(
     bundle_id: String,
 ) -> Result<LocalInsightView, SessionRefusal> {
     session.held().recompute_local_insight(&bundle_id)
+}
+
+#[tauri::command]
+pub fn prepare_insight_context(
+    session: State<'_, SessionState>,
+    request: InsightContextRequest,
+) -> Result<InsightContextView, SessionRefusal> {
+    session.held().prepare_insight_context(request)
+}
+
+#[tauri::command]
+pub fn local_draft_with_insight(
+    session: State<'_, SessionState>,
+    pasted: String,
+    context_id: String,
+) -> Result<InsightDraftValue, SessionRefusal> {
+    session
+        .held()
+        .local_draft_with_insight(&pasted, &context_id)
+}
+
+#[tauri::command]
+pub fn prepare_draft_with_insight(
+    session: State<'_, SessionState>,
+    pasted: String,
+    context_id: String,
+    include_counts: bool,
+    include_original: bool,
+) -> Result<InsightDraftPlan, SessionRefusal> {
+    session.held().prepare_draft_with_insight(
+        &pasted,
+        &context_id,
+        include_counts,
+        include_original,
+    )
 }
 
 #[tauri::command]
@@ -560,6 +596,9 @@ impl DraftNotices {
 /// `apps/desktop/src/core.ts`, which is the only place the other side names
 /// them. A command added to one and not the other is a failing test.
 pub const COMMAND_NAMES: &[&str] = &[
+    "prepare_insight_context",
+    "local_draft_with_insight",
+    "prepare_draft_with_insight",
     "local_insights",
     "ignore_local_insight",
     "recompute_local_insight",

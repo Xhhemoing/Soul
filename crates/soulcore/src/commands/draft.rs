@@ -59,7 +59,8 @@ use soul_policy::hitl::{
 };
 use soul_policy::net_guard::Origin;
 use soul_policy::redactor::{
-    ExemptionRequest, KnownIdentifiers, OneShotExemption, RedactedBody, Redactor,
+    combine_redacted, ExemptionRequest, KnownIdentifiers, OneShotExemption, RedactedBody, Redactor,
+    Turn,
 };
 use soul_policy::ReasonCode;
 use soul_profile::ProfileError;
@@ -314,6 +315,52 @@ impl DraftSession {
         }
     }
 
+    fn prepare_with_insight(
+        &mut self,
+        policy: &mut PolicySession,
+        request: DraftRequest,
+        selected: &super::insights::SelectedInsightContext,
+        include_counts: bool,
+        exemption: Option<OneShotExemption>,
+    ) -> Result<InsightPrepared, DraftRefusal> {
+        allow(
+            policy,
+            ActionKind::GenerateWithUserEndpoint,
+            RequestOrigin::User,
+            soul_policy::clock::now_unix_millis(),
+        )?;
+        self.pending = None;
+        // The one-shot exemption belongs only to the pasted turn. The
+        // trusted aggregate uses its existing anonymous redaction factory.
+        let base = self.drafter.redact(&request, exemption)?;
+        let statistics = if include_counts {
+            analysis::summary_body(selected.counts(), policy.redactor())
+        } else {
+            policy.redactor().redact_for_e1(&[Turn::new(
+                Uuid::now_v7(),
+                soul_schema::common::SealedSubject::Owner,
+                "[本次统计仅供本地参考，计数未向端点提供]",
+            )])
+        };
+        let body =
+            combine_redacted(&[&base, &statistics]).map_err(|_| DraftRefusal::RequestTooLarge)?;
+        let encoded_bytes =
+            soul_policy::e1::encoded_chat_body(E1Purpose::Draft, self.drafter.model(), &body).len();
+        if encoded_bytes > MAX_MEMORY_REQUEST_BYTES {
+            return Err(DraftRefusal::RequestTooLarge);
+        }
+        let body_preview = body.as_str().to_owned();
+        let mut plan = self.hold_prepared(policy, request, body);
+        plan.notice
+            .push_str(" 统计引用仅说明本次统计材料的出处，不代表生成草稿逐句已获事实验证。");
+        Ok(InsightPrepared {
+            plan,
+            encoded_bytes,
+            body_preview,
+            includes_counts: include_counts,
+        })
+    }
+
     fn hold_prepared(
         &mut self,
         policy: &PolicySession,
@@ -552,6 +599,26 @@ impl std::fmt::Debug for MemoryPrepared {
             .field("retained_memory_ids", &self.retained_memory_ids)
             .field("endpoint_owner_ids", &self.endpoint_owner_ids)
             .field("encoded_bytes", &self.encoded_bytes)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The complete selected statistics item fits, or preparation is refused.
+#[derive(Clone, PartialEq, Eq, Serialize)]
+pub struct InsightPrepared {
+    pub plan: E1DraftPlan,
+    pub encoded_bytes: usize,
+    pub body_preview: String,
+    pub includes_counts: bool,
+}
+
+impl std::fmt::Debug for InsightPrepared {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("InsightPrepared")
+            .field("plan", &self.plan)
+            .field("encoded_bytes", &self.encoded_bytes)
+            .field("includes_counts", &self.includes_counts)
             .finish_non_exhaustive()
     }
 }
@@ -819,6 +886,27 @@ pub fn prepare_pasted_with_memory(
         RequestOrigin::User,
         soul_policy::clock::now_unix_millis(),
     )
+}
+
+pub(crate) fn prepare_pasted_with_insight(
+    drafting: &mut DraftSession,
+    policy: &mut PolicySession,
+    brief: ProfileBrief,
+    pasted: &str,
+    include_original: bool,
+    selected: &super::insights::SelectedInsightContext,
+    include_counts: bool,
+) -> Result<InsightPrepared, DraftRefusal> {
+    let request = DraftRequest::from_paste(brief, pasted);
+    let exemption = if include_original {
+        request
+            .third_party_turn_ids()
+            .first()
+            .and_then(|turn_id| ExemptionRequest::for_turn(*turn_id).confirm(true))
+    } else {
+        None
+    };
+    drafting.prepare_with_insight(policy, request, selected, include_counts, exemption)
 }
 
 /// Step two: the user read the plan and approved this exact preparation.

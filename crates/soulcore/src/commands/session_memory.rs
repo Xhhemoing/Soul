@@ -187,6 +187,8 @@ impl Session {
     ) -> Result<MemoryDraftValue, SessionRefusal> {
         self.require_store_idle()?;
         let selection = self.selected_memory(context_id)?;
+        self.held_insight = None;
+        self.pending_insight = None;
         let memory = material(&selection, &[])?;
         let brief = self.owner_brief();
         let drafted =
@@ -210,6 +212,8 @@ impl Session {
     ) -> Result<MemoryDraftPlan, SessionRefusal> {
         self.require_draft_slot()?;
         let mut selection = self.selected_memory(context_id)?;
+        self.held_insight = None;
+        self.pending_insight = None;
         let memory = material(&selection, owner_ids)?;
         self.sync_identifiers();
         let brief = self.owner_brief();
