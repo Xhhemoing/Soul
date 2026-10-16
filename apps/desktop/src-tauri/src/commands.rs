@@ -33,6 +33,9 @@ use soulcore::commands::session::{
     MemoryDraftValue, PreparedImportView, Session, SessionRefusal, SessionStatus,
 };
 use soulcore::commands::shell::{CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
+use soulcore::commands::sources::{
+    EvidenceEventRequest, EvidenceEventView, EvidenceSourcesRequest, EvidenceSourcesView,
+};
 use soulcore::commands::store::{AuditChainView, ResearchPreviewView};
 use tauri::State;
 
@@ -60,6 +63,22 @@ impl SessionState {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
+
+#[tauri::command]
+pub fn evidence_sources(
+    session: State<'_, SessionState>,
+    request: EvidenceSourcesRequest,
+) -> Result<EvidenceSourcesView, SessionRefusal> {
+    session.held().evidence_sources(&request)
+}
+
+#[tauri::command]
+pub fn read_evidence_event(
+    session: State<'_, SessionState>,
+    request: EvidenceEventRequest,
+) -> Result<EvidenceEventView, SessionRefusal> {
+    session.held().read_evidence_event(&request)
 }
 
 #[tauri::command]
@@ -596,6 +615,8 @@ impl DraftNotices {
 /// `apps/desktop/src/core.ts`, which is the only place the other side names
 /// them. A command added to one and not the other is a failing test.
 pub const COMMAND_NAMES: &[&str] = &[
+    "evidence_sources",
+    "read_evidence_event",
     "prepare_insight_context",
     "local_draft_with_insight",
     "prepare_draft_with_insight",

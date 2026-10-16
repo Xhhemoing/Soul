@@ -58,6 +58,8 @@ pub fn configure<R: tauri::Runtime>(
             commands::import_recovery_state,
             commands::prepare_memory_context,
             commands::prepare_insight_context,
+            commands::evidence_sources,
+            commands::read_evidence_event,
             commands::local_draft_with_insight,
             commands::prepare_draft_with_insight,
             commands::draft_reply_with_memory,

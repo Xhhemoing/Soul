@@ -3885,3 +3885,68 @@ fn insight_context_commands_bind_exact_ids_and_explicit_counts_on_the_real_handl
     }
     assert_eq!(endpoint.request_count(), 2);
 }
+
+#[test]
+fn local_evidence_commands_use_exact_nested_anchors_without_opening_a_model_path() {
+    let shell = Shell::on(scratch());
+    let endpoint = MockLlm::start().unwrap();
+    shell
+        .invoke("set_user_endpoint", json!({"url":endpoint.base_url()}))
+        .unwrap();
+    shell
+        .import(
+            "soul-import-v1",
+            &fixture("import/soul-import-v1/valid_basic.jsonl"),
+        )
+        .unwrap();
+    let graph = shell.invoke("people_graph", json!({})).unwrap();
+    let tie = &graph["ties"][0];
+    let peer = if tie["from_contact_id"] == graph["self_contact_id"] {
+        &tie["to_contact_id"]
+    } else {
+        &tie["from_contact_id"]
+    };
+    let request = json!({"contact_id":peer,"relationship_id":tie["relationship_id"],"evidence_id":tie["evidence"][0]["evidence_id"]});
+    let audit_before = shell.invoke("audit_chain", json!({})).unwrap();
+    assert!(shell.invoke("evidence_sources", json!({"request":{"contactId":peer,"relationship_id":tie["relationship_id"],"evidence_id":tie["evidence"][0]["evidence_id"]}})).is_err());
+    let sources = shell
+        .invoke("evidence_sources", json!({"request":request}))
+        .unwrap();
+    assert_eq!(sources["contact_id"], *peer);
+    assert_eq!(sources["relationship_id"], tie["relationship_id"]);
+    assert!(sources.get("body").is_none());
+    let event = sources["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|event| event["availability"] == "available")
+        .expect("the valid fixture has a viewable indexed source");
+    let mut raw_request = request.clone();
+    raw_request["event_id"] = event["event_id"].clone();
+    let mut bad = raw_request.clone();
+    bad["blob_id"] = json!("0192f000-0000-7000-8000-0000000000f1");
+    assert!(shell
+        .invoke("read_evidence_event", json!({"request":bad}))
+        .is_err());
+    let foreign = shell
+        .invoke_from(
+            "read_evidence_event",
+            json!({"request":raw_request}),
+            Some("https://example.invalid/page"),
+        )
+        .unwrap_err();
+    assert!(foreign.to_string().contains("not allowed"));
+    let body = shell
+        .invoke("read_evidence_event", json!({"request":raw_request}))
+        .unwrap();
+    for key in ["contact_id", "relationship_id", "evidence_id", "event_id"] {
+        assert_eq!(body[key], raw_request[key]);
+    }
+    assert_eq!(body["namespace_id"], event["namespace_id"]);
+    assert!(!body["body"].as_str().unwrap().is_empty());
+    assert_eq!(
+        shell.invoke("audit_chain", json!({})).unwrap(),
+        audit_before
+    );
+    assert_eq!(endpoint.request_count(), 0);
+}

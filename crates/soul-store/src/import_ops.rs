@@ -100,6 +100,83 @@ fn decode<T: DeserializeOwned>(value: &str) -> StoreResult<T> {
 }
 
 impl SqlCipherStore {
+    /// Exact indexed provenance for a local source view. The caller supplies
+    /// its trusted resource limit; no raw identifier is returned or logged.
+    /// Both authorization seals are size-checked before either is opened.
+    pub fn import_source_for_event(
+        &self,
+        event_id: Uuid,
+        max_identity_plaintext_bytes: u64,
+    ) -> StoreResult<Option<(ImportMessageIdentity, ImportNamespace)>> {
+        let row: Option<(String, String, String, String, String)> = self.conn.query_row(
+            "SELECT identity_id,namespace_id,contact_id,content_key_id,doc FROM import_message_keys WHERE event_id=?1",
+            [event_id.to_string()],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        ).optional().map_err(backend)?;
+        let Some((id, namespace_id, contact, key, doc)) = row else {
+            return Ok(None);
+        };
+        let identity: ImportMessageIdentity = decode(&doc)?;
+        if identity.event_id != event_id
+            || identity.identity_id.to_string() != id
+            || identity.namespace_id.to_string() != namespace_id
+            || identity.sender_contact_id.to_string() != contact
+            || identity.content_key_id.to_string() != key
+            || identity.identity_ref.content_key_id != identity.content_key_id
+            || identity.identity_ref.subject
+                != if identity.is_owner {
+                    SealedSubject::Owner
+                } else {
+                    SealedSubject::ThirdParty
+                }
+        {
+            return Err(fixed("LOCAL_SOURCE_UNAVAILABLE"));
+        }
+        let row: Option<(String, String, Option<String>, String)> = self.conn.query_row(
+            "SELECT source,state,owner_contact_id,doc FROM import_namespaces WHERE namespace_id=?1",
+            [namespace_id], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)),
+        ).optional().map_err(backend)?;
+        let (source, state, owner, doc) = row.ok_or_else(|| fixed("LOCAL_SOURCE_UNAVAILABLE"))?;
+        let namespace: ImportNamespace = decode(&doc)?;
+        if state != "active" || namespace.state != ImportNamespaceState::Active {
+            return Err(fixed("LOCAL_SOURCE_UNAVAILABLE"));
+        }
+        if self.sealed_plaintext_bytes_for_field(
+            event_id,
+            "import_message_identity",
+            &identity.identity_ref,
+        )? > max_identity_plaintext_bytes
+        {
+            return Err(fixed("LOCAL_SOURCE_TOO_LARGE"));
+        }
+        if let Some(account) = &namespace.account_ref {
+            let owner = namespace
+                .owner_contact_id
+                .ok_or_else(|| fixed("LOCAL_SOURCE_UNAVAILABLE"))?;
+            if self.sealed_plaintext_bytes_for_field(owner, "import_account_identity", account)?
+                > max_identity_plaintext_bytes
+            {
+                return Err(fixed("LOCAL_SOURCE_TOO_LARGE"));
+            }
+        }
+        let namespace = read_namespace(
+            self,
+            identity.namespace_id,
+            &source,
+            &state,
+            owner.as_deref(),
+            &doc,
+        )?;
+        validate_identity_ref(
+            self,
+            &identity.identity_ref,
+            identity.content_key_id,
+            event_id,
+            "import_message_identity",
+        )?;
+        Ok(Some((identity, namespace)))
+    }
+
     pub fn unfinished_import_counts(&self) -> StoreResult<(u64, u64)> {
         self.conn.query_row("SELECT count(CASE WHEN state='reserved' THEN 1 END),count(CASE WHEN state='running' THEN 1 END) FROM import_operations", [], |row| Ok((row.get::<_, i64>(0)? as u64, row.get::<_, i64>(1)? as u64))).map_err(backend)
     }
@@ -556,6 +633,243 @@ fn read_namespace(
 }
 
 type IdentityColumns = (String, String, String, Option<String>);
+
+#[cfg(test)]
+mod local_source_tests {
+    use super::*;
+    use soul_schema::common::SealedSubject;
+    use soul_store_api::import::ImportCoverage;
+    use soul_store_api::types::SealRequest;
+
+    fn fixture() -> (
+        tempfile::TempDir,
+        SqlCipherStore,
+        ImportMessageIdentity,
+        ImportNamespace,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = SqlCipherStore::open(
+            dir.path().join("source.db"),
+            &crate::TestKeyProvider::from_seed("local source fixture"),
+        )
+        .unwrap();
+        let owner = Uuid::now_v7();
+        let peer = Uuid::now_v7();
+        let event = Uuid::now_v7();
+        let key = Uuid::now_v7();
+        let namespace = ImportNamespace {
+            namespace_id: Uuid::now_v7(),
+            source: ImportSourceKind::SoulImportV1,
+            state: ImportNamespaceState::Active,
+            coverage: ImportCoverage::FullFromCreation,
+            owner_contact_id: Some(owner),
+            account_ref: None,
+        };
+        store.put_import_namespace(&namespace).unwrap();
+        let identity = ImportMessageIdentity {
+            identity_id: Uuid::now_v7(),
+            namespace_id: namespace.namespace_id,
+            event_id: event,
+            sender_contact_id: peer,
+            content_key_id: key,
+            identity_ref: store
+                .seal(SealRequest::new(
+                    key,
+                    event,
+                    "import_message_identity",
+                    SealedSubject::ThirdParty,
+                    br#"["conversation","message"]"#.to_vec(),
+                ))
+                .unwrap(),
+            group: false,
+            is_owner: false,
+        };
+        store.put_import_message(&identity).unwrap();
+        (dir, store, identity, namespace)
+    }
+
+    #[test]
+    fn local_source_lookup_is_exact_and_validates_columns_and_document() {
+        let (_dir, store, identity, namespace) = fixture();
+        let (actual, ns) = store
+            .import_source_for_event(identity.event_id, 262_144)
+            .unwrap()
+            .unwrap();
+        assert_eq!(actual, identity);
+        assert_eq!(ns, namespace);
+        assert!(store
+            .import_source_for_event(Uuid::now_v7(), 262_144)
+            .unwrap()
+            .is_none());
+        store
+            .conn
+            .execute(
+                "UPDATE import_message_keys SET contact_id=?2 WHERE event_id=?1",
+                rusqlite::params![identity.event_id.to_string(), Uuid::now_v7().to_string()],
+            )
+            .unwrap();
+        assert!(store
+            .import_source_for_event(identity.event_id, 262_144)
+            .is_err());
+    }
+
+    #[test]
+    fn local_source_identity_and_account_have_actual_byte_limits_before_open() {
+        let (_dir, mut store, identity, mut namespace) = fixture();
+        assert_eq!(
+            store
+                .import_source_for_event(identity.event_id, 1)
+                .unwrap_err(),
+            fixed("LOCAL_SOURCE_TOO_LARGE")
+        );
+        let account = store
+            .seal(SealRequest::new(
+                Uuid::now_v7(),
+                namespace.owner_contact_id.unwrap(),
+                "import_account_identity",
+                SealedSubject::Owner,
+                vec![b'x'; 1025],
+            ))
+            .unwrap();
+        namespace.account_ref = Some(account);
+        store.put_import_namespace(&namespace).unwrap();
+        assert_eq!(
+            store
+                .import_source_for_event(identity.event_id, 1024)
+                .unwrap_err(),
+            fixed("LOCAL_SOURCE_TOO_LARGE")
+        );
+        // False char_count metadata cannot hide oversized ciphertext.
+        store
+            .conn
+            .execute(
+                "UPDATE sealed_blobs SET ciphertext=zeroblob(300000) WHERE blob_id=?1",
+                [identity.identity_ref.blob_id.to_string()],
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .import_source_for_event(identity.event_id, 262_144)
+                .unwrap_err(),
+            fixed("LOCAL_SOURCE_TOO_LARGE")
+        );
+    }
+
+    #[test]
+    fn local_source_revocation_is_rejected_before_any_identity_authentication() {
+        let (_dir, store, identity, namespace) = fixture();
+        store
+            .conn
+            .execute(
+                "UPDATE sealed_blobs SET ciphertext=zeroblob(length(ciphertext)) WHERE blob_id=?1",
+                [identity.identity_ref.blob_id.to_string()],
+            )
+            .unwrap();
+        store
+            .conn
+            .execute(
+                "UPDATE import_namespaces SET state='revoked' WHERE namespace_id=?1",
+                [namespace.namespace_id.to_string()],
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .import_source_for_event(identity.event_id, 262_144)
+                .unwrap_err(),
+            fixed("LOCAL_SOURCE_UNAVAILABLE")
+        );
+    }
+
+    #[test]
+    fn local_source_body_preflight_binds_row_field_key_subject_and_nonce() {
+        let (_dir, mut store, identity, _) = fixture();
+        let body = store
+            .seal(SealRequest::new(
+                identity.content_key_id,
+                identity.event_id,
+                "body_ref",
+                SealedSubject::ThirdParty,
+                "🦊".as_bytes().to_vec(),
+            ))
+            .unwrap();
+        assert_eq!(
+            store
+                .event_body_plaintext_bytes(identity.event_id, &body)
+                .unwrap(),
+            4
+        );
+        assert!(store
+            .event_body_plaintext_bytes(Uuid::now_v7(), &body)
+            .is_err());
+        let mut wrong = body.clone();
+        wrong.subject = SealedSubject::Owner;
+        assert!(store
+            .event_body_plaintext_bytes(identity.event_id, &wrong)
+            .is_err());
+        wrong = body.clone();
+        wrong.content_key_id = Uuid::now_v7();
+        assert!(store
+            .event_body_plaintext_bytes(identity.event_id, &wrong)
+            .is_err());
+        assert!(store
+            .event_body_plaintext_bytes(identity.event_id, &identity.identity_ref)
+            .is_err());
+        store
+            .conn
+            .execute(
+                "UPDATE sealed_blobs SET nonce=zeroblob(1000000) WHERE blob_id=?1",
+                [body.blob_id.to_string()],
+            )
+            .unwrap();
+        assert!(store
+            .event_body_plaintext_bytes(identity.event_id, &body)
+            .is_err());
+    }
+
+    #[test]
+    fn local_source_identity_row_replay_and_destroyed_key_are_not_missing_records() {
+        let (_dir, mut store, identity, _) = fixture();
+        let other = store
+            .seal(SealRequest::new(
+                identity.content_key_id,
+                Uuid::now_v7(),
+                "import_message_identity",
+                SealedSubject::ThirdParty,
+                b"private synthetic identifier".to_vec(),
+            ))
+            .unwrap();
+        let mut replay = identity.clone();
+        replay.identity_ref = other;
+        store
+            .conn
+            .execute(
+                "UPDATE import_message_keys SET doc=?2 WHERE event_id=?1",
+                rusqlite::params![identity.event_id.to_string(), encode(&replay).unwrap()],
+            )
+            .unwrap();
+        let error = store
+            .import_source_for_event(identity.event_id, 262_144)
+            .unwrap_err();
+        assert!(!format!("{error:?}").contains("private synthetic identifier"));
+        store
+            .conn
+            .execute(
+                "UPDATE import_message_keys SET doc=?2 WHERE event_id=?1",
+                rusqlite::params![identity.event_id.to_string(), encode(&identity).unwrap()],
+            )
+            .unwrap();
+        store
+            .conn
+            .execute(
+                "DELETE FROM content_keys WHERE content_key_id=?1",
+                [identity.content_key_id.to_string()],
+            )
+            .unwrap();
+        assert!(store
+            .import_source_for_event(identity.event_id, 262_144)
+            .is_err());
+    }
+}
 
 fn identity_batch<T: DeserializeOwned, F>(
     store: &SqlCipherStore,

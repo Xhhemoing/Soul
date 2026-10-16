@@ -1719,6 +1719,24 @@ impl Session {
         Ok(memory_commands::rows(&store)?)
     }
 
+    pub fn evidence_sources(
+        &self,
+        request: &super::sources::EvidenceSourcesRequest,
+    ) -> Result<super::sources::EvidenceSourcesView, SessionRefusal> {
+        let shared = self.opened_store()?;
+        let store = hold(&shared);
+        super::sources::evidence_sources(&store, request)
+    }
+
+    pub fn read_evidence_event(
+        &self,
+        request: &super::sources::EvidenceEventRequest,
+    ) -> Result<super::sources::EvidenceEventView, SessionRefusal> {
+        let shared = self.opened_store()?;
+        let store = hold(&shared);
+        super::sources::read_evidence_event(&store, request)
+    }
+
     /// One memory, opened because the user asked for this one.
     pub fn memory(&self, memory_id: &str) -> Result<MemoryDetail, SessionRefusal> {
         let memory_id = parse_id(memory_id, "记忆")?;

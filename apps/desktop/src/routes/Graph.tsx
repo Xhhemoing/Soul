@@ -2,9 +2,11 @@
  * 人脉图. Who Soul has seen you talk to, how often, and what says so.
  *
  * Two things this screen deliberately does not show. It shows no names: a
- * person's label is sealed text in the store and nothing on this path opens
- * the seal, so people are told apart by the leading characters of an
- * identifier digest. And it says nothing about what anybody is like — the
+ * person's label is sealed text in the store and the initial graph metadata
+ * never opens that name seal, so people are told apart by the leading
+ * characters of an identifier digest. The separate source viewer can show
+ * one event body only after an explicit second click. And the graph says
+ * nothing about what anybody is like — the
  * summary underneath is the core's sentences and the evidence rows behind
  * them, it carries 工作假设，非临床结论 from the core, and every sentence in
  * it was built on the other side of the IPC where `soul-policy`'s denylist
@@ -47,7 +49,7 @@
  * looking: live buttons whose only outcome is a refusal invite the press.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   correctTie,
@@ -67,6 +69,7 @@ import {
 import { asRefusal, Refused } from "../refusal";
 import { GraphRequests } from "./graphRequests";
 import { parseGraphTarget, resolveGraphTarget } from "./graphTarget";
+import { EvidenceSourceViewer, type EvidenceSelection } from "./EvidenceSourceViewer";
 
 /**
  * The band, in words. COPY_ZH allows only 弱 / 中等 / 强 for a档位; the
@@ -121,6 +124,16 @@ function words(source: Record<string, string>, key: string): string {
 
 export function Graph(): React.JSX.Element {
   const [graph, setGraph] = useState<PeopleGraph | null>(null);
+  const graphValue = useRef<PeopleGraph | null>(null);
+  const [evidenceSelection, setEvidenceSelection] = useState<EvidenceSelection | null>(null);
+  const evidenceSelectionRef = useRef<EvidenceSelection | null>(null);
+  const evidenceGeneration = useRef(0);
+  const getEvidenceSelection = useCallback((): EvidenceSelection | null => evidenceSelectionRef.current, []);
+  const closeEvidence = useCallback((expected: EvidenceSelection): void => {
+    if (evidenceSelectionRef.current !== expected) return;
+    evidenceGeneration.current += 1; evidenceSelectionRef.current = null; setEvidenceSelection(null);
+    if (expected.hash === window.location.hash && expected.source === getDraftSourceRevision() && expected.opener.isConnected) expected.opener.focus();
+  }, []);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [summary, setSummary] = useState<PersonSummary | null>(null);
   const [summaryRefusal, setSummaryRefusal] = useState<Refusal | null>(null);
@@ -152,6 +165,7 @@ export function Graph(): React.JSX.Element {
       setRenderedSource(next);
       if (next === source) return;
       source = next;
+      evidenceGeneration.current += 1; evidenceSelectionRef.current = null; setEvidenceSelection(null);
       lifecycle.invalidateSummary();
       setSummary(null);
       setSummaryRefusal(null);
@@ -167,10 +181,11 @@ export function Graph(): React.JSX.Element {
     const navigate = (): void => {
       if (!live || targetHashRef.current === window.location.hash) return;
       targetHashRef.current = window.location.hash;
+      evidenceGeneration.current += 1; evidenceSelectionRef.current = null; setEvidenceSelection(null);
       readGeneration.current += 1;
       pendingRead.current = null;
       lifecycle.invalidateSummary();
-      setGraph(null); setRefusal(null); setSummary(null); setSummaryRefusal(null); setSummaryContact(null);
+      graphValue.current = null; setGraph(null); setRefusal(null); setSummary(null); setSummaryRefusal(null); setSummaryContact(null);
       setTieRefusal(null); setTargetWriteConfirmed(false); setTargetStale(false); setReadStale(false); setTargetHash(window.location.hash);
     };
     window.addEventListener("hashchange", navigate);
@@ -180,6 +195,7 @@ export function Graph(): React.JSX.Element {
       window.removeEventListener("hashchange", navigate);
       readGeneration.current += 1;
       pendingRead.current = null;
+      evidenceGeneration.current += 1; evidenceSelectionRef.current = null;
       lifecycle.deactivate();
     };
   }, []);
@@ -195,6 +211,7 @@ export function Graph(): React.JSX.Element {
     }).then((value) => {
       if (value !== null && ticket === readGeneration.current && targetHashRef.current === targetHash && source === getDraftSourceRevision()) {
         pendingRead.current = null;
+        graphValue.current = value;
         setGraph(value);
       }
     }, (error: unknown) => {
@@ -250,6 +267,8 @@ export function Graph(): React.JSX.Element {
         if (!requests.current.finishWrite(request)) return;
         setBusy(false);
         if (submittedHash !== targetHashRef.current) return;
+        evidenceGeneration.current += 1; evidenceSelectionRef.current = null; setEvidenceSelection(null);
+        graphValue.current = value;
         setGraph(value);
         if (parseGraphTarget(submittedHash).kind === "selection") setTargetWriteConfirmed(true);
       } catch (error: unknown) {
@@ -288,6 +307,22 @@ export function Graph(): React.JSX.Element {
         else setSummaryRefusal(asRefusal(error));
       }
     })();
+  };
+
+  const openEvidence = (tie: TieEdge, evidenceId: string, opener: HTMLButtonElement): void => {
+    if (graph === null || graphValue.current !== graph || targetHash !== targetHashRef.current || targetHash !== window.location.hash
+      || renderedSource !== getDraftSourceRevision() || !tie.evidence.some((row) => row.evidence_id === evidenceId)) return;
+    const self = graph.self_contact_id;
+    const contact = tie.from_contact_id === self ? tie.to_contact_id : tie.to_contact_id === self ? tie.from_contact_id : null;
+    if (contact === null || !graph.people.some((person) => person.contact_id === contact && !person.forgotten && !person.is_you)
+      || !graph.people.some((person) => person.contact_id === self && !person.forgotten)) return;
+    const label = (id: string): string => graph.people.find((person) => person.contact_id === id)?.identifier_hint || id;
+    const selection: EvidenceSelection = {
+      request: { contact_id: contact, relationship_id: tie.relationship_id, evidence_id: evidenceId },
+      generation: ++evidenceGeneration.current, hash: targetHash, source: renderedSource, opener,
+      fromHint: tie.from_contact_id === self ? "本人" : label(tie.from_contact_id), toHint: tie.to_contact_id === self ? "本人" : label(tie.to_contact_id),
+    };
+    evidenceSelectionRef.current = selection; setEvidenceSelection(selection);
   };
 
   if (target.kind === "invalid" || targetStale || resolution?.kind === "unavailable") return <>
@@ -334,7 +369,7 @@ export function Graph(): React.JSX.Element {
     <>
       {resolution?.kind === "ready" ? <section className="panel" role="status">
         <h2>当前联系人的证据条目定位</h2>
-        <p>这里只核对此联系人当前关系中的指定证据元数据；没有打开来源正文或姓名，也不认证旧洞察陈述或计数仍然有效。当前关系还可能有其它证据条目。</p>
+        <p>这个定位入口只核对此联系人当前关系中的指定证据元数据，不打开姓名。正文须另行明确点击单条来源查看；这里不认证旧洞察陈述或计数仍然有效。当前关系还可能有其它证据条目。</p>
         <p>联系对象：<code>{resolution.contact.contact_id}</code>；本机标识：{resolution.contact.identifier_hint}。</p>
         <a href="#/graph">清除定位，查看整个人脉图</a>
       </section> : null}
@@ -390,6 +425,8 @@ export function Graph(): React.JSX.Element {
                 }
                 onCorrect={(band) => write(() => correctTie(tie.relationship_id, band))}
                 onRelease={() => write(() => releaseTie(tie.relationship_id))}
+                onSources={(id, opener) => openEvidence(tie, id, opener)}
+                canViewSources={graph.self_contact_id !== null && (tie.from_contact_id === graph.self_contact_id || tie.to_contact_id === graph.self_contact_id)}
               />
             ))}
           </ul>
@@ -414,6 +451,8 @@ export function Graph(): React.JSX.Element {
           </p>
         </section>
       )}
+
+      {evidenceSelection === null ? null : <EvidenceSourceViewer key={evidenceSelection.generation} selection={evidenceSelection} getSelection={getEvidenceSelection} onClose={closeEvidence} />}
 
       {summaryChanged ? <p className="badge" role="status">资料或端点已变更，请重新选择联系人查看摘要。旧摘要已清除。</p> : null}
       {summaryRefusal === null ? null : (
@@ -480,6 +519,8 @@ interface TieProps {
   readonly toHint: string;
   readonly targetHeading: React.RefObject<HTMLHeadingElement | null> | undefined;
   readonly targetEvidence: readonly EvidenceRow[] | undefined;
+  readonly onSources: (evidenceId: string, opener: HTMLButtonElement) => void;
+  readonly canViewSources: boolean;
 }
 
 /**
@@ -499,7 +540,7 @@ interface TieProps {
  * this machine observed, and a tie that vanished from the page would read as
  * the forget having deleted it, which is not what a forget does.
  */
-function Tie({ tie, busy, forgotten, onCorrect, onRelease, fromHint, toHint, targetHeading, targetEvidence }: TieProps): React.JSX.Element {
+function Tie({ tie, busy, forgotten, onCorrect, onRelease, fromHint, toHint, targetHeading, targetEvidence, onSources, canViewSources }: TieProps): React.JSX.Element {
   const disagrees =
     tie.locked_by_user && tie.machine_band !== null && tie.machine_band !== tie.band;
 
@@ -517,10 +558,11 @@ function Tie({ tie, busy, forgotten, onCorrect, onRelease, fromHint, toHint, tar
       </span>
       <details open={targetEvidence !== undefined}>
         <summary>{targetEvidence === undefined ? "查看这条关系的证据元数据" : "本次指定的证据元数据"}</summary>
-        <p>这里只展示证据条目编号、类别、方法和强度，没有打开来源正文。</p>
+        <p>这份列表只展示证据条目编号、类别、方法和强度。核对本地来源后，还需明确点击单个事件才会显示那一条正文。</p>
         <p>关系编号：<code>{tie.relationship_id}</code></p>
         <ul aria-label="证据条目元数据">{(targetEvidence ?? tie.evidence).map((row) => <li key={row.evidence_id}>
           <code>{row.evidence_id}</code>；类别：{row.kind}；方法：{row.method}；强度：{row.strength}。
+          <button type="button" disabled={busy || forgotten || !canViewSources} onClick={(event) => onSources(row.evidence_id, event.currentTarget)}>核对这条证据的本地来源：{row.evidence_id}</button>
         </li>)}</ul>
       </details>
       <span className="muted">

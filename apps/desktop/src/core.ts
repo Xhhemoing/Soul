@@ -635,6 +635,8 @@ export const COMMANDS = {
   importRecoveryState: "import_recovery_state",
   prepareMemoryContext: "prepare_memory_context",
   prepareInsightContext: "prepare_insight_context",
+  evidenceSources: "evidence_sources",
+  readEvidenceEvent: "read_evidence_event",
   localDraftWithInsight: "local_draft_with_insight",
   prepareDraftWithInsight: "prepare_draft_with_insight",
   draftReplyWithMemory: "draft_reply_with_memory",
@@ -721,6 +723,30 @@ export interface ImportCounts {
 }
 export interface InsightContextRequest {
   readonly bundle_id: string; readonly contact_id: string;
+}
+export interface EvidenceSourcesRequest {
+  readonly contact_id: string; readonly relationship_id: string; readonly evidence_id: string;
+}
+export interface EvidenceEventRequest extends EvidenceSourcesRequest { readonly event_id: string }
+export type EvidenceEventAvailability = "available" | "no_body" | "unavailable" | "too_large";
+export interface EvidenceEventSource {
+  readonly event_id: string; readonly namespace_id: string | null; readonly source: string;
+  readonly occurred_at: string; readonly direction: "incoming" | "outgoing"; readonly venue: "direct" | "group";
+  readonly body_chars: number | null; readonly availability: EvidenceEventAvailability; readonly notice: string;
+}
+export interface EvidenceSourcesView extends EvidenceSourcesRequest {
+  readonly kind: string; readonly events: readonly EvidenceEventSource[]; readonly notice: string;
+}
+export interface EvidenceEventView extends EvidenceEventRequest {
+  readonly namespace_id: string; readonly source: string; readonly occurred_at: string;
+  readonly direction: "incoming" | "outgoing"; readonly venue: "direct" | "group";
+  readonly body: string; readonly notice: string;
+}
+export function evidenceSources(request: EvidenceSourcesRequest): Promise<EvidenceSourcesView> {
+  return currentDraftResult(COMMANDS.evidenceSources, { request });
+}
+export function readEvidenceEvent(request: EvidenceEventRequest): Promise<EvidenceEventView> {
+  return currentDraftResult(COMMANDS.readEvidenceEvent, { request });
 }
 export interface InsightEvidenceSource {
   readonly evidence_id: string; readonly kind: string; readonly event_ids: readonly string[];

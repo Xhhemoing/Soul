@@ -17,6 +17,8 @@ W5 的候选可通过既有 contact/evidence UUID 定位到唯一当前关系和
 
 D76 将有效 bundle 中一个联系人的完整可信 A2 统计接入独立本次起草上下文，与手写记忆互斥，不转换成 memory。默认本地核对，另选 includeCounts 后才把匿名派生计数纳入既有 E1 最终预览与单次批准。完整统计及引用通过既有实际 JSON 预算或整项拒绝，准备/派发/接收均复验完整来源；元数据定位子集不能充当用途许可。页面和端点不获得来源原文；统计引用不为整篇生成草稿逐句背书。见[契约与实际结果](design/2026-10-16-insight-draft-context.md)、[Session 实现](../crates/soulcore/src/commands/session_insight.rs)与[起草面板](../apps/desktop/src/routes/DraftInsights.tsx)。
 
+D77 为有精确现代导入索引的证据提供单条本地来源核对：先读元数据，再明确选择一条消息。每次重验当前 self↔peer 关系、Graph 用途、事件的真实 namespace / sender / 会话与密钥，身份及正文解封前核对真实密封行归属和长度。旧数据缺索引、遗忘、撤销或超出查看容量时不猜来源。单条纯文本只供当前页面核对，关闭、来源或地址变化清除并拒收迟到结果；不进入 D76、Memory、E1 或研究。身份解封与消息正文读取分开，元数据路径不打开正文。具体阶段与实际结果见[方案](design/2026-10-16-local-evidence-view.md)和 STATUS，入口为[核心读取](../crates/soulcore/src/commands/sources.rs)与[查看面板](../apps/desktop/src/routes/EvidenceSourceViewer.tsx)。
+
 本轮未改变 T4D/A0–A3、默认出网或只起草不代发边界。静态 Tauri 命令断言不能当作原生 IPC；当前环境缺原生 GTK/WebKit 开发依赖。完整 G-L 继续暂缓，G-W/G-M 未运行，Goal 1、正式 Goal 2 与 Wave 1 均未关闭。最终测试数量由 STATUS 记录，本页不预报。
 
 ## 固定历史图与研究基线

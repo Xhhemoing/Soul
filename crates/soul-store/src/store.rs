@@ -1166,6 +1166,51 @@ impl GraphStore for SqlCipherStore {
     }
 }
 
+impl SqlCipherStore {
+    /// Scalar preflight for this one event field; does not fetch ciphertext.
+    pub fn event_body_plaintext_bytes(
+        &self,
+        event_id: Uuid,
+        sealed: &SealedText,
+    ) -> StoreResult<u64> {
+        self.sealed_plaintext_bytes_for_field(event_id, "body_ref", sealed)
+    }
+
+    pub(crate) fn sealed_plaintext_bytes_for_field(
+        &self,
+        row_id: Uuid,
+        field: &str,
+        sealed: &SealedText,
+    ) -> StoreResult<u64> {
+        let invalid = || StoreError::ContractViolation("LOCAL_SOURCE_UNAVAILABLE".to_owned());
+        if sealed.aad.as_deref() != Some(field_aad(&row_id, field).as_str())
+            || !self.has_content_key(sealed.content_key_id)
+            || self.content_key_destroyed(sealed.content_key_id)?
+        {
+            return Err(invalid());
+        }
+        let row: Option<(String, String, String, String, i64, i64)> = self.conn.query_row(
+            "SELECT row_id,field,content_key_id,subject,length(ciphertext),length(nonce) FROM sealed_blobs WHERE blob_id=?1",
+            [sealed.blob_id.to_string()],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+        ).optional().map_err(backend)?;
+        let (actual_row, actual_field, key, subject, bytes, nonce_bytes) =
+            row.ok_or_else(invalid)?;
+        if actual_row != row_id.to_string()
+            || actual_field != field
+            || key != sealed.content_key_id.to_string()
+            || subject != enum_text(&sealed.subject)?
+            || nonce_bytes != std::mem::size_of::<XNonce>() as i64
+        {
+            return Err(invalid());
+        }
+        let bytes = u64::try_from(bytes).map_err(|_| invalid())?;
+        bytes
+            .checked_sub(std::mem::size_of::<chacha20poly1305::Tag>() as u64)
+            .ok_or_else(invalid)
+    }
+}
+
 impl BlobStore for SqlCipherStore {
     fn seal(&mut self, request: SealRequest) -> StoreResult<SealedText> {
         let key = self.ensure_content_key(request.content_key_id)?;

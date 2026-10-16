@@ -46,4 +46,5 @@ pub mod policy;
 pub mod profile;
 pub mod session;
 pub mod shell;
+pub mod sources;
 pub mod store;

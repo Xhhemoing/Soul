@@ -56,6 +56,11 @@ import type {
   ResearchPreview,
   SessionStatus,
   StatedRow,
+  EvidenceSourcesRequest,
+  EvidenceSourcesView,
+  EvidenceEventRequest,
+  EvidenceEventView,
+  EvidenceEventSource,
 } from "../core";
 
 export const CLOUD_LABEL = "尚未启用";
@@ -359,6 +364,22 @@ export function anInsightContext(overrides: Partial<InsightContextView> = {}): I
 }
 export function anInsightDraftPlan(overrides: Partial<InsightDraftPlan> = {}): InsightDraftPlan {
   return { prepared: { plan: anE1Plan(), encoded_bytes: 1200, body_preview: "[本次统计仅作本地参考]", includes_counts: false }, reference: anInsightReference(), ...overrides };
+}
+export const EVIDENCE_EVENT_ID = "0192f000-0000-7000-8000-00000000ea31";
+export function anEvidenceEventSource(overrides: Partial<EvidenceEventSource> = {}): EvidenceEventSource {
+  return { event_id: EVIDENCE_EVENT_ID, namespace_id: IMPORT_NAMESPACE_ID, source: "import.soul_import_v1", occurred_at: "2026-10-15T12:00:00Z",
+    direction: "incoming", venue: "direct", body_chars: 10, availability: "available", notice: "合成可明确查看的本地来源。", ...overrides };
+}
+export function anEvidenceSources(overrides: Partial<EvidenceSourcesView> = {}): EvidenceSourcesView {
+  const graph = aPeopleGraph(); const tie = graph.ties[0]!;
+  return { contact_id: graph.people[1]!.contact_id, relationship_id: tie.relationship_id, evidence_id: tie.evidence[0]!.evidence_id,
+    kind: "message", events: [anEvidenceEventSource()], notice: "这里只列本条来源元数据，不打开正文。", ...overrides };
+}
+export function anEvidenceEvent(overrides: Partial<EvidenceEventView> = {}): EvidenceEventView {
+  const anchors = anEvidenceSources(); const event = anEvidenceEventSource();
+  return { contact_id: anchors.contact_id, relationship_id: anchors.relationship_id, evidence_id: anchors.evidence_id,
+    event_id: event.event_id, namespace_id: event.namespace_id!, source: event.source, occurred_at: event.occurred_at,
+    direction: event.direction, venue: event.venue, body: "合成单条本地敏感内容", notice: "仅当前本地来源，不认证旧统计。", ...overrides };
 }
 
 /** `soulcore::commands::session::NO_ANSWERS_NOTICE`. */
@@ -902,6 +923,8 @@ export interface FakeCoreOptions {
   readonly graph?: PeopleGraph;
   /** As `graph`, but able to throw the way a refusal arrives — as a value. */
   readonly graphing?: () => PeopleGraph;
+  readonly evidenceSources?: (request: EvidenceSourcesRequest) => EvidenceSourcesView | Promise<EvidenceSourcesView>;
+  readonly readingEvidenceEvent?: (request: EvidenceEventRequest) => EvidenceEventView | Promise<EvidenceEventView>;
   /** Able to throw, because an invalid band arrives as a refusal value. */
   readonly correctingTie?: (relationshipId: string, band: string) => PeopleGraph;
   readonly summarizing?: (contactId: string) => PersonSummary;
@@ -1154,6 +1177,14 @@ export function installFakeCore(
         );
       case "people_graph":
         return (options.graphing ?? (() => graphHeld))();
+      case "evidence_sources": {
+        const request = (payload as { request: EvidenceSourcesRequest }).request;
+        return options.evidenceSources?.(request) ?? anEvidenceSources(request);
+      }
+      case "read_evidence_event": {
+        const request = (payload as { request: EvidenceEventRequest }).request;
+        return options.readingEvidenceEvent?.(request) ?? anEvidenceEvent(request);
+      }
       case "correct_tie": {
         const asked = payload as { relationshipId?: string; band?: string };
         if (options.correctingTie !== undefined) {

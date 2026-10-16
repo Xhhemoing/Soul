@@ -198,6 +198,35 @@ fn identity_bytes(value: &impl Serialize) -> Result<Vec<u8>, ImportError> {
     serde_json::to_vec(value).map_err(|_| ImportError::IdentityUnavailable)
 }
 
+/// Compare existing graph provenance without exposing sealed external ids.
+/// Local viewers must size-preflight this identity before calling this helper.
+pub fn message_conversation_ref<S: BlobStore>(
+    store: &S,
+    source: ImportSourceKind,
+    identity: &ImportMessageIdentity,
+) -> Result<soul_schema::common::Sha256Hex, ImportError> {
+    if identity.identity_ref.content_key_id != identity.content_key_id
+        || identity.identity_ref.subject
+            != if identity.is_owner {
+                SealedSubject::Owner
+            } else {
+                SealedSubject::ThirdParty
+            }
+    {
+        return Err(ImportError::IdentityUnavailable);
+    }
+    let MessageKey(conversation, _) = read_identity(
+        store,
+        &identity.identity_ref,
+        identity.event_id,
+        "import_message_identity",
+    )?;
+    Ok(soul_graph::interaction::conversation_ref(
+        source.as_str(),
+        &conversation,
+    ))
+}
+
 fn body_equal<S: BlobStore>(
     store: &S,
     sealed: Option<&SealedText>,
