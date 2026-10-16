@@ -13,12 +13,14 @@
  * here.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   authorizeDirectory,
   filesView,
+  FilePlanSourceChangedError,
   previewPlan,
+  subscribeDraftSource,
   type FilesView,
   type PlanPreview,
   type Refusal,
@@ -31,53 +33,90 @@ export function Files(): React.JSX.Element {
   const [plan, setPlan] = useState<PlanPreview | null>(null);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [busy, setBusy] = useState(false);
+  const [changed, setChanged] = useState(false);
+  const live = useRef(false);
+  const active = useRef<symbol | null>(null);
+  const inputRevision = useRef(0);
+  const sourceRevision = useRef(0);
+  const initialRead = useRef<symbol | null>(null);
 
   useEffect(() => {
-    let live = true;
+    live.current = true;
+    const read = Symbol("initial roots");
+    initialRead.current = read;
+    const unsubscribe = subscribeDraftSource(() => {
+      sourceRevision.current += 1;
+      setPlan(null);
+    });
     filesView().then(
       (value) => {
-        if (live) setView(value);
+        if (live.current && initialRead.current === read) setView(value);
       },
       (error: unknown) => {
-        if (live) setRefusal(asRefusal(error));
+        if (live.current && initialRead.current === read) setRefusal(asRefusal(error));
       },
     );
     return () => {
-      live = false;
+      live.current = false;
+      active.current = null;
+      if (initialRead.current === read) initialRead.current = null;
+      unsubscribe();
     };
   }, []);
 
   const authorize = (): void => {
+    if (active.current !== null) return;
+    const ticket = Symbol("authorize");
+    active.current = ticket;
+    initialRead.current = null;
+    const revision = inputRevision.current;
     setBusy(true);
     setRefusal(null);
+    setChanged(false);
     authorizeDirectory(path).then(
       (value) => {
+        if (!settle(ticket)) return;
         setView(value);
-        setPath("");
-        setBusy(false);
+        if (revision === inputRevision.current) setPath("");
       },
       (error: unknown) => {
-        setRefusal(asRefusal(error));
-        setBusy(false);
+        if (settle(ticket) && revision === inputRevision.current) setRefusal(asRefusal(error));
       },
     );
   };
 
   const scan = (root: string): void => {
+    if (active.current !== null) return;
+    const ticket = Symbol("scan");
+    active.current = ticket;
+    const revision = inputRevision.current;
+    const source = sourceRevision.current;
     setBusy(true);
     setRefusal(null);
     setPlan(null);
-    previewPlan(root).then(
+    setChanged(false);
+    Promise.resolve().then(() => {
+      if (!live.current || active.current !== ticket) throw new Error("inactive scan");
+      return previewPlan(root);
+    }).then(
       (value) => {
-        setPlan(value);
-        setBusy(false);
+        if (settle(ticket) && revision === inputRevision.current && source === sourceRevision.current) setPlan(value);
       },
       (error: unknown) => {
-        setRefusal(asRefusal(error));
-        setBusy(false);
+        if (settle(ticket) && revision === inputRevision.current) {
+          if (error instanceof FilePlanSourceChangedError) setChanged(true);
+          else setRefusal(asRefusal(error));
+        }
       },
     );
   };
+
+  function settle(ticket: symbol): boolean {
+    if (!live.current || active.current !== ticket) return false;
+    active.current = null;
+    setBusy(false);
+    return true;
+  }
 
   return (
     <>
@@ -98,7 +137,13 @@ export function Files(): React.JSX.Element {
             className="text-input"
             type="text"
             value={path}
-            onChange={(event) => setPath(event.target.value)}
+            onChange={(event) => {
+              inputRevision.current += 1;
+              setPath(event.target.value);
+              setPlan(null);
+              setRefusal(null);
+              setChanged(false);
+            }}
             placeholder="例如 C:\Users\你\Downloads"
           />
           <button
@@ -115,6 +160,7 @@ export function Files(): React.JSX.Element {
       {refusal === null ? null : (
         <Refused title="这一次没有读成" refusal={refusal} testId="files-refusal-code" />
       )}
+      {changed ? <p role="status">计划依据或授权已经变更，请重新扫描。</p> : null}
 
       <section className="panel" aria-labelledby="roots-heading">
         <h2 id="roots-heading">已授权的目录</h2>

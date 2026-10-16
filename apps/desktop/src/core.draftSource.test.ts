@@ -43,6 +43,10 @@ const mutations: readonly {
   },
   { command: "clear_user_endpoint", call: () => core.clearUserEndpoint() },
   {
+    command: "authorize_directory", call: () => core.authorizeDirectory("/synthetic"),
+    args: { path: "/synthetic" },
+  },
+  {
     command: "commit_soul_import_v1", call: () => core.commitSoulImportV1("synthetic export"),
     args: { text: "synthetic export" },
   },
@@ -244,7 +248,7 @@ describe("起草结果在单 WebView 内的来源归属", () => {
     const result = core.prepareDraft("synthetic");
     await Promise.all([
       core.configSnapshot(), core.sessionStatus(), core.cloudToggle(false),
-      core.filesView(), core.previewPlan("/synthetic"), core.authorizeDirectory("/synthetic"),
+      core.filesView(), core.previewPlan("/synthetic"),
       core.peopleGraph(), core.personSummary("person"), core.draftNotices(),
       core.previewSoulImportV1("synthetic"), core.previewTelegram("synthetic"),
       core.questionnaire(), core.profileScreen(), core.memoryList(), core.memoryDetail("memory"),

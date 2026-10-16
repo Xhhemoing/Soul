@@ -23,6 +23,7 @@
 pub mod draft;
 pub mod error;
 pub mod outcome;
+pub mod selection;
 pub mod service;
 
 pub use draft::{
@@ -31,4 +32,10 @@ pub use draft::{
 };
 pub use error::{MemoryError, MemoryResult};
 pub use outcome::{forget_with_outcome, retry_forget_cleanup, ForgetAudit, MemoryForgetOutcome};
+pub use selection::{
+    revalidate_selection, select_for_draft, ContextSelection, ExclusionReason, MemoryCitation,
+    MemoryPrivacyClass, MemorySelectionPreview, MemorySelectionRequest, MemoryTimeScope,
+    SelectedMemory, SelectedMemoryPreview, SelectionError, SelectionExclusion, SelectionLimits,
+    SelectionOutcome, MEMORY_CONTEXT_NOTICE,
+};
 pub use service::{create, forget, list, preview_forget, read, update};

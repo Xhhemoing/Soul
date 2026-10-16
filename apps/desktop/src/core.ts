@@ -701,6 +701,13 @@ export class SummarySourceChangedError extends Error {
   }
 }
 
+export class FilePlanSourceChangedError extends Error {
+  constructor() {
+    super("计划依据或授权正在变更或已变更，请重新扫描。");
+    this.name = "FilePlanSourceChangedError";
+  }
+}
+
 function invalidateDraftSource(): void {
   draftSourceRevision = Symbol("draft source");
   for (const listener of [...draftSourceListeners]) listener(draftSourceRevision);
@@ -767,7 +774,7 @@ export function filesView(): Promise<FilesView> {
 
 /** The user named a directory Soul may read. Refused paths come back as one. */
 export function authorizeDirectory(path: string): Promise<FilesView> {
-  return invoke<FilesView>(COMMANDS.authorizeDirectory, { path });
+  return mutateDraftSource<FilesView>(COMMANDS.authorizeDirectory, { path });
 }
 
 /**
@@ -777,7 +784,8 @@ export function authorizeDirectory(path: string): Promise<FilesView> {
  * Rust one. v0.1 promises a preview; v0.1.1 owns the write half.
  */
 export function previewPlan(path: string): Promise<PlanPreview> {
-  return invoke<PlanPreview>(COMMANDS.previewPlan, { path });
+  return currentDraftResult<PlanPreview>(COMMANDS.previewPlan, { path },
+    () => new FilePlanSourceChangedError());
 }
 
 /** The people graph, with every tie's evidence already resolved. */

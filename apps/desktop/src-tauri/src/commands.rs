@@ -100,11 +100,19 @@ pub fn authorize_directory(
 /// Scan one authorized directory and describe what tidying it would mean.
 /// Read-only: there is no command on this surface that carries a plan out.
 #[tauri::command]
-pub fn preview_plan(
+pub async fn preview_plan(
     session: State<'_, SessionState>,
     path: String,
 ) -> Result<PlanPreview, SessionRefusal> {
-    session.held().preview(&path)
+    let session = session.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let work = session.held().begin_file_plan(&path)?;
+        let completed = work.execute();
+        let result = session.held().complete_file_plan(completed);
+        result
+    })
+    .await
+    .map_err(|_| SessionRefusal::from(DraftRefusal::WorkerFailed))?
 }
 
 #[tauri::command]

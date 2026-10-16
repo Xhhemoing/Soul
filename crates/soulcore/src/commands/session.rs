@@ -410,7 +410,7 @@ pub struct Session {
     config_problem: Option<String>,
     fileplan: FilePlanSession,
     unavailable_roots: Vec<UnavailableRootView>,
-    issuer: TokenIssuer,
+    issuer: Option<TokenIssuer>,
     draft: DraftSession,
     policy: PolicySession,
     /// In-memory source/authority generation, never a content fingerprint.
@@ -453,6 +453,95 @@ struct ActiveDraft {
 enum E1WorkerKind {
     Draft,
     PersonSummary,
+    Scan,
+}
+
+/// A read-only scan owns the file-plan ledger and authorization snapshot.
+pub struct SessionFilePlanWork {
+    id: Uuid,
+    revision: Uuid,
+    lease: DraftLease,
+    issuer: TokenIssuer,
+    fileplan: FilePlanSession,
+    path: String,
+}
+
+pub struct SessionFilePlanCompletion {
+    id: Uuid,
+    revision: Uuid,
+    _lease: DraftLease,
+    issuer: TokenIssuer,
+    result: Result<PlanPreview, SessionRefusal>,
+    audit: Vec<AuditContent>,
+}
+
+impl std::fmt::Debug for SessionFilePlanWork {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionFilePlanWork")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for SessionFilePlanCompletion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionFilePlanCompletion")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SessionFilePlanWork {
+    pub fn execute(self) -> SessionFilePlanCompletion {
+        self.execute_with(|fileplan, issuer, path| {
+            fileplan.preview(
+                issuer,
+                path,
+                RequestOrigin::User,
+                ScanLimits::default(),
+                now_unix_millis(),
+            )
+        })
+    }
+
+    fn execute_with(
+        self,
+        scan: impl FnOnce(
+            &FilePlanSession,
+            &mut TokenIssuer,
+            &str,
+        ) -> Result<soul_fileplan::Preview, Refusal>,
+    ) -> SessionFilePlanCompletion {
+        let mut issuer = self.issuer;
+        // Keep the unique ledger outside the unwind boundary: every outcome
+        // returns it, including a scanner panic.
+        let execution = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            scan(&self.fileplan, &mut issuer, &self.path)
+        }));
+        let (result, audit) = match execution {
+            Ok(Ok(preview)) => {
+                let mut audit = vec![preview.audit()];
+                audit.extend(preview.scan().injection_audit());
+                (Ok(PlanPreview::of(&preview)), audit)
+            }
+            Ok(Err(refusal)) => (Err(refusal.clone().into()), vec![refusal.audit()]),
+            Err(_) => (
+                Err(SessionRefusal {
+                    reason_code: ReasonCode::Routine.as_str().to_owned(),
+                    explanation: "目录扫描未能正常完成，请重新准备只读计划。".to_owned(),
+                }),
+                Vec::new(),
+            ),
+        };
+        SessionFilePlanCompletion {
+            id: self.id,
+            revision: self.revision,
+            _lease: self.lease,
+            issuer,
+            result,
+            audit,
+        }
+    }
 }
 
 /// A lease is released only when the owned work or its completion is dropped.
@@ -637,7 +726,7 @@ impl Session {
             config_problem,
             fileplan,
             unavailable_roots,
-            issuer: TokenIssuer::new(),
+            issuer: Some(TokenIssuer::new()),
             draft,
             policy,
             draft_revision: Uuid::now_v7(),
@@ -737,6 +826,7 @@ impl Session {
     /// AC-23 expects to find in the chain — including the two cases where the
     /// disk refused rather than Soul, which record as `ROUTINE` and say so.
     pub fn authorize(&mut self, path: &str) -> Result<FilesView, SessionRefusal> {
+        self.invalidate_drafts();
         let root = match self.fileplan.authorize(path) {
             Ok(root) => root,
             Err(refusal) => {
@@ -773,23 +863,51 @@ impl Session {
     ///
     /// [`Preview::audit`]: soul_fileplan::Preview::audit
     pub fn preview(&mut self, path: &str) -> Result<PlanPreview, SessionRefusal> {
-        let preview = match self.fileplan.preview(
-            &mut self.issuer,
-            path,
-            RequestOrigin::User,
-            ScanLimits::default(),
-            now_unix_millis(),
-        ) {
-            Ok(preview) => preview,
-            Err(refusal) => {
-                self.append_audit(&[refusal.audit()])?;
-                return Err(refusal.into());
-            }
-        };
-        let mut entries = vec![preview.audit()];
-        entries.extend(preview.scan().injection_audit());
-        self.append_audit(&entries)?;
-        Ok(PlanPreview::of(&preview))
+        let work = self.begin_file_plan(path)?;
+        self.complete_file_plan(work.execute())
+    }
+
+    pub fn begin_file_plan(&mut self, path: &str) -> Result<SessionFilePlanWork, SessionRefusal> {
+        self.require_draft_slot()?;
+        let issuer = self
+            .issuer
+            .take()
+            .ok_or_else(|| self.refuse_draft(DraftRefusal::Busy))?;
+        let id = Uuid::now_v7();
+        let finished = Arc::new(AtomicBool::new(false));
+        self.active_draft = Some(ActiveDraft {
+            id,
+            kind: E1WorkerKind::Scan,
+            finished: Arc::clone(&finished),
+        });
+        Ok(SessionFilePlanWork {
+            id,
+            revision: self.draft_revision,
+            lease: DraftLease(finished),
+            issuer,
+            fileplan: self.fileplan.clone(),
+            path: path.to_owned(),
+        })
+    }
+
+    pub fn complete_file_plan(
+        &mut self,
+        completed: SessionFilePlanCompletion,
+    ) -> Result<PlanPreview, SessionRefusal> {
+        if !self
+            .active_draft
+            .as_ref()
+            .is_some_and(|active| active.id == completed.id && active.kind == E1WorkerKind::Scan)
+        {
+            return Err(file_plan_changed());
+        }
+        self.active_draft = None;
+        self.issuer = Some(completed.issuer);
+        self.append_audit(&completed.audit)?;
+        if completed.revision != self.draft_revision {
+            return Err(file_plan_changed());
+        }
+        completed.result
     }
 
     /// The people graph, with every edge's evidence resolved.
@@ -1075,7 +1193,23 @@ impl Session {
             if !active.finished.load(Ordering::Acquire) {
                 return Err(self.refuse_draft(DraftRefusal::Busy));
             }
+            if active.kind == E1WorkerKind::Scan && self.issuer.is_none() {
+                // File actions never mint tokens. A directly dropped owned
+                // work can recover capacity, but not its missing audit.
+                self.issuer = Some(TokenIssuer::new());
+            }
             self.active_draft = None;
+        }
+        Ok(())
+    }
+
+    fn require_no_scan(&mut self) -> Result<(), SessionRefusal> {
+        if self
+            .active_draft
+            .as_ref()
+            .is_some_and(|active| active.kind == E1WorkerKind::Scan)
+        {
+            self.require_draft_slot()?;
         }
         Ok(())
     }
@@ -1295,6 +1429,7 @@ impl Session {
         &mut self,
         text: &str,
     ) -> Result<ImportReceiptView, SessionRefusal> {
+        self.require_no_scan()?;
         self.invalidate_drafts();
         import_commands::within_byte_budget(text).map_err(over_budget)?;
         let staged = import_commands::read_soul_import_v1(text)?;
@@ -1304,6 +1439,7 @@ impl Session {
 
     /// Seal a Telegram export into the store. AC-05.
     pub fn commit_telegram(&mut self, text: &str) -> Result<ImportReceiptView, SessionRefusal> {
+        self.require_no_scan()?;
         self.invalidate_drafts();
         import_commands::within_byte_budget(text).map_err(over_budget)?;
         let staged = import_commands::read_telegram(&telegram_document(text)?)?;
@@ -1859,6 +1995,9 @@ impl Session {
     /// AC-17 says must still work. A store that *is* open and refuses the
     /// write is the opposite case, and it is returned.
     fn append_audit(&self, entries: &[AuditContent]) -> Result<(), SessionRefusal> {
+        if entries.is_empty() {
+            return Ok(());
+        }
         let StoreHandle::Open(store) = &self.store else {
             return Ok(());
         };
@@ -2087,6 +2226,13 @@ pub struct SessionRefusal {
     pub explanation: String,
 }
 
+fn file_plan_changed() -> SessionRefusal {
+    SessionRefusal {
+        reason_code: ReasonCode::Routine.as_str().to_owned(),
+        explanation: "计划的依据或授权已变更，请重新扫描。这份旧计划不再展示。".to_owned(),
+    }
+}
+
 impl From<Refusal> for SessionRefusal {
     fn from(refusal: Refusal) -> SessionRefusal {
         SessionRefusal {
@@ -2175,6 +2321,45 @@ impl From<soul_store_api::types::StoreError> for SessionRefusal {
 mod draft_worker_tests {
     use super::*;
     use soul_testkit::mock_llm::MockLlm;
+
+    #[test]
+    fn scan_ledger_returns_after_panic_and_foreign_completion_cannot_release_work() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut session = Session::open(directory.path());
+        let mut other = Session::open(directory.path().join("other"));
+        let completed = other.begin_file_plan("not-authorized").unwrap().execute();
+        let work = session.begin_file_plan("not-authorized").unwrap();
+        assert!(session.complete_file_plan(completed).is_err());
+        assert!(session.begin_file_plan("not-authorized").is_err());
+        let completed = work.execute_with(|_, _, _| panic!("private path payload"));
+        let refusal = session.complete_file_plan(completed).unwrap_err();
+        assert!(!refusal.explanation.contains("private path payload"));
+        assert!(session.issuer.is_some());
+        drop(session.begin_file_plan("not-authorized").unwrap());
+        assert!(session.begin_file_plan("not-authorized").is_ok());
+    }
+
+    #[test]
+    fn source_change_rejects_scan_result_after_auditing_and_returns_ledger() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(root.path()).unwrap();
+        std::fs::write(root.join("photo.jpg"), b"synthetic").unwrap();
+        let mut session = Session::open(directory.path());
+        session.authorize(root.to_str().unwrap()).unwrap();
+        let work = session.begin_file_plan(root.to_str().unwrap()).unwrap();
+        assert!(session.commit_telegram("{}").is_err());
+        session.clear_user_endpoint();
+        let completed = work.execute();
+        assert!(session.complete_file_plan(completed).is_err());
+        assert!(session
+            .audit()
+            .unwrap()
+            .entries
+            .iter()
+            .any(|e| e.action == "file.plan"));
+        assert!(session.preview(root.to_str().unwrap()).is_ok());
+    }
 
     #[test]
     fn a_worker_panic_is_a_fixed_refusal_and_its_slot_is_reclaimed() {

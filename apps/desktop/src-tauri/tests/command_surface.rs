@@ -140,7 +140,7 @@ fn the_shell_never_reads_an_endpoint_address_itself() {
 #[test]
 fn the_command_layer_stays_thin() {
     for name in COMMAND_NAMES {
-        if matches!(*name, "generate_draft" | "person_summary") {
+        if matches!(*name, "generate_draft" | "person_summary" | "preview_plan") {
             // Scheduling is the exception. Policy/body construction
             // must still be in core, and no Session guard may cross execute.
             let start = COMMANDS_RS.find(&format!("pub async fn {name}(")).unwrap();
@@ -151,11 +151,13 @@ fn the_command_layer_stays_thin() {
             assert!(body.contains("tauri::async_runtime::spawn_blocking(move ||"));
             let (begin, complete) = if *name == "generate_draft" {
                 ("begin_draft(&approval)", "complete_draft(completed)")
-            } else {
+            } else if *name == "person_summary" {
                 (
                     "begin_person_summary(&contact_id)",
                     "complete_person_summary(completed)",
                 )
+            } else {
+                ("begin_file_plan(&path)", "complete_file_plan(completed)")
             };
             assert!(body.contains(&format!("let work = session.held().{begin}?;")));
             assert!(body.contains("let completed = work.execute();"));
