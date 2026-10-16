@@ -22,6 +22,7 @@
 | 持久回执、不可变预览确认、OS lease 与去重迁移 | [W3/W4 计划](design/2026-10-16-remaining-implementation.md)；确认只带 IDs，schema 3，同事务回执/原审计；forward-only 不代表全历史去重，遗忘撤销 namespace |
 | 洞察定位、实际 Session 组合链与现代导入审计 | [工作流连续性计划与结果](design/2026-10-16-workflow-continuity.md)；精确关系及指定证据元数据、地址/来源/挂载归属；原生 IPC 测试源码与实际可执行检查分开记录 |
 | 可信导入统计如何参与本次起草 | [洞察起草材料契约与结果](design/2026-10-16-insight-draft-context.md)，D76；独立 typed、一次 bundle/contact、默认 local，另选派生计数才入最终 E1；实际实现与验证范围看 STATUS，不与手写记忆或原文用途混同 |
+| 怎样明确查看一条导入消息来源 | [本地来源核对方案](design/2026-10-16-local-evidence-view.md)，D77；两步精确锚读取、实际 namespace 和密封行长度预检，旧数据缺索引不可查看，不授予原文出网或起草用途；实施状态看 STATUS |
 | 从实际使用出发的候选算法与反例实验 | [10 月 15 日使用框架研究](design/2026-10-15-usage-framework.md) / [交互 HTML 的历史研究区](framework-design.html)；参考算法、SVG 与实验保持固定历史范围，不覆盖顶部生产状态 |
 | 导入交付与人物摘要的此前生产切片 | [逐模块计划与验证](design/2026-10-16-import-summary-continuation.md)；D70，先规划复核再编码；后续持久幂等/恢复以 W3/W4 为准，平台验证单独记录 |
 | v0.1 是否做某个功能 | [PRODUCT_LOCK.md](PRODUCT_LOCK.md) 的最小垂直切片与砍/留 |
