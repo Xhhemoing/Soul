@@ -1,0 +1,826 @@
+{
+  "scope": "synthetic_reference_only",
+  "not_production": true,
+  "scenarios": [
+    {
+      "scenario": "三个输出协同",
+      "steps": [
+        {
+          "action": "事务提交输入和待处理工作",
+          "state": {
+            "item_id": "ecfb61a2-9475-4d96-81df-466e67852566",
+            "case_id": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "pending",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [],
+            "executions": [],
+            "work": "queued",
+            "result_available": false,
+            "result": null
+          },
+          "detail": null
+        },
+        {
+          "action": "本地观察与收件箱同事务完成",
+          "state": {
+            "item_id": "ecfb61a2-9475-4d96-81df-466e67852566",
+            "case_id": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "current",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [],
+            "work": "completed",
+            "result_available": true,
+            "result": "合成观察：合成记录，不是真实个人资料；当前目标：合成目标：沟通准备"
+          },
+          "detail": null
+        },
+        {
+          "action": "系统收到通用提示，不视为用户读过",
+          "state": {
+            "item_id": "ecfb61a2-9475-4d96-81df-466e67852566",
+            "case_id": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "current",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              },
+              {
+                "channel": "notification",
+                "state": "submitted",
+                "opaque_target": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [],
+            "work": "completed",
+            "result_available": true,
+            "result": "合成观察：合成记录，不是真实个人资料；当前目标：合成目标：沟通准备"
+          },
+          "detail": {
+            "text": "Soul 有一项待查看的辅助内容。",
+            "opaque_target": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc"
+          }
+        },
+        {
+          "action": "用户打开同一事项；本地准备待确认草稿",
+          "state": {
+            "item_id": "ecfb61a2-9475-4d96-81df-466e67852566",
+            "case_id": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "current",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              },
+              {
+                "channel": "notification",
+                "state": "opened",
+                "opaque_target": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [
+              {
+                "id": "d75f02b6-2019-4e7a-944d-a188f2d95b24",
+                "state": "prepared",
+                "consumed": 0,
+                "accepted": 0
+              }
+            ],
+            "work": "completed",
+            "result_available": true,
+            "result": "合成观察：合成记录，不是真实个人资料；当前目标：合成目标：沟通准备"
+          },
+          "detail": null
+        },
+        {
+          "action": "明确批准后模拟端点完成；复制仍不是已处理",
+          "state": {
+            "item_id": "ecfb61a2-9475-4d96-81df-466e67852566",
+            "case_id": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "current",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              },
+              {
+                "channel": "notification",
+                "state": "opened",
+                "opaque_target": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [
+              {
+                "id": "d75f02b6-2019-4e7a-944d-a188f2d95b24",
+                "state": "succeeded",
+                "consumed": 1,
+                "accepted": 1
+              }
+            ],
+            "work": "completed",
+            "result_available": true,
+            "result": "合成观察：合成记录，不是真实个人资料；当前目标：合成目标：沟通准备"
+          },
+          "detail": null
+        },
+        {
+          "action": "用户明确标为已处理；事实有效性不变",
+          "state": {
+            "item_id": "ecfb61a2-9475-4d96-81df-466e67852566",
+            "case_id": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "current",
+            "handling": "resolved",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              },
+              {
+                "channel": "notification",
+                "state": "opened",
+                "opaque_target": "6ce9767d-e1f0-42c4-ab25-824bdc8180cc",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [
+              {
+                "id": "d75f02b6-2019-4e7a-944d-a188f2d95b24",
+                "state": "succeeded",
+                "consumed": 1,
+                "accepted": 1
+              }
+            ],
+            "work": "completed",
+            "result_available": false,
+            "result": null
+          },
+          "detail": null
+        }
+      ]
+    },
+    {
+      "scenario": "用途撤回与旧批准",
+      "steps": [
+        {
+          "action": "事务提交输入和待处理工作",
+          "state": {
+            "item_id": "18b333e0-9e85-4323-835d-702dfc26f420",
+            "case_id": "d182e356-2413-4686-899b-ccb457f75046",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "pending",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [],
+            "executions": [],
+            "work": "queued",
+            "result_available": false,
+            "result": null
+          },
+          "detail": null
+        },
+        {
+          "action": "本地观察与收件箱同事务完成",
+          "state": {
+            "item_id": "18b333e0-9e85-4323-835d-702dfc26f420",
+            "case_id": "d182e356-2413-4686-899b-ccb457f75046",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "current",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "d182e356-2413-4686-899b-ccb457f75046",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [],
+            "work": "completed",
+            "result_available": true,
+            "result": "合成观察：合成记录，不是真实个人资料；当前目标：合成目标：沟通准备"
+          },
+          "detail": null
+        },
+        {
+          "action": "批准绑定当前准备",
+          "state": {
+            "item_id": "18b333e0-9e85-4323-835d-702dfc26f420",
+            "case_id": "d182e356-2413-4686-899b-ccb457f75046",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "current",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "d182e356-2413-4686-899b-ccb457f75046",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [
+              {
+                "id": "ce8972ae-b953-45ca-af6e-e370fc8405ea",
+                "state": "approved",
+                "consumed": 0,
+                "accepted": 0
+              }
+            ],
+            "work": "completed",
+            "result_available": true,
+            "result": "合成观察：合成记录，不是真实个人资料；当前目标：合成目标：沟通准备"
+          },
+          "detail": null
+        },
+        {
+          "action": "撤回用途使所有旧输出失效",
+          "state": {
+            "item_id": "18b333e0-9e85-4323-835d-702dfc26f420",
+            "case_id": "d182e356-2413-4686-899b-ccb457f75046",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "stale",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "d182e356-2413-4686-899b-ccb457f75046",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [
+              {
+                "id": "ce8972ae-b953-45ca-af6e-e370fc8405ea",
+                "state": "approved",
+                "consumed": 0,
+                "accepted": 0
+              }
+            ],
+            "work": "completed",
+            "result_available": false,
+            "result": null
+          },
+          "detail": null
+        },
+        {
+          "action": "重新开启用途不恢复旧批准",
+          "state": {
+            "item_id": "18b333e0-9e85-4323-835d-702dfc26f420",
+            "case_id": "d182e356-2413-4686-899b-ccb457f75046",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "stale",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "d182e356-2413-4686-899b-ccb457f75046",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [
+              {
+                "id": "ce8972ae-b953-45ca-af6e-e370fc8405ea",
+                "state": "approved",
+                "consumed": 0,
+                "accepted": 0
+              }
+            ],
+            "work": "completed",
+            "result_available": false,
+            "result": null
+          },
+          "detail": "stale_item"
+        }
+      ]
+    },
+    {
+      "scenario": "稍后与通知未知结果",
+      "steps": [
+        {
+          "action": "事务提交输入和待处理工作",
+          "state": {
+            "item_id": "414c45d9-f73d-4f6e-bc7a-3597219aee19",
+            "case_id": "edcc8bbd-54b6-4c31-931a-f38fdf38bba2",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "pending",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [],
+            "executions": [],
+            "work": "queued",
+            "result_available": false,
+            "result": null
+          },
+          "detail": null
+        },
+        {
+          "action": "本地观察与收件箱同事务完成",
+          "state": {
+            "item_id": "414c45d9-f73d-4f6e-bc7a-3597219aee19",
+            "case_id": "edcc8bbd-54b6-4c31-931a-f38fdf38bba2",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "current",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "edcc8bbd-54b6-4c31-931a-f38fdf38bba2",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [],
+            "work": "completed",
+            "result_available": true,
+            "result": "合成观察：合成记录，不是真实个人资料；当前目标：合成目标：沟通准备"
+          },
+          "detail": null
+        },
+        {
+          "action": "新版本保留同一事项的稍后时间",
+          "state": {
+            "item_id": "0435df59-5f79-47db-99a5-4aa3587c046c",
+            "case_id": "edcc8bbd-54b6-4c31-931a-f38fdf38bba2",
+            "generation": 2,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "current",
+            "handling": "snoozed",
+            "snooze_until": 500,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "edcc8bbd-54b6-4c31-931a-f38fdf38bba2",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [],
+            "work": "completed",
+            "result_available": true,
+            "result": "合成观察：合成记录，不是真实个人资料；当前目标：合成目标：沟通准备"
+          },
+          "detail": null
+        },
+        {
+          "action": "稍后期间没有排入通知",
+          "state": {
+            "item_id": "0435df59-5f79-47db-99a5-4aa3587c046c",
+            "case_id": "edcc8bbd-54b6-4c31-931a-f38fdf38bba2",
+            "generation": 2,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "current",
+            "handling": "snoozed",
+            "snooze_until": 500,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "edcc8bbd-54b6-4c31-931a-f38fdf38bba2",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [],
+            "work": "completed",
+            "result_available": true,
+            "result": "合成观察：合成记录，不是真实个人资料；当前目标：合成目标：沟通准备"
+          },
+          "detail": null
+        },
+        {
+          "action": "在提交系统后中断并重开：结果未知",
+          "state": {
+            "item_id": "0435df59-5f79-47db-99a5-4aa3587c046c",
+            "case_id": "edcc8bbd-54b6-4c31-931a-f38fdf38bba2",
+            "generation": 2,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "current",
+            "handling": "snoozed",
+            "snooze_until": 500,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "edcc8bbd-54b6-4c31-931a-f38fdf38bba2",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              },
+              {
+                "channel": "notification",
+                "state": "unknown",
+                "opaque_target": "edcc8bbd-54b6-4c31-931a-f38fdf38bba2",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [],
+            "work": "completed",
+            "result_available": true,
+            "result": "合成观察：合成记录，不是真实个人资料；当前目标：合成目标：沟通准备"
+          },
+          "detail": null
+        },
+        {
+          "action": "未知结果不会自动重发",
+          "state": {
+            "item_id": "0435df59-5f79-47db-99a5-4aa3587c046c",
+            "case_id": "edcc8bbd-54b6-4c31-931a-f38fdf38bba2",
+            "generation": 2,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "current",
+            "handling": "snoozed",
+            "snooze_until": 500,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "edcc8bbd-54b6-4c31-931a-f38fdf38bba2",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              },
+              {
+                "channel": "notification",
+                "state": "unknown",
+                "opaque_target": "edcc8bbd-54b6-4c31-931a-f38fdf38bba2",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [],
+            "work": "completed",
+            "result_available": true,
+            "result": "合成观察：合成记录，不是真实个人资料；当前目标：合成目标：沟通准备"
+          },
+          "detail": "notification_not_queued"
+        }
+      ]
+    },
+    {
+      "scenario": "遗忘与迟到草稿",
+      "steps": [
+        {
+          "action": "事务提交输入和待处理工作",
+          "state": {
+            "item_id": "1be8051f-89f3-4149-a602-7efc5bdfd32e",
+            "case_id": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "pending",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [],
+            "executions": [],
+            "work": "queued",
+            "result_available": false,
+            "result": null
+          },
+          "detail": null
+        },
+        {
+          "action": "本地观察与收件箱同事务完成",
+          "state": {
+            "item_id": "1be8051f-89f3-4149-a602-7efc5bdfd32e",
+            "case_id": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "current",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [],
+            "work": "completed",
+            "result_available": true,
+            "result": "合成观察：合成记录，不是真实个人资料；当前目标：合成目标：沟通准备"
+          },
+          "detail": null
+        },
+        {
+          "action": "工作在途；通知只有通用文字和不透明指针",
+          "state": {
+            "item_id": "1be8051f-89f3-4149-a602-7efc5bdfd32e",
+            "case_id": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "current",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              },
+              {
+                "channel": "notification",
+                "state": "submitted",
+                "opaque_target": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [
+              {
+                "id": "66810d46-d7a6-4bd1-ae71-76c724c79068",
+                "state": "inflight",
+                "consumed": 1,
+                "accepted": 0
+              }
+            ],
+            "work": "completed",
+            "result_available": true,
+            "result": "合成观察：合成记录，不是真实个人资料；当前目标：合成目标：沟通准备"
+          },
+          "detail": {
+            "text": "Soul 有一项待查看的辅助内容。",
+            "opaque_target": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0"
+          }
+        },
+        {
+          "action": "逻辑遗忘清除模型保存的来源与衍生正文",
+          "state": {
+            "item_id": "1be8051f-89f3-4149-a602-7efc5bdfd32e",
+            "case_id": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "forgotten",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              },
+              {
+                "channel": "notification",
+                "state": "submitted",
+                "opaque_target": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [
+              {
+                "id": "66810d46-d7a6-4bd1-ae71-76c724c79068",
+                "state": "inflight",
+                "consumed": 1,
+                "accepted": 0
+              }
+            ],
+            "work": "completed",
+            "result_available": false,
+            "result": null
+          },
+          "detail": null
+        },
+        {
+          "action": "记录请求完成，但拒收迟到正文",
+          "state": {
+            "item_id": "1be8051f-89f3-4149-a602-7efc5bdfd32e",
+            "case_id": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "forgotten",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              },
+              {
+                "channel": "notification",
+                "state": "submitted",
+                "opaque_target": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [
+              {
+                "id": "66810d46-d7a6-4bd1-ae71-76c724c79068",
+                "state": "succeeded",
+                "consumed": 1,
+                "accepted": 0
+              }
+            ],
+            "work": "completed",
+            "result_available": false,
+            "result": null
+          },
+          "detail": {
+            "accepted": false
+          }
+        },
+        {
+          "action": "旧通知指针无法读取已遗忘内容",
+          "state": {
+            "item_id": "1be8051f-89f3-4149-a602-7efc5bdfd32e",
+            "case_id": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0",
+            "generation": 1,
+            "revisions": {
+              "source_revision": 1,
+              "goal_revision": 1,
+              "purpose_revision": 1
+            },
+            "validity": "forgotten",
+            "handling": "open",
+            "snooze_until": null,
+            "muted": false,
+            "deliveries": [
+              {
+                "channel": "inbox",
+                "state": "available",
+                "opaque_target": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              },
+              {
+                "channel": "notification",
+                "state": "submitted",
+                "opaque_target": "6f514b48-c6f2-4b4b-9aff-2fe9c0bc3bf0",
+                "generic_text": "Soul 有一项待查看的辅助内容。"
+              }
+            ],
+            "executions": [
+              {
+                "id": "66810d46-d7a6-4bd1-ae71-76c724c79068",
+                "state": "succeeded",
+                "consumed": 1,
+                "accepted": 0
+              }
+            ],
+            "work": "completed",
+            "result_available": false,
+            "result": null
+          },
+          "detail": "forgotten_source"
+        }
+      ]
+    }
+  ]
+}
