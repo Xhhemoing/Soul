@@ -944,6 +944,7 @@ export interface FakeCoreOptions {
   readonly readingImport?: (format: string, text: string) => ImportPreview;
   readonly importing?: (format: string, text: string) => ImportReceipt;
   readonly importNamespaces?: readonly ImportNamespace[];
+  readonly listingImportNamespaces?: () => readonly ImportNamespace[] | Promise<readonly ImportNamespace[]>;
   readonly importOperations?: readonly ImportOperationView[];
   readonly preparingImport?: (request: ImportPrepareRequest) => PreparedImport | Promise<PreparedImport>;
   readonly confirmingImport?: (operationId: string, previewId: string) => ImportOperationView | Promise<ImportOperationView>;
@@ -1352,7 +1353,7 @@ export function installFakeCore(
         );
       }
       case "list_import_namespaces":
-        return options.importNamespaces ?? [];
+        return options.listingImportNamespaces?.() ?? options.importNamespaces ?? [];
       case "recent_import_operations":
         return options.recentImports?.() ?? [...importOperations.values()];
       case "import_recovery_state": {

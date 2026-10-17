@@ -21,15 +21,30 @@ export function Import({ lane = durableImport }: { readonly lane?: DurableImport
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [lookup, setLookup] = useState(state.operationId ?? "");
   const [checking, setChecking] = useState(false);
+  const [namespaceRefresh, setNamespaceRefresh] = useState(0);
+  const [namespaceError, setNamespaceError] = useState<string | null>(null);
+  const namespaceRevision = useRef(0);
   const owner = useRef<symbol | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const queryOwner = useRef<symbol | null>(null);
 
   useEffect(() => {
     const mount = Symbol("import route"); owner.current = mount;
-    void listImportNamespaces().then((value) => { if (owner.current === mount) setNamespaces(value); }, () => {});
     return () => { if (owner.current === mount) owner.current = null; queryOwner.current = null; };
   }, []);
+
+  useEffect(() => {
+    const mount = owner.current; const receipt = state.receipt;
+    let active = true;
+    const current = (): boolean => active && mount !== null && owner.current === mount
+      && namespaceRevision.current === namespaceRefresh && lane.snapshot().receipt === receipt;
+    void listImportNamespaces().then((value) => {
+      if (current()) { setNamespaces(value); setNamespaceError(null); }
+    }, () => {
+      if (current()) setNamespaceError("来源列表暂时无法更新，请点击“核对最近记录”重试。");
+    });
+    return () => { active = false; };
+  }, [lane, state.receipt, namespaceRefresh]);
 
   const reset = (): void => {
     setPrepared(null); setRefusal(null); if (input.current !== null) input.current.value = "";
@@ -95,8 +110,10 @@ export function Import({ lane = durableImport }: { readonly lane?: DurableImport
         lane.recovered(recovery, generation);
       }
       for (const row of result) if (row.operation.state === "committed") { lane.observed(row, generation); break; }
-      const value = await listImportNamespaces();
-      if (queryOwner.current === query && owner.current === mount) setNamespaces(value);
+      if (queryOwner.current === query && owner.current === mount && generation === lane.generation()) {
+        namespaceRevision.current += 1;
+        setNamespaceRefresh(namespaceRevision.current);
+      }
     } catch (error: unknown) { if (owner.current === mount) setRefusal(asRefusal(error)); }
     finally { if (queryOwner.current === query) { queryOwner.current = null; setChecking(false); } }
   };
@@ -117,6 +134,7 @@ export function Import({ lane = durableImport }: { readonly lane?: DurableImport
         <option value="">{format === "telegram-desktop" ? "按导出中的稳定本人账号匹配；首次建立来源" : "明确建立一个新 JSONL 来源"}</option>
         {namespaces.filter((row) => row.source === format).map((row) => <option key={row.namespace_id} value={row.namespace_id} disabled={row.state === "revoked"}>{row.namespace_id}（{row.state === "revoked" ? "已遗忘，禁止重导" : row.coverage === "forward_only" ? "本次及以后索引" : "自此来源建立起已索引"}）</option>)}
       </select>
+      {namespaceError === null ? null : <p role="status">{namespaceError}</p>}
       <p>同一 JSONL 数据集请选择同一个来源编号。文件名、导出时间和正文不会用来猜测身份。新来源不会补回历史消息编号。</p>
       <label><input type="checkbox" checked={forward} disabled={blocked} onChange={(event) => { reset(); setForward(event.target.checked); }} />
         我明确接受：仅本次及以后建立消息索引；旧库没有编号，历史可能重叠。这不授权合并不同来源中的第三人。</label>

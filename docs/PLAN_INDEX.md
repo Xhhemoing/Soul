@@ -20,6 +20,7 @@
 | 最新框架 W1–W5 的已接线能力与边界 | [ARCHITECTURE 当前表](ARCHITECTURE.md) / [HTML 顶部当前框架](framework-design.html) / [剩余模块计划](design/2026-10-16-remaining-implementation.md)：owned 扫描、本次候选记忆、持久导入/恢复、封存自然键去重/迁移、本地 A2 反馈；实际验证看 STATUS |
 | 本次记忆用途、过滤/澄清与实际请求预算 | [剩余模块计划的 W2 节](design/2026-10-16-remaining-implementation.md)；明确候选内的关键词/类型选择，缺事实时间先 Clarify，默认 local，真实 JSON serializer 64 KiB 与整条裁剪/引用复验 |
 | 持久回执、不可变预览确认、OS lease 与去重迁移 | [W3/W4 计划](design/2026-10-16-remaining-implementation.md)；确认只带 IDs，schema 3，同事务回执/原审计；forward-only 不代表全历史去重，遗忘撤销 namespace |
+| 导入成功后怎样继续明确选择同一来源 | [来源列表刷新修复与验证](design/2026-10-16-import-source-refresh.md)；共享回执驱动刷新，跨挂载拒旧，不自动选择来源或重放导入；列表失败不改变提交结果 |
 | 洞察定位、实际 Session 组合链与现代导入审计 | [工作流连续性计划与结果](design/2026-10-16-workflow-continuity.md)；精确关系及指定证据元数据、地址/来源/挂载归属；原生 IPC 测试源码与实际可执行检查分开记录 |
 | 可信导入统计如何参与本次起草 | [洞察起草材料契约与结果](design/2026-10-16-insight-draft-context.md)，D76；独立 typed、一次 bundle/contact、默认 local，另选派生计数才入最终 E1；实际实现与验证范围看 STATUS，不与手写记忆或原文用途混同 |
 | 怎样明确查看一条导入消息来源 | [本地来源核对方案](design/2026-10-16-local-evidence-view.md)，D77；两步精确锚读取、实际 namespace 和密封行长度预检，旧数据缺索引不可查看，不授予原文出网或起草用途；实施状态看 STATUS |
