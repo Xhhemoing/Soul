@@ -1,32 +1,41 @@
 //! The IPC surface, and nothing else.
 //!
-//! Every function here is one line long by design: it takes what the WebView
-//! sent, hands it to `soulcore::commands`, and returns what came back. No
-//! decision is made in this file, so there is nothing in it for a test to
-//! catch — which is the point. The decisions have tests, in `soulcore`.
+//! Commands forward to `soulcore::commands`. Endpoint drafting additionally
+//! schedules its owned work on the blocking pool: the Session mutex protects
+//! preparation/acceptance, never the HTTP wait. Policy decisions stay in core.
 //!
 //! One thing this file does *not* do is open a database. WP07 leftover 8 says
-//! the process gets one `SqlCipherStore` handle, because two connections are
-//! two write-ahead logs; so the handle is opened once in `lib.rs`, lives
+//! the process gets one `SqlCipherStore` handle to keep key material,
+//! transaction ownership and audit ordering together. SQLite itself allows
+//! multiple connections to the same WAL. The handle opens once in `lib.rs`, lives
 //! inside `soulcore::commands::session::Session`, and every command here
 //! borrows it through [`SessionState`]. `tests/one_store.rs` reads this file
 //! and `lib.rs` back to check that no second opening has appeared.
 
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
-use soulcore::commands::draft::{Approval, DraftValue, E1DraftPlan, PersonSummaryView};
+use soulcore::commands::draft::{
+    Approval, DraftRefusal, DraftValue, E1DraftPlan, PersonSummaryView,
+};
 use soulcore::commands::fileplan::PlanPreview;
 use soulcore::commands::graph::PeopleGraphView;
 use soulcore::commands::import::{ImportPreview, ImportReceiptView};
+use soulcore::commands::insights::LocalInsightView;
 use soulcore::commands::memory::{
-    ForgetConfirmation, ForgetPreview, ForgetReceiptView, MemoryChange, MemoryDetail, MemoryList,
-    NewMemory,
+    ForgetCleanupView, ForgetConfirmation, ForgetPreview, ForgetReceiptView, MemoryChange,
+    MemoryDetail, MemoryList, NewMemory,
 };
 use soulcore::commands::profile::{GivenAnswer, IntakeReceipt, ProfileScreen, QuestionView};
 use soulcore::commands::session::{
-    CollectStatus, FilesView, Session, SessionRefusal, SessionStatus,
+    CollectStatus, ContextMemoryId, FilesView, ImportNamespaceView, ImportOperationView,
+    ImportPrepareRequest, ImportRecoveryState, InsightContextRequest, InsightContextView,
+    InsightDraftPlan, InsightDraftValue, MemoryContextRequest, MemoryContextView, MemoryDraftPlan,
+    MemoryDraftValue, PreparedImportView, Session, SessionRefusal, SessionStatus,
 };
 use soulcore::commands::shell::{CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
+use soulcore::commands::sources::{
+    EvidenceEventRequest, EvidenceEventView, EvidenceSourcesRequest, EvidenceSourcesView,
+};
 use soulcore::commands::store::{AuditChainView, ResearchPreviewView};
 use tauri::State;
 
@@ -36,12 +45,12 @@ use tauri::State;
 /// data directory is depends on the machine and a test must be able to say
 /// "somewhere else". `lib.rs` builds the real one; `tests/ipc_roundtrip.rs`
 /// builds one in a scratch directory and gets the same commands.
-#[derive(Debug)]
-pub struct SessionState(Mutex<Session>);
+#[derive(Debug, Clone)]
+pub struct SessionState(Arc<Mutex<Session>>);
 
 impl SessionState {
     pub fn new(session: Session) -> SessionState {
-        SessionState(Mutex::new(session))
+        SessionState(Arc::new(Mutex::new(session)))
     }
 
     /// The session, with a poisoned lock recovered rather than propagated.
@@ -57,8 +66,184 @@ impl SessionState {
 }
 
 #[tauri::command]
+pub fn evidence_sources(
+    session: State<'_, SessionState>,
+    request: EvidenceSourcesRequest,
+) -> Result<EvidenceSourcesView, SessionRefusal> {
+    session.held().evidence_sources(&request)
+}
+
+#[tauri::command]
+pub fn read_evidence_event(
+    session: State<'_, SessionState>,
+    request: EvidenceEventRequest,
+) -> Result<EvidenceEventView, SessionRefusal> {
+    session.held().read_evidence_event(&request)
+}
+
+#[tauri::command]
 pub fn config_snapshot(session: State<'_, SessionState>) -> ConfigSnapshot {
     session.held().snapshot()
+}
+
+#[tauri::command]
+pub fn local_insights(
+    session: State<'_, SessionState>,
+) -> Result<Vec<LocalInsightView>, SessionRefusal> {
+    session.held().local_insights()
+}
+
+#[tauri::command]
+pub fn ignore_local_insight(
+    session: State<'_, SessionState>,
+    bundle_id: String,
+) -> Result<LocalInsightView, SessionRefusal> {
+    session.held().ignore_local_insight(&bundle_id)
+}
+
+#[tauri::command]
+pub fn recompute_local_insight(
+    session: State<'_, SessionState>,
+    bundle_id: String,
+) -> Result<LocalInsightView, SessionRefusal> {
+    session.held().recompute_local_insight(&bundle_id)
+}
+
+#[tauri::command]
+pub fn prepare_insight_context(
+    session: State<'_, SessionState>,
+    request: InsightContextRequest,
+) -> Result<InsightContextView, SessionRefusal> {
+    session.held().prepare_insight_context(request)
+}
+
+#[tauri::command]
+pub fn local_draft_with_insight(
+    session: State<'_, SessionState>,
+    pasted: String,
+    context_id: String,
+) -> Result<InsightDraftValue, SessionRefusal> {
+    session
+        .held()
+        .local_draft_with_insight(&pasted, &context_id)
+}
+
+#[tauri::command]
+pub fn prepare_draft_with_insight(
+    session: State<'_, SessionState>,
+    pasted: String,
+    context_id: String,
+    include_counts: bool,
+    include_original: bool,
+) -> Result<InsightDraftPlan, SessionRefusal> {
+    session.held().prepare_draft_with_insight(
+        &pasted,
+        &context_id,
+        include_counts,
+        include_original,
+    )
+}
+
+#[tauri::command]
+pub fn prepare_memory_context(
+    session: State<'_, SessionState>,
+    request: MemoryContextRequest,
+) -> Result<MemoryContextView, SessionRefusal> {
+    session.held().prepare_memory_context(request)
+}
+
+#[tauri::command]
+pub fn draft_reply_with_memory(
+    session: State<'_, SessionState>,
+    pasted: String,
+    context_id: String,
+) -> Result<MemoryDraftValue, SessionRefusal> {
+    session
+        .held()
+        .draft_pasted_with_memory(&pasted, &context_id)
+}
+
+#[tauri::command]
+pub fn prepare_draft_with_memory(
+    session: State<'_, SessionState>,
+    pasted: String,
+    context_id: String,
+    owner_ids: Vec<ContextMemoryId>,
+    include_original: bool,
+) -> Result<MemoryDraftPlan, SessionRefusal> {
+    session
+        .held()
+        .prepare_draft_with_memory(&pasted, &context_id, &owner_ids, include_original)
+}
+
+#[tauri::command]
+pub fn list_import_namespaces(
+    session: State<'_, SessionState>,
+) -> Result<Vec<ImportNamespaceView>, SessionRefusal> {
+    session.held().import_namespaces()
+}
+
+#[tauri::command]
+pub fn import_recovery_state(
+    session: State<'_, SessionState>,
+) -> Result<ImportRecoveryState, SessionRefusal> {
+    session.held().import_recovery_state()
+}
+
+#[tauri::command]
+pub fn recent_import_operations(
+    session: State<'_, SessionState>,
+) -> Result<Vec<ImportOperationView>, SessionRefusal> {
+    session.held().recent_import_operations()
+}
+
+#[tauri::command]
+pub fn import_operation(
+    session: State<'_, SessionState>,
+    operation_id: String,
+) -> Result<ImportOperationView, SessionRefusal> {
+    session.held().import_operation(&operation_id)
+}
+
+#[tauri::command]
+pub fn discard_import(
+    session: State<'_, SessionState>,
+    operation_id: String,
+) -> Result<ImportOperationView, SessionRefusal> {
+    session.held().discard_import(&operation_id)
+}
+
+#[tauri::command]
+pub async fn prepare_import(
+    session: State<'_, SessionState>,
+    request: ImportPrepareRequest,
+) -> Result<PreparedImportView, SessionRefusal> {
+    let session = session.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let work = session.held().begin_import_prepare_request(request)?;
+        let completed = work.execute();
+        let result = session.held().complete_import_prepare(completed);
+        result
+    })
+    .await
+    .map_err(|_| SessionRefusal::from(DraftRefusal::WorkerFailed))?
+}
+
+#[tauri::command]
+pub async fn confirm_import(
+    session: State<'_, SessionState>,
+    operation_id: String,
+    preview_id: String,
+) -> Result<ImportOperationView, SessionRefusal> {
+    let session = session.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let work = session.held().begin_import(&operation_id, &preview_id)?;
+        let completed = work.execute();
+        let result = session.held().complete_import(completed);
+        result
+    })
+    .await
+    .map_err(|_| SessionRefusal::from(DraftRefusal::WorkerFailed))?
 }
 
 /// Whether the wizard has been through before, and whether there is a
@@ -98,11 +283,19 @@ pub fn authorize_directory(
 /// Scan one authorized directory and describe what tidying it would mean.
 /// Read-only: there is no command on this surface that carries a plan out.
 #[tauri::command]
-pub fn preview_plan(
+pub async fn preview_plan(
     session: State<'_, SessionState>,
     path: String,
 ) -> Result<PlanPreview, SessionRefusal> {
-    session.held().preview(&path)
+    let session = session.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let work = session.held().begin_file_plan(&path)?;
+        let completed = work.execute();
+        let result = session.held().complete_file_plan(completed);
+        result
+    })
+    .await
+    .map_err(|_| SessionRefusal::from(DraftRefusal::WorkerFailed))?
 }
 
 #[tauri::command]
@@ -111,11 +304,20 @@ pub fn people_graph(session: State<'_, SessionState>) -> Result<PeopleGraphView,
 }
 
 #[tauri::command]
-pub fn person_summary(
+pub async fn person_summary(
     session: State<'_, SessionState>,
     contact_id: String,
 ) -> Result<PersonSummaryView, SessionRefusal> {
-    session.held().person_summary(&contact_id)
+    let session = session.inner().clone();
+    // The owned closure completes and audits even if the IPC waiter leaves.
+    tauri::async_runtime::spawn_blocking(move || {
+        let work = session.held().begin_person_summary(&contact_id)?;
+        let completed = work.execute();
+        let result = session.held().complete_person_summary(completed);
+        result
+    })
+    .await
+    .map_err(|_| SessionRefusal::from(DraftRefusal::WorkerFailed))?
 }
 
 #[tauri::command]
@@ -162,11 +364,21 @@ pub fn prepare_draft(
 /// Step two: the user read the counts on screen and approved this exact
 /// preparation. An approval that does not echo both halves sends nothing.
 #[tauri::command]
-pub fn generate_draft(
+pub async fn generate_draft(
     session: State<'_, SessionState>,
     approval: Approval,
 ) -> Result<DraftValue, SessionRefusal> {
-    session.held().generate_draft(&approval)
+    let session = session.inner().clone();
+    // The closure owns the Session handle and completes/audits even when the
+    // IPC future is dropped. Aborting an await must not abandon a live worker.
+    tauri::async_runtime::spawn_blocking(move || {
+        let work = session.held().begin_draft(&approval)?;
+        let completed = work.execute();
+        let result = session.held().complete_draft(completed);
+        result
+    })
+    .await
+    .map_err(|_| SessionRefusal::from(DraftRefusal::WorkerFailed))?
 }
 
 /// The user read the plan and said no.
@@ -199,7 +411,7 @@ pub fn preview_soul_import_v1(
     session: State<'_, SessionState>,
     text: String,
 ) -> Result<ImportPreview, SessionRefusal> {
-    session.held().preview_soul_import_v1(&text)
+    session.held().refuse_legacy_preview(&text)
 }
 
 /// The same for a Telegram Desktop `result.json`. Writes nothing.
@@ -208,7 +420,7 @@ pub fn preview_telegram(
     session: State<'_, SessionState>,
     text: String,
 ) -> Result<ImportPreview, SessionRefusal> {
-    session.held().preview_telegram(&text)
+    session.held().refuse_legacy_preview(&text)
 }
 
 /// Seal a `soul-import-v1` file into the store. AC-04.
@@ -217,7 +429,7 @@ pub fn commit_soul_import_v1(
     session: State<'_, SessionState>,
     text: String,
 ) -> Result<ImportReceiptView, SessionRefusal> {
-    session.held().commit_soul_import_v1(&text)
+    session.held().refuse_legacy_import(&text)
 }
 
 /// Seal a Telegram Desktop export into the store. AC-05.
@@ -226,7 +438,7 @@ pub fn commit_telegram(
     session: State<'_, SessionState>,
     text: String,
 ) -> Result<ImportReceiptView, SessionRefusal> {
-    session.held().commit_telegram(&text)
+    session.held().refuse_legacy_import(&text)
 }
 
 /// The eleven questions the wizard draws, with their options.
@@ -317,6 +529,14 @@ pub fn forget_memory(
     session.held().forget_memory(&confirmation)
 }
 
+/// Only retry the existing store's WAL cleanup, never the destructive act.
+#[tauri::command]
+pub fn retry_forget_cleanup(
+    session: State<'_, SessionState>,
+) -> Result<ForgetCleanupView, SessionRefusal> {
+    soulcore::commands::memory::retry_cleanup_for_session(&session.held())
+}
+
 /// What the research track would see. On screen only; nothing is written.
 #[tauri::command]
 pub fn research_preview(
@@ -395,6 +615,24 @@ impl DraftNotices {
 /// `apps/desktop/src/core.ts`, which is the only place the other side names
 /// them. A command added to one and not the other is a failing test.
 pub const COMMAND_NAMES: &[&str] = &[
+    "evidence_sources",
+    "read_evidence_event",
+    "prepare_insight_context",
+    "local_draft_with_insight",
+    "prepare_draft_with_insight",
+    "local_insights",
+    "ignore_local_insight",
+    "recompute_local_insight",
+    "import_recovery_state",
+    "prepare_memory_context",
+    "draft_reply_with_memory",
+    "prepare_draft_with_memory",
+    "list_import_namespaces",
+    "recent_import_operations",
+    "import_operation",
+    "discard_import",
+    "prepare_import",
+    "confirm_import",
     "config_snapshot",
     "session_status",
     "complete_wizard",
@@ -428,9 +666,36 @@ pub const COMMAND_NAMES: &[&str] = &[
     "update_memory",
     "preview_forget",
     "forget_memory",
+    "retry_forget_cleanup",
     "research_preview",
     "audit_chain",
     "collect_status",
     "grant_collect_consent",
     "revoke_collect_consent",
 ];
+
+#[cfg(test)]
+mod shared_state_tests {
+    use super::*;
+
+    #[test]
+    fn worker_clone_uses_the_same_session_and_store() {
+        let directory =
+            std::env::temp_dir().join(format!("soul-state-clone-{}", std::process::id()));
+        let state = SessionState::new(Session::open(&directory));
+        let worker = state.clone();
+        assert!(Arc::ptr_eq(&state.0, &worker.0));
+        state
+            .held()
+            .set_user_endpoint("http://127.0.0.1:9")
+            .unwrap();
+        assert!(worker.held().snapshot().llm_endpoint_configured);
+        worker.held().clear_user_endpoint();
+        assert!(!state.held().snapshot().llm_endpoint_configured);
+        let first = state.held().store().expect("synthetic store opens");
+        let second = worker.held().store().expect("same store opens");
+        assert!(Arc::ptr_eq(&first, &second));
+        drop((first, second, worker, state));
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+}

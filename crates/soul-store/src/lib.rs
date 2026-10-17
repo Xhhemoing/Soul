@@ -28,6 +28,8 @@
 
 pub mod audit;
 pub mod forget;
+pub mod import_ops;
+pub mod insights;
 pub mod keys;
 pub mod research_preview;
 pub mod sql;

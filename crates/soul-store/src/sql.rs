@@ -40,7 +40,7 @@
 /// the forget ledger and the hash-chained audit cannot be built a second time —
 /// and there is deliberately no migrations table and no numbered migration
 /// files to fall out of step with the schema they claim to describe.
-pub const STORE_SCHEMA_VERSION: i64 = 2;
+pub const STORE_SCHEMA_VERSION: i64 = 3;
 
 pub const DDL: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (
@@ -194,6 +194,59 @@ CREATE TABLE IF NOT EXISTS audit_subjects (
 );
 CREATE INDEX IF NOT EXISTS audit_subjects_by_subject
     ON audit_subjects (subject_id);
+
+CREATE TABLE IF NOT EXISTS import_operations (
+    operation_id TEXT PRIMARY KEY,
+    preview_id TEXT NOT NULL UNIQUE,
+    namespace_id TEXT NOT NULL,
+    state TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    doc TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS one_running_import ON import_operations(state) WHERE state = 'running';
+CREATE INDEX IF NOT EXISTS import_operations_by_date ON import_operations(created_at);
+CREATE TABLE IF NOT EXISTS import_namespaces (
+    namespace_id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    state TEXT NOT NULL,
+    owner_contact_id TEXT,
+    doc TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS import_participants (
+    identity_id TEXT PRIMARY KEY,
+    namespace_id TEXT NOT NULL,
+    contact_id TEXT NOT NULL,
+    content_key_id TEXT NOT NULL,
+    doc TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS import_participants_by_namespace ON import_participants(namespace_id,identity_id);
+CREATE INDEX IF NOT EXISTS import_participants_by_key ON import_participants(content_key_id);
+CREATE TABLE IF NOT EXISTS import_message_keys (
+    identity_id TEXT PRIMARY KEY,
+    namespace_id TEXT NOT NULL,
+    event_id TEXT NOT NULL UNIQUE,
+    contact_id TEXT NOT NULL,
+    content_key_id TEXT NOT NULL,
+    doc TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS import_message_keys_by_namespace ON import_message_keys(namespace_id,identity_id);
+CREATE INDEX IF NOT EXISTS import_message_keys_by_key ON import_message_keys(content_key_id);
+-- A bare local event UUID is allowed to survive forget. It carries no natural
+-- id and prevents a destroyed index entry being mistaken for unmigrated data.
+CREATE TABLE IF NOT EXISTS import_indexed_events (
+    event_id TEXT PRIMARY KEY
+);
+CREATE TABLE IF NOT EXISTS local_insights (
+    bundle_id TEXT PRIMARY KEY,
+    operation_id TEXT NOT NULL,
+    namespace_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    validity TEXT NOT NULL,
+    ignored INTEGER NOT NULL,
+    doc TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS local_insights_by_namespace ON local_insights(namespace_id);
+CREATE INDEX IF NOT EXISTS local_insights_by_date ON local_insights(created_at);
 "#;
 
 #[cfg(test)]
@@ -230,7 +283,8 @@ mod tests {
             }
             assert!(
                 body.starts_with("CREATE TABLE IF NOT EXISTS")
-                    || body.starts_with("CREATE INDEX IF NOT EXISTS"),
+                    || body.starts_with("CREATE INDEX IF NOT EXISTS")
+                    || body.starts_with("CREATE UNIQUE INDEX IF NOT EXISTS"),
                 "an open has to be able to run this twice: {body}",
             );
         }

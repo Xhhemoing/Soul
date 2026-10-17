@@ -30,6 +30,7 @@ use soul_schema::relationship::SoulRelationship;
 use soul_schema::validate::SchemaId;
 use soul_schema::SchemaSet;
 
+use soul_store_api::forget::WalCheckpoint;
 use soul_store_api::types::{EventFilter, InferenceState, SealRequest, StoreError, StoreResult};
 use soul_store_api::{AuditLog, BlobStore, EventStore, GraphStore, MemoryStore, ProfileStore};
 
@@ -187,6 +188,8 @@ pub struct SqlCipherStore {
     pub(crate) kek: SecretKey,
     path: PathBuf,
     key_provider_label: String,
+    /// Raw store handles may outlive Session (for example a collector).
+    pub(crate) import_runtime: Option<std::sync::Arc<crate::import_ops::ImportRuntimeLease>>,
 }
 
 impl SqlCipherStore {
@@ -206,7 +209,7 @@ impl SqlCipherStore {
         let dek = keys.database_key().map_err(backend)?;
         let kek = keys.key_encryption_key().map_err(backend)?;
 
-        let conn = Connection::open(&path).map_err(backend)?;
+        let mut conn = Connection::open(&path).map_err(backend)?;
         // The raw-key form. A passphrase would be run through key derivation
         // by SQLCipher; the DEK is already 32 bytes of key material.
         conn.execute_batch(&format!("PRAGMA key = \"x'{}'\";", dek.to_hex()))
@@ -274,16 +277,30 @@ impl SqlCipherStore {
                  asked for 1, so a destroyed content key would stay legible in a free page"
             )));
         }
-        conn.execute_batch(sql::DDL).map_err(backend)?;
+        let migration = conn.transaction().map_err(backend)?;
+        migration.execute_batch(sql::DDL).map_err(backend)?;
+        // The old formats never stored external message ids. Record that gap
+        // once; later indexed imports must not turn into new legacy history.
+        for (source, event_source) in [
+            ("soul-import-v1", "import.soul_import_v1"),
+            ("telegram-desktop", "import.telegram_desktop"),
+        ] {
+            migration.execute(
+                "INSERT OR IGNORE INTO meta(key,value) SELECT ?1,CAST(count(*) AS TEXT) FROM events WHERE source=?2",
+                rusqlite::params![format!("import.legacy.{source}"),event_source],
+            ).map_err(backend)?;
+        }
         // Only ever reached for a file at or below this version, so this moves
         // the stamp forward — 1 to 2 once the additive DDL above has given the
         // file what version 2 means — and never back down.
-        conn.execute(
-            "INSERT INTO meta (key, value) VALUES ('schema_version', ?1)
+        migration
+            .execute(
+                "INSERT INTO meta (key, value) VALUES ('schema_version', ?1)
              ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-            [sql::STORE_SCHEMA_VERSION.to_string()],
-        )
-        .map_err(backend)?;
+                [sql::STORE_SCHEMA_VERSION.to_string()],
+            )
+            .map_err(backend)?;
+        migration.commit().map_err(backend)?;
 
         Ok(SqlCipherStore {
             conn,
@@ -292,11 +309,18 @@ impl SqlCipherStore {
             kek,
             path,
             key_provider_label: keys.describe(),
+            import_runtime: None,
         })
     }
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Recovery must not mistake a row visible only in a failed transaction
+    /// for a durable commit acknowledgement.
+    pub fn transaction_in_progress(&self) -> bool {
+        !self.conn.is_autocommit()
     }
 
     /// Which provider supplied the root secrets. Never key material.
@@ -484,13 +508,32 @@ impl SqlCipherStore {
         })
     }
 
-    /// Fold the write-ahead log back into the main database file.
+    /// Fold the write-ahead log back into the main database and confirm that
+    /// it was truncated. SQL success alone is insufficient: SQLite reports a
+    /// blocking reader in the first result column, not necessarily as Err.
     pub fn checkpoint(&self) -> StoreResult<()> {
+        let status = self.checkpoint_status()?;
+        if status.confirms_truncate() {
+            Ok(())
+        } else {
+            Err(StoreError::Backend(format!(
+                "WAL truncation unconfirmed: busy={}, log_frames={}, checkpointed_frames={}",
+                status.busy, status.log_frames, status.checkpointed_frames
+            )))
+        }
+    }
+
+    /// Share the full observation with forgetting, whose caller must retain
+    /// the already-committed receipt when this cleanup cannot be confirmed.
+    pub(crate) fn checkpoint_status(&self) -> StoreResult<WalCheckpoint> {
         self.conn
             .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
-                row.get::<_, i64>(0)
+                Ok(WalCheckpoint {
+                    busy: row.get(0)?,
+                    log_frames: row.get(1)?,
+                    checkpointed_frames: row.get(2)?,
+                })
             })
-            .map(|_| ())
             .map_err(backend)
     }
 
@@ -1120,6 +1163,51 @@ impl GraphStore for SqlCipherStore {
             out.push(from_doc(&row.map_err(backend)?)?);
         }
         Ok(out)
+    }
+}
+
+impl SqlCipherStore {
+    /// Scalar preflight for this one event field; does not fetch ciphertext.
+    pub fn event_body_plaintext_bytes(
+        &self,
+        event_id: Uuid,
+        sealed: &SealedText,
+    ) -> StoreResult<u64> {
+        self.sealed_plaintext_bytes_for_field(event_id, "body_ref", sealed)
+    }
+
+    pub(crate) fn sealed_plaintext_bytes_for_field(
+        &self,
+        row_id: Uuid,
+        field: &str,
+        sealed: &SealedText,
+    ) -> StoreResult<u64> {
+        let invalid = || StoreError::ContractViolation("LOCAL_SOURCE_UNAVAILABLE".to_owned());
+        if sealed.aad.as_deref() != Some(field_aad(&row_id, field).as_str())
+            || !self.has_content_key(sealed.content_key_id)
+            || self.content_key_destroyed(sealed.content_key_id)?
+        {
+            return Err(invalid());
+        }
+        let row: Option<(String, String, String, String, i64, i64)> = self.conn.query_row(
+            "SELECT row_id,field,content_key_id,subject,length(ciphertext),length(nonce) FROM sealed_blobs WHERE blob_id=?1",
+            [sealed.blob_id.to_string()],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+        ).optional().map_err(backend)?;
+        let (actual_row, actual_field, key, subject, bytes, nonce_bytes) =
+            row.ok_or_else(invalid)?;
+        if actual_row != row_id.to_string()
+            || actual_field != field
+            || key != sealed.content_key_id.to_string()
+            || subject != enum_text(&sealed.subject)?
+            || nonce_bytes != std::mem::size_of::<XNonce>() as i64
+        {
+            return Err(invalid());
+        }
+        let bytes = u64::try_from(bytes).map_err(|_| invalid())?;
+        bytes
+            .checked_sub(std::mem::size_of::<chacha20poly1305::Tag>() as u64)
+            .ok_or_else(invalid)
     }
 }
 

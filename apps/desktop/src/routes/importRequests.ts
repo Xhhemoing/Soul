@@ -36,6 +36,17 @@ export class ImportRequests {
     return true;
   }
 
+  /**
+   * A queued file-input change can clear the selection after reading starts.
+   * Drop that read's page ownership; an already-started core preview continues.
+   * Clearing a selection must never abandon an already-started commit.
+   */
+  clearSelection(): boolean {
+    if (!this.active || this.writing !== null) return false;
+    this.invalidate();
+    return true;
+  }
+
   beginRead(format: ImportFormat): ImportRead | null {
     if (!this.active || this.reading !== null || this.writing !== null) return null;
     this.ready = null;

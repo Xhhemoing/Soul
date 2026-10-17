@@ -36,6 +36,7 @@ pub mod analysis;
 pub mod brief;
 pub mod draft;
 pub mod error;
+pub mod memory_context;
 pub mod projection;
 pub mod reply;
 pub mod template;
@@ -50,6 +51,10 @@ pub use draft::{
     DEGRADED_NOTICE, ENDPOINT_NOTICE, NOT_SENT_NOTICE, TEMPLATE_NOTICE,
 };
 pub use error::{DraftError, DraftResult, GenerationRefused};
+pub use memory_context::{
+    EndpointMemoryUse, MemoryContext, MemoryContextEntry, MemoryContextError, MemoryContextPrivacy,
+    RedactedMemoryContext, LOCAL_MEMORY_PLACEHOLDER,
+};
 pub use projection::{
     project as project_demotion_clock, ClockReading, ProjectedBullet, PROJECTION_STATEMENT_KEYS,
 };

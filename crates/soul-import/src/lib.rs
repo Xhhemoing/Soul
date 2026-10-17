@@ -40,6 +40,7 @@
 
 pub mod commit;
 pub mod defect;
+pub mod indexed;
 pub mod instant;
 pub mod model;
 pub mod questionnaire;

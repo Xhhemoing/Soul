@@ -1,0 +1,11 @@
+flowchart TD
+  UI["起草页：输入与确认归属"] --> BRIDGE["core.ts：资料代次与在途变更"]
+  BRIDGE --> PREP["Session 锁内：准备快照与一次性许可"]
+  PREP --> WORK["锁外 worker：HTTP 与回复解析"]
+  WORK --> COMPLETE["Session 锁内：审计、代次与期限校验"]
+  COMPLETE --> CURRENT["WebView 交付前再次校验"]
+  CURRENT --> UI
+  CHANGE["端点撤回 / 资料修改 / 丢弃准备"] --> PREP
+  CHANGE --> COMPLETE
+  CHANGE --> BRIDGE
+  COMPLETE --> REJECT["失效：保留出网记录，不显示草稿"]

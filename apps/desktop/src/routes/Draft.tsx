@@ -23,25 +23,44 @@
  * this file. What is decided here is layout.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import {
   discardDraft,
   draftNotices,
   draftReply,
+  DraftSourceChangedError,
   generateDraft,
+  getDraftSourceRevision,
   prepareDraft,
+  draftReplyWithMemory,
+  prepareDraftWithMemory,
+  localDraftWithInsight,
+  prepareDraftWithInsight,
+  subscribeDraftSource,
   type Draft as DraftValue,
   type DraftNotices,
   type E1DraftPlan,
   type Refusal,
+  type MemoryDraftPlan,
+  type InsightDraftPlan,
 } from "../core";
 import { asRefusal, Refused } from "../refusal";
+import {
+  draftLane, DraftRequests, isDraftRefusal,
+  type DraftQuote, type DraftRequestKind, type DraftTicket,
+} from "./draftRequests";
+import { DraftMemory, MemoryReferences, type MemoryTask } from "./DraftMemory";
+import { requestDraftDiscard } from "./draftDiscard";
+import { DraftInsights, InsightReferences, type InsightTask } from "./DraftInsights";
+import { draftInsightSelection, draftMaterialSelection } from "./draftMaterialSelection";
 
 /** What the core said, in the shape the screen renders it. */
 type Outcome =
   | { readonly kind: "none" }
   | { readonly kind: "working" }
+  | { readonly kind: "unknown" }
+  | { readonly kind: "source_changed" }
   | { readonly kind: "draft"; readonly draft: DraftValue }
   | { readonly kind: "refused"; readonly refusal: Refusal };
 
@@ -52,16 +71,44 @@ const DEGRADED: Record<string, string> = {
 };
 
 export function Draft(): React.JSX.Element {
-  const [pasted, setPasted] = useState("");
+  const [input, setInput] = useState({ text: "", revision: 0 });
+  const [requests] = useState(() => new DraftRequests());
+  const lane = useSyncExternalStore(draftLane.subscribe, draftLane.snapshot);
   const [outcome, setOutcome] = useState<Outcome>({ kind: "none" });
   const [notices, setNotices] = useState<DraftNotices | null>(null);
   /** The request the user is being asked about, if there is one. */
-  const [plan, setPlan] = useState<E1DraftPlan | null>(null);
+  const [quote, setQuote] = useState<DraftQuote | null>(null);
   /** Keys [`Result`], so a second draft arrives in a box that was reset. */
   const [attempt, setAttempt] = useState(0);
+  const [memory, setMemory] = useState<MemoryTask | null>(null);
+  const [memoryPlan, setMemoryPlan] = useState<MemoryDraftPlan | null>(null);
+  const selection = useSyncExternalStore(draftInsightSelection.subscribe, draftInsightSelection.snapshot);
+  const [insight, setInsight] = useState<InsightTask | null>(null);
+  const [insightPlan, setInsightPlan] = useState<InsightDraftPlan | null>(null);
+  const pasteGeneration = useRef(0);
+  const materialGeneration = draftMaterialSelection.generation();
+  const renderedHash = window.location.hash;
 
   useEffect(() => {
     let live = true;
+    requests.activate();
+    let source = getDraftSourceRevision();
+    const unsubscribe = subscribeDraftSource((next) => {
+      if (next === source) return;
+      source = next;
+      const revision = requests.invalidate();
+      setInput((previous) => ({ ...previous, revision }));
+      setQuote(null);
+      setOutcome({ kind: "none" });
+      setMemory(null);
+      setMemoryPlan(null);
+      setInsight(null); setInsightPlan(null);
+    });
+    const unsubscribeSelection = draftMaterialSelection.subscribe(() => {
+      const revision = requests.invalidate();
+      setInput((previous) => ({ ...previous, revision }));
+      setQuote(null); setMemory(null); setMemoryPlan(null); setInsight(null); setInsightPlan(null); setOutcome({ kind: "none" });
+    });
     draftNotices().then(
       (value) => {
         if (live) setNotices(value);
@@ -74,17 +121,73 @@ export function Draft(): React.JSX.Element {
     );
     return () => {
       live = false;
+      unsubscribe();
+      unsubscribeSelection();
+      requests.dispose();
+      if (draftInsightSelection.snapshot() !== null) requestDraftDiscard();
     };
-  }, []);
+  }, [requests]);
+
+  const start = (kind: DraftRequestKind, expected?: DraftQuote): DraftTicket | null => {
+    if (materialGeneration !== draftMaterialSelection.generation() || renderedHash !== window.location.hash) return null;
+    if ((kind === "local" || kind === "prepare") && ((selection !== null && (insight === null || insight.context_id === null)) || (memory !== null && memory.context.context_id === null))) return null;
+    const ticket = requests.begin(kind, input.revision, expected);
+    if (ticket === null) return null;
+    setOutcome({ kind: "working" });
+    setQuote(null);
+    if (kind === "prepare" || kind === "original" || kind === "local") { setMemoryPlan(null); setInsightPlan(null); }
+    setAttempt((previous) => previous + 1);
+    return ticket;
+  };
+
+  const failed = (ticket: DraftTicket, error: unknown): void => {
+    const known = isDraftRefusal(error);
+    const changed = error instanceof DraftSourceChangedError;
+    if (requests.finish(ticket, !known && !changed)) {
+      setOutcome(changed ? { kind: "source_changed" }
+        : known ? { kind: "refused", refusal: asRefusal(error) } : { kind: "unknown" });
+      if (insight !== null) setInsight({ ...insight, context_id: null, include_counts: false });
+    }
+  };
+
+  // Admission happens before React renders disabled buttons. Ownership is
+  // checked again at the microtask that actually starts IPC, so a synchronous
+  // edit/unmount cannot accidentally start a stale approval or exemption.
+  const run = (ticket: DraftTicket, work: () => Promise<void>): void => {
+    void Promise.resolve().then(async () => {
+      if (!requests.owns(ticket) || materialGeneration !== draftMaterialSelection.generation() || renderedHash !== window.location.hash) {
+        requests.finish(ticket);
+        return;
+      }
+      try {
+        await work();
+      } catch (error: unknown) {
+        failed(ticket, error);
+      }
+    });
+  };
+  const finish = (ticket: DraftTicket): boolean => requests.finish(ticket)
+    && materialGeneration === draftMaterialSelection.generation() && renderedHash === window.location.hash;
 
   const write = (): void => {
-    setOutcome({ kind: "working" });
-    setPlan(null);
-    setAttempt((previous) => previous + 1);
-    draftReply(pasted).then(
-      (draft) => setOutcome({ kind: "draft", draft }),
-      (error: unknown) => setOutcome({ kind: "refused", refusal: asRefusal(error) }),
-    );
+    const ticket = start("local");
+    if (ticket === null) return;
+    run(ticket, async () => {
+      if (selection !== null && insight?.context_id !== null && insight?.context_id !== undefined) {
+        const result = await localDraftWithInsight(ticket.text, insight.context_id);
+        if (finish(ticket)) {
+          setOutcome({ kind: "draft", draft: result.draft });
+          setInsight({ context_id: null, reference: result.reference, include_counts: false });
+        }
+        return;
+      }
+      const result = memory?.context.context_id === undefined || memory.context.context_id === null
+        ? { draft: await draftReply(ticket.text), context: null } : await draftReplyWithMemory(ticket.text, memory.context.context_id);
+      if (finish(ticket)) {
+        setOutcome({ kind: "draft", draft: result.draft });
+        if (result.context !== null) setMemory({ context: { context_id: null, preview: result.context }, owner_ids: [] });
+      }
+    });
   };
 
   /**
@@ -95,37 +198,83 @@ export function Draft(): React.JSX.Element {
    * same paste with it set, and every later preparation starts from false
    * again because there is no variable here that survives one.
    */
-  const describe = (includeOriginal = false): void => {
-    setOutcome({ kind: "working" });
-    setPlan(null);
-    prepareDraft(pasted, includeOriginal).then(
-      (prepared) => {
-        setPlan(prepared);
+  const describe = (expected?: DraftQuote): void => {
+    const ticket = start(expected === undefined ? "prepare" : "original", expected);
+    if (ticket === null) return;
+    run(ticket, async () => {
+      if (selection !== null && insight?.context_id !== null && insight?.context_id !== undefined) {
+        const material = await prepareDraftWithInsight(ticket.text, insight.context_id, insight.include_counts, expected !== undefined);
+        const next = requests.remember(ticket, material.prepared.plan);
+        if (finish(ticket) && next !== null) {
+          setQuote(next); setOutcome({ kind: "none" }); setInsightPlan(material);
+          setInsight({ ...insight, reference: material.reference, include_counts: material.prepared.includes_counts });
+        }
+        return;
+      }
+      const material = memory?.context.context_id === undefined || memory.context.context_id === null
+        ? null : await prepareDraftWithMemory(ticket.text, memory.context.context_id, memory.owner_ids, expected !== undefined);
+      const prepared = material === null ? await prepareDraft(ticket.text, expected !== undefined) : material.prepared.plan;
+      const next = requests.remember(ticket, prepared);
+      if (finish(ticket) && next !== null) {
+        setQuote(next);
         setOutcome({ kind: "none" });
-      },
-      (error: unknown) => setOutcome({ kind: "refused", refusal: asRefusal(error) }),
-    );
+        setMemoryPlan(material);
+        if (material !== null) setMemory({
+          context: { context_id: memory?.context.context_id ?? null, preview: material.context },
+          owner_ids: material.prepared.endpoint_owner_ids,
+        });
+      }
+    });
   };
 
   /** Step two: hand back the value that was on screen, unchanged. */
-  const approve = (approved: E1DraftPlan): void => {
-    setOutcome({ kind: "working" });
-    setPlan(null);
-    setAttempt((previous) => previous + 1);
-    generateDraft({
-      preparation_id: approved.preparation_id,
-      plan_hash: approved.plan_hash,
-    }).then(
-      (draft) => setOutcome({ kind: "draft", draft }),
-      (error: unknown) => setOutcome({ kind: "refused", refusal: asRefusal(error) }),
-    );
+  const approve = (approved: DraftQuote): void => {
+    const ticket = start("generate", approved);
+    if (ticket === null) return;
+    run(ticket, async () => {
+      const draft = await generateDraft({
+        preparation_id: approved.plan.preparation_id,
+        plan_hash: approved.plan.plan_hash,
+      });
+      if (finish(ticket)) {
+        setOutcome({ kind: "draft", draft });
+        if (memory !== null) setMemory({ ...memory, context: { ...memory.context, context_id: null }, owner_ids: [] });
+        if (insight !== null) setInsight({ ...insight, context_id: null });
+      }
+    });
   };
 
-  const abandon = (): void => {
-    setPlan(null);
-    setOutcome({ kind: "none" });
-    void discardDraft();
+  const abandon = (abandoned: DraftQuote): void => {
+    const ticket = start("discard", abandoned);
+    if (ticket === null) return;
+    run(ticket, async () => {
+      await discardDraft();
+      if (finish(ticket)) {
+        setOutcome({ kind: "none" });
+        setMemory(null); setMemoryPlan(null);
+        setInsight(null); setInsightPlan(null);
+      }
+    });
   };
+
+  const edit = (text: string): void => {
+    pasteGeneration.current += 1;
+    if (quote !== null || memory !== null || insight !== null || draftLane.isPreparing()) requestDraftDiscard();
+    setInput({ text, revision: requests.edit(text) });
+    setQuote(null);
+    setOutcome({ kind: "none" });
+    setMemory(null); setMemoryPlan(null);
+    setInsight(null); setInsightPlan(null);
+  };
+
+  const memoryEdit = (): void => {
+    if (quote !== null || memory !== null || insight !== null || draftLane.isPreparing()) requestDraftDiscard();
+    setMemory(null); setMemoryPlan(null); setQuote(null); setOutcome({ kind: "none" });
+    setInsight(null); setInsightPlan(null);
+    setInput((previous) => ({ ...previous, revision: requests.invalidate() }));
+  };
+  const unusableMemory = memory !== null && memory.context.context_id === null;
+  const unusableInsight = selection !== null && (insight === null || insight.context_id === null);
 
   return (
     <>
@@ -143,8 +292,8 @@ export function Draft(): React.JSX.Element {
           id="pasted"
           className="paste-box"
           rows={6}
-          value={pasted}
-          onChange={(event) => setPasted(event.target.value)}
+          value={input.text}
+          onChange={(event) => edit(event.target.value)}
           placeholder="把对方发给你的消息贴在这里"
         />
         <div className="switch-row">
@@ -152,14 +301,14 @@ export function Draft(): React.JSX.Element {
             type="button"
             className="primary"
             onClick={write}
-            disabled={pasted.trim() === "" || outcome.kind === "working"}
+            disabled={input.text.trim() === "" || lane.busy || unusableMemory || unusableInsight}
           >
             写一版草稿
           </button>
           <button
             type="button"
             onClick={() => describe()}
-            disabled={pasted.trim() === "" || outcome.kind === "working"}
+            disabled={input.text.trim() === "" || lane.busy || lane.uncertain || unusableMemory || unusableInsight}
           >
             用你自己的模型端点写
           </button>
@@ -169,19 +318,57 @@ export function Draft(): React.JSX.Element {
             </span>
           )}
         </div>
+        {lane.busy ? (
+          <p role="status">正在等待本次操作结束。修改原文会使旧结果失效，不会取消已经开始的操作。</p>
+        ) : null}
+        {lane.uncertain ? (
+          <p role="alert" data-testid="draft-recovery">
+            上一次端点操作的结果未能确认。为避免旧操作影响新的准备，端点起草已暂停，
+            不会自动重试。请保留原文，完全退出并重新打开应用后再准备；本机模板仍可使用。
+          </p>
+        ) : null}
       </section>
 
-      {plan === null ? null : (
+      {selection === null ? <DraftMemory value={memory} busy={lane.busy || lane.uncertain} hasQuote={quote !== null} getHasQuote={() => requests.hasQuote()} getPasteGeneration={() => pasteGeneration.current} onEdit={memoryEdit} onChange={(value) => {
+        setMemory(value); setQuote(null); setMemoryPlan(null); setOutcome({ kind: "none" });
+        setInput((previous) => ({ ...previous, revision: requests.invalidate() }));
+      }} /> : <DraftInsights key={selection.revision} selection={selection} value={insight} busy={lane.busy || lane.uncertain} canClear={!lane.busy} hasQuote={quote !== null} getHasQuote={() => requests.hasQuote()}
+        getPasteGeneration={() => pasteGeneration.current} onClear={() => draftInsightSelection.clear()} onChange={(value) => {
+          setInsight(value); setMemory(null); setMemoryPlan(null); setQuote(null); setInsightPlan(null); setOutcome({ kind: "none" });
+          setInput((previous) => ({ ...previous, revision: requests.invalidate() }));
+        }} />}
+      {insightPlan === null ? null : <section className="panel"><h2>这份准备实际保留的统计材料</h2>
+        <InsightReferences reference={insightPlan.reference} />
+        <p>完整请求 UTF-8 JSON：{insightPlan.prepared.encoded_bytes} 字节（含固定指令和围栏，不是 token 数）。</p>
+        <p>{insightPlan.prepared.includes_counts ? "本次模型请求包含已勾选的匿名 A2 派生计数。" : "本次模型请求未获得统计计数，仅保留本地参考标记。"}</p>
+        <details><summary>查看实际脱敏统计材料</summary><pre className="pre-wrap">{insightPlan.prepared.body_preview}</pre></details>
+      </section>}
+      {memoryPlan === null ? null : <section className="panel"><h2>这份准备实际保留的记忆与端点材料</h2>
+        <MemoryReferences preview={memoryPlan.context} /><p>完整请求 UTF-8 JSON：{memoryPlan.prepared.encoded_bytes} 字节（含固定指令和围栏，不是 token 数）。</p>
+        <p>明确提供的本人记录：{memoryPlan.prepared.endpoint_owner_ids.join("、") || "无，记忆正文保持本地"}</p>
+        <details><summary>查看实际脱敏材料</summary><pre className="pre-wrap">{memoryPlan.prepared.body_preview}</pre></details>
+      </section>}
+      {quote === null ? null : (
         <Confirm
-          plan={plan}
-          onApprove={approve}
-          onCarryOriginal={() => describe(true)}
-          onAbandon={abandon}
+          plan={quote.plan}
+          onApprove={() => approve(quote)}
+          onCarryOriginal={() => describe(quote)}
+          onAbandon={() => abandon(quote)}
         />
       )}
 
       {outcome.kind === "refused" ? (
-        <Refused title="这一次没有写成" refusal={outcome.refusal} testId="refusal-code" />
+        <Refused title="这一次未得到可用草稿" refusal={outcome.refusal} testId="refusal-code" />
+      ) : null}
+
+      {outcome.kind === "unknown" && !lane.uncertain ? (
+        <p role="alert">未能确认这次操作的结果。原文仍然保留，请核对后再决定下一步。</p>
+      ) : null}
+
+      {outcome.kind === "source_changed" ? (
+        <p role="status" data-testid="draft-source-changed">
+          资料或端点正在更新，或已经发生变化。请等相关操作完成后重新准备；原文仍然保留。
+        </p>
       ) : null}
 
       {outcome.kind === "draft" ? <Result key={attempt} draft={outcome.draft} /> : null}

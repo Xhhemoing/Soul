@@ -235,7 +235,7 @@ describe("人脉图页", () => {
     const tie = screen.getByTestId(`tie-${TIE_ID}`);
 
     const bands = within(tie)
-      .getAllByRole("button")
+      .getAllByRole("button", { name: /^(弱|中等|强)$/ })
       .map((button) => button.textContent);
     expect(bands).toEqual(["弱", "中等", "强"]);
     for (const band of bands) {

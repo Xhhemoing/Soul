@@ -705,10 +705,18 @@ fn an_export_over_the_byte_budget_is_refused_before_anything_reads_it() {
     let oversized = "a".repeat(MAX_IMPORT_BYTES + 1);
 
     for refusal in [
-        session.preview_soul_import_v1(&oversized).expect_err("over budget"),
-        session.preview_telegram(&oversized).expect_err("over budget"),
-        session.commit_soul_import_v1(&oversized).expect_err("over budget"),
-        session.commit_telegram(&oversized).expect_err("over budget"),
+        session
+            .preview_soul_import_v1(&oversized)
+            .expect_err("over budget"),
+        session
+            .preview_telegram(&oversized)
+            .expect_err("over budget"),
+        session
+            .commit_soul_import_v1(&oversized)
+            .expect_err("over budget"),
+        session
+            .commit_telegram(&oversized)
+            .expect_err("over budget"),
     ] {
         assert_eq!(refusal.reason_code, "ROUTINE");
         // Exactly the budget sentence: a parse sentence here would mean
@@ -728,8 +736,7 @@ fn an_export_with_a_body_over_the_length_budget_is_counted_not_quoted() {
     let (keep, directory) = scratch();
     let mut session = Session::open(&directory);
     let blob = "长".repeat(MAX_MESSAGE_CHARS + 1);
-    let header =
-        r#"{"type":"header","format":"soul-import-v1","version":1,"exported_at":"2026-09-27T08:00:00Z"}"#;
+    let header = r#"{"type":"header","format":"soul-import-v1","version":1,"exported_at":"2026-09-27T08:00:00Z"}"#;
     let message = format!(
         r#"{{"type":"message","id":"m-0001","occurred_at":"2026-09-27T08:01:00Z","sender_scope":"self","conversation_id":"c-01","sender_id":"u-self","text":"{blob}"}}"#,
     );
@@ -745,7 +752,11 @@ fn an_export_with_a_body_over_the_length_budget_is_counted_not_quoted() {
             "{}",
             refusal.explanation,
         );
-        assert!(refusal.explanation.contains("1 条超长"), "{}", refusal.explanation);
+        assert!(
+            refusal.explanation.contains("1 条超长"),
+            "{}",
+            refusal.explanation
+        );
         assert!(
             !refusal.explanation.contains("长长"),
             "the refusal quoted the body: {}",

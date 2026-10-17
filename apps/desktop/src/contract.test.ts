@@ -100,7 +100,7 @@ describe("壳与核心的边界", () => {
 
   it("界面用的命令名和 src-tauri 注册的一模一样", () => {
     const registered = readFileSync(TAURI_COMMANDS_RS, "utf8");
-    const declared = [...registered.matchAll(/#\[tauri::command\]\s*pub fn (\w+)\s*\(/g)].map(
+    const declared = [...registered.matchAll(/#\[tauri::command\]\s*pub (?:async )?fn (\w+)\s*\(/g)].map(
       (match) => match[1],
     );
     expect(declared.sort()).toEqual([...Object.values(COMMANDS)].sort());

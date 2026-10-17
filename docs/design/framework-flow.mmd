@@ -1,0 +1,12 @@
+flowchart TD
+  UI["用户意图与编辑代次"] --> PREP["准备：档案与证据快照"]
+  STORE["现有密封存储与领域服务"] --> PREP
+  PREP --> SELECT["用途过滤、冲突检查、预算选择"]
+  SELECT --> REVIEW["材料预览与本次批准"]
+  REVIEW --> CTRL["控制状态：版本、超时、一次许可"]
+  REVOKE["撤权或来源变化"] --> CTRL
+  CTRL --> WORK["锁外执行：既有策略与出网"]
+  WORK --> CHECK["校验结果与最新状态"]
+  CTRL --> CHECK
+  CHECK --> RESULT["草稿与证据，或拒收与澄清"]
+  RESULT --> UI

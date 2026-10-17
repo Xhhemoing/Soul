@@ -1,348 +1,179 @@
-/**
- * 导入. Point at one exported file, read what is in it, then decide.
- *
- * Two formats and no third way in. There is no OAuth here, no account to sign
- * into and no archive to unpack: the file is chosen by the user in an
- * `<input type="file">`, the WebView reads its text, and the text crosses the
- * IPC to `soulcore`, which does the parsing. The shell has no file-system
- * permission of its own and the core opens no paths, so the only file Soul
- * can read is the one somebody pointed at.
- *
- * What comes back from either half is counts. `ImportPreview` and
- * `ImportReceipt` have no field that could hold a message, a display name or
- * an account handle, so "the preview does not quote the file" is a property of
- * the types rather than a rule this component follows. The file's own text is
- * held here between the two clicks because the core re-parses it on commit
- * rather than keeping somebody's export staged in memory — it is never
- * rendered, and there is nothing on screen it could reach.
- */
-
-import { useEffect, useRef, useState } from "react";
-
+/** Local immutable import preparations, exact confirmation, and durable recovery. */
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
-  commitSoulImportV1,
-  commitTelegram,
-  IMPORT_OVER_BYTE_BUDGET_NOTICE,
-  MAX_IMPORT_BYTES,
-  previewSoulImportV1,
-  previewTelegram,
-  type ImportPreview,
-  type ImportReceipt,
-  type Refusal,
+  confirmImport, discardImport, importOperation, listImportNamespaces, prepareImport, recentImportOperations,
+  importRecoveryState,
+  MAX_IMPORT_BYTES, IMPORT_OVER_BYTE_BUDGET_NOTICE,
+  type ImportNamespace, type ImportOperationView, type ImportSource, type PreparedImport, type Refusal,
 } from "../core";
 import { asRefusal, Refused } from "../refusal";
-import { ImportRequests, type ImportFormat as Format, type ImportRead } from "./importRequests";
+import { DurableImport, durableImport } from "./durableImport";
+import { LocalInsights } from "./LocalInsights";
 
-interface StagedImport {
-  readonly request: ImportRead;
-  readonly text: string;
-  readonly preview: ImportPreview;
-}
-
-interface FormatChoice {
-  readonly format: Format;
-  readonly label: string;
-  readonly detail: string;
-  readonly accept: string;
-}
-
-const FORMATS: readonly FormatChoice[] = [
-  {
-    format: "soul-import-v1",
-    label: "soul-import-v1 JSONL",
-    detail:
-      "Soul 自己的导入格式：一份 .jsonl 文件，第一行是表头，后面每行一条 JSON，一行一条消息。",
-    accept: ".jsonl,.json,.txt",
-  },
-  {
-    format: "telegram-desktop",
-    label: "Telegram Desktop 的 result.json",
-    detail:
-      "Telegram Desktop：Settings → Advanced → Export Telegram data，选 Machine-readable JSON。导出目录里的 result.json 直接选它就行。单聊的 Export chat history 是另一形状，认不得。",
-    accept: ".json",
-  },
-];
-
-function chosen(format: Format): FormatChoice {
-  return FORMATS.find((choice) => choice.format === format) ?? (FORMATS[0] as FormatChoice);
-}
-
-export function Import(): React.JSX.Element {
-  const [format, setFormat] = useState<Format>("soul-import-v1");
-  /** Only a successfully previewed file can be committed, with its own format. */
-  const [staged, setStaged] = useState<StagedImport | null>(null);
-  const [characters, setCharacters] = useState(0);
-  const [receipt, setReceipt] = useState<ImportReceipt | null>(null);
+export function Import({ lane = durableImport }: { readonly lane?: DurableImport } = {}): React.JSX.Element {
+  const state = useSyncExternalStore(lane.subscribe, lane.snapshot);
+  const [format, setFormat] = useState<ImportSource>("soul-import-v1");
+  const [namespace, setNamespace] = useState("");
+  const [forward, setForward] = useState(false);
+  const [namespaces, setNamespaces] = useState<readonly ImportNamespace[]>([]);
+  const [prepared, setPrepared] = useState<PreparedImport | null>(null);
+  const [rows, setRows] = useState<readonly ImportOperationView[]>([]);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
-  const [busy, setBusy] = useState(false);
-  const requests = useRef(new ImportRequests());
-  const fileInput = useRef<HTMLInputElement>(null);
+  const [lookup, setLookup] = useState(state.operationId ?? "");
+  const [checking, setChecking] = useState(false);
+  const [namespaceRefresh, setNamespaceRefresh] = useState(0);
+  const [namespaceError, setNamespaceError] = useState<string | null>(null);
+  const namespaceRevision = useRef(0);
+  const owner = useRef<symbol | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const queryOwner = useRef<symbol | null>(null);
 
   useEffect(() => {
-    const current = requests.current;
-    current.activate();
-    return () => current.deactivate();
+    const mount = Symbol("import route"); owner.current = mount;
+    return () => { if (owner.current === mount) owner.current = null; queryOwner.current = null; };
   }, []);
 
-  const clearPreview = (): void => {
-    if (fileInput.current !== null) fileInput.current.value = "";
-    setStaged(null);
-    setCharacters(0);
-    setReceipt(null);
-    setRefusal(null);
-    setBusy(false);
-  };
+  useEffect(() => {
+    const mount = owner.current; const receipt = state.receipt;
+    let active = true;
+    const current = (): boolean => active && mount !== null && owner.current === mount
+      && namespaceRevision.current === namespaceRefresh && lane.snapshot().receipt === receipt;
+    void listImportNamespaces().then((value) => {
+      if (current()) { setNamespaces(value); setNamespaceError(null); }
+    }, () => {
+      if (current()) setNamespaceError("来源列表暂时无法更新，请点击“核对最近记录”重试。");
+    });
+    return () => { active = false; };
+  }, [lane, state.receipt, namespaceRefresh]);
 
-  const forget = (): boolean => {
-    if (!requests.current.reset()) return false;
-    clearPreview();
-    return true;
+  const reset = (): void => {
+    setPrepared(null); setRefusal(null); if (input.current !== null) input.current.value = "";
   };
-
-  const read = async (file: File | undefined): Promise<void> => {
-    if (file === undefined) {
-      forget();
-      return;
-    }
-    const request = requests.current.beginRead(format);
-    if (request === null) return;
-    clearPreview();
-    // The core's own byte budget, checked against the size on disk before
-    // anything is read: `file.text()` would hold the whole file in the
-    // WebView, and the core would then refuse it with this same sentence.
-    // The sentence and the number are the core's constants — this screen
-    // composes nothing, it only says the refusal a byte earlier.
-    if (file.size > MAX_IMPORT_BYTES) {
-      requests.current.finishRead(request, false);
-      setRefusal({ reason_code: "ROUTINE", explanation: IMPORT_OVER_BYTE_BUDGET_NOTICE });
-      return;
-    }
-    setBusy(true);
+  const read = async (file?: File): Promise<void> => {
+    if (file === undefined || state.busy || state.unknown) return;
+    const ticket = owner.current; reset();
     try {
-      const contents = await file.text();
-      if (!requests.current.isReading(request)) return;
-      setCharacters(contents.length);
-      const preview = await (request.format === "telegram-desktop"
-        ? previewTelegram(contents)
-        : previewSoulImportV1(contents));
-      if (!requests.current.finishRead(request, true)) return;
-      setStaged({ request, text: contents, preview });
-      setBusy(false);
-    } catch (error: unknown) {
-      if (!requests.current.finishRead(request, false)) return;
-      setCharacters(0);
-      setRefusal(asRefusal(error));
-      setBusy(false);
-    }
+      await lane.run(async () => {
+        if (file.size > MAX_IMPORT_BYTES) throw { reason_code: "ROUTINE", explanation: IMPORT_OVER_BYTE_BUDGET_NOTICE };
+        const text = await file.text();
+        if (ticket === null || ticket !== owner.current) return;
+        const result = await prepareImport({ text, source: format, namespace_id: namespace || null, legacy_choice: forward ? "forward_only" : "reject" });
+        lane.remember(result.operation.operation_id);
+        if (owner.current === ticket) { setPrepared(result); setLookup(result.operation.operation_id); }
+      }, null);
+    } catch (error: unknown) { if (owner.current === ticket) setRefusal(asRefusal(error)); }
+    finally { if (input.current !== null && owner.current === ticket) input.current.value = ""; }
   };
-
-  const commit = async (): Promise<void> => {
-    if (staged === null || !staged.preview.owner_identified) return;
-    const request = requests.current.beginCommit(staged.request);
-    if (request === null) return;
-    setBusy(true);
-    setRefusal(null);
+  const confirm = async (): Promise<void> => {
+    if (prepared === null) return;
+    const ticket = owner.current; const approved = prepared; setRefusal(null);
     try {
-      const value = await (staged.request.format === "telegram-desktop"
-        ? commitTelegram(staged.text)
-        : commitSoulImportV1(staged.text));
-      if (!requests.current.finishCommit(request, true)) return;
-      setReceipt(value);
-      setStaged(null);
-      setCharacters(0);
-      if (fileInput.current !== null) fileInput.current.value = "";
-      setBusy(false);
+      await lane.run(async () => {
+        lane.remember(approved.operation.operation_id);
+        const result = await confirmImport(approved.operation.operation_id, approved.operation.preview_id);
+        lane.observed(result);
+      });
+      if (ticket === owner.current) setPrepared(null);
     } catch (error: unknown) {
-      if (!requests.current.finishCommit(request, false)) return;
-      setRefusal(asRefusal(error));
-      setBusy(false);
+      if (ticket === owner.current) { setPrepared(null); setRefusal(asRefusal(error)); }
     }
   };
+  const discard = async (): Promise<void> => {
+    if (prepared === null) return;
+    const id = prepared.operation.operation_id; const ticket = owner.current;
+    try { await lane.run(() => discardImport(id)); if (owner.current === ticket) reset(); }
+    catch (error: unknown) { if (owner.current === ticket) setRefusal(asRefusal(error)); }
+  };
+  const discardKnown = async (id: string): Promise<void> => {
+    const mount = owner.current;
+    try {
+      const result = await lane.run(() => discardImport(id), id, true);
+      lane.observed(result);
+      if (mount !== owner.current) return;
+      setRows((previous) => previous.map((row) => row.operation.operation_id === id ? result : row));
+      setPrepared(null);
+    } catch (error: unknown) { if (mount === owner.current) setRefusal(asRefusal(error)); }
+  };
+  const check = async (id?: string): Promise<void> => {
+    if (state.busy || queryOwner.current !== null) return;
+    const query = Symbol("receipt lookup"); const mount = owner.current;
+    const generation = lane.generation();
+    queryOwner.current = query; setChecking(true); setRefusal(null);
+    try {
+      const result = id === undefined ? await recentImportOperations() : [await importOperation(id)];
+      if (queryOwner.current !== query || owner.current !== mount || generation !== lane.generation()) return;
+      lane.checked(result, generation);
+      setRows(result);
+      if (id === undefined) {
+        const recovery = await importRecoveryState();
+        if (queryOwner.current !== query || owner.current !== mount || generation !== lane.generation()) return;
+        lane.recovered(recovery, generation);
+      }
+      for (const row of result) if (row.operation.state === "committed") { lane.observed(row, generation); break; }
+      if (queryOwner.current === query && owner.current === mount && generation === lane.generation()) {
+        namespaceRevision.current += 1;
+        setNamespaceRefresh(namespaceRevision.current);
+      }
+    } catch (error: unknown) { if (owner.current === mount) setRefusal(asRefusal(error)); }
+    finally { if (queryOwner.current === query) { queryOwner.current = null; setChecking(false); } }
+  };
+  const blocked = state.busy || state.unknown || prepared !== null || checking;
 
-  return (
-    <>
-      <section className="panel" aria-labelledby="import-heading">
-        <h2 id="import-heading">从导出的文件里读往来记录</h2>
-        <p className="muted">
-          这一版只认下面两种文件，都是你自己从别的软件里导出来的。Soul 不登录任何账号，不联网去取，
-          也不去解压压缩包：你挑哪个文件，它就只读那一个文件。
-        </p>
-        <ul className="facts">
-          {FORMATS.map((choice) => (
-            <li key={choice.format}>
-              <label className="field" htmlFor={`format-${choice.format}`}>
-                <input
-                  id={`format-${choice.format}`}
-                  type="radio"
-                  name="import-format"
-                  value={choice.format}
-                  checked={format === choice.format}
-                  disabled={busy}
-                  onChange={() => {
-                    if (forget()) setFormat(choice.format);
-                  }}
-                />{" "}
-                {choice.label}
-              </label>
-              <span className="muted">{choice.detail}</span>
-            </li>
-          ))}
-        </ul>
-
-        <label className="field" htmlFor="import-file">
-          选择文件
-        </label>
-        <input
-          id="import-file"
-          ref={fileInput}
-          className="text-input"
-          type="file"
-          accept={chosen(format).accept}
-          disabled={busy}
-          onChange={(event) => void read(event.target.files?.[0])}
-        />
-        {busy ? (
-          <p className="muted" role="status">
-            正在读取或导入文件，请稍候。
-          </p>
-        ) : null}
-        {characters === 0 ? null : (
-          <p className="muted" data-testid="import-file-size">
-            读到 {characters} 个字符，正文没有显示在这个页面上。
-          </p>
-        )}
-      </section>
-
-      {refusal === null ? null : (
-        <Refused title="这个文件没有读成" refusal={refusal} testId="import-refusal-code" />
-      )}
-
-      {staged === null ? null : (
-        <Preview preview={staged.preview} busy={busy} onCommit={() => void commit()} onAbandon={forget} />
-      )}
-
-      {receipt === null ? null : <Receipt receipt={receipt} />}
-    </>
-  );
-}
-
-interface PreviewProps {
-  readonly preview: ImportPreview;
-  readonly busy: boolean;
-  readonly onCommit: () => void;
-  readonly onAbandon: () => void;
-}
-
-/**
- * What the file turned out to contain, before it is imported.
- *
- * `writes_anything` is the literal `false` in both the Rust type and the
- * TypeScript one, so this panel cannot be reached by a path that already
- * imported: reading a file and importing it are two commands, and this is the
- * screen between them.
- *
- * That literal is about the *file's* contents and nothing wider. A preview
- * whose export carried injection markers has already appended one
- * `injection.blocked` row to the audit chain by the time this renders, and
- * abandoning the preview leaves it there — so the line below says which rows
- * are not written rather than claiming the database was not touched, and says
- * the audit row out loud on the previews that produced one.
- */
-function Preview({ preview, busy, onCommit, onAbandon }: PreviewProps): React.JSX.Element {
-  return (
-    <section className="panel" aria-labelledby="import-preview-heading">
-      <h2 id="import-preview-heading">这个文件里有什么</h2>
-      <ul className="facts">
-        <li data-testid="preview-source">
-          格式：<code>{preview.source}</code>
-        </li>
-        <li data-testid="preview-counts">
-          {preview.participants} 个人，{preview.conversations} 个会话，{preview.messages} 条消息。
-        </li>
-        <li data-testid="preview-owner">
-          {preview.owner_identified
-            ? "这份导出里认得出哪一个是你。"
-            : "这份导出里认不出哪一个是你，导入会被拒绝。"}
-        </li>
-        <li data-testid="preview-injection">
-          {preview.messages_with_injection_markers === 0
-            ? "没有哪一条消息写成了命令的样子。"
-            : `有 ${preview.messages_with_injection_markers} 条消息写成了命令的样子。它们会被数出来、照原样入库，Soul 不会照着做。`}
-        </li>
-        <li data-testid="preview-writes">
-          {preview.writes_anything
-            ? ""
-            : preview.messages_with_injection_markers === 0
-              ? "到这一步，这个文件里的人、会话、消息一条都没有写进库里。"
-              : "到这一步，这个文件里的人、会话、消息一条都没有写进库里；但上面数出来的那几条已经在审计链上留下了一行「挡下了注入」，你现在换一个文件，那一行也还在。"}
-        </li>
-        <li data-testid="preview-reimport">
-          这一版不记得「这个文件我导过了」：同一份文件再导一次，人不会重复，但里面的往来记录会再写一遍，人脉图上的往来次数和关系强度也会跟着涨。
-        </li>
-      </ul>
-      <div className="switch-row">
-        <button
-          type="button"
-          className="primary"
-          onClick={onCommit}
-          disabled={busy || !preview.owner_identified}
-        >
-          确认导入
-        </button>
-        <button type="button" onClick={onAbandon} disabled={busy}>
-          不了，换一个文件
-        </button>
-      </div>
-      <p className="badge" data-testid="preview-notice">
-        {preview.notice}
-      </p>
+  return <>
+    <LocalInsights key={state.receipt?.operation.operation_id ?? "initial"} />
+    <section className="panel">
+      <h2>选择明确来源并准备导入</h2>
+      <p>只读取你选择的 JSONL 或 Telegram Desktop result.json，不打开归档、不登录账号、不自动出网。
+        原文只在本次准备中保留，重启不恢复原文或批准。确认只提交操作编号和预览编号。</p>
+      <label className="field" htmlFor="import-format">导入格式</label>
+      <select id="import-format" value={format} disabled={blocked} onChange={(event) => { reset(); setNamespace(""); setFormat(event.target.value as ImportSource); }}>
+        <option value="soul-import-v1">soul-import-v1 JSONL</option><option value="telegram-desktop">Telegram Desktop result.json</option>
+      </select>
+      <label className="field" htmlFor="import-namespace">来源身份</label>
+      <select id="import-namespace" value={namespace} disabled={blocked} onChange={(event) => { reset(); setNamespace(event.target.value); }}>
+        <option value="">{format === "telegram-desktop" ? "按导出中的稳定本人账号匹配；首次建立来源" : "明确建立一个新 JSONL 来源"}</option>
+        {namespaces.filter((row) => row.source === format).map((row) => <option key={row.namespace_id} value={row.namespace_id} disabled={row.state === "revoked"}>{row.namespace_id}（{row.state === "revoked" ? "已遗忘，禁止重导" : row.coverage === "forward_only" ? "本次及以后索引" : "自此来源建立起已索引"}）</option>)}
+      </select>
+      {namespaceError === null ? null : <p role="status">{namespaceError}</p>}
+      <p>同一 JSONL 数据集请选择同一个来源编号。文件名、导出时间和正文不会用来猜测身份。新来源不会补回历史消息编号。</p>
+      <label><input type="checkbox" checked={forward} disabled={blocked} onChange={(event) => { reset(); setForward(event.target.checked); }} />
+        我明确接受：仅本次及以后建立消息索引；旧库没有编号，历史可能重叠。这不授权合并不同来源中的第三人。</label>
+      <label className="field" htmlFor="import-file">选择导出文件</label>
+      <input id="import-file" ref={input} type="file" accept={format === "telegram-desktop" ? ".json" : ".jsonl,.json,.txt"} disabled={blocked} onChange={(event) => { void read(event.target.files?.[0]); }} />
+      {state.busy ? <p role="status">本次操作仍在进行；切页不会取消物理工作，请等待或稍后查询。</p> : null}
     </section>
-  );
-}
-
-interface ReceiptProps {
-  readonly receipt: ImportReceipt;
-}
-
-/**
- * What the import wrote, in the same currency the preview quoted: counts.
- *
- * The re-import line is here as well as on the preview because this is the
- * screen a user is on when they wonder whether the last attempt went through.
- * v0.1 keeps no external-id index, so committing the same export twice writes
- * its events twice and the graph counts every duplicate as a real interaction:
- * contacts match by identifier digest and do not clone, tie strength does.
- * Saying so is the whole of it — nothing here deduplicates.
- */
-function Receipt({ receipt }: ReceiptProps): React.JSX.Element {
-  return (
-    <section className="panel" aria-labelledby="import-receipt-heading">
-      <h2 id="import-receipt-heading">导入完成</h2>
-      <ul className="facts">
-        <li data-testid="receipt-source">
-          格式：<code>{receipt.source}</code>
-        </li>
-        <li data-testid="receipt-contacts">
-          新建 {receipt.contacts_created} 个人，对上了已经认识的 {receipt.contacts_matched} 个人。
-        </li>
-        <li data-testid="receipt-events">
-          写进 {receipt.events_written} 条往来记录，{receipt.evidence_written} 条证据。
-        </li>
-        <li data-testid="receipt-ties">
-          人脉图重算出 {receipt.ties_rebuilt} 条关系，可以到「人脉图」和「灵魂档案」去看。
-        </li>
-        <li data-testid="receipt-injection">
-          {receipt.messages_with_injection_markers === 0
-            ? "没有哪一条消息写成了命令的样子。"
-            : `有 ${receipt.messages_with_injection_markers} 条写成了命令的样子，已经当材料存下来，没有被执行。`}
-        </li>
-        <li data-testid="receipt-reimport">
-          这一版不记得哪份文件导过：把同一份文件再导一遍，人会对上不会重复，但上面这些往来记录和证据会再写一遍，人脉图的往来次数和关系强度也会跟着涨。
-        </li>
-      </ul>
-      <p className="badge" data-testid="receipt-notice">
-        {receipt.notice}
-      </p>
+    {prepared === null ? null : <section className="panel">
+      <h2>确认这份不可变导入准备</h2>
+      <p>{prepared.notice}</p><p>操作：<code>{prepared.operation.operation_id}</code>；来源：<code>{prepared.operation.namespace_id}</code></p>
+      <p>文件包含 {prepared.preview.messages} 条消息；预计新增 {prepared.operation.preview.events_written} 条，跳过相同消息 {prepared.operation.preview.duplicates} 条。</p>
+      {prepared.legacy_events > 0 ? <p>存在 {prepared.legacy_events} 条未索引历史；本次及以后建立索引，历史可能重叠。</p> : null}
+      <button type="button" disabled={state.busy || state.unknown || !prepared.preview.owner_identified} onClick={() => { void confirm(); }}>确认导入这份准备</button>
+      <button type="button" disabled={state.busy || state.unknown} onClick={() => { void discard(); }}>丢弃这份准备</button>
+    </section>}
+    {refusal === null ? null : <Refused title="这次导入需要核对" refusal={refusal} testId="import-refusal-code" />}
+    <section className="panel">
+      <h2>查询持久操作回执</h2>
+      <p>未找到回执、Reserved 或页面重启都不证明操作没有发生。不会自动重发；Running 未确认时请完整退出并重新打开应用，再核对 Interrupted 或 Committed。</p>
+      {state.unknown ? <p role="alert">上次结果未知，新的导入暂停。先核对最近记录，之后再由你选择一个新意图；不自动恢复旧批准。</p> : null}
+      <label htmlFor="import-operation">操作编号</label><input id="import-operation" value={lookup} onChange={(event) => setLookup(event.target.value)} />
+      <button type="button" disabled={state.busy || checking || lookup.trim() === ""} onClick={() => { void check(lookup.trim()); }}>查询这个编号</button>
+      <button type="button" disabled={state.busy || checking} onClick={() => { void check(); }}>核对最近记录</button>
+      {state.receipt === null ? null : <Operation value={state.receipt} />}
+      {rows.filter((row) => row.operation.operation_id !== state.receipt?.operation.operation_id).map((row) => <div key={row.operation.operation_id}>
+        <Operation value={row} />
+        {row.prepared_here && row.operation.state === "reserved" ? <button type="button" disabled={state.busy} onClick={() => { void discardKnown(row.operation.operation_id); }}>丢弃操作 {row.operation.operation_id} 的旧准备</button> : null}
+      </div>)}
     </section>
-  );
+  </>;
+}
+
+function Operation({ value }: { readonly value: ImportOperationView }): React.JSX.Element {
+  const { operation } = value; const receipt = operation.receipt;
+  return <article><h3>操作 {operation.operation_id}</h3><p>状态：{operation.state}；审计：{operation.audit_state}</p>
+    {operation.legacy_choice === "forward_only" ? <p>本次及以后建立索引；旧库历史可能重叠，这份回执不代表全历史去重。</p> : null}
+    {receipt === null ? <p>没有成功提交回执，不能据此重放原操作。</p> : <p>已提交：新增事件 {receipt.events_written} 条、证据 {receipt.evidence_written} 条、重复跳过 {receipt.duplicates} 条；重算写回关系 {receipt.ties_rebuilt} 条（包括已有关系，不是新增关系数）。</p>}
+    {value.namespace_revoked ? <p>来源已遗忘；上述数字仅为历史回执，不恢复事实或密钥，禁止重导。</p> : null}
+    {operation.error_code === null ? null : <p>{operation.error_code}</p>}
+    <a href="#/graph">查看图谱、证据与纠正</a>{" · "}<a href="#/audit">核对本机审计</a>
+  </article>;
 }

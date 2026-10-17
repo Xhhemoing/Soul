@@ -47,7 +47,9 @@ use soul_schema::soul_import_v1::SenderScope;
 use soul_store_api::types::{SealRequest, StoreError};
 use soul_store_api::{BlobStore, EventStore, GraphStore, ProfileStore};
 
-use crate::model::{ImportSource, ParticipantHandle, StagedImport, StagedParticipant};
+use crate::model::{
+    ImportSource, ParticipantHandle, StagedImport, StagedMessage, StagedParticipant,
+};
 
 /// Field name of the blob that records which content key a contact's message
 /// bodies were sealed under. See [`anchor_content_key`].
@@ -77,6 +79,18 @@ pub enum ImportError {
     /// register every sender they read, so this means they disagree.
     #[error("message {index} names a sender that is not among the file's participants")]
     UnknownSender { index: usize },
+    #[error("IMPORT_NAMESPACE_REQUIRED")]
+    NamespaceRequired,
+    #[error("IMPORT_NAMESPACE_REVOKED")]
+    NamespaceRevoked,
+    #[error("IMPORT_LEGACY_CHOICE_REQUIRED")]
+    LegacyChoiceRequired,
+    #[error("IMPORT_IDENTITY_CONFLICT")]
+    IdentityConflict,
+    #[error("IMPORT_IDENTITY_UNAVAILABLE")]
+    IdentityUnavailable,
+    #[error("IMPORT_SOURCE_CHANGED")]
+    SourceChanged,
 }
 
 /// What one commit wrote.
@@ -125,10 +139,10 @@ fn imported_privacy(subject: Subject) -> Privacy {
 
 /// One person, once they have a place in the store.
 #[derive(Debug, Clone)]
-struct ResolvedContact {
-    contact_id: Uuid,
-    content_key_id: Uuid,
-    is_owner: bool,
+pub(crate) struct ResolvedContact {
+    pub(crate) contact_id: Uuid,
+    pub(crate) content_key_id: Uuid,
+    pub(crate) is_owner: bool,
 }
 
 /// Write a parsed import into the store.
@@ -160,6 +174,21 @@ where
     };
 
     let by_handle = resolve_contacts(store, staged, &mut receipt)?;
+    commit_resolved(store, staged, receipt, by_handle, None, |_, _, _, _| Ok(()))
+}
+
+pub(crate) fn commit_resolved<S, F>(
+    store: &mut S,
+    staged: &StagedImport,
+    mut receipt: ImportReceipt,
+    by_handle: BTreeMap<ParticipantHandle, ResolvedContact>,
+    selected: Option<&BTreeSet<usize>>,
+    mut record_identity: F,
+) -> Result<ImportReceipt, ImportError>
+where
+    S: EventStore + ProfileStore + GraphStore + BlobStore,
+    F: FnMut(&mut S, usize, Uuid, &ResolvedContact) -> Result<(), ImportError>,
+{
     let owner = by_handle
         .values()
         .find(|resolved| resolved.is_owner)
@@ -170,6 +199,14 @@ where
     let speakers = speakers_by_conversation(staged, &by_handle);
 
     for (index, message) in staged.messages.iter().enumerate() {
+        // An input attempt is counted even when its stable message id was
+        // already stored; querying the same operation does not run this again.
+        if injection::looks_like_injection(&message.body) {
+            receipt.messages_with_injection_markers += 1;
+        }
+        if selected.is_some_and(|selected| !selected.contains(&index)) {
+            continue;
+        }
         let sender = by_handle
             .get(&message.sender)
             .ok_or(ImportError::UnknownSender { index })?
@@ -217,30 +254,9 @@ where
             body_ref,
         })?;
         receipt.events_written.push(event_id);
+        record_identity(store, index, event_id, &sender)?;
 
-        // Recorded, never obeyed: the scan feeds the audit entry below and
-        // nothing else in this function looks at the result.
-        if injection::looks_like_injection(&message.body) {
-            receipt.messages_with_injection_markers += 1;
-        }
-
-        let peers: Vec<Uuid> = match (sender.is_owner, message.group) {
-            // One message the user sent to a group is one message, not one
-            // per person who has ever spoken there. The file does not say who
-            // read it, so fanning it out over the roster would turn a single
-            // line into N outgoing rows and let a busy group outweigh every
-            // conversation the user actually had. Their side of a group is
-            // left unattributed; the incoming messages still name a sender,
-            // so the tie is still observed, just not credited to the user.
-            (true, true) => Vec::new(),
-            // One to one, the other person is whoever else spoke in that
-            // conversation, which is at most one contact.
-            (true, false) => speakers
-                .get(&message.conversation_id)
-                .map(|set| set.iter().copied().collect())
-                .unwrap_or_default(),
-            (false, _) => vec![sender.contact_id],
-        };
+        let peers = interaction_peers(message, &sender, &speakers, owner.contact_id);
 
         for peer_id in peers {
             if peer_id == owner.contact_id {
@@ -396,7 +412,7 @@ where
 /// A label is somebody's name, so a third-party one is sealed with the same
 /// placeholder the redactor uses. Re-importing does not reseal an unchanged
 /// name: that would leave an orphaned blob behind for no reason.
-fn seal_label<S: BlobStore>(
+pub(crate) fn seal_label<S: BlobStore>(
     store: &mut S,
     participant: &StagedParticipant,
     contact_id: Uuid,
@@ -444,7 +460,7 @@ fn seal_label<S: BlobStore>(
 ///
 /// The plaintext is the contact's own id, which the row already carries in the
 /// clear: the blob exists to be found by `row_id`, not to be read.
-fn anchor_content_key<S: BlobStore>(
+pub(crate) fn anchor_content_key<S: BlobStore>(
     store: &mut S,
     participant: &StagedParticipant,
     contact_id: Uuid,
@@ -464,7 +480,7 @@ fn anchor_content_key<S: BlobStore>(
 }
 
 /// Who actually said something in each conversation, as contact ids.
-fn speakers_by_conversation(
+pub(crate) fn speakers_by_conversation(
     staged: &StagedImport,
     by_handle: &BTreeMap<ParticipantHandle, ResolvedContact>,
 ) -> BTreeMap<String, BTreeSet<Uuid>> {
@@ -482,4 +498,24 @@ fn speakers_by_conversation(
             .insert(sender.contact_id);
     }
     speakers
+}
+
+/// The same attribution is used by immutable previews and actual commits.
+pub(crate) fn interaction_peers(
+    message: &StagedMessage,
+    sender: &ResolvedContact,
+    speakers: &BTreeMap<String, BTreeSet<Uuid>>,
+    owner: Uuid,
+) -> Vec<Uuid> {
+    let peers = match (sender.is_owner, message.group) {
+        // Group exports do not identify who read an owner's message.
+        (true, true) => Vec::new(),
+        // Direct messages are attributed only to other actual speakers.
+        (true, false) => speakers
+            .get(&message.conversation_id)
+            .map(|set| set.iter().copied().collect())
+            .unwrap_or_default(),
+        (false, _) => vec![sender.contact_id],
+    };
+    peers.into_iter().filter(|id| *id != owner).collect()
 }

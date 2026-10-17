@@ -4,7 +4,15 @@
 
 平台：v0.1 在 Windows 11 上开发与验收；核心后续部署于 Linux / macOS / Windows；接入端（数据采集与结果呈现）含 macOS / Linux / Windows / Android（DECISIONS D65）。
 
-状态：独立集成源码 ebff0c9 的 Windows 自动门禁与补充检查已通过；同源码 NSIS 的外部证据目录当前缺失，G-M 0 作者手动打包、真实安装/卸载、其余人工验收和同源码 Linux 门禁均未齐，Goal 1 未关闭。后续源码修改不沿用旧门禁结论。见 docs/STATUS.md。
+状态（2026-10-15）：Goal 1、正式 Goal 2 与 Wave 1 均未关闭。PR #66 工作分支新增销毁前精确范围重校验、Memory 写入输入保护、Import 旧结果失效修复。338 项前端和 65 项定向 Rust 测试，以及类型检查、lint、生产 build 已通过，独立只读复审未发现阻塞项。独立撤权执行模型、原生桌面与完整平台验收仍待完成。见 [docs/STATUS.md](docs/STATUS.md) 与 [验证记录](docs/reviews/2026-10-15-validation.md)。
+
+架构导航：[离线 HTML 架构地图](docs/architecture.html)（下载后用浏览器打开；四图切换、节点说明、缩放、模块筛选和图源下载），或阅读 [系统架构与设计图](docs/ARCHITECTURE.md)（附 Mermaid 源文件与 SVG）。HTML 是固定在 `b47ddfa` 的单文件说明快照，不自动联网。设计依据和取舍见 [架构审查报告](docs/reviews/2026-10-15-architecture-review.md)。
+
+后续框架设计（2026-10-15）：[使用闭环与算法交互 HTML](docs/framework-design.html) / [研究与具体设计](docs/design/2026-10-15-usage-framework.md)。从使用场景比较候选方案，提供任务控制、证据选择和纠正优先的可执行参考模型；37 项模型测试、6 个定向变异与 13 项离线页检查，见[验证与独立评审](docs/design/2026-10-15-framework-validation.md)。这是未接入生产的设计实验，不扩大上述产品测试或正式验收范围。
+
+历史展示：[架构与项目进度展示页](docs/project-overview.html)（单文件 HTML，保存后用浏览器打开；包含架构、18 个 Rust 模块、能力筛选、验证账本与剩余任务）。页面是固定在 `6a8ad64` 的说明快照，不是 Soul 客户端，不实时更新，不读取个人数据，不自动联网。最新架构见上述架构导航，最新状态以 STATUS 和对应源码证据为准。
+
+历史：独立集成源码 `ebff0c9` 有 Windows 自动门禁记录；同源码 NSIS 的外部证据目录缺失，人工验收与同源码 Linux 门禁未齐。旧门禁结论不覆盖后续源码；此前暂缓 G-L、跳过 NSIS 安装／卸载与 G-M 的指示保持不变。
 
 - 产品锁定：[`docs/PRODUCT_LOCK.md`](docs/PRODUCT_LOCK.md)
 - AI 协作与工作区入口：[`AGENTS.md`](AGENTS.md)（项目规则，不替代产品与验收权威）

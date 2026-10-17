@@ -14,6 +14,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import type { ForgetAudit, ForgetCleanup } from "./forgetOutcome";
 
 /** The only state the cloud switch has in v0.1. There is no `enabled`. */
 export type CloudState = "not_yet_available";
@@ -492,6 +493,8 @@ export interface ForgetPreview {
   readonly contacts_affected: number;
   readonly sealed_blobs_destroyed: number;
   readonly inferences_orphaned: number;
+  readonly import_namespaces_revoked?: number;
+  readonly local_insights_invalidated?: number;
   readonly audit_entries_retained: number;
   readonly destroys_anything: false;
   readonly notice: string;
@@ -508,8 +511,18 @@ export interface ForgetReceipt {
   readonly content_keys_destroyed: number;
   readonly sealed_blobs_destroyed: number;
   readonly inferences_orphaned: number;
+  readonly import_namespaces_revoked?: number;
+  readonly local_insights_invalidated?: number;
   /** Whether the receipt charges what the preview quoted. */
   readonly matched_preview: boolean;
+  /** Missing fields from a legacy peer stay unconfirmed, never default true. */
+  readonly logical_committed?: boolean;
+  readonly cleanup?: ForgetCleanup;
+  readonly audit?: ForgetAudit;
+}
+
+export interface ForgetCleanupResult {
+  readonly cleanup: ForgetCleanup;
 }
 
 /** One row of the research preview. Counts and buckets, never a body. */
@@ -613,6 +626,24 @@ export interface CollectStatus {
  * rather than a button that does nothing.
  */
 export const COMMANDS = {
+  listImportNamespaces: "list_import_namespaces",
+  recentImportOperations: "recent_import_operations",
+  importOperation: "import_operation",
+  discardImport: "discard_import",
+  prepareImport: "prepare_import",
+  confirmImport: "confirm_import",
+  importRecoveryState: "import_recovery_state",
+  prepareMemoryContext: "prepare_memory_context",
+  prepareInsightContext: "prepare_insight_context",
+  evidenceSources: "evidence_sources",
+  readEvidenceEvent: "read_evidence_event",
+  localDraftWithInsight: "local_draft_with_insight",
+  prepareDraftWithInsight: "prepare_draft_with_insight",
+  draftReplyWithMemory: "draft_reply_with_memory",
+  prepareDraftWithMemory: "prepare_draft_with_memory",
+  localInsights: "local_insights",
+  ignoreLocalInsight: "ignore_local_insight",
+  recomputeLocalInsight: "recompute_local_insight",
   configSnapshot: "config_snapshot",
   sessionStatus: "session_status",
   completeWizard: "complete_wizard",
@@ -646,12 +677,242 @@ export const COMMANDS = {
   updateMemory: "update_memory",
   previewForget: "preview_forget",
   forgetMemory: "forget_memory",
+  retryForgetCleanup: "retry_forget_cleanup",
   researchPreview: "research_preview",
   auditChain: "audit_chain",
   collectStatus: "collect_status",
   grantCollectConsent: "grant_collect_consent",
   revokeCollectConsent: "revoke_collect_consent",
 } as const;
+
+export type ImportSource = "soul-import-v1" | "telegram-desktop";
+export interface SelectedMemory {
+  readonly memory_id: string; readonly memory_type: string; readonly title: string; readonly summary: string;
+  readonly privacy_class: "owner" | "third_party" | "mixed" | "unknown";
+  readonly citation: { readonly memory_id: string; readonly title_blob_id: string; readonly summary_blob_id: string };
+}
+export interface MemorySelectionPreview {
+  readonly selected: readonly SelectedMemory[];
+  readonly excluded: readonly { readonly memory_id: string; readonly reason: string }[];
+  readonly outcome: "context" | "clarify" | "abstain"; readonly notice: string;
+}
+export interface MemoryContextView { readonly context_id: string | null; readonly preview: MemorySelectionPreview }
+export interface MemoryContextRequest {
+  readonly candidate_ids: readonly string[]; readonly query: string | null; readonly memory_type: string | null; readonly time_specific: boolean;
+}
+export interface MemoryDraftValue { readonly draft: Draft; readonly context: MemorySelectionPreview }
+export interface MemoryDraftPlan {
+  readonly prepared: { readonly plan: E1DraftPlan; readonly retained_memory_ids: readonly string[]; readonly endpoint_owner_ids: readonly string[]; readonly encoded_bytes: number; readonly body_preview: string };
+  readonly context: MemorySelectionPreview;
+}
+/** Revoke old display ownership before requesting a new, read-only local grant. */
+export function prepareMemoryContext(request: MemoryContextRequest): Promise<MemoryContextView> {
+  invalidateDraftSource();
+  return currentDraftResult(COMMANDS.prepareMemoryContext, { request });
+}
+export function draftReplyWithMemory(pasted: string, contextId: string): Promise<MemoryDraftValue> {
+  return currentDraftResult(COMMANDS.draftReplyWithMemory, { pasted, contextId });
+}
+export function prepareDraftWithMemory(pasted: string, contextId: string, ownerIds: readonly string[], includeOriginal = false): Promise<MemoryDraftPlan> {
+  return currentDraftResult(COMMANDS.prepareDraftWithMemory, { pasted, contextId, ownerIds, includeOriginal });
+}
+export interface ImportCounts {
+  readonly participants: number; readonly messages: number; readonly duplicates: number;
+  readonly contacts_created: number; readonly contacts_matched: number; readonly events_written: number;
+  readonly evidence_written: number; readonly messages_with_injection_markers: number; readonly ties_rebuilt: number;
+}
+export interface InsightContextRequest {
+  readonly bundle_id: string; readonly contact_id: string;
+}
+export interface EvidenceSourcesRequest {
+  readonly contact_id: string; readonly relationship_id: string; readonly evidence_id: string;
+}
+export interface EvidenceEventRequest extends EvidenceSourcesRequest { readonly event_id: string }
+export type EvidenceEventAvailability = "available" | "no_body" | "unavailable" | "too_large";
+export interface EvidenceEventSource {
+  readonly event_id: string; readonly namespace_id: string | null; readonly source: string;
+  readonly occurred_at: string; readonly direction: "incoming" | "outgoing"; readonly venue: "direct" | "group";
+  readonly body_chars: number | null; readonly availability: EvidenceEventAvailability; readonly notice: string;
+}
+export interface EvidenceSourcesView extends EvidenceSourcesRequest {
+  readonly kind: string; readonly events: readonly EvidenceEventSource[]; readonly notice: string;
+}
+export interface EvidenceEventView extends EvidenceEventRequest {
+  readonly namespace_id: string; readonly source: string; readonly occurred_at: string;
+  readonly direction: "incoming" | "outgoing"; readonly venue: "direct" | "group";
+  readonly body: string; readonly notice: string;
+}
+export function evidenceSources(request: EvidenceSourcesRequest): Promise<EvidenceSourcesView> {
+  return currentDraftResult(COMMANDS.evidenceSources, { request });
+}
+export function readEvidenceEvent(request: EvidenceEventRequest): Promise<EvidenceEventView> {
+  return currentDraftResult(COMMANDS.readEvidenceEvent, { request });
+}
+export interface InsightEvidenceSource {
+  readonly evidence_id: string; readonly kind: string; readonly event_ids: readonly string[];
+}
+export interface InsightReference {
+  readonly bundle_id: string; readonly operation_id: string; readonly namespace_id: string;
+  readonly contact_id: string; readonly relationship_id: string; readonly summary: PersonSummary;
+  readonly sources: readonly InsightEvidenceSource[]; readonly notice: string;
+}
+export interface InsightContextView { readonly context_id: string; readonly reference: InsightReference }
+export interface InsightDraftValue { readonly draft: Draft; readonly reference: InsightReference }
+export interface InsightDraftPlan {
+  readonly prepared: { readonly plan: E1DraftPlan; readonly encoded_bytes: number; readonly body_preview: string; readonly includes_counts: boolean };
+  readonly reference: InsightReference;
+}
+export function prepareInsightContext(request: InsightContextRequest): Promise<InsightContextView> {
+  invalidateDraftSource();
+  return currentDraftResult(COMMANDS.prepareInsightContext, { request });
+}
+export function localDraftWithInsight(pasted: string, contextId: string): Promise<InsightDraftValue> {
+  return currentDraftResult(COMMANDS.localDraftWithInsight, { pasted, contextId });
+}
+export function prepareDraftWithInsight(pasted: string, contextId: string, includeCounts = false, includeOriginal = false): Promise<InsightDraftPlan> {
+  return currentDraftResult(COMMANDS.prepareDraftWithInsight, { pasted, contextId, includeCounts, includeOriginal });
+}
+export interface LocalInsight {
+  readonly bundle_id: string; readonly operation_id: string; readonly namespace_id: string;
+  readonly validity: "active" | "invalidated"; readonly ignored: boolean; readonly counts: ImportCounts;
+  readonly summaries: readonly PersonSummary[]; readonly notice: string;
+}
+export function localInsights(): Promise<readonly LocalInsight[]> {
+  return currentDraftResult(COMMANDS.localInsights, {});
+}
+export function ignoreLocalInsight(bundleId: string): Promise<LocalInsight> {
+  return mutateDraftSource(COMMANDS.ignoreLocalInsight, { bundleId });
+}
+export function recomputeLocalInsight(bundleId: string): Promise<LocalInsight> {
+  return mutateDraftSource(COMMANDS.recomputeLocalInsight, { bundleId });
+}
+export interface ImportNamespace {
+  readonly namespace_id: string; readonly source: ImportSource;
+  readonly state: "active" | "revoked"; readonly coverage: "full_from_creation" | "forward_only";
+}
+export interface ImportOperation {
+  readonly operation_id: string; readonly preview_id: string; readonly source: ImportSource;
+  readonly namespace_id: string; readonly legacy_choice: "reject" | "forward_only";
+  readonly state: "reserved" | "running" | "committed" | "rejected" | "discarded" | "invalidated" | "interrupted";
+  readonly preview: ImportCounts; readonly receipt: ImportCounts | null; readonly error_code: string | null;
+  readonly audit_state: "not_applicable" | "recorded" | "unconfirmed"; readonly created_at: number;
+}
+export interface ImportOperationView {
+  readonly operation: ImportOperation; readonly namespace_revoked: boolean; readonly prepared_here: boolean;
+}
+export interface ImportRecoveryState {
+  readonly active_worker: boolean; readonly reserved_operations: number | null; readonly running_operations: number | null;
+  readonly held_operation_id: string | null; readonly can_start_new_intent: boolean;
+}
+export function importRecoveryState(): Promise<ImportRecoveryState> {
+  return invoke(COMMANDS.importRecoveryState);
+}
+export interface PreparedImport {
+  readonly operation: ImportOperation; readonly preview: ImportPreview; readonly legacy_events: number; readonly notice: string;
+}
+export interface ImportPrepareRequest {
+  readonly text: string; readonly source: ImportSource; readonly namespace_id: string | null;
+  readonly legacy_choice: "reject" | "forward_only";
+}
+
+export function listImportNamespaces(): Promise<readonly ImportNamespace[]> {
+  return invoke(COMMANDS.listImportNamespaces);
+}
+export function recentImportOperations(): Promise<readonly ImportOperationView[]> {
+  return invoke(COMMANDS.recentImportOperations);
+}
+export function importOperation(operationId: string): Promise<ImportOperationView> {
+  return invoke(COMMANDS.importOperation, { operationId });
+}
+export function prepareImport(request: ImportPrepareRequest): Promise<PreparedImport> {
+  return mutateDraftSource(COMMANDS.prepareImport, { request });
+}
+export function confirmImport(operationId: string, previewId: string): Promise<ImportOperationView> {
+  return mutateDraftSource(COMMANDS.confirmImport, { operationId, previewId });
+}
+export function discardImport(operationId: string): Promise<ImportOperationView> {
+  return mutateDraftSource(COMMANDS.discardImport, { operationId });
+}
+
+/**
+ * Display ownership within this WebView, not an authorization token. The core
+ * independently validates its own source revision and one-use approval.
+ * A fresh identity also distinguishes setting the same endpoint again and A/B/A.
+ */
+export type DraftSourceRevision = symbol;
+let draftSourceRevision: DraftSourceRevision = Symbol("draft source");
+let pendingDraftSourceMutations = 0;
+const draftSourceListeners = new Set<(revision: DraftSourceRevision) => void>();
+
+export function getDraftSourceRevision(): DraftSourceRevision {
+  return draftSourceRevision;
+}
+
+/** Subscribe synchronously, including the current value so mounting has no gap. */
+export function subscribeDraftSource(
+  listener: (revision: DraftSourceRevision) => void,
+): () => void {
+  draftSourceListeners.add(listener);
+  listener(draftSourceRevision);
+  return () => { draftSourceListeners.delete(listener); };
+}
+
+/** A local delivery refusal; deliberately not a backend `Refusal` or rollback. */
+export class DraftSourceChangedError extends Error {
+  constructor() {
+    super("起草依据或授权正在变更或已变更，请重新准备。这次旧结果不再展示。");
+    this.name = "DraftSourceChangedError";
+  }
+}
+
+export class SummarySourceChangedError extends Error {
+  constructor() {
+    super("摘要依据或端点正在变更或已变更，请重新选择联系人查看摘要。");
+    this.name = "SummarySourceChangedError";
+  }
+}
+
+export class FilePlanSourceChangedError extends Error {
+  constructor() {
+    super("计划依据或授权正在变更或已变更，请重新扫描。");
+    this.name = "FilePlanSourceChangedError";
+  }
+}
+
+function invalidateDraftSource(): void {
+  draftSourceRevision = Symbol("draft source");
+  for (const listener of [...draftSourceListeners]) listener(draftSourceRevision);
+}
+
+/**
+ * Invalidate before IPC, even when the request fails or its outcome is unknown.
+ * Pending mutations block draft admission and delivery. Settle invalidates
+ * again before making the latest source available to a new request.
+ * This covers calls through this module in one WebView, not other windows or
+ * direct native callers. It does not cancel a request or retract sent bytes.
+ */
+async function mutateDraftSource<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  pendingDraftSourceMutations += 1;
+  try {
+    invalidateDraftSource();
+    return await invoke<T>(command, args);
+  } finally {
+    pendingDraftSourceMutations -= 1;
+    invalidateDraftSource();
+  }
+}
+
+function currentDraftResult<T>(command: string, args: Record<string, unknown>,
+  changed: () => Error = () => new DraftSourceChangedError()): Promise<T> {
+  if (pendingDraftSourceMutations !== 0) return Promise.reject(changed());
+  const source = draftSourceRevision;
+  return invoke<T>(command, args).then((value) => {
+    if (pendingDraftSourceMutations !== 0 || source !== draftSourceRevision) {
+      throw changed();
+    }
+    return value;
+  });
+}
 
 export function configSnapshot(): Promise<ConfigSnapshot> {
   return invoke<ConfigSnapshot>(COMMANDS.configSnapshot);
@@ -664,7 +925,7 @@ export function sessionStatus(): Promise<SessionStatus> {
 
 /** Finish the first-run wizard. The core refuses to return an open config. */
 export function completeWizard(answers: WizardAnswers): Promise<ConfigSnapshot> {
-  return invoke<ConfigSnapshot>(COMMANDS.completeWizard, { answers });
+  return mutateDraftSource<ConfigSnapshot>(COMMANDS.completeWizard, { answers });
 }
 
 /**
@@ -684,7 +945,7 @@ export function filesView(): Promise<FilesView> {
 
 /** The user named a directory Soul may read. Refused paths come back as one. */
 export function authorizeDirectory(path: string): Promise<FilesView> {
-  return invoke<FilesView>(COMMANDS.authorizeDirectory, { path });
+  return mutateDraftSource<FilesView>(COMMANDS.authorizeDirectory, { path });
 }
 
 /**
@@ -694,7 +955,8 @@ export function authorizeDirectory(path: string): Promise<FilesView> {
  * Rust one. v0.1 promises a preview; v0.1.1 owns the write half.
  */
 export function previewPlan(path: string): Promise<PlanPreview> {
-  return invoke<PlanPreview>(COMMANDS.previewPlan, { path });
+  return currentDraftResult<PlanPreview>(COMMANDS.previewPlan, { path },
+    () => new FilePlanSourceChangedError());
 }
 
 /** The people graph, with every tie's evidence already resolved. */
@@ -704,15 +966,16 @@ export function peopleGraph(): Promise<PeopleGraph> {
 
 /** Everything Soul will say about one person, and what each line rests on. */
 export function personSummary(contactId: string): Promise<PersonSummary> {
-  return invoke<PersonSummary>(COMMANDS.personSummary, { contactId });
+  return currentDraftResult<PersonSummary>(COMMANDS.personSummary, { contactId },
+    () => new SummarySourceChangedError());
 }
 
 export function correctTie(relationshipId: string, band: string): Promise<PeopleGraph> {
-  return invoke<PeopleGraph>(COMMANDS.correctTie, { relationshipId, band });
+  return mutateDraftSource<PeopleGraph>(COMMANDS.correctTie, { relationshipId, band });
 }
 
 export function releaseTie(relationshipId: string): Promise<PeopleGraph> {
-  return invoke<PeopleGraph>(COMMANDS.releaseTie, { relationshipId });
+  return mutateDraftSource<PeopleGraph>(COMMANDS.releaseTie, { relationshipId });
 }
 
 /**
@@ -724,7 +987,7 @@ export function releaseTie(relationshipId: string): Promise<PeopleGraph> {
  * takes one.
  */
 export function draftReply(pasted: string): Promise<Draft> {
-  return invoke<Draft>(COMMANDS.draftReply, { pasted });
+  return currentDraftResult<Draft>(COMMANDS.draftReply, { pasted });
 }
 
 export function draftNotices(): Promise<DraftNotices> {
@@ -747,7 +1010,7 @@ export function prepareDraft(
   pasted: string,
   includeOriginal = false,
 ): Promise<E1DraftPlan> {
-  return invoke<E1DraftPlan>(COMMANDS.prepareDraft, { pasted, includeOriginal });
+  return currentDraftResult<E1DraftPlan>(COMMANDS.prepareDraft, { pasted, includeOriginal });
 }
 
 /**
@@ -758,12 +1021,12 @@ export function prepareDraft(
  * and `soulcore` refuses an approval whose two halves do not match.
  */
 export function generateDraft(approval: Approval): Promise<Draft> {
-  return invoke<Draft>(COMMANDS.generateDraft, { approval });
+  return currentDraftResult<Draft>(COMMANDS.generateDraft, { approval });
 }
 
 /** The user read the plan and said no. Returns whether there was one. */
 export function discardDraft(): Promise<boolean> {
-  return invoke<boolean>(COMMANDS.discardDraft);
+  return mutateDraftSource<boolean>(COMMANDS.discardDraft);
 }
 
 /**
@@ -777,12 +1040,12 @@ export function discardDraft(): Promise<boolean> {
  * one — the approval on the drafting page, or 看这个人的摘要 on the graph.
  */
 export function setUserEndpoint(url: string): Promise<ConfigSnapshot> {
-  return invoke<ConfigSnapshot>(COMMANDS.setUserEndpoint, { url });
+  return mutateDraftSource<ConfigSnapshot>(COMMANDS.setUserEndpoint, { url });
 }
 
 /** The user took the address away. The core goes back to reaching nothing. */
 export function clearUserEndpoint(): Promise<ConfigSnapshot> {
-  return invoke<ConfigSnapshot>(COMMANDS.clearUserEndpoint);
+  return mutateDraftSource<ConfigSnapshot>(COMMANDS.clearUserEndpoint);
 }
 
 /**
@@ -809,11 +1072,11 @@ export function previewTelegram(text: string): Promise<ImportPreview> {
  * produce the same counts.
  */
 export function commitSoulImportV1(text: string): Promise<ImportReceipt> {
-  return invoke<ImportReceipt>(COMMANDS.commitSoulImportV1, { text });
+  return mutateDraftSource<ImportReceipt>(COMMANDS.commitSoulImportV1, { text });
 }
 
 export function commitTelegram(text: string): Promise<ImportReceipt> {
-  return invoke<ImportReceipt>(COMMANDS.commitTelegram, { text });
+  return mutateDraftSource<ImportReceipt>(COMMANDS.commitTelegram, { text });
 }
 
 /** The eleven questions the wizard draws. Answerable with the store shut. */
@@ -830,7 +1093,7 @@ export function questionnaire(): Promise<readonly Question[]> {
 export function answerQuestionnaire(
   answers: readonly GivenAnswer[],
 ): Promise<IntakeReceipt> {
-  return invoke<IntakeReceipt>(COMMANDS.answerQuestionnaire, { answers });
+  return mutateDraftSource<IntakeReceipt>(COMMANDS.answerQuestionnaire, { answers });
 }
 
 /** The profile: axes, voice, and the pointers to what the user stated. */
@@ -840,12 +1103,12 @@ export function profileScreen(): Promise<ProfileScreen> {
 
 /** The user read an axis and said it is wrong. The core pins it. */
 export function correctAxis(axisId: string, position: string): Promise<ProfileScreen> {
-  return invoke<ProfileScreen>(COMMANDS.correctAxis, { axisId, position });
+  return mutateDraftSource<ProfileScreen>(COMMANDS.correctAxis, { axisId, position });
 }
 
 /** The user set one voice field by hand. Inference stops touching it. */
 export function setVoice(field: string, option: string): Promise<ProfileScreen> {
-  return invoke<ProfileScreen>(COMMANDS.setVoice, { field, option });
+  return mutateDraftSource<ProfileScreen>(COMMANDS.setVoice, { field, option });
 }
 
 /** Every memory, with the prose still sealed. */
@@ -859,11 +1122,11 @@ export function memoryDetail(memoryId: string): Promise<MemoryDetail> {
 }
 
 export function createMemory(memory: NewMemory): Promise<MemoryDetail> {
-  return invoke<MemoryDetail>(COMMANDS.createMemory, { memory });
+  return mutateDraftSource<MemoryDetail>(COMMANDS.createMemory, { memory });
 }
 
 export function updateMemory(memoryId: string, change: MemoryChange): Promise<MemoryDetail> {
-  return invoke<MemoryDetail>(COMMANDS.updateMemory, { memoryId, change });
+  return mutateDraftSource<MemoryDetail>(COMMANDS.updateMemory, { memoryId, change });
 }
 
 /**
@@ -881,11 +1144,16 @@ export function previewForget(memoryId: string): Promise<ForgetPreview> {
  * Destroy the content key behind one memory. Irreversible.
  *
  * This is a forget, which D15 defines as key destruction, and it is the one
- * destructive thing v0.1 does. It writes no file: AC-27 is about the file
- * plan, and there is still no command that carries one out.
+ * destructive thing v0.1 does. It writes Soul's own encrypted store and log;
+ * it does not execute the file plans that belong to AC-27.
  */
 export function forgetMemory(confirmation: ForgetConfirmation): Promise<ForgetReceipt> {
-  return invoke<ForgetReceipt>(COMMANDS.forgetMemory, { confirmation });
+  return mutateDraftSource<ForgetReceipt>(COMMANDS.forgetMemory, { confirmation });
+}
+
+/** Only the WAL cleanup. Never reuses a destructive confirmation or writes audit. */
+export function retryForgetCleanup(): Promise<ForgetCleanupResult> {
+  return invoke<ForgetCleanupResult>(COMMANDS.retryForgetCleanup);
 }
 
 /** What the research track would see. On screen only. */
@@ -919,10 +1187,10 @@ export function collectStatus(): Promise<CollectStatus> {
  * recorded and nothing is watched, and the notice says so.
  */
 export function grantCollectConsent(): Promise<CollectStatus> {
-  return invoke<CollectStatus>(COMMANDS.grantCollectConsent);
+  return mutateDraftSource<CollectStatus>(COMMANDS.grantCollectConsent);
 }
 
 /** The user took it back. Nothing further is written within a second. */
 export function revokeCollectConsent(): Promise<CollectStatus> {
-  return invoke<CollectStatus>(COMMANDS.revokeCollectConsent);
+  return mutateDraftSource<CollectStatus>(COMMANDS.revokeCollectConsent);
 }

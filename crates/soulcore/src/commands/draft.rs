@@ -43,12 +43,14 @@
 //! did not. Nothing new is claimed on behalf of the summary itself.
 
 use serde::{Deserialize, Serialize};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use soul_draft::analysis::{self, PersonSummary, SummarySource};
 use soul_draft::brief::ProfileBrief;
 use soul_draft::draft::{BodyFacts, Draft, DraftRequest, Drafter, ReplyGenerator};
 use soul_draft::error::{DraftError, GenerationRefused};
+use soul_draft::memory_context::{MemoryContext, MemoryContextError};
 use soul_graph::GraphError;
 use soul_policy::audit::AuditContent;
 use soul_policy::e1::E1Purpose;
@@ -57,7 +59,8 @@ use soul_policy::hitl::{
 };
 use soul_policy::net_guard::Origin;
 use soul_policy::redactor::{
-    ExemptionRequest, KnownIdentifiers, OneShotExemption, RedactedBody, Redactor,
+    combine_redacted, ExemptionRequest, KnownIdentifiers, OneShotExemption, RedactedBody, Redactor,
+    Turn,
 };
 use soul_policy::ReasonCode;
 use soul_profile::ProfileError;
@@ -68,7 +71,7 @@ use soul_store::SqlCipherStore;
 use soul_store_api::types::StoreResult;
 use soul_store_api::{BlobStore, GraphStore};
 
-use crate::commands::policy::{e1_plan, E1Refusal, PolicySession, TokenRefused};
+use crate::commands::policy::{e1_plan, E1Dispatch, E1Refusal, PolicySession, TokenRefused};
 
 pub use soul_draft::draft::{
     DraftSource, NeverSent, DEGRADED_NOTICE, ENDPOINT_NOTICE, NOT_SENT_NOTICE, TEMPLATE_NOTICE,
@@ -125,7 +128,8 @@ pub const E1_PLAN_ENDPOINT_HEAD: &str = "这一次会发到你在设置里填的
 
 /// And the second half: what the address being named actually buys.
 pub const E1_PLAN_ENDPOINT_TAIL: &str = "。这份准备只对这一个地址有效——\
-     中途在设置里换了地址或者清掉它，这份准备就作废，要重新准备一次给你看。";
+     中途在设置里换了地址或者清掉它，这份准备就作废，要重新准备一次给你看。\
+     从准备起两分钟内有效；资料变化或撤回后，旧回复也不会显示。";
 
 /// The same sentence for a session that has no address to name.
 ///
@@ -142,6 +146,12 @@ pub const E1_PLAN_NO_ENDPOINT_NOTICE: &str = "设置里现在没有填模型端�
 /// nobody to send a model name to. Naming it plainly beats an empty string
 /// that would look like a bug in a request log.
 pub const UNNAMED_MODEL: &str = "unnamed-model";
+
+/// A byte ceiling on the real serialized generation request, not an
+/// estimated tokenizer budget and not an algorithm-family constant.
+pub const MAX_MEMORY_REQUEST_BYTES: usize = 64 * 1024;
+
+pub const MEMORY_PLAN_NOTICE: &str = "本次记忆参考独立于档案；保存的记录未经事实、当前性或语义冲突核验。只有你另行勾选的本人记忆原文会作为素材提供给端点，其余记忆正文占位；粘贴消息的原文豁免不覆盖记忆。下方请求材料预览与保留引用来自最终实际请求，超出字节预算的整条材料已移除。";
 
 /// The drafting state one Soul session carries.
 ///
@@ -162,15 +172,14 @@ pub struct DraftSession {
 #[derive(Debug)]
 struct Pending {
     id: Uuid,
+    expires_at: Instant,
     request: DraftRequest,
     body: RedactedBody,
     facts: BodyFacts,
     plan_hash: PlanHash,
     /// The E1 origin this body was described against, if there was one.
     ///
-    /// Not in the plan hash, because the hash is taken over what
-    /// `PolicySession::e1_generate` rebuilds and that is the shape of the
-    /// request rather than its destination. It is held here instead, and
+    /// Also included in the plan hash by `e1_plan`. It is held here so
     /// [`DraftSession::generate`] compares it: an approval is an answer to a
     /// sentence that named an address, so it authorizes that address and no
     /// other. `None` is a preparation described while 设置 was empty, which
@@ -259,6 +268,105 @@ impl DraftSession {
         allow(policy, ActionKind::GenerateWithUserEndpoint, origin, now_ms)?;
 
         let body = self.drafter.redact(&request, exemption)?;
+        Ok(self.hold_prepared(policy, request, body))
+    }
+
+    /// Build once, then remove complete memory suffix entries until the
+    /// actual transport serializer fits. The base original-turn exemption
+    /// is consumed exactly once; memory redaction never receives it.
+    pub fn prepare_with_memory(
+        &mut self,
+        policy: &mut PolicySession,
+        request: DraftRequest,
+        memory: &MemoryContext,
+        exemption: Option<OneShotExemption>,
+        origin: RequestOrigin,
+        now_ms: u64,
+    ) -> Result<MemoryPrepared, DraftRefusal> {
+        allow(policy, ActionKind::GenerateWithUserEndpoint, origin, now_ms)?;
+        // An unsuccessful replacement must not leave an older preparation
+        // available for an approval that the new screen no longer describes.
+        self.pending = None;
+        let mut material = self
+            .drafter
+            .redact_memory_context(&request, memory, exemption)?;
+        loop {
+            let body = material.body()?;
+            let encoded_bytes =
+                soul_policy::e1::encoded_chat_body(E1Purpose::Draft, self.drafter.model(), &body)
+                    .len();
+            if encoded_bytes <= MAX_MEMORY_REQUEST_BYTES {
+                let body_preview = body.as_str().to_owned();
+                let retained_memory_ids = material.retained_memory_ids();
+                let endpoint_owner_ids = material.endpoint_owner_ids();
+                let mut plan = self.hold_prepared(policy, request, body);
+                plan.notice.push_str(MEMORY_PLAN_NOTICE);
+                return Ok(MemoryPrepared {
+                    plan,
+                    retained_memory_ids,
+                    endpoint_owner_ids,
+                    encoded_bytes,
+                    body_preview,
+                });
+            }
+            if !material.trim_last() {
+                return Err(DraftRefusal::RequestTooLarge);
+            }
+        }
+    }
+
+    fn prepare_with_insight(
+        &mut self,
+        policy: &mut PolicySession,
+        request: DraftRequest,
+        selected: &super::insights::SelectedInsightContext,
+        include_counts: bool,
+        exemption: Option<OneShotExemption>,
+    ) -> Result<InsightPrepared, DraftRefusal> {
+        allow(
+            policy,
+            ActionKind::GenerateWithUserEndpoint,
+            RequestOrigin::User,
+            soul_policy::clock::now_unix_millis(),
+        )?;
+        self.pending = None;
+        // The one-shot exemption belongs only to the pasted turn. The
+        // trusted aggregate uses its existing anonymous redaction factory.
+        let base = self.drafter.redact(&request, exemption)?;
+        let statistics = if include_counts {
+            analysis::summary_body(selected.counts(), policy.redactor())
+        } else {
+            policy.redactor().redact_for_e1(&[Turn::new(
+                Uuid::now_v7(),
+                soul_schema::common::SealedSubject::Owner,
+                "[本次统计仅供本地参考，计数未向端点提供]",
+            )])
+        };
+        let body =
+            combine_redacted(&[&base, &statistics]).map_err(|_| DraftRefusal::RequestTooLarge)?;
+        let encoded_bytes =
+            soul_policy::e1::encoded_chat_body(E1Purpose::Draft, self.drafter.model(), &body).len();
+        if encoded_bytes > MAX_MEMORY_REQUEST_BYTES {
+            return Err(DraftRefusal::RequestTooLarge);
+        }
+        let body_preview = body.as_str().to_owned();
+        let mut plan = self.hold_prepared(policy, request, body);
+        plan.notice
+            .push_str(" 统计引用仅说明本次统计材料的出处，不代表生成草稿逐句已获事实验证。");
+        Ok(InsightPrepared {
+            plan,
+            encoded_bytes,
+            body_preview,
+            includes_counts: include_counts,
+        })
+    }
+
+    fn hold_prepared(
+        &mut self,
+        policy: &PolicySession,
+        request: DraftRequest,
+        body: RedactedBody,
+    ) -> E1DraftPlan {
         let facts = BodyFacts::of(&body);
         let plan_hash = PlanHash::of(&e1_plan(
             self.drafter.model(),
@@ -273,6 +381,8 @@ impl DraftSession {
         // sit around waiting for a token that was issued for another one.
         self.pending = Some(Pending {
             id,
+            expires_at: Instant::now()
+                + Duration::from_millis(soul_policy::hitl::DEFAULT_TOKEN_TTL_MS),
             request,
             body,
             facts,
@@ -280,7 +390,7 @@ impl DraftSession {
             origin: endpoint,
         });
 
-        Ok(E1DraftPlan {
+        E1DraftPlan {
             preparation_id: id.to_string(),
             plan_hash: plan_hash.as_str().to_owned(),
             model: self.drafter.model().to_owned(),
@@ -289,7 +399,7 @@ impl DraftSession {
             carries_exempted_original: facts.carries_exempted_original,
             notice,
             not_sent_notice: NOT_SENT_NOTICE.to_owned(),
-        })
+        }
     }
 
     /// Step two: the user approved this exact preparation, so run it.
@@ -329,6 +439,20 @@ impl DraftSession {
         approval: &Approval,
         now_ms: u64,
     ) -> Result<Drafted, DraftRefusal> {
+        let execution = self.dispatch(policy, approval, now_ms)?.execute();
+        let draft = execution.result?;
+        let mut audit = execution.egress_audit;
+        audit.extend(draft.audit());
+        Ok(Drafted { draft, audit })
+    }
+
+    /// Match and consume the held body, without waiting on the endpoint.
+    pub(crate) fn dispatch(
+        &mut self,
+        policy: &mut PolicySession,
+        approval: &Approval,
+        now_ms: u64,
+    ) -> Result<DraftWork, DraftRefusal> {
         let Some(held) = self.pending.as_ref() else {
             return Err(DraftRefusal::NothingPrepared);
         };
@@ -341,6 +465,10 @@ impl DraftSession {
                 current: held.plan_hash.as_str().to_owned(),
             }
             .into());
+        }
+        if Instant::now() >= held.expires_at {
+            self.pending = None;
+            return Err(DraftRefusal::Expired);
         }
 
         let described = held.origin.clone();
@@ -367,15 +495,59 @@ impl DraftSession {
                 now_ms,
             )
             .map_err(DraftRefusal::Token)?;
-        let outcome =
-            policy.e1_generate(self.drafter.model(), pending.body, token.token_id(), now_ms)?;
+        let dispatch = policy.prepare_e1_for(
+            E1Purpose::Draft,
+            self.drafter.model(),
+            pending.body,
+            token.token_id(),
+            now_ms,
+        )?;
+        Ok(DraftWork {
+            drafter: self.drafter.clone(),
+            request: pending.request,
+            facts: pending.facts,
+            expires_at: pending.expires_at,
+            dispatch,
+        })
+    }
+}
 
-        let draft = self
-            .drafter
-            .finish_reply(&pending.request, pending.facts, &outcome.body)?;
-        let mut audit = vec![outcome.audit()];
-        audit.extend(draft.audit());
-        Ok(Drafted { draft, audit })
+/// An immutable snapshot; it borrows neither Session, PolicySession nor store.
+pub(crate) struct DraftWork {
+    drafter: Drafter,
+    request: DraftRequest,
+    facts: BodyFacts,
+    pub(crate) expires_at: Instant,
+    dispatch: E1Dispatch,
+}
+
+pub(crate) struct DraftExecution {
+    pub(crate) result: Result<Draft, DraftRefusal>,
+    /// Kept even when parsing or later source validation rejects the reply.
+    pub(crate) egress_audit: Vec<AuditContent>,
+}
+
+impl DraftWork {
+    pub(crate) fn execute(self) -> DraftExecution {
+        if Instant::now() >= self.expires_at {
+            return DraftExecution {
+                egress_audit: Vec::new(),
+                result: Err(DraftRefusal::Expired),
+            };
+        }
+        match self.dispatch.execute() {
+            Ok(outcome) => DraftExecution {
+                egress_audit: vec![outcome.audit()],
+                result: self
+                    .drafter
+                    .finish_reply(&self.request, self.facts, &outcome.body)
+                    .map_err(Into::into),
+            },
+            Err(refusal) => DraftExecution {
+                egress_audit: Vec::new(),
+                result: Err(refusal.into()),
+            },
+        }
     }
 }
 
@@ -406,6 +578,49 @@ pub struct Drafted {
     /// assembled here — one surface, one test.
     pub draft: Draft,
     pub audit: Vec<AuditContent>,
+}
+
+/// The helper's local preview is separate from the ordinary draft schema.
+/// Debug deliberately carries no request material.
+#[derive(Clone, PartialEq, Eq, Serialize)]
+pub struct MemoryPrepared {
+    pub plan: E1DraftPlan,
+    pub retained_memory_ids: Vec<Uuid>,
+    pub endpoint_owner_ids: Vec<Uuid>,
+    pub encoded_bytes: usize,
+    pub body_preview: String,
+}
+
+impl std::fmt::Debug for MemoryPrepared {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("MemoryPrepared")
+            .field("plan", &self.plan)
+            .field("retained_memory_ids", &self.retained_memory_ids)
+            .field("endpoint_owner_ids", &self.endpoint_owner_ids)
+            .field("encoded_bytes", &self.encoded_bytes)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The complete selected statistics item fits, or preparation is refused.
+#[derive(Clone, PartialEq, Eq, Serialize)]
+pub struct InsightPrepared {
+    pub plan: E1DraftPlan,
+    pub encoded_bytes: usize,
+    pub body_preview: String,
+    pub includes_counts: bool,
+}
+
+impl std::fmt::Debug for InsightPrepared {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("InsightPrepared")
+            .field("plan", &self.plan)
+            .field("encoded_bytes", &self.encoded_bytes)
+            .field("includes_counts", &self.includes_counts)
+            .finish_non_exhaustive()
+    }
 }
 
 /// What the user reads before deciding whether anything may leave.
@@ -566,6 +781,35 @@ pub fn draft_pasted(
     )
 }
 
+/// The template remains a template. Selected prose and citations are
+/// returned separately by the Session adapter, never pasted into its text.
+pub fn draft_pasted_with_memory(
+    drafting: &DraftSession,
+    policy: &mut PolicySession,
+    brief: ProfileBrief,
+    pasted: &str,
+    memory: &MemoryContext,
+) -> Result<Drafted, DraftRefusal> {
+    let request = DraftRequest::from_paste(brief, pasted);
+    memory.validate_for(&request)?;
+    let mut result = drafting.draft_offline(
+        policy,
+        &request,
+        RequestOrigin::User,
+        soul_policy::clock::now_unix_millis(),
+    )?;
+    result.draft.injection_signals.extend(
+        memory
+            .injection_signals()
+            .into_iter()
+            .map(|signal| signal.as_str().to_owned()),
+    );
+    result.draft.injection_signals.sort();
+    result.draft.injection_signals.dedup();
+    result.audit = result.draft.audit();
+    Ok(result)
+}
+
 /// Step one of the endpoint path, for something a person pasted.
 ///
 /// The sibling of [`draft_pasted`], and the two make the same two decisions:
@@ -615,6 +859,54 @@ pub fn prepare_pasted(
         RequestOrigin::User,
         soul_policy::clock::now_unix_millis(),
     )
+}
+
+pub fn prepare_pasted_with_memory(
+    drafting: &mut DraftSession,
+    policy: &mut PolicySession,
+    brief: ProfileBrief,
+    pasted: &str,
+    include_original: bool,
+    memory: &MemoryContext,
+) -> Result<MemoryPrepared, DraftRefusal> {
+    let request = DraftRequest::from_paste(brief, pasted);
+    let exemption = if include_original {
+        request
+            .third_party_turn_ids()
+            .first()
+            .and_then(|turn_id| ExemptionRequest::for_turn(*turn_id).confirm(true))
+    } else {
+        None
+    };
+    drafting.prepare_with_memory(
+        policy,
+        request,
+        memory,
+        exemption,
+        RequestOrigin::User,
+        soul_policy::clock::now_unix_millis(),
+    )
+}
+
+pub(crate) fn prepare_pasted_with_insight(
+    drafting: &mut DraftSession,
+    policy: &mut PolicySession,
+    brief: ProfileBrief,
+    pasted: &str,
+    include_original: bool,
+    selected: &super::insights::SelectedInsightContext,
+    include_counts: bool,
+) -> Result<InsightPrepared, DraftRefusal> {
+    let request = DraftRequest::from_paste(brief, pasted);
+    let exemption = if include_original {
+        request
+            .third_party_turn_ids()
+            .first()
+            .and_then(|turn_id| ExemptionRequest::for_turn(*turn_id).confirm(true))
+    } else {
+        None
+    };
+    drafting.prepare_with_insight(policy, request, selected, include_counts, exemption)
 }
 
 /// Step two: the user read the plan and approved this exact preparation.
@@ -678,6 +970,23 @@ pub fn summarize_person(
     origin: RequestOrigin,
     now_ms: u64,
 ) -> Result<Summarized, DraftRefusal> {
+    let execution =
+        prepare_person_summary(drafting, policy, store, contact_id, origin, now_ms)?.execute();
+    Ok(Summarized {
+        view: execution.result?,
+        audit: execution.audit,
+    })
+}
+
+/// Read the evidence and issue a permit without doing any network work.
+pub(crate) fn prepare_person_summary(
+    drafting: &DraftSession,
+    policy: &mut PolicySession,
+    store: &SqlCipherStore,
+    contact_id: Uuid,
+    origin: RequestOrigin,
+    now_ms: u64,
+) -> Result<SummaryWork, DraftRefusal> {
     allow(policy, ActionKind::AnalysePeople, origin, now_ms)?;
 
     let graph = soul_graph::load(store)?;
@@ -690,29 +999,90 @@ pub fn summarize_person(
     let resolved = soul_graph::resolve_evidence(store, &edge)?;
 
     let counts = analysis::summarize_person(&graph, contact_id, &resolved)?;
-    if policy.guard().config().e1_endpoint().is_none() {
-        return Ok(Summarized {
-            view: PersonSummaryView::of(&counts)?,
-            audit: Vec::new(),
-        });
-    }
-
-    // Cloned because `phrase_with` needs the redactor while the generator
-    // below holds the session mutably. It is the same set either way.
     let redactor = policy.redactor().clone();
     let mut rephraser = Rephraser {
-        model: drafting.model().to_owned(),
-        policy,
-        now_ms,
+        dispatch: None,
+        material: String::new(),
         audit: Vec::new(),
     };
-    let phrased = analysis::phrase_with(&counts, &redactor, &mut rephraser).ok();
-    let audit = std::mem::take(&mut rephraser.audit);
+    if policy.guard().config().e1_endpoint().is_some() {
+        let body = analysis::summary_body(&counts, &redactor);
+        rephraser.material = body.as_str().to_owned();
+        let plan = PlanHash::of(&e1_plan(
+            drafting.model(),
+            policy.guard().config().e1_endpoint(),
+            &body,
+        ));
+        let prepared = policy
+            .issue_token(CapabilityScope::E1Generate, plan, now_ms)
+            .map_err(DraftRefusal::Token)
+            .and_then(|token| {
+                policy
+                    .prepare_e1_for(
+                        E1Purpose::PersonSummary,
+                        drafting.model(),
+                        body,
+                        token.token_id(),
+                        now_ms,
+                    )
+                    .map_err(Into::into)
+            });
+        match prepared {
+            Ok(dispatch) => rephraser.dispatch = Some(dispatch),
+            Err(refusal) => rephraser.audit.extend(refusal.audit()),
+        }
+    }
 
-    Ok(Summarized {
-        view: PersonSummaryView::of(phrased.as_ref().unwrap_or(&counts))?,
-        audit,
+    Ok(SummaryWork {
+        counts,
+        redactor,
+        rephraser,
     })
+}
+
+/// An immutable evidence snapshot and, optionally, one owned E1 permit.
+pub(crate) struct SummaryWork {
+    counts: PersonSummary,
+    redactor: Redactor,
+    rephraser: Rephraser,
+}
+
+pub(crate) struct SummaryExecution {
+    pub(crate) result: Result<PersonSummaryView, DraftRefusal>,
+    pub(crate) audit: Vec<AuditContent>,
+}
+
+impl SummaryWork {
+    pub(crate) fn needs_worker(&self) -> bool {
+        self.rephraser.dispatch.is_some()
+    }
+
+    pub(crate) fn execute(self) -> SummaryExecution {
+        self.execute_with(|counts, redactor, rephraser| {
+            analysis::phrase_with(counts, redactor, rephraser).ok()
+        })
+    }
+
+    fn execute_with(
+        mut self,
+        phrase: impl FnOnce(&PersonSummary, &Redactor, &mut Rephraser) -> Option<PersonSummary>,
+    ) -> SummaryExecution {
+        // Keep the generator outside the unwind boundary: a parse panic must
+        // not lose the request audit it recorded before returning the body.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let phrased = if self.rephraser.dispatch.is_some() {
+                phrase(&self.counts, &self.redactor, &mut self.rephraser)
+            } else {
+                None
+            };
+            PersonSummaryView::of(phrased.as_ref().unwrap_or(&self.counts))
+        }))
+        .unwrap_or(Err(DraftRefusal::WorkerFailed));
+        SummaryExecution {
+            result,
+            audit: self.rephraser.audit,
+        }
+    }
 }
 
 /// What the person summary's rephrasing is told when the endpoint did not
@@ -724,25 +1094,23 @@ const REPHRASING_REFUSED: &str = "the summary rephrasing did not come back";
 ///
 /// The purpose is [`E1Purpose::PersonSummary`], which is the whole of what
 /// separates this from a draft: the body is counts and the system instruction
-/// asks for a rewrite of them. Drafting keeps using [`PolicySession::e1_generate`].
+/// asks for a rewrite of them. Drafting uses the same permit protocol with
+/// [`E1Purpose::Draft`].
 ///
-/// A [`ReplyGenerator`] rather than a free function because
-/// [`analysis::phrase_with`] is what builds the body, and the capability token
-/// has to be minted against the body that is actually going out rather than
-/// against one assembled a second time beside it.
+/// `phrase_with` rebuilds the same statistical material for its answer check.
+/// It must equal the prepared body before the owned dispatch can execute.
 ///
 /// The audit entries are collected rather than returned, because the trait's
 /// error type carries no room for one and because the entries are owed either
 /// way: a request that left owes `egress.request`, and one that was refused
 /// owes whatever [`DraftRefusal::audit`] already names.
-struct Rephraser<'a> {
-    policy: &'a mut PolicySession,
-    model: String,
-    now_ms: u64,
+struct Rephraser {
+    dispatch: Option<E1Dispatch>,
+    material: String,
     audit: Vec<AuditContent>,
 }
 
-impl Rephraser<'_> {
+impl Rephraser {
     /// Record what the chain is owed, and say no without quoting anything.
     fn refused(&mut self, refusal: DraftRefusal) -> GenerationRefused {
         self.audit.extend(refusal.audit());
@@ -750,25 +1118,16 @@ impl Rephraser<'_> {
     }
 }
 
-impl ReplyGenerator for Rephraser<'_> {
+impl ReplyGenerator for Rephraser {
     fn generate(&mut self, body: RedactedBody) -> Result<String, GenerationRefused> {
-        let plan = PlanHash::of(&e1_plan(
-            &self.model,
-            self.policy.guard().config().e1_endpoint(),
-            &body,
-        ));
-        let scope = CapabilityScope::E1Generate;
-        let token_id = match self.policy.issue_token(scope, plan, self.now_ms) {
-            Ok(token) => token.token_id(),
-            Err(refused) => return Err(self.refused(DraftRefusal::Token(refused))),
+        if body.as_str() != self.material {
+            self.dispatch = None;
+            return Err(self.refused(DraftRefusal::WorkerFailed));
+        }
+        let Some(dispatch) = self.dispatch.take() else {
+            return Err(self.refused(DraftRefusal::WorkerFailed));
         };
-        match self.policy.e1_generate_for(
-            E1Purpose::PersonSummary,
-            &self.model,
-            body,
-            token_id,
-            self.now_ms,
-        ) {
+        match dispatch.execute() {
             Ok(outcome) => {
                 self.audit.push(outcome.audit());
                 Ok(outcome.body)
@@ -864,6 +1223,10 @@ fn allow(
 #[derive(Debug, thiserror::Error)]
 pub enum DraftRefusal {
     #[error(transparent)]
+    MemoryContext(#[from] MemoryContextError),
+    #[error("请求材料超过本次起草的字节预算，请缩短粘贴内容后重新准备；没有发送请求。")]
+    RequestTooLarge,
+    #[error(transparent)]
     Hitl(#[from] HitlDenial),
     #[error(transparent)]
     Draft(#[from] DraftError),
@@ -877,6 +1240,14 @@ pub enum DraftRefusal {
     Token(TokenRefused),
     #[error("nothing has been prepared, so there is no request to approve")]
     NothingPrepared,
+    #[error("上一次模型请求仍在结束，请等它结束后重试；没有发送新的请求。")]
+    Busy,
+    #[error("资料或端点已变化，或这次请求已撤回；旧结果不再显示，请重新发起。")]
+    SourceChanged,
+    #[error("这份准备已超过两分钟，请重新准备并核对后再生成。")]
+    Expired,
+    #[error("模型请求没有正常结束，未返回结果；请重新发起。")]
+    WorkerFailed,
     #[error("the approval names a request that is no longer the prepared one")]
     NotThePreparedRequest,
     #[error(
@@ -894,11 +1265,14 @@ impl DraftRefusal {
             DraftRefusal::E1(refusal) => refusal.reason_code(),
             DraftRefusal::Token(refused) => refused.reason,
             DraftRefusal::Draft(error) => error.reason_code().unwrap_or(ReasonCode::Routine),
-            DraftRefusal::NothingPrepared | DraftRefusal::NotThePreparedRequest => {
-                ReasonCode::PlanHashMismatch
-            }
+            DraftRefusal::NothingPrepared
+            | DraftRefusal::NotThePreparedRequest
+            | DraftRefusal::SourceChanged
+            | DraftRefusal::Expired => ReasonCode::PlanHashMismatch,
             DraftRefusal::NotThePreparedEndpoint => ReasonCode::E1OriginMismatch,
             DraftRefusal::Profile(_) | DraftRefusal::Graph(_) => ReasonCode::Routine,
+            DraftRefusal::Busy | DraftRefusal::WorkerFailed => ReasonCode::Routine,
+            DraftRefusal::MemoryContext(_) | DraftRefusal::RequestTooLarge => ReasonCode::Routine,
         }
     }
 
@@ -924,6 +1298,12 @@ impl DraftRefusal {
             DraftRefusal::Hitl(_)
             | DraftRefusal::NothingPrepared
             | DraftRefusal::NotThePreparedRequest
+            | DraftRefusal::Busy
+            | DraftRefusal::SourceChanged
+            | DraftRefusal::Expired
+            | DraftRefusal::WorkerFailed
+            | DraftRefusal::MemoryContext(_)
+            | DraftRefusal::RequestTooLarge
             | DraftRefusal::NotThePreparedEndpoint => Some(AuditContent::denied(
                 AuditAction::HitlDeny,
                 self.reason_code(),
@@ -955,5 +1335,265 @@ impl DraftRefusalView {
             reason_code: refusal.reason_code().as_str().to_owned(),
             explanation: refusal.to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod memory_preparation_tests {
+    use super::*;
+    use soul_draft::memory_context::{EndpointMemoryUse, MemoryContextEntry, MemoryContextPrivacy};
+    use soul_testkit::mock_llm::MockLlm;
+
+    fn context(count: usize, summary_chars: usize) -> MemoryContext {
+        MemoryContext::new(
+            (0..count)
+                .map(|index| {
+                    MemoryContextEntry::new(
+                        Uuid::now_v7(),
+                        Uuid::now_v7(),
+                        MemoryContextPrivacy::Owner,
+                        format!("memory-{index}"),
+                        format!("synthetic-{index}:{}", "x".repeat(summary_chars)),
+                        EndpointMemoryUse::OwnerExcerpt,
+                    )
+                    .unwrap()
+                })
+                .collect(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn final_real_json_budget_trims_whole_entries_and_the_held_body_matches_preview() {
+        let endpoint = MockLlm::start().unwrap();
+        let mut policy =
+            PolicySession::with_user_endpoint(&endpoint.base_url(), KnownIdentifiers::new())
+                .unwrap();
+        let mut drafting = DraftSession::new("模型\"\\", KnownIdentifiers::new());
+        let memory = context(8, 12_000);
+        let prepared = prepare_pasted_with_memory(
+            &mut drafting,
+            &mut policy,
+            ProfileBrief::neutral(),
+            "synthetic paste",
+            false,
+            &memory,
+        )
+        .unwrap();
+        assert_eq!(endpoint.request_count(), 0);
+        assert!(prepared.retained_memory_ids.len() < memory.entries().len());
+        assert!(!prepared.retained_memory_ids.is_empty());
+        assert_eq!(prepared.endpoint_owner_ids, prepared.retained_memory_ids);
+        assert!(prepared.encoded_bytes <= MAX_MEMORY_REQUEST_BYTES);
+        for (index, entry) in memory.entries().iter().enumerate() {
+            assert_eq!(
+                prepared
+                    .body_preview
+                    .contains(&format!("synthetic-{index}:")),
+                prepared.retained_memory_ids.contains(&entry.memory_id())
+            );
+        }
+        assert!(!format!("{prepared:?}").contains("synthetic-0:"));
+        let expected_material = prepared.body_preview.clone();
+        let expected_bytes = prepared.encoded_bytes;
+        drafting
+            .generate(
+                &mut policy,
+                &prepared.plan.approval(),
+                soul_policy::clock::now_unix_millis(),
+            )
+            .unwrap();
+        let requests = endpoint.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].body.len(), expected_bytes);
+        let actual: serde_json::Value = serde_json::from_str(&requests[0].body).unwrap();
+        assert_eq!(
+            actual["messages"][1]["content"],
+            format!(
+                "{}\n{}\n{}",
+                soul_policy::e1::QUOTE_OPEN,
+                expected_material,
+                soul_policy::e1::QUOTE_CLOSE
+            )
+        );
+    }
+
+    #[test]
+    fn an_oversized_base_refuses_without_retaining_a_stale_preparation_or_sending() {
+        let endpoint = MockLlm::start().unwrap();
+        let mut policy =
+            PolicySession::with_user_endpoint(&endpoint.base_url(), KnownIdentifiers::new())
+                .unwrap();
+        let mut drafting = DraftSession::new("model", KnownIdentifiers::new());
+        prepare_pasted(
+            &mut drafting,
+            &mut policy,
+            ProfileBrief::neutral(),
+            "old paste",
+            false,
+        )
+        .unwrap();
+        let result = prepare_pasted_with_memory(
+            &mut drafting,
+            &mut policy,
+            ProfileBrief::neutral(),
+            &"原文\"\\".repeat(20_000),
+            true,
+            &MemoryContext::default(),
+        );
+        assert!(matches!(result, Err(DraftRefusal::RequestTooLarge)));
+        assert!(drafting.pending_plan_hash().is_none());
+        assert_eq!(endpoint.request_count(), 0);
+    }
+
+    #[test]
+    fn local_memory_reference_does_not_change_or_append_to_the_template() {
+        let mut policy = PolicySession::closed();
+        let drafting = DraftSession::new("model", KnownIdentifiers::new());
+        let memory = context(1, 20);
+        let plain = draft_pasted(
+            &drafting,
+            &mut policy,
+            ProfileBrief::neutral(),
+            "same paste",
+        )
+        .unwrap();
+        let selected = draft_pasted_with_memory(
+            &drafting,
+            &mut policy,
+            ProfileBrief::neutral(),
+            "same paste",
+            &memory,
+        )
+        .unwrap();
+        assert_eq!(plain.draft.text, selected.draft.text);
+        assert!(!selected.draft.text.contains("synthetic-0:"));
+    }
+}
+
+#[cfg(test)]
+mod expiry_tests {
+    use super::*;
+
+    #[test]
+    fn an_expired_preparation_is_consumed_without_issuing_a_dispatch() {
+        let (mut draft, mut policy) = closed_session();
+        policy.set_user_endpoint("http://127.0.0.1:9").unwrap();
+        let plan = prepare_pasted(
+            &mut draft,
+            &mut policy,
+            ProfileBrief::neutral(),
+            "synthetic",
+            false,
+        )
+        .unwrap();
+        draft.pending.as_mut().unwrap().expires_at = Instant::now();
+        let refusal = draft
+            .dispatch(&mut policy, &plan.approval(), 0)
+            .err()
+            .unwrap();
+        assert!(matches!(refusal, DraftRefusal::Expired));
+        assert!(draft.pending.is_none());
+    }
+
+    #[test]
+    fn an_expired_issued_work_does_not_contact_the_endpoint() {
+        let endpoint = soul_testkit::mock_llm::MockLlm::start().unwrap();
+        let (mut draft, mut policy) = closed_session();
+        policy.set_user_endpoint(&endpoint.base_url()).unwrap();
+        let plan = prepare_pasted(
+            &mut draft,
+            &mut policy,
+            ProfileBrief::neutral(),
+            "synthetic",
+            false,
+        )
+        .unwrap();
+        let mut work = draft.dispatch(&mut policy, &plan.approval(), 0).unwrap();
+        work.expires_at = Instant::now();
+        let execution = work.execute();
+        assert!(matches!(execution.result, Err(DraftRefusal::Expired)));
+        assert!(execution.egress_audit.is_empty());
+        assert_eq!(endpoint.request_count(), 0);
+    }
+}
+
+#[cfg(test)]
+mod summary_worker_tests {
+    use super::*;
+    use soul_schema::common::{NotAClinicalClaim, SupportedBand};
+
+    fn work(endpoint: &str) -> SummaryWork {
+        let (draft, mut policy) = closed_session();
+        policy.set_user_endpoint(endpoint).unwrap();
+        let counts = PersonSummary {
+            contact_id: Uuid::now_v7(),
+            relationship_id: Uuid::now_v7(),
+            points: vec![analysis::SummaryPoint::new(
+                "你们有 2 次一对一往来。",
+                SupportedBand::Weak,
+                vec![Uuid::now_v7()],
+            )
+            .unwrap()],
+            source: SummarySource::Counts,
+            narrative: None,
+            notice: soul_policy::clinical::WORKING_HYPOTHESIS_NOTICE.to_owned(),
+            clinical_claim: NotAClinicalClaim,
+        };
+        let redactor = policy.redactor().clone();
+        let body = analysis::summary_body(&counts, &redactor);
+        let material = body.as_str().to_owned();
+        let plan = PlanHash::of(&e1_plan(
+            draft.model(),
+            policy.guard().config().e1_endpoint(),
+            &body,
+        ));
+        let token = policy
+            .issue_token(CapabilityScope::E1Generate, plan, 0)
+            .unwrap();
+        let dispatch = policy
+            .prepare_e1_for(
+                E1Purpose::PersonSummary,
+                draft.model(),
+                body,
+                token.token_id(),
+                0,
+            )
+            .unwrap();
+        SummaryWork {
+            counts,
+            redactor,
+            rephraser: Rephraser {
+                dispatch: Some(dispatch),
+                material,
+                audit: Vec::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn mismatched_summary_material_falls_back_without_executing_the_permit() {
+        let endpoint = soul_testkit::mock_llm::MockLlm::start().unwrap();
+        let mut work = work(&endpoint.base_url());
+        let counts = PersonSummaryView::of(&work.counts).unwrap();
+        work.rephraser.material.push_str(" changed");
+        let execution = work.execute();
+        assert_eq!(execution.result.unwrap(), counts);
+        assert_eq!(endpoint.request_count(), 0);
+        assert_eq!(execution.audit.len(), 1);
+    }
+
+    #[test]
+    fn a_parse_panic_retains_the_already_recorded_request_audit() {
+        let endpoint = soul_testkit::mock_llm::MockLlm::start().unwrap();
+        let execution = work(&endpoint.base_url()).execute_with(|counts, redactor, generator| {
+            generator
+                .generate(analysis::summary_body(counts, redactor))
+                .unwrap();
+            panic!("synthetic parser failure");
+        });
+        assert!(matches!(execution.result, Err(DraftRefusal::WorkerFailed)));
+        assert_eq!(endpoint.request_count(), 1);
+        assert_eq!(execution.audit.len(), 1);
     }
 }

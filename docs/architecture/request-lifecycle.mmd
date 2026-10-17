@@ -1,0 +1,19 @@
+flowchart TD
+    EVENT["读取 / 预览 / 用户确认"]
+    ADMIT{"同步准入通过？"}
+    TICKET["票据绑定本次操作"]
+    WORK["读取文件或调用核心"]
+    OWNS{"返回时仍拥有票据？"}
+    UPDATE["结束本次 busy / 更新页面"]
+    EVENT --> ADMIT
+    ADMIT -->|"否"| SKIP["不发起本次请求"]
+    ADMIT -->|"是"| TICKET --> WORK --> OWNS
+    OWNS -->|"否"| DROP["忽略旧成功或失败"]
+    OWNS -->|"是"| UPDATE
+    UPDATE --> PREVIEW["导入预览成功：等待显式确认"]
+    PREVIEW -->|"确认后申请提交票据"| EVENT
+    UPDATE --> DRAFT["记忆保存：成功且编辑代次未变才清空"]
+    INVALIDATE["按各页规则失效：卸载、清空选择、新摘要"]
+    INVALIDATE -.->|"使旧票据失效"| OWNS
+    COMMITLOCK["导入提交期间：禁止新读和清空选择"]
+    COMMITLOCK -.->|"保护已有提交"| ADMIT

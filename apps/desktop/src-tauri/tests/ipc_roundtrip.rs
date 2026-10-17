@@ -73,6 +73,12 @@ impl Shell {
     fn on(directory: impl Into<PathBuf>) -> Shell {
         let directory = directory.into();
         let session = Session::open(&directory);
+        let status = session.status();
+        assert!(
+            status.store_opened,
+            "an IPC fixture needs the real encrypted store: {}",
+            status.store_notice,
+        );
         let app = soul_desktop::configure(
             mock_builder(),
             soul_desktop::commands::SessionState::new(session),
@@ -99,6 +105,27 @@ impl Shell {
 
     fn invoke(&self, command: &str, body: Value) -> Result<Value, Value> {
         self.invoke_from(command, body, None)
+    }
+
+    fn prepare_import(&self, source: &str, text: &str) -> Result<Value, Value> {
+        self.invoke(
+            "prepare_import",
+            json!({ "request": {
+                "text": text, "source": source, "namespace_id": null, "legacy_choice": "reject"
+            }}),
+        )
+    }
+
+    fn import(&self, source: &str, text: &str) -> Result<Value, Value> {
+        let prepared = self.prepare_import(source, text)?;
+        let committed = self.invoke(
+            "confirm_import",
+            json!({
+                "operationId": prepared["operation"]["operation_id"],
+                "previewId": prepared["operation"]["preview_id"]
+            }),
+        )?;
+        Ok(committed["operation"]["receipt"].clone())
     }
 
     fn invoke_from(
@@ -1159,14 +1186,9 @@ fn an_imported_name_is_placeheld_over_the_ipc_even_in_a_body_the_user_confirmed(
     let shell = Shell::on(scratch());
     let text = fixture("import/telegram/result_basic.json");
 
-    let receipt = match shell.invoke("commit_telegram", json!({ "text": text })) {
-        Ok(receipt) => receipt,
-        // No key, no store, no import — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let receipt = shell
+        .import("telegram-desktop", &text)
+        .expect("a valid export commits");
     assert_eq!(receipt["contacts_created"], json!(3));
     assert!(
         PASTE_NAMING_A_CONTACT.contains(IMPORTED_NAME),
@@ -1394,14 +1416,9 @@ fn a_person_summary_is_rephrased_over_the_ipc_by_the_endpoint_the_user_configure
     let shell = Shell::on(scratch());
     let text = fixture("import/telegram/result_basic.json");
 
-    let receipt = match shell.invoke("commit_telegram", json!({ "text": text })) {
-        Ok(receipt) => receipt,
-        // No key, no store, no import — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let receipt = shell
+        .import("telegram-desktop", &text)
+        .expect("a valid export commits");
     assert_eq!(receipt["events_written"], json!(6));
     shell
         .invoke("set_user_endpoint", json!({ "url": endpoint.base_url() }))
@@ -1463,14 +1480,9 @@ fn a_rephrasing_that_reads_like_a_diagnosis_leaves_the_counts_standing_over_the_
     let shell = Shell::on(scratch());
     let text = fixture("import/telegram/result_basic.json");
 
-    let receipt = match shell.invoke("commit_telegram", json!({ "text": text })) {
-        Ok(receipt) => receipt,
-        // No key, no store, no import — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let receipt = shell
+        .import("telegram-desktop", &text)
+        .expect("a valid export commits");
     assert_eq!(receipt["events_written"], json!(6));
 
     let graph = shell.invoke("people_graph", json!({})).expect("a graph");
@@ -1752,15 +1764,9 @@ fn a_hostile_file_name_crosses_the_ipc_on_the_plan_and_not_on_the_chain() {
         "the user cannot see the name in the plan they are asked to read: {plan}",
     );
 
-    let chain = match shell.invoke("audit_chain", json!({})) {
-        Ok(chain) => chain,
-        // No key, no store, no chain — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            let _ = std::fs::remove_dir_all(root.parent().unwrap_or(&root));
-            return;
-        }
-    };
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the scan audit reads back");
     assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
 
     let blocked = chain["entries"]
@@ -1801,17 +1807,7 @@ fn a_hostile_file_name_crosses_the_ipc_on_the_plan_and_not_on_the_chain() {
 /// and the notice on it is `soul-policy`'s, not a sentence written here.
 #[test]
 fn the_people_screen_reads_an_empty_store_as_an_empty_graph() {
-    let graph = match invoke("people_graph", json!({})) {
-        Ok(graph) => graph,
-        // On a machine whose key provider could not produce a key the store
-        // does not open, and a refusal is the honest answer. It must still be
-        // a refusal with a code on it rather than an empty graph, because the
-        // two must not look the same on screen.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let graph = invoke("people_graph", json!({})).expect("an available empty store has a graph");
 
     assert_eq!(graph["people"], json!([]));
     assert_eq!(graph["ties"], json!([]));
@@ -1892,24 +1888,26 @@ fn an_export_crosses_the_ipc_as_counts_and_becomes_people() {
     let text = fixture("import/soul-import-v1/three_partners.jsonl");
     let shell = Shell::on(scratch());
 
-    let preview = match shell.invoke("preview_soul_import_v1", json!({ "text": text })) {
-        Ok(preview) => preview,
-        // No key, no store, no import — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let prepared = shell
+        .prepare_import("soul-import-v1", &text)
+        .expect("a valid export prepares");
+    let preview = prepared["preview"].clone();
     assert_eq!(preview["source"], json!("soul-import-v1"));
     assert_eq!(preview["participants"], json!(5));
     assert_eq!(preview["messages"], json!(16));
     assert_eq!(preview["writes_anything"], json!(false));
 
-    let receipt = shell
-        .invoke("commit_soul_import_v1", json!({ "text": text }))
-        .expect("the same text commits");
+    let committed = shell.invoke("confirm_import", json!({
+        "operationId": prepared["operation"]["operation_id"], "previewId": prepared["operation"]["preview_id"]
+    })).expect("only the exact immutable preparation commits");
+    let receipt = committed["operation"]["receipt"].clone();
     assert_eq!(receipt["contacts_created"], json!(5));
     assert_eq!(receipt["events_written"], json!(16));
+    assert_eq!(receipt["evidence_written"], json!(15));
+    assert_eq!(
+        prepared["operation"]["preview"]["evidence_written"],
+        json!(15)
+    );
     assert_eq!(receipt["ties_rebuilt"], json!(4));
 
     let graph = shell.invoke("people_graph", json!({})).expect("a graph");
@@ -2010,25 +2008,17 @@ fn telegram_bodies(text: &str) -> Vec<String> {
 
 /// AC-05 over the real IPC: the other format, all the way to people.
 ///
-/// `an_export_crosses_the_ipc_as_counts_and_becomes_people` does this for
-/// `soul-import-v1`. Telegram only ever crossed this boundary with `{}` and
-/// `"not an export"`, so the two commands were proved registered and refusing
-/// and nothing else — a `preview_telegram` bound to the `soul-import-v1`
-/// reader would have passed every test on this side while 导入 refused every
-/// real export a user picked.
+/// Both formats use the immutable preparation protocol. A parser or identity
+/// refusal is a failing positive fixture, never a reason to skip this path.
 #[test]
 fn a_telegram_export_crosses_the_ipc_as_counts_and_becomes_people() {
     let text = fixture("import/telegram/result_basic.json");
     let shell = Shell::on(scratch());
 
-    let preview = match shell.invoke("preview_telegram", json!({ "text": text })) {
-        Ok(preview) => preview,
-        // No key, no store, no import — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let prepared = shell
+        .prepare_import("telegram-desktop", &text)
+        .expect("a valid Telegram export prepares");
+    let preview = prepared["preview"].clone();
     assert_eq!(preview["source"], json!("telegram-desktop"));
     assert_eq!(preview["participants"], json!(3));
     assert_eq!(preview["messages"], json!(6));
@@ -2036,10 +2026,17 @@ fn a_telegram_export_crosses_the_ipc_as_counts_and_becomes_people() {
     assert_eq!(preview["writes_anything"], json!(false));
     assert_eq!(preview["messages_with_injection_markers"], json!(0));
 
-    let receipt = shell
-        .invoke("commit_telegram", json!({ "text": text }))
-        .expect("the same text commits");
-    assert_eq!(receipt["source"], json!("telegram-desktop"));
+    let committed = shell
+        .invoke(
+            "confirm_import",
+            json!({
+                "operationId": prepared["operation"]["operation_id"],
+                "previewId": prepared["operation"]["preview_id"]
+            }),
+        )
+        .expect("only the prepared Telegram export commits");
+    let receipt = committed["operation"]["receipt"].clone();
+    assert_eq!(committed["operation"]["source"], json!("telegram-desktop"));
     assert_eq!(receipt["contacts_created"], json!(3));
     assert_eq!(receipt["events_written"], json!(6));
     assert_eq!(receipt["ties_rebuilt"], json!(2));
@@ -2109,47 +2106,50 @@ fn a_broken_telegram_export_is_refused_over_the_ipc_without_naming_a_partner() {
     let text = fixture("import/telegram/result_missing_fields.json");
     let shell = Shell::on(scratch());
 
-    for command in ["preview_telegram", "commit_telegram"] {
-        let refusal = shell
-            .invoke(command, json!({ "text": text }))
-            .expect_err("the export is missing required fields");
+    let refusal = shell
+        .prepare_import("telegram-desktop", &text)
+        .expect_err("the export is missing required fields");
 
-        assert_eq!(refusal["reason_code"], json!("ROUTINE"));
-        let explanation = refusal["explanation"]
-            .as_str()
-            .expect("the screen is handed something to render");
+    assert_eq!(refusal["reason_code"], json!("ROUTINE"));
+    let explanation = refusal["explanation"]
+        .as_str()
+        .expect("the screen is handed something to render");
+    assert!(
+        explanation.contains("没有导入"),
+        "a refusal has to say that nothing landed: {explanation}",
+    );
+    for field in ["messages", "date"] {
         assert!(
-            explanation.contains("没有导入"),
-            "a refusal has to say that nothing landed: {explanation}",
+            explanation.contains(field),
+            "the refusal does not say which field is missing: {explanation}",
         );
-        for field in ["messages", "date"] {
-            assert!(
-                explanation.contains(field),
-                "the refusal does not say which field is missing: {explanation}",
-            );
-        }
-
-        // The whole answer, not only the sentence: a name that reached the
-        // WebView on any other field of the refusal is still a name on screen.
-        let rendered = refusal.to_string();
-        for name in NAMES_IN_THE_BROKEN_EXPORT {
-            assert!(
-                !rendered.contains(name),
-                "{command} repeated {name:?} out of the file: {refusal}",
-            );
-        }
     }
 
-    // A refused commit is a commit that wrote nothing.
+    // The whole answer, not only the sentence: a name that reached the
+    // WebView on any other field of the refusal is still a name on screen.
+    let rendered = refusal.to_string();
+    for name in NAMES_IN_THE_BROKEN_EXPORT {
+        assert!(
+            !rendered.contains(name),
+            "the preparation repeated {name:?} out of the file: {refusal}",
+        );
+    }
+    assert_eq!(
+        shell.invoke("recent_import_operations", json!({})).unwrap(),
+        json!([])
+    );
+
+    // A refused preparation creates neither a reservation nor domain data.
     let graph = shell.invoke("people_graph", json!({})).expect("a graph");
     assert_eq!(graph["people"], json!([]), "a refusal wrote somebody in");
 
     let _ = std::fs::remove_dir_all(&shell.directory);
 }
 
-/// `text` is what `core.ts` sends, for all four import commands.
+/// Retired entry points cannot bypass identity and immutable preparation.
 #[test]
 fn the_import_argument_is_required_and_spelled_the_way_the_webview_spells_it() {
+    let shell = Shell::on(scratch());
     for command in [
         "preview_soul_import_v1",
         "preview_telegram",
@@ -2157,15 +2157,27 @@ fn the_import_argument_is_required_and_spelled_the_way_the_webview_spells_it() {
         "commit_telegram",
     ] {
         assert!(
-            invoke(command, json!({})).is_err(),
+            shell.invoke(command, json!({})).is_err(),
             "{command} imported from a missing argument, which would hide a renamed one",
         );
-        // Something that is not either format: the command has to answer, and
-        // the answer has to be a refusal with a code on it rather than a panic.
-        let refusal = invoke(command, json!({ "text": "not an export" }))
-            .expect_err("neither format accepts that");
-        assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
+        let text = if command.ends_with("telegram") {
+            fixture("import/telegram/result_basic.json")
+        } else {
+            fixture("import/soul-import-v1/valid_basic.jsonl")
+        };
+        let refusal = shell
+            .invoke(command, json!({ "text": text }))
+            .expect_err("even a valid export needs the modern preparation protocol");
+        assert_eq!(refusal["reason_code"], json!("IMPORT_PREPARATION_REQUIRED"));
     }
+    assert_eq!(
+        shell.invoke("recent_import_operations", json!({})).unwrap(),
+        json!([])
+    );
+    assert_eq!(
+        shell.invoke("people_graph", json!({})).unwrap()["people"],
+        json!([])
+    );
 }
 
 /// ------------------------------------------------------------- AC-25 ---
@@ -2226,14 +2238,9 @@ fn a_hostile_paste_the_user_abandoned_is_counted_into_the_chain_over_the_ipc() {
         "there was a preparation to throw away",
     );
 
-    let chain = match shell.invoke("audit_chain", json!({})) {
-        Ok(chain) => chain,
-        // No key, no store, no chain — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let chain = shell
+        .invoke("audit_chain", json!({}))
+        .expect("the abandoned paste was audited");
     assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
 
     let blocked = chain["entries"]
@@ -2274,25 +2281,26 @@ fn a_hostile_paste_the_user_abandoned_is_counted_into_the_chain_over_the_ipc() {
 /// about.
 #[test]
 fn a_hostile_export_preview_is_counted_into_the_chain_over_the_ipc_without_committing() {
-    let text = fixture("import/soul-import-v1/injection_lines.jsonl");
+    // The hostile-only legacy preview fixture has no account owner. Supply a
+    // real synthetic owner rather than weakening modern identity validation.
+    let owned = fixture("import/soul-import-v1/valid_basic.jsonl");
+    let hostile = fixture("import/soul-import-v1/injection_lines.jsonl");
+    let text = owned
+        .lines()
+        .chain(hostile.lines().skip(1))
+        .collect::<Vec<_>>()
+        .join("\n");
     let shell = Shell::on(scratch());
 
-    let preview = match shell.invoke("preview_soul_import_v1", json!({ "text": text })) {
-        Ok(preview) => preview,
-        // No key, no store, no preview — same refusal, same early return.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let prepared = shell
+        .prepare_import("soul-import-v1", &text)
+        .expect("a hostile but valid owned export prepares");
+    let preview = prepared["preview"].clone();
     assert_eq!(preview["writes_anything"], json!(false));
     let attempts = preview["messages_with_injection_markers"]
         .as_u64()
         .unwrap_or_default();
-    assert!(
-        attempts > 0,
-        "the fixture has to try something for this test to mean anything: {preview}",
-    );
+    assert_eq!(attempts, 5, "every hostile message is counted: {preview}");
 
     let chain = shell
         .invoke("audit_chain", json!({}))
@@ -2329,7 +2337,7 @@ fn a_hostile_export_preview_is_counted_into_the_chain_over_the_ipc_without_commi
         );
     }
 
-    // Reading a file writes nothing, and the graph is where that would show.
+    // Preparing reserves an operation, but writes no domain people or ties.
     let graph = shell.invoke("people_graph", json!({})).expect("a graph");
     assert_eq!(
         graph["people"],
@@ -2354,14 +2362,10 @@ fn a_hostile_telegram_preview_is_counted_into_the_chain_over_the_ipc_without_com
     let text = fixture("import/telegram/result_injection.json");
     let shell = Shell::on(scratch());
 
-    let preview = match shell.invoke("preview_telegram", json!({ "text": text })) {
-        Ok(preview) => preview,
-        // No key, no store, no preview — same refusal, same early return.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let prepared = shell
+        .prepare_import("telegram-desktop", &text)
+        .expect("the fixture has a stable account owner");
+    let preview = prepared["preview"].clone();
     assert_eq!(preview["source"], json!("telegram-desktop"));
     assert_eq!(
         preview["messages_with_injection_markers"],
@@ -2406,7 +2410,7 @@ fn a_hostile_telegram_preview_is_counted_into_the_chain_over_the_ipc_without_com
         );
     }
 
-    // Reading a file writes nothing, and the graph is where that would show.
+    // Preparing reserves an operation, but writes no domain people or ties.
     let graph = shell.invoke("people_graph", json!({})).expect("a graph");
     assert_eq!(
         graph["people"],
@@ -2604,24 +2608,18 @@ fn the_questionnaire_answers_and_leaves_a_profile_the_screen_can_correct() {
         "the wizard is handed a different number of questions than it draws: {questions}",
     );
 
-    let receipt = match shell.invoke(
-        "answer_questionnaire",
-        json!({
-            "answers": [
-                { "question_id": "q.axis.curiosity", "given": "leans_high" },
-                { "question_id": "q.voice.register", "given": "formal" },
-                { "question_id": "q.boundary.topics", "given": WRITTEN_BOUNDARY },
-            ]
-        }),
-    ) {
-        Ok(receipt) => receipt,
-        // No key, no store, nowhere to record an intake — and the screen has
-        // to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let receipt = shell
+        .invoke(
+            "answer_questionnaire",
+            json!({
+                "answers": [
+                    { "question_id": "q.axis.curiosity", "given": "leans_high" },
+                    { "question_id": "q.voice.register", "given": "formal" },
+                    { "question_id": "q.boundary.topics", "given": WRITTEN_BOUNDARY },
+                ]
+            }),
+        )
+        .expect("the synthetic questionnaire records an intake");
     // AC-03 over the IPC: a questionnaire and no import file leaves a profile
     // behind, and the axes nobody answered for stay unknown.
     assert_eq!(receipt["answered"], json!(3));
@@ -2784,24 +2782,18 @@ const MEMORY_RETITLED: &str = "交钥匙那天";
 fn a_memory_is_written_read_edited_and_forgotten_over_the_ipc() {
     let shell = Shell::on(scratch());
 
-    let written = match shell.invoke(
-        "create_memory",
-        json!({
-            "memory": {
-                "memory_type": "episodic",
-                "title": MEMORY_TITLE,
-                "summary": MEMORY_SUMMARY,
-            }
-        }),
-    ) {
-        Ok(written) => written,
-        // No key, no store, nowhere to put a memory — and the screen has to
-        // be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let written = shell
+        .invoke(
+            "create_memory",
+            json!({
+                "memory": {
+                    "memory_type": "episodic",
+                    "title": MEMORY_TITLE,
+                    "summary": MEMORY_SUMMARY,
+                }
+            }),
+        )
+        .expect("the synthetic memory is written");
     let memory_id = written["memory_id"]
         .as_str()
         .expect("a memory id")
@@ -2966,24 +2958,18 @@ fn three_memories_cross_the_ipc_as_themselves_and_the_chain_holds_none_of_them()
 
     let mut written: Vec<Value> = Vec::new();
     for (memory_type, title, summary) in THREE_MEMORIES {
-        let created = match shell.invoke(
-            "create_memory",
-            json!({
-                "memory": {
-                    "memory_type": memory_type,
-                    "title": title,
-                    "summary": summary,
-                }
-            }),
-        ) {
-            Ok(created) => created,
-            // No key, no store, nowhere to put a memory — and the screen has
-            // to be told which.
-            Err(refusal) => {
-                assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-                return;
-            }
-        };
+        let created = shell
+            .invoke(
+                "create_memory",
+                json!({
+                    "memory": {
+                        "memory_type": memory_type,
+                        "title": title,
+                        "summary": summary,
+                    }
+                }),
+            )
+            .expect("each synthetic memory is written");
         assert_eq!(created["memory_type"], json!(memory_type));
         assert_eq!(created["title"], json!(title));
         assert_eq!(created["summary"], json!(summary));
@@ -3118,14 +3104,9 @@ fn the_research_preview_crosses_the_ipc_as_counts_and_no_third_party_row() {
     let text = fixture("import/soul-import-v1/three_partners.jsonl");
     let shell = Shell::on(scratch());
 
-    let receipt = match shell.invoke("commit_soul_import_v1", json!({ "text": text })) {
-        Ok(receipt) => receipt,
-        // No key, no store, no import — and the screen has to be told which.
-        Err(refusal) => {
-            assert!(refusal["reason_code"].is_string(), "unexpected: {refusal}");
-            return;
-        }
-    };
+    let receipt = shell
+        .import("soul-import-v1", &text)
+        .expect("the synthetic source commits");
     assert_eq!(
         receipt["events_written"],
         json!(16),
@@ -3270,4 +3251,702 @@ fn a_call_claiming_a_different_origin_is_refused() {
         refusal.to_string().contains("not allowed"),
         "unexpected refusal: {refusal}",
     );
+}
+
+/// These helpers still call the production handler. They hold JSON identifiers,
+/// never a second Session or store Arc that could keep the runtime lease alive.
+fn write_context_memory(shell: &Shell) -> Value {
+    shell
+        .invoke(
+            "create_memory",
+            json!({ "memory": {
+                "memory_type": "preference", "title": "本次合成偏好",
+                "summary": "本次合成记录：希望先列出安排，再说明原因。"
+            }}),
+        )
+        .expect("the synthetic owner memory is written")
+}
+
+fn select_context_memory(shell: &Shell, id: &Value) -> Value {
+    shell.invoke("prepare_memory_context", json!({ "request": {
+        "candidate_ids": [id], "query": null, "memory_type": "preference", "time_specific": false
+    }})).expect("the explicit candidate becomes a local context")
+}
+
+fn assert_jsonl_prose_absent(answer: &Value, text: &str) {
+    let rendered = answer.to_string();
+    for line in text.lines() {
+        let row: Value = serde_json::from_str(line).expect("a fixture line");
+        if let Some(prose) = row["text"].as_str() {
+            assert!(
+                !rendered.contains(prose),
+                "operation metadata quoted a message: {answer}"
+            );
+        }
+    }
+}
+
+#[test]
+fn committed_import_queries_survive_restart_as_receipts_without_replaying_data() {
+    let text = fixture("import/soul-import-v1/valid_basic.jsonl");
+    let shell = Shell::on(scratch());
+    let prepared = shell
+        .prepare_import("soul-import-v1", &text)
+        .expect("a valid preparation");
+    let id = prepared["operation"]["operation_id"].clone();
+    let recovery = shell.invoke("import_recovery_state", json!({})).unwrap();
+    assert_eq!(recovery["held_operation_id"], id);
+    assert_eq!(recovery["reserved_operations"], json!(1));
+    assert_eq!(recovery["can_start_new_intent"], json!(false));
+    let committed = shell
+        .invoke(
+            "confirm_import",
+            json!({
+                "operationId": id, "previewId": prepared["operation"]["preview_id"]
+            }),
+        )
+        .expect("the exact preparation commits");
+    assert_eq!(committed["operation"]["state"], json!("committed"));
+    assert_eq!(
+        committed["operation"]["receipt"]["events_written"],
+        json!(5)
+    );
+    assert_eq!(committed["prepared_here"], json!(false));
+    let namespaces = shell.invoke("list_import_namespaces", json!({})).unwrap();
+    assert_eq!(namespaces.as_array().unwrap().len(), 1);
+    assert_eq!(
+        namespaces[0]["namespace_id"],
+        prepared["operation"]["namespace_id"]
+    );
+    assert_eq!(namespaces[0]["state"], json!("active"));
+    let listed = shell.invoke("recent_import_operations", json!({})).unwrap();
+    assert_eq!(listed, json!([committed]));
+    assert_jsonl_prose_absent(&listed, &text);
+    let graph = shell.invoke("people_graph", json!({})).unwrap();
+
+    // restart consumes and fully drops the old WebView/application/Session.
+    let restarted = shell.restart();
+    let found = restarted
+        .invoke("import_operation", json!({ "operationId": id }))
+        .unwrap();
+    assert_eq!(found, committed);
+    assert_eq!(restarted.invoke("people_graph", json!({})).unwrap(), graph);
+    let recovery = restarted
+        .invoke("import_recovery_state", json!({}))
+        .unwrap();
+    assert_eq!(recovery["held_operation_id"], Value::Null);
+    assert_eq!(recovery["running_operations"], json!(0));
+    assert_eq!(recovery["can_start_new_intent"], json!(true));
+    assert_jsonl_prose_absent(&found, &text);
+}
+
+#[test]
+fn discard_and_restart_do_not_restore_an_imports_body_or_confirmation() {
+    const OTHER: &str = "0192f000-0000-7000-8000-0000000000f1";
+    let text = fixture("import/soul-import-v1/valid_basic.jsonl");
+    let shell = Shell::on(scratch());
+    let first = shell.prepare_import("soul-import-v1", &text).unwrap();
+    let first_id = first["operation"]["operation_id"].clone();
+    assert!(shell
+        .invoke("discard_import", json!({ "operationId": OTHER }))
+        .is_err());
+    let retained = shell
+        .invoke("import_operation", json!({ "operationId": first_id }))
+        .unwrap();
+    assert_eq!(retained["prepared_here"], json!(true));
+    let discarded = shell
+        .invoke("discard_import", json!({ "operationId": first_id }))
+        .unwrap();
+    assert_eq!(discarded["operation"]["state"], json!("discarded"));
+    assert_eq!(discarded["prepared_here"], json!(false));
+    assert!(shell
+        .invoke(
+            "confirm_import",
+            json!({
+                "operationId": first_id, "previewId": first["operation"]["preview_id"]
+            })
+        )
+        .is_err());
+    let second = shell.prepare_import("soul-import-v1", &text).unwrap();
+    let second_id = second["operation"]["operation_id"].clone();
+    assert_ne!(second_id, first_id);
+    let restarted = shell.restart();
+    let interrupted = restarted
+        .invoke("import_operation", json!({ "operationId": second_id }))
+        .unwrap();
+    assert_eq!(interrupted["operation"]["state"], json!("interrupted"));
+    assert_eq!(interrupted["operation"]["receipt"], Value::Null);
+    assert_eq!(interrupted["prepared_here"], json!(false));
+    let recovery = restarted
+        .invoke("import_recovery_state", json!({}))
+        .unwrap();
+    assert_eq!(recovery["active_worker"], json!(false));
+    assert_eq!(recovery["reserved_operations"], json!(0));
+    assert_eq!(recovery["running_operations"], json!(0));
+    assert_eq!(recovery["held_operation_id"], Value::Null);
+    assert_eq!(recovery["can_start_new_intent"], json!(true));
+    assert!(restarted
+        .invoke(
+            "confirm_import",
+            json!({
+                "operationId": second_id, "previewId": second["operation"]["preview_id"]
+            })
+        )
+        .is_err());
+    assert_eq!(
+        restarted.invoke("people_graph", json!({})).unwrap()["people"],
+        json!([])
+    );
+    assert_jsonl_prose_absent(&interrupted, &text);
+}
+
+#[test]
+fn selected_memory_crosses_the_ipc_with_complete_local_citations_and_one_use() {
+    let shell = Shell::on(scratch());
+    let memory = write_context_memory(&shell);
+    let id = memory["memory_id"].clone();
+    let selected = select_context_memory(&shell, &id);
+    let context = selected["context_id"].clone();
+    assert!(context.is_string());
+    assert_eq!(selected["preview"]["outcome"], json!("context"));
+    let row = &selected["preview"]["selected"][0];
+    assert_eq!(row["memory_id"], id);
+    assert_eq!(row["summary"], memory["summary"]);
+    assert_eq!(row["citation"]["memory_id"], id);
+    for field in ["title_blob_id", "summary_blob_id"] {
+        assert!(row["citation"][field]
+            .as_str()
+            .is_some_and(|id| id.len() == 36));
+    }
+    assert_ne!(
+        row["citation"]["title_blob_id"],
+        row["citation"]["summary_blob_id"]
+    );
+    let plain = shell
+        .invoke("draft_reply", json!({ "pasted": "合成的本地回复" }))
+        .unwrap();
+    let drafted = shell
+        .invoke(
+            "draft_reply_with_memory",
+            json!({
+                "pasted": "合成的本地回复", "contextId": context
+            }),
+        )
+        .expect("contextId crosses the handler in WebView spelling");
+    assert_eq!(drafted["draft"]["text"], plain["text"]);
+    assert_eq!(drafted["draft"]["source"], json!("tone_template"));
+    assert_eq!(drafted["context"], selected["preview"]);
+    let consumed = shell
+        .invoke(
+            "draft_reply_with_memory",
+            json!({
+                "pasted": "不能重放", "contextId": context
+            }),
+        )
+        .expect_err("one local use consumed this context");
+    assert_eq!(consumed["reason_code"], json!("MEMORY_CONTEXT_CHANGED"));
+    let clarified = shell
+        .invoke(
+            "prepare_memory_context",
+            json!({ "request": {
+                "candidate_ids": [id], "query": null, "memory_type": null, "time_specific": true
+            }}),
+        )
+        .unwrap();
+    assert_eq!(clarified["context_id"], Value::Null);
+    assert_eq!(clarified["preview"]["outcome"], json!("clarify"));
+    assert!(shell
+        .invoke(
+            "draft_reply_with_memory",
+            json!({
+                "pasted": "澄清不能发许可", "contextId": context
+            })
+        )
+        .is_err());
+    let held = select_context_memory(&shell, &id);
+    let restarted = shell.restart();
+    assert!(restarted
+        .invoke(
+            "draft_reply_with_memory",
+            json!({
+                "pasted": "重启不恢复用途", "contextId": held["context_id"]
+            })
+        )
+        .is_err());
+    assert_eq!(
+        restarted
+            .invoke("memory_detail", json!({ "memoryId": id }))
+            .unwrap()["summary"],
+        memory["summary"]
+    );
+}
+
+#[test]
+fn memory_endpoint_choices_and_paste_exemption_survive_the_real_ipc_serializer() {
+    const PASTE: &str = "周五的场地我已经订好了，你直接过来就行";
+    let endpoint = MockLlm::start().unwrap();
+    endpoint.set_reply(ENDPOINT_REPLY);
+    let shell = Shell::on(scratch());
+    let memory = write_context_memory(&shell);
+    let id = memory["memory_id"].clone();
+    let prose = memory["summary"].as_str().unwrap();
+    shell
+        .invoke("set_user_endpoint", json!({ "url": endpoint.base_url() }))
+        .unwrap();
+    for (index, allow_owner) in [false, true].into_iter().enumerate() {
+        let context = select_context_memory(&shell, &id);
+        let owners = if allow_owner { json!([id]) } else { json!([]) };
+        let plan = shell
+            .invoke(
+                "prepare_draft_with_memory",
+                json!({
+                    "pasted": PASTE, "contextId": context["context_id"],
+                    "ownerIds": owners, "includeOriginal": !allow_owner
+                }),
+            )
+            .expect("the exact context and separate Owner choice prepare a request");
+        let prepared = &plan["prepared"];
+        assert_eq!(prepared["retained_memory_ids"], json!([id]));
+        assert_eq!(prepared["endpoint_owner_ids"], owners);
+        assert_eq!(
+            plan["context"]["selected"][0]["citation"],
+            context["preview"]["selected"][0]["citation"]
+        );
+        assert_eq!(
+            prepared["body_preview"].as_str().unwrap().contains(prose),
+            allow_owner
+        );
+        assert_eq!(
+            prepared["plan"]["carries_exempted_original"],
+            json!(!allow_owner)
+        );
+        assert_eq!(
+            endpoint.request_count(),
+            index,
+            "preparing never dispatches"
+        );
+        let approval = json!({ "approval": {
+            "preparation_id": prepared["plan"]["preparation_id"],
+            "plan_hash": prepared["plan"]["plan_hash"]
+        }});
+        let drafted = shell
+            .invoke("generate_draft", approval.clone())
+            .expect("the approved loopback request finishes");
+        assert_eq!(drafted["source"], json!("user_endpoint"));
+        let sent = endpoint.requests();
+        assert_eq!(sent.len(), index + 1);
+        assert_eq!(
+            sent[index].body.len() as u64,
+            prepared["encoded_bytes"].as_u64().unwrap()
+        );
+        assert_eq!(sent[index].body.contains(prose), allow_owner);
+        assert_eq!(sent[index].body.contains(PASTE), !allow_owner);
+        assert!(shell.invoke("generate_draft", approval).is_err());
+        assert_eq!(
+            endpoint.request_count(),
+            index + 1,
+            "replay opens no second socket"
+        );
+    }
+    let audit = shell.invoke("audit_chain", json!({})).unwrap();
+    assert!(!audit.to_string().contains(prose));
+    assert!(!audit.to_string().contains(PASTE));
+}
+
+#[test]
+fn automatic_insights_ignore_correction_and_recompute_use_the_production_handler() {
+    let endpoint = MockLlm::start().unwrap();
+    let shell = Shell::on(scratch());
+    shell
+        .invoke("set_user_endpoint", json!({ "url": endpoint.base_url() }))
+        .unwrap();
+    let counts = shell
+        .import(
+            "soul-import-v1",
+            &fixture("import/soul-import-v1/valid_basic.jsonl"),
+        )
+        .unwrap();
+    let first = shell.invoke("local_insights", json!({})).unwrap();
+    assert_eq!(first.as_array().unwrap().len(), 1);
+    let bundle = first[0].clone();
+    assert_eq!(bundle["validity"], json!("active"));
+    assert_eq!(bundle["ignored"], json!(false));
+    assert_eq!(bundle["counts"], counts);
+    let summaries = bundle["summaries"].as_array().unwrap();
+    assert!(!summaries.is_empty());
+    for summary in summaries {
+        assert_eq!(summary["source"], json!("counts"));
+        assert!(summary["points"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|point| !point["evidence_ids"].as_array().unwrap().is_empty()));
+    }
+    let id = bundle["bundle_id"].clone();
+    let ignored = shell
+        .invoke("ignore_local_insight", json!({ "bundleId": id }))
+        .unwrap();
+    assert_eq!(ignored["ignored"], json!(true));
+    assert_eq!(ignored["validity"], json!("active"));
+    assert_eq!(ignored["summaries"], json!([]));
+    let graph = shell.invoke("people_graph", json!({})).unwrap();
+    let relationship = graph["ties"][0]["relationship_id"].clone();
+    let corrected = shell
+        .invoke(
+            "correct_tie",
+            json!({ "relationshipId": relationship, "band": "strong" }),
+        )
+        .unwrap();
+    let tie = corrected["ties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["relationship_id"] == relationship)
+        .unwrap();
+    assert_eq!(tie["locked_by_user"], json!(true));
+    assert_eq!(tie["user_band"], json!("strong"));
+    let invalid = shell.invoke("local_insights", json!({})).unwrap();
+    assert_eq!(invalid[0]["validity"], json!("invalidated"));
+    assert_eq!(invalid[0]["ignored"], json!(true));
+    assert_eq!(invalid[0]["counts"], counts);
+    let fresh = shell
+        .invoke("recompute_local_insight", json!({ "bundleId": id }))
+        .unwrap();
+    assert_ne!(fresh["bundle_id"], id);
+    assert_eq!(fresh["operation_id"], bundle["operation_id"]);
+    assert_eq!(fresh["validity"], json!("active"));
+    assert_eq!(fresh["ignored"], json!(false));
+    assert!(!fresh["summaries"].as_array().unwrap().is_empty());
+    shell
+        .invoke("release_tie", json!({ "relationshipId": relationship }))
+        .unwrap();
+    let restarted = shell.restart();
+    let after = restarted.invoke("local_insights", json!({})).unwrap();
+    let old = after
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["bundle_id"] == id)
+        .unwrap();
+    let recomputed = after
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["bundle_id"] == fresh["bundle_id"])
+        .unwrap();
+    assert_eq!(old["ignored"], json!(true));
+    assert_eq!(recomputed["validity"], json!("invalidated"));
+    assert_eq!(recomputed["summaries"], json!([]));
+    assert_eq!(
+        endpoint.request_count(),
+        0,
+        "automatic A2 never calls even a configured endpoint"
+    );
+}
+
+#[test]
+fn new_command_arguments_use_camel_case_outside_and_contract_fields_inside_requests() {
+    const ID: &str = "0192f000-0000-7000-8000-0000000000f1";
+    let endpoint = MockLlm::start().unwrap();
+    let shell = Shell::on(scratch());
+    shell
+        .invoke("set_user_endpoint", json!({ "url": endpoint.base_url() }))
+        .unwrap();
+    let text = fixture("import/soul-import-v1/valid_basic.jsonl");
+    let memory = write_context_memory(&shell);
+    let memory_id = memory["memory_id"].clone();
+    let selected = select_context_memory(&shell, &memory_id);
+    let context_id = selected["context_id"].clone();
+    assert!(context_id.is_string());
+    let invalid = [
+        ("prepare_import", json!({})),
+        (
+            "prepare_import",
+            json!({ "request": { "text": text, "source": "soul-import-v1", "namespaceId": null, "legacy_choice": "reject" }}),
+        ),
+        (
+            "confirm_import",
+            json!({ "operation_id": ID, "preview_id": ID }),
+        ),
+        ("import_operation", json!({})),
+        ("discard_import", json!({ "operationId": 7 })),
+        (
+            "prepare_memory_context",
+            json!({ "request": { "candidateIds": [memory_id], "query": null, "memory_type": null, "time_specific": false }}),
+        ),
+        (
+            "prepare_memory_context",
+            json!({ "request": { "candidate_ids": ["not-a-uuid"], "query": null, "memory_type": null, "time_specific": false }}),
+        ),
+        (
+            "prepare_memory_context",
+            json!({ "request": { "candidate_ids": [memory_id], "query": null, "memory_type": "preference", "time_specific": false, "unexpected": true }}),
+        ),
+        (
+            "draft_reply_with_memory",
+            json!({ "pasted": "synthetic", "context_id": context_id }),
+        ),
+        (
+            "prepare_draft_with_memory",
+            json!({ "pasted": "synthetic", "contextId": context_id, "owner_ids": [memory_id], "includeOriginal": false }),
+        ),
+        (
+            "prepare_draft_with_memory",
+            json!({ "pasted": "synthetic", "contextId": context_id, "ownerIds": ["not-a-uuid"], "includeOriginal": false }),
+        ),
+        (
+            "prepare_draft_with_memory",
+            json!({ "pasted": "synthetic", "contextId": context_id, "ownerIds": [], "includeOriginal": "false" }),
+        ),
+        ("ignore_local_insight", json!({ "bundle_id": ID })),
+        ("recompute_local_insight", json!({ "bundleId": 7 })),
+    ];
+    for (command, body) in invalid {
+        // Tauri deserialization errors need not have SessionRefusal's shape.
+        assert!(
+            shell.invoke(command, body).is_err(),
+            "{command} accepted a malformed wire argument"
+        );
+    }
+    assert_eq!(
+        shell.invoke("recent_import_operations", json!({})).unwrap(),
+        json!([])
+    );
+    assert_eq!(
+        shell.invoke("local_insights", json!({})).unwrap(),
+        json!([])
+    );
+    // These exact candidates/context would have worked: argument rejection did
+    // not consume them, and did not dispatch the configured endpoint.
+    let valid = shell
+        .invoke(
+            "prepare_draft_with_memory",
+            json!({
+                "pasted": "synthetic", "contextId": context_id,
+                "ownerIds": [memory_id], "includeOriginal": false
+            }),
+        )
+        .expect("correct casing and UUID types preserve the valid context");
+    assert_eq!(valid["prepared"]["retained_memory_ids"], json!([memory_id]));
+    assert_eq!(valid["prepared"]["endpoint_owner_ids"], json!([memory_id]));
+    assert_eq!(endpoint.request_count(), 0);
+    shell
+        .invoke("discard_draft", json!({}))
+        .expect("discard the positive preparation without dispatch");
+    let valid_import = shell
+        .prepare_import("soul-import-v1", &text)
+        .expect("the same valid text prepares with namespace_id spelled correctly");
+    assert_eq!(valid_import["operation"]["state"], json!("reserved"));
+    shell
+        .invoke(
+            "discard_import",
+            json!({ "operationId": valid_import["operation"]["operation_id"] }),
+        )
+        .unwrap();
+    assert_eq!(endpoint.request_count(), 0);
+}
+
+#[test]
+fn foreign_origins_cannot_prepare_imports_consume_contexts_or_ignore_insights() {
+    const FOREIGN: &str = "https://example.invalid/page";
+    let shell = Shell::on(scratch());
+    let text = fixture("import/soul-import-v1/valid_basic.jsonl");
+    let refusal = shell.invoke_from("prepare_import", json!({ "request": {
+        "text": text, "source": "soul-import-v1", "namespace_id": null, "legacy_choice": "reject"
+    }}), Some(FOREIGN)).expect_err("a foreign origin cannot reserve an import");
+    assert!(refusal.to_string().contains("not allowed"));
+    assert_eq!(
+        shell.invoke("recent_import_operations", json!({})).unwrap(),
+        json!([])
+    );
+    let memory = write_context_memory(&shell);
+    let selected = select_context_memory(&shell, &memory["memory_id"]);
+    let body = json!({ "pasted": "合成输入", "contextId": selected["context_id"] });
+    let refusal = shell
+        .invoke_from("draft_reply_with_memory", body.clone(), Some(FOREIGN))
+        .expect_err("a foreign origin cannot spend the context");
+    assert!(refusal.to_string().contains("not allowed"));
+    shell
+        .invoke("draft_reply_with_memory", body)
+        .expect("the rejected origin did not consume the context");
+    shell.import("soul-import-v1", &text).unwrap();
+    let bundles = shell.invoke("local_insights", json!({})).unwrap();
+    let id = bundles[0]["bundle_id"].clone();
+    let refusal = shell
+        .invoke_from(
+            "ignore_local_insight",
+            json!({ "bundleId": id }),
+            Some(FOREIGN),
+        )
+        .expect_err("a foreign origin cannot hide feedback");
+    assert!(refusal.to_string().contains("not allowed"));
+    assert_eq!(
+        shell.invoke("local_insights", json!({})).unwrap()[0]["ignored"],
+        json!(false)
+    );
+}
+
+/// Exercises the production configure/handler wire when native prerequisites
+/// are present. Static command inventory checks do not execute this test.
+#[test]
+fn insight_context_commands_bind_exact_ids_and_explicit_counts_on_the_real_handler() {
+    let shell = Shell::on(scratch());
+    let endpoint = MockLlm::start().unwrap();
+    endpoint.set_reply("收到，我们稍后再聊。");
+    shell
+        .invoke("set_user_endpoint", json!({"url": endpoint.base_url()}))
+        .unwrap();
+    shell
+        .import(
+            "soul-import-v1",
+            &fixture("import/soul-import-v1/valid_basic.jsonl"),
+        )
+        .unwrap();
+    let bundles = shell.invoke("local_insights", json!({})).unwrap();
+    let bundle = &bundles[0];
+    let request = json!({"bundle_id": bundle["bundle_id"], "contact_id": bundle["summaries"][0]["contact_id"]});
+    for invalid in [
+        json!({"request": {"bundleId": bundle["bundle_id"], "contact_id": bundle["summaries"][0]["contact_id"]}}),
+        json!({"request": {"bundle_id": bundle["bundle_id"], "contact_id": bundle["summaries"][0]["contact_id"], "text": "untrusted prose"}}),
+    ] {
+        assert!(shell.invoke("prepare_insight_context", invalid).is_err());
+    }
+    let selected = shell
+        .invoke("prepare_insight_context", json!({"request": request}))
+        .unwrap();
+    assert!(selected["context_id"].is_string());
+    assert_eq!(selected["reference"]["bundle_id"], bundle["bundle_id"]);
+    assert_eq!(selected["reference"]["summary"]["source"], "counts");
+    assert!(!selected["reference"]["sources"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    let context_id = selected["context_id"].clone();
+    // Malformed outer casing must not consume this known-good context.
+    assert!(shell
+        .invoke(
+            "local_draft_with_insight",
+            json!({"pasted": "synthetic", "context_id": context_id})
+        )
+        .is_err());
+    assert!(shell.invoke("prepare_draft_with_insight", json!({"pasted": "synthetic", "contextId": context_id, "include_counts": false, "includeOriginal": false})).is_err());
+    let local = shell
+        .invoke(
+            "local_draft_with_insight",
+            json!({"pasted": "synthetic", "contextId": context_id}),
+        )
+        .unwrap();
+    assert_eq!(local["draft"]["source"], "tone_template");
+    assert_eq!(local["draft"]["delivery"], false);
+    assert_eq!(local["reference"], selected["reference"]);
+    assert!(shell
+        .invoke(
+            "local_draft_with_insight",
+            json!({"pasted": "synthetic", "contextId": context_id})
+        )
+        .is_err());
+    assert_eq!(endpoint.request_count(), 0);
+    for include_counts in [false, true] {
+        let selected = shell
+            .invoke("prepare_insight_context", json!({"request": request}))
+            .unwrap();
+        let context_id = selected["context_id"].clone();
+        let body = json!({"pasted": "PASTE_SYNTHETIC_934", "contextId": context_id, "includeCounts": include_counts, "includeOriginal": false});
+        let denied = shell
+            .invoke_from(
+                "prepare_draft_with_insight",
+                body.clone(),
+                Some("https://example.invalid/page"),
+            )
+            .unwrap_err();
+        assert!(denied.to_string().contains("not allowed"));
+        let plan = shell.invoke("prepare_draft_with_insight", body).unwrap();
+        assert_eq!(plan["prepared"]["includes_counts"], include_counts);
+        assert_eq!(plan["reference"], selected["reference"]);
+        assert!(!plan["prepared"]["body_preview"]
+            .as_str()
+            .unwrap()
+            .contains("PASTE_SYNTHETIC_934"));
+        let approval = json!({"preparation_id": plan["prepared"]["plan"]["preparation_id"], "plan_hash": plan["prepared"]["plan"]["plan_hash"]});
+        let draft = shell
+            .invoke("generate_draft", json!({"approval": approval}))
+            .unwrap();
+        assert_eq!(draft["source"], "user_endpoint");
+        assert_eq!(draft["delivery"], false);
+        let recorded = endpoint.requests().pop().unwrap();
+        assert_eq!(
+            recorded.body.len(),
+            plan["prepared"]["encoded_bytes"].as_u64().unwrap() as usize
+        );
+        assert_eq!(recorded.body.contains("本机统计"), include_counts);
+        assert!(!recorded
+            .body
+            .contains(bundle["bundle_id"].as_str().unwrap()));
+    }
+    assert_eq!(endpoint.request_count(), 2);
+}
+
+#[test]
+fn local_evidence_commands_use_exact_nested_anchors_without_opening_a_model_path() {
+    let shell = Shell::on(scratch());
+    let endpoint = MockLlm::start().unwrap();
+    shell
+        .invoke("set_user_endpoint", json!({"url":endpoint.base_url()}))
+        .unwrap();
+    shell
+        .import(
+            "soul-import-v1",
+            &fixture("import/soul-import-v1/valid_basic.jsonl"),
+        )
+        .unwrap();
+    let graph = shell.invoke("people_graph", json!({})).unwrap();
+    let tie = &graph["ties"][0];
+    let peer = if tie["from_contact_id"] == graph["self_contact_id"] {
+        &tie["to_contact_id"]
+    } else {
+        &tie["from_contact_id"]
+    };
+    let request = json!({"contact_id":peer,"relationship_id":tie["relationship_id"],"evidence_id":tie["evidence"][0]["evidence_id"]});
+    let audit_before = shell.invoke("audit_chain", json!({})).unwrap();
+    assert!(shell.invoke("evidence_sources", json!({"request":{"contactId":peer,"relationship_id":tie["relationship_id"],"evidence_id":tie["evidence"][0]["evidence_id"]}})).is_err());
+    let sources = shell
+        .invoke("evidence_sources", json!({"request":request}))
+        .unwrap();
+    assert_eq!(sources["contact_id"], *peer);
+    assert_eq!(sources["relationship_id"], tie["relationship_id"]);
+    assert!(sources.get("body").is_none());
+    let event = sources["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|event| event["availability"] == "available")
+        .expect("the valid fixture has a viewable indexed source");
+    let mut raw_request = request.clone();
+    raw_request["event_id"] = event["event_id"].clone();
+    let mut bad = raw_request.clone();
+    bad["blob_id"] = json!("0192f000-0000-7000-8000-0000000000f1");
+    assert!(shell
+        .invoke("read_evidence_event", json!({"request":bad}))
+        .is_err());
+    let foreign = shell
+        .invoke_from(
+            "read_evidence_event",
+            json!({"request":raw_request}),
+            Some("https://example.invalid/page"),
+        )
+        .unwrap_err();
+    assert!(foreign.to_string().contains("not allowed"));
+    let body = shell
+        .invoke("read_evidence_event", json!({"request":raw_request}))
+        .unwrap();
+    for key in ["contact_id", "relationship_id", "evidence_id", "event_id"] {
+        assert_eq!(body[key], raw_request[key]);
+    }
+    assert_eq!(body["namespace_id"], event["namespace_id"]);
+    assert!(!body["body"].as_str().unwrap().is_empty());
+    assert_eq!(
+        shell.invoke("audit_chain", json!({})).unwrap(),
+        audit_before
+    );
+    assert_eq!(endpoint.request_count(), 0);
 }

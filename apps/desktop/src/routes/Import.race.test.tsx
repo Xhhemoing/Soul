@@ -1,325 +1,54 @@
-/** Controlled browser reads and IPC responses exercise only reachable UI races. */
-import { act, render, screen } from "@testing-library/react";
+/** Reachable browser-read/query races under the new immutable import API. */
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-import {
-  commitSoulImportV1,
-  commitTelegram,
-  previewSoulImportV1,
-  previewTelegram,
-  type ImportPreview,
-  type ImportReceipt,
-} from "../core";
-import { anImportPreview, anImportReceipt } from "../test/fakeCore";
+import type { ImportOperationView } from "../core";
+import { aPreparedImport, anImportOperation, anImportOperationView, IMPORT_OPERATION_ID, installFakeCore } from "../test/fakeCore";
 import { Import } from "./Import";
-
-vi.mock("../core", async (importOriginal) => ({
-  // The real module first, so the screen's non-IPC exports — the byte budget
-  // and its refusal sentence — stay the core's own even under this mock.
-  ...(await importOriginal<typeof import("../core")>()),
-  commitSoulImportV1: vi.fn(),
-  commitTelegram: vi.fn(),
-  previewSoulImportV1: vi.fn(),
-  previewTelegram: vi.fn(),
-}));
-
-const REPO = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
-const JSONL = readFileSync(
-  join(REPO, "fixtures", "import", "soul-import-v1", "valid_basic.jsonl"),
-  "utf8",
-);
-
-const TELEGRAM = readFileSync(
-  join(REPO, "fixtures", "import", "telegram", "result_basic.json"),
-  "utf8",
-);
-
-interface Deferred<T> {
-  readonly promise: Promise<T>;
-  resolve(value: T): void;
-  reject(reason: unknown): void;
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((ok, fail) => {
-    resolve = ok;
-    reject = fail;
-  });
-  return { promise, resolve, reject };
-}
-
-function controlledFile(reading: Deferred<string>): File {
-  const file = new File([JSONL], "valid_basic.jsonl", { type: "application/json" });
-  vi.spyOn(file, "text").mockReturnValue(reading.promise);
-  return file;
-}
-
-beforeEach(() => {
-  vi.resetAllMocks();
-  vi.mocked(previewSoulImportV1).mockResolvedValue(anImportPreview());
-  vi.mocked(previewTelegram).mockResolvedValue(anImportPreview({ source: "telegram-desktop" }));
-  vi.mocked(commitSoulImportV1).mockResolvedValue(anImportReceipt());
-  vi.mocked(commitTelegram).mockResolvedValue(anImportReceipt({ source: "telegram-desktop" }));
-});
-
-describe("导入页异步交互", () => {
-  it.each(["文件读取", "核心预览"])("%s等待时切格式不会让原文件走另一种提交", async (phase) => {
-    const reading = deferred<string>();
-    const preview = deferred<ImportPreview>();
-    vi.mocked(previewSoulImportV1).mockReturnValue(preview.promise);
-    const user = userEvent.setup();
-    render(<Import />);
-    const soul = screen.getByRole("radio", { name: "soul-import-v1 JSONL" });
-    const telegram = screen.getByRole("radio", { name: "Telegram Desktop 的 result.json" });
-    const input = screen.getByLabelText("选择文件");
-
-    await user.upload(input, controlledFile(reading));
-    if (phase === "核心预览") {
-      await act(async () => reading.resolve(JSONL));
-    }
-    await user.click(telegram);
-    expect.soft(soul).toBeDisabled();
-    expect.soft(telegram).toBeDisabled();
-    expect(input).toBeDisabled();
-    if (phase === "文件读取") {
-      await act(async () => reading.resolve(JSONL));
-    }
-    await act(async () => preview.resolve(anImportPreview()));
-
-    expect.soft(soul).toBeChecked();
-    expect.soft(telegram).not.toBeChecked();
-    expect(screen.getByTestId("preview-source")).toHaveTextContent("soul-import-v1");
-    expect(previewSoulImportV1).toHaveBeenCalledExactlyOnceWith(JSONL);
-    expect(previewTelegram).not.toHaveBeenCalled();
-    expect(commitSoulImportV1).not.toHaveBeenCalled();
-    expect(commitTelegram).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "确认导入" }));
-    expect.soft(commitSoulImportV1).toHaveBeenCalledExactlyOnceWith(JSONL);
-    expect(commitTelegram).not.toHaveBeenCalled();
-    expect(screen.getByTestId("receipt-source")).toHaveTextContent("soul-import-v1");
-  });
-
-  it.each(["文件读取", "核心预览"])("%s失败后可以换格式重选，旧错误不残留", async (phase) => {
-    const reading = deferred<string>();
-    const firstPreview = deferred<ImportPreview>();
-    const nextPreview = deferred<ImportPreview>();
-    vi.mocked(previewSoulImportV1).mockReturnValue(firstPreview.promise);
-    vi.mocked(previewTelegram).mockReturnValue(nextPreview.promise);
-    const user = userEvent.setup();
-    render(<Import />);
-    const input = screen.getByLabelText("选择文件");
-    const telegram = screen.getByRole("radio", { name: "Telegram Desktop 的 result.json" });
-    await user.upload(input, controlledFile(reading));
-    if (phase === "核心预览") {
-      await act(async () => reading.resolve(JSONL));
-    }
-
-    // A second request cannot start while the first is in flight. Do not
-    // manufacture an unreachable late rejection by bypassing disabled inputs.
-    expect(input).toBeDisabled();
-    expect(telegram).toBeDisabled();
-    await user.click(telegram);
-    expect(telegram).not.toBeChecked();
-    const refusal = { reason_code: "IMPORT_UNREADABLE", explanation: "这个文件读不成。" };
-    await act(async () => {
-      if (phase === "文件读取") reading.reject(refusal);
-      else firstPreview.reject(refusal);
-    });
-    expect(screen.getByRole("alert")).toHaveTextContent("IMPORT_UNREADABLE");
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(input).toBeEnabled();
-    expect(telegram).toBeEnabled();
-
-    await user.click(telegram);
-    await user.upload(input, new File([TELEGRAM], "result.json", { type: "application/json" }));
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.queryByTestId("preview-counts")).toBeNull();
-    expect(previewTelegram).toHaveBeenCalledExactlyOnceWith(TELEGRAM);
-    expect(previewSoulImportV1).toHaveBeenCalledTimes(phase === "文件读取" ? 0 : 1);
-    await act(async () => nextPreview.resolve(anImportPreview({ source: "telegram-desktop" })));
-    expect(screen.getByTestId("preview-source")).toHaveTextContent("telegram-desktop");
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(commitSoulImportV1).not.toHaveBeenCalled();
-    expect(commitTelegram).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "确认导入" }));
-    expect(commitTelegram).toHaveBeenCalledExactlyOnceWith(TELEGRAM);
-    expect(commitSoulImportV1).not.toHaveBeenCalled();
-    expect(screen.getByTestId("receipt-source")).toHaveTextContent("telegram-desktop");
-  });
-
-  it("取消后换文件只显示新预览，确认只交付新文本", async () => {
-    const nextPreview = deferred<ImportPreview>();
-    vi.mocked(previewTelegram).mockReturnValue(nextPreview.promise);
-    const user = userEvent.setup();
-    render(<Import />);
-    const input = screen.getByLabelText("选择文件");
-    await user.upload(input, new File([JSONL], "valid_basic.jsonl"));
-    await screen.findByTestId("preview-counts");
-    await user.click(screen.getByRole("button", { name: "不了，换一个文件" }));
-    expect(screen.queryByTestId("preview-counts")).toBeNull();
-    expect(screen.queryByTestId("import-file-size")).toBeNull();
-    expect(screen.queryByTestId("receipt-source")).toBeNull();
-    expect(commitSoulImportV1).not.toHaveBeenCalled();
-    expect(commitTelegram).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole("radio", { name: "Telegram Desktop 的 result.json" }));
-    await user.upload(input, new File([TELEGRAM], "result.json"));
-    expect(screen.queryByTestId("preview-counts")).toBeNull();
-    expect(screen.queryByRole("button", { name: "不了，换一个文件" })).toBeNull();
-    await act(async () => nextPreview.resolve(anImportPreview({ source: "telegram-desktop", messages: 23 })));
-    expect(screen.getByTestId("preview-counts")).toHaveTextContent("23 条消息");
-    expect(screen.getByTestId("preview-source")).toHaveTextContent("telegram-desktop");
-    await user.click(screen.getByRole("button", { name: "确认导入" }));
-    expect(commitTelegram).toHaveBeenCalledExactlyOnceWith(TELEGRAM);
-    expect(commitSoulImportV1).not.toHaveBeenCalled();
-  });
-
-  it.each(["取消", "切换格式"])("%s后可以重新选择同一个文件重新预览", async (action) => {
-    const user = userEvent.setup();
-    render(<Import />);
-    const input = screen.getByLabelText("选择文件");
-    const file = new File([JSONL], "valid_basic.jsonl");
-    await user.upload(input, file);
-    await screen.findByTestId("preview-counts");
-    if (action === "取消") {
-      await user.click(screen.getByRole("button", { name: "不了，换一个文件" }));
-    } else {
-      await user.click(screen.getByRole("radio", { name: "Telegram Desktop 的 result.json" }));
-      await user.click(screen.getByRole("radio", { name: "soul-import-v1 JSONL" }));
-    }
-    await user.upload(input, file);
-    expect(previewSoulImportV1).toHaveBeenCalledTimes(2);
-    expect(await screen.findByTestId("preview-source")).toHaveTextContent("soul-import-v1");
-    expect(commitSoulImportV1).not.toHaveBeenCalled();
-    expect(commitTelegram).not.toHaveBeenCalled();
-  });
-
-  it("快速双击确认在写入完成前只产生一次提交", async () => {
-    const writing = deferred<ImportReceipt>();
-    vi.mocked(commitSoulImportV1).mockReturnValue(writing.promise);
-    const user = userEvent.setup();
-    render(<Import />);
-    const input = screen.getByLabelText("选择文件");
-    await user.upload(input, new File([JSONL], "valid_basic.jsonl"));
-    await screen.findByTestId("preview-counts");
-    const confirm = screen.getByRole("button", { name: "确认导入" });
-    const abandon = screen.getByRole("button", { name: "不了，换一个文件" });
-    await user.dblClick(confirm);
-    expect(commitSoulImportV1).toHaveBeenCalledExactlyOnceWith(JSONL);
-    expect(commitTelegram).not.toHaveBeenCalled();
-    expect(confirm).toBeDisabled();
-    expect(abandon).toBeDisabled();
-    expect(input).toBeDisabled();
-    for (const radio of screen.getAllByRole("radio")) expect(radio).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent(/正在.+请稍候/);
-    await user.click(abandon);
-    await user.click(screen.getByRole("radio", { name: "Telegram Desktop 的 result.json" }));
-    expect(screen.getByTestId("preview-source")).toHaveTextContent("soul-import-v1");
-    await act(async () => writing.resolve(anImportReceipt()));
-    expect(screen.getAllByRole("heading", { name: "导入完成" })).toHaveLength(1);
-    expect(screen.queryByRole("button", { name: "确认导入" })).toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(commitSoulImportV1).toHaveBeenCalledTimes(1);
-  });
-
-  it("提交失败后保留预览并可重试，重试成功清掉错误", async () => {
-    const first = deferred<ImportReceipt>();
-    const second = deferred<ImportReceipt>();
-    vi.mocked(commitSoulImportV1).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
-    const user = userEvent.setup();
-    render(<Import />);
-    await user.upload(screen.getByLabelText("选择文件"), new File([JSONL], "valid_basic.jsonl"));
-    await screen.findByTestId("preview-counts");
-    await user.click(screen.getByRole("button", { name: "确认导入" }));
-    await act(async () => first.reject({ reason_code: "IMPORT_REFUSED", explanation: "这次没有导入。" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("IMPORT_REFUSED");
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.getByRole("button", { name: "确认导入" })).toBeEnabled();
-    expect(screen.getByTestId("preview-source")).toHaveTextContent("soul-import-v1");
-    await user.click(screen.getByRole("button", { name: "确认导入" }));
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByRole("button", { name: "确认导入" })).toBeDisabled();
-    await act(async () => second.resolve(anImportReceipt()));
-    expect(screen.getByTestId("receipt-source")).toHaveTextContent("soul-import-v1");
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(commitSoulImportV1).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(commitSoulImportV1).mock.calls).toEqual([[JSONL], [JSONL]]);
-    expect(commitTelegram).not.toHaveBeenCalled();
-  });
-
-  it("只靠Tab、方向键、空格和Enter能选择格式、取消并确认", async () => {
-    const writing = deferred<ImportReceipt>();
-    vi.mocked(commitTelegram).mockReturnValue(writing.promise);
-    const user = userEvent.setup();
-    render(<Import />);
-    const soul = screen.getByRole("radio", { name: "soul-import-v1 JSONL" });
-    const telegram = screen.getByRole("radio", { name: "Telegram Desktop 的 result.json" });
-    const input = screen.getByLabelText("选择文件");
-    await user.tab();
-    expect(soul).toHaveFocus();
-    await user.keyboard("{ArrowDown}");
-    expect(telegram).toHaveFocus();
-    expect(telegram).toBeChecked();
-    await user.tab();
-    expect(input).toHaveFocus();
-    // userEvent supplies the native picker result; all in-page decisions use keys.
-    await user.upload(input, new File([TELEGRAM], "result.json"));
-    await screen.findByTestId("preview-counts");
-    await user.tab();
-    expect(telegram).toHaveFocus();
-    await user.tab();
-    expect(input).toHaveFocus();
-    await user.tab();
-    expect(screen.getByRole("button", { name: "确认导入" })).toHaveFocus();
-    await user.tab();
-    expect(screen.getByRole("button", { name: "不了，换一个文件" })).toHaveFocus();
-    await user.keyboard(" ");
-    expect(screen.queryByTestId("preview-counts")).toBeNull();
-    expect(commitTelegram).not.toHaveBeenCalled();
-
-    await user.tab();
-    expect(telegram).toHaveFocus();
-    await user.tab();
-    expect(input).toHaveFocus();
-    await user.upload(input, new File([TELEGRAM], "second-result.json"));
-    await screen.findByTestId("preview-counts");
-    await user.tab();
-    expect(telegram).toHaveFocus();
-    await user.tab();
-    expect(input).toHaveFocus();
-    await user.tab();
-    const confirm = screen.getByRole("button", { name: "确认导入" });
-    expect(confirm).toHaveFocus();
-    await user.keyboard("{Enter}{Enter}");
-    expect(confirm).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent(/正在.+请稍候/);
-    expect(commitTelegram).toHaveBeenCalledExactlyOnceWith(TELEGRAM);
-    expect(commitSoulImportV1).not.toHaveBeenCalled();
-    await act(async () => writing.resolve(anImportReceipt({ source: "telegram-desktop" })));
-    expect(screen.getByTestId("receipt-source")).toHaveTextContent("telegram-desktop");
-    expect(screen.queryByRole("status")).toBeNull();
-  });
-
-  it("文件读取和核心预览等待时给出可读状态，完成后撤掉等待状态", async () => {
-    const reading = deferred<string>();
-    const preview = deferred<ImportPreview>();
-    vi.mocked(previewSoulImportV1).mockReturnValue(preview.promise);
-    const user = userEvent.setup();
-    render(<Import />);
-
-    await user.upload(screen.getByLabelText("选择文件"), controlledFile(reading));
-    expect(screen.getByRole("status")).toHaveTextContent(/正在.+请稍候/);
-    await act(async () => reading.resolve(JSONL));
-    expect(screen.getByRole("status")).toHaveTextContent(/正在.+请稍候/);
-    expect(screen.queryByRole("button", { name: "确认导入" })).toBeNull();
-    await act(async () => preview.resolve(anImportPreview()));
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.getByRole("button", { name: "确认导入" })).toBeEnabled();
-  });
+import { DurableImport } from "./durableImport";
+function deferred<T>() {let resolve!:(value:T)=>void;const promise=new Promise<T>((yes)=>{resolve=yes;});return {promise,resolve};}
+function file(text:Promise<string>):File {const value=new File([],"synthetic.jsonl");Object.defineProperty(value,"text",{value:vi.fn(()=>text)});return value;}
+beforeEach(()=>{localStorage.clear();});
+describe("import current read and query races",()=>{
+ it("file.text在卸载后返回不发prepare，也不把正文交到新挂载",async()=>{
+  const read=deferred<string>();const core=installFakeCore();const lane=new DurableImport();const old=render(<Import lane={lane}/>);
+  fireEvent.change(screen.getByLabelText("选择导出文件"),{target:{files:[file(read.promise)]}});old.unmount();render(<Import lane={lane}/>);
+  expect(screen.getByLabelText("选择导出文件")).toBeDisabled();
+  await act(async()=>{read.resolve("PRIVATE SYNTHETIC BODY");await read.promise;});
+  expect(core.callsTo("prepare_import")).toHaveLength(0);expect(core.callsTo("confirm_import")).toHaveLength(0);
+  expect(screen.queryByText("PRIVATE SYNTHETIC BODY")).toBeNull();
+ });
+ it("物理读取中强行再触发file事件也只读取第一份，选择控件保持锁定",async()=>{
+  const read=deferred<string>();const first=file(read.promise);const second=file(Promise.resolve("SECOND BODY"));
+  const core=installFakeCore();render(<Import lane={new DurableImport()}/>);
+  fireEvent.change(screen.getByLabelText("选择导出文件"),{target:{files:[first]}});
+  expect(screen.getByLabelText("选择导出文件")).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("选择导出文件"),{target:{files:[second]}});
+  await act(async()=>{read.resolve("FIRST BODY");await read.promise;});
+  await screen.findByRole("heading",{name:"确认这份不可变导入准备"});
+  expect(second.text).not.toHaveBeenCalled();expect(core.callsTo("prepare_import")).toHaveLength(1);
+  expect(core.callsTo("prepare_import")[0]?.payload).toMatchObject({request:{text:"FIRST BODY"}});
+ });
+ it("准备后原File变化不会被confirm重新读取，payload保持只有IDs",async()=>{
+  let words="ORIGINAL BODY";const chosen=new File([],"same.jsonl");const text=vi.fn(async()=>words);Object.defineProperty(chosen,"text",{value:text});
+  const core=installFakeCore({preparingImport:()=>aPreparedImport()});const user=userEvent.setup();render(<Import lane={new DurableImport()}/>);
+  fireEvent.change(screen.getByLabelText("选择导出文件"),{target:{files:[chosen]}});await screen.findByRole("heading",{name:"确认这份不可变导入准备"});
+  words="CHANGED BODY";await user.click(screen.getByRole("button",{name:"确认导入这份准备"}));
+  expect(await screen.findByText(/已提交：新增事件/)).toBeVisible();expect(text).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify(core.callsTo("confirm_import"))).not.toMatch(/ORIGINAL BODY|CHANGED BODY|text/);
+ });
+ it("旧路由查询迟到结果不会交付给新挂载",async()=>{
+  const pending=deferred<ImportOperationView>();const core=installFakeCore({lookingUpImport:()=>pending.promise});
+  const lane=new DurableImport();lane.remember(IMPORT_OPERATION_ID);const user=userEvent.setup();const old=render(<Import lane={lane}/>);
+  await user.click(screen.getByRole("button",{name:"查询这个编号"}));old.unmount();render(<Import lane={lane}/>);
+  await act(async()=>{pending.resolve(anImportOperationView({operation:anImportOperation({state:"committed",receipt:anImportOperation().preview})}));await pending.promise;});
+  expect(screen.queryByText(/已提交：新增事件/)).toBeNull();expect(lane.snapshot().receipt).toBeNull();
+  expect(core.callsTo("import_operation")).toHaveLength(1);expect(core.callsTo("confirm_import")).toHaveLength(0);
+ });
+ it("没有文件的change不创建任何操作",async()=>{
+  const core=installFakeCore();render(<Import lane={new DurableImport()}/>);
+  fireEvent.change(screen.getByLabelText("选择导出文件"),{target:{files:[]}});
+  await waitFor(()=>expect(screen.getByLabelText("选择导出文件")).toBeEnabled());
+  expect(core.callsTo("prepare_import")).toHaveLength(0);expect(core.callsTo("confirm_import")).toHaveLength(0);
+ });
 });

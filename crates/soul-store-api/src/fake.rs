@@ -244,6 +244,8 @@ impl FakeStore {
                 })
                 .count() as u64,
             content_key_ids: keys,
+            import_namespaces_revoked: 0,
+            local_insights_invalidated: 0,
         }
     }
 

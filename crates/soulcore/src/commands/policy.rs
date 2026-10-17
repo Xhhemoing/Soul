@@ -215,6 +215,20 @@ impl PolicySession {
         token_id: Uuid,
         now_ms: u64,
     ) -> Result<E1Outcome, E1Refusal> {
+        self.prepare_e1_for(purpose, model, body, token_id, now_ms)?
+            .execute()
+    }
+
+    /// Consume the exact-plan capability and issue one owned dispatch permit.
+    /// The caller serializes this with endpoint withdrawal; no HTTP runs here.
+    pub(crate) fn prepare_e1_for(
+        &mut self,
+        purpose: E1Purpose,
+        model: &str,
+        body: RedactedBody,
+        token_id: Uuid,
+        now_ms: u64,
+    ) -> Result<E1Dispatch, E1Refusal> {
         let plan = e1_plan(model, self.guard.config().e1_endpoint(), &body);
         let request = ActionRequest::new(
             ActionKind::GenerateWithUserEndpoint.as_str(),
@@ -235,17 +249,36 @@ impl PolicySession {
         let class = permit.class();
 
         let carries_original = body.carries_exempted_original();
-        let response = soul_egress::send(&E1RequestPlan::chat_completions_for(
-            purpose, permit, model, body,
-        ))?;
-
-        Ok(E1Outcome {
-            status: response.status,
-            body: response.body,
+        Ok(E1Dispatch {
+            request: E1RequestPlan::chat_completions_for(purpose, permit, model, body),
             plan_hash: approved.plan_hash,
             token_id,
             egress_class: class,
             carries_exempted_original: carries_original,
+        })
+    }
+}
+
+/// Not Clone and not serializable: one consumed capability buys one execution.
+/// A previously issued permit cannot be recalled by changing PolicySession.
+pub(crate) struct E1Dispatch {
+    request: E1RequestPlan,
+    plan_hash: PlanHash,
+    token_id: Uuid,
+    egress_class: soul_policy::EgressClass,
+    carries_exempted_original: bool,
+}
+
+impl E1Dispatch {
+    pub(crate) fn execute(self) -> Result<E1Outcome, E1Refusal> {
+        let response = soul_egress::send(&self.request)?;
+        Ok(E1Outcome {
+            status: response.status,
+            body: response.body,
+            plan_hash: self.plan_hash,
+            token_id: self.token_id,
+            egress_class: self.egress_class,
+            carries_exempted_original: self.carries_exempted_original,
         })
     }
 }

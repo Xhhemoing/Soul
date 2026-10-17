@@ -1,0 +1,23 @@
+flowchart TD
+    PREVIEW["锁内解析范围 / 保留 held preview"]
+    CONFIRM["用户确认 preview_id 与 memory_id"]
+    IDENTITY{"匹配原预览身份？"}
+    PREVIEW --> CONFIRM --> IDENTITY
+    IDENTITY -->|"否"| DENY["拒绝审计 / 不消费预览"]
+    subgraph GUARDED["同一 store guard"]
+        LOCK["取得 store guard"]
+        CURRENT{"精确范围仍一致？"}
+        TAKE["保持 guard / 消费预览"]
+        TX["事务：销毁密钥、删除正文、写墓碑"]
+        COMMIT["逻辑提交"]
+        CLEANUP["WAL 清理：complete 或 pending"]
+        AUDIT["审计追加：recorded 或 unconfirmed"]
+        LOCK --> CURRENT
+        CURRENT -->|"是"| TAKE --> TX --> COMMIT
+        COMMIT --> CLEANUP --> AUDIT
+    end
+    IDENTITY -->|"是"| LOCK
+    CURRENT -->|"否"| UNLOCK["先释放 store guard"]
+    UNLOCK --> DENY
+    DENY --> REFUSED["返回拒绝 / 未执行销毁"]
+    AUDIT --> RECEIPT["回执分别呈现提交、清理、审计"]

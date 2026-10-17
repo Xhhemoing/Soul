@@ -84,7 +84,7 @@ describe("起草页", () => {
 
     // Nor a place to type one in: the only fields are the paste and the draft.
     const fields = screen.getAllByRole("textbox").map((field) => field.id);
-    expect(fields.sort()).toEqual(["draft-text", "pasted"]);
+    expect(fields.sort()).toEqual(["draft-text", "memory-query", "pasted"]);
   });
 
   it("不发送这句话是核心说的，不是界面自己写的", async () => {
@@ -129,7 +129,7 @@ describe("起草页", () => {
     expect(notice).toHaveTextContent("2 处");
     expect(notice).toHaveTextContent("不会照着做");
     expect(attempts).toEqual([]);
-    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.queryAllByRole("link").every((link) => link.getAttribute("href")?.startsWith("#/"))).toBe(true);
 
     // The draft box holds a draft, not the instruction that was pasted.
     const drafted = screen.getByLabelText("你可以直接改");

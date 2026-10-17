@@ -4,10 +4,10 @@
 //! Everything above this module has been able to assume somebody else was
 //! holding an open [`SqlCipherStore`]. Nobody was: the desktop shell carried an
 //! in-memory [`Config`] and every route that needed rows was empty. This is
-//! where the handle comes from, and there is exactly one of it — WP07 leftover
-//! 8 is blunt about why. Two connections to the same SQLCipher database are
-//! two write-ahead logs, and the second one to be opened wins arguments it was
-//! never told it was having.
+//! where the handle comes from. Soul keeps one connection so key material,
+//! transaction ownership and audit ordering share one store lock. SQLite can
+//! support multiple connections to one database and one WAL; this stricter
+//! ownership is an application invariant, not a limitation of SQLite.
 //!
 //! ## What lives on disk, and what deliberately does not
 //!
@@ -48,10 +48,13 @@
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+pub use uuid::Uuid as ContextMemoryId;
 
 use soul_fileplan::{Refusal, ScanLimits};
 use soul_policy::audit::{append_or_store_error, AuditContent};
@@ -60,8 +63,9 @@ use soul_policy::hitl::{RequestOrigin, TokenIssuer};
 use soul_policy::injection::{self, UntrustedText};
 use soul_policy::ReasonCode;
 use soul_schema::audit::{AuditAction, AuditCounts};
+use soul_store::forget::ForgetScope;
 use soul_store::SqlCipherStore;
-use soul_store_api::forget::ForgetImpact;
+use soul_store_api::forget::ForgetUnit;
 
 use crate::commands::collect::{
     self as collect_commands, share, CollectorConfig, CollectorHandle, ConsentHandle,
@@ -89,6 +93,24 @@ use crate::commands::profile::{
 use crate::commands::shell::{self, CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
 use crate::commands::store::{self as store_commands, AuditChainView, ResearchPreviewView};
 use crate::config::Config;
+
+#[path = "session_import.rs"]
+mod import_work;
+pub use import_work::{
+    ImportNamespaceView, ImportOperationView, ImportPrepareRequest, ImportRecoveryState,
+    PreparedImportView, SessionImportCompletion, SessionImportPrepareCompletion,
+    SessionImportPrepareWork, SessionImportWork,
+};
+#[path = "session_memory.rs"]
+mod memory_context;
+pub use memory_context::{
+    MemoryContextRequest, MemoryContextView, MemoryDraftPlan, MemoryDraftValue,
+};
+#[path = "session_insight.rs"]
+mod insight_context;
+pub use insight_context::{
+    InsightContextRequest, InsightContextView, InsightDraftPlan, InsightDraftValue,
+};
 
 /// The environment variable that names the data directory outright.
 ///
@@ -407,9 +429,21 @@ pub struct Session {
     config_problem: Option<String>,
     fileplan: FilePlanSession,
     unavailable_roots: Vec<UnavailableRootView>,
-    issuer: TokenIssuer,
+    issuer: Option<TokenIssuer>,
     draft: DraftSession,
     policy: PolicySession,
+    /// In-memory source/authority generation, never a content fingerprint.
+    draft_revision: Uuid,
+    /// The one physical E1 worker, shared by drafting and person summaries.
+    active_draft: Option<ActiveDraft>,
+    import_runtime: Option<Arc<soul_store::import_ops::ImportRuntimeLease>>,
+    held_import: Option<import_work::HeldImport>,
+    stale_import: Option<Uuid>,
+    deferred_revoke: Option<(AuditContent, i64)>,
+    held_memory: Option<memory_context::HeldMemory>,
+    pending_memory: Option<memory_context::PendingMemory>,
+    held_insight: Option<insight_context::HeldInsight>,
+    pending_insight: Option<insight_context::PendingInsight>,
     /// The last forget impact the user was shown, and for which memory.
     ///
     /// Forgetting is irreversible and the numbers behind it are a live query,
@@ -435,6 +469,230 @@ pub struct Session {
     collect_problem: Option<String>,
 }
 
+#[derive(Debug)]
+struct ActiveDraft {
+    id: Uuid,
+    kind: E1WorkerKind,
+    finished: Arc<AtomicBool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum E1WorkerKind {
+    Draft,
+    PersonSummary,
+    Scan,
+    Import,
+}
+
+/// A read-only scan owns the file-plan ledger and authorization snapshot.
+pub struct SessionFilePlanWork {
+    id: Uuid,
+    revision: Uuid,
+    lease: DraftLease,
+    issuer: TokenIssuer,
+    fileplan: FilePlanSession,
+    path: String,
+}
+
+pub struct SessionFilePlanCompletion {
+    id: Uuid,
+    revision: Uuid,
+    _lease: DraftLease,
+    issuer: TokenIssuer,
+    result: Result<PlanPreview, SessionRefusal>,
+    audit: Vec<AuditContent>,
+}
+
+impl std::fmt::Debug for SessionFilePlanWork {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionFilePlanWork")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for SessionFilePlanCompletion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionFilePlanCompletion")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SessionFilePlanWork {
+    pub fn execute(self) -> SessionFilePlanCompletion {
+        self.execute_with(|fileplan, issuer, path| {
+            fileplan.preview(
+                issuer,
+                path,
+                RequestOrigin::User,
+                ScanLimits::default(),
+                now_unix_millis(),
+            )
+        })
+    }
+
+    fn execute_with(
+        self,
+        scan: impl FnOnce(
+            &FilePlanSession,
+            &mut TokenIssuer,
+            &str,
+        ) -> Result<soul_fileplan::Preview, Refusal>,
+    ) -> SessionFilePlanCompletion {
+        let mut issuer = self.issuer;
+        // Keep the unique ledger outside the unwind boundary: every outcome
+        // returns it, including a scanner panic.
+        let execution = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            scan(&self.fileplan, &mut issuer, &self.path)
+        }));
+        let (result, audit) = match execution {
+            Ok(Ok(preview)) => {
+                let mut audit = vec![preview.audit()];
+                audit.extend(preview.scan().injection_audit());
+                (Ok(PlanPreview::of(&preview)), audit)
+            }
+            Ok(Err(refusal)) => (Err(refusal.clone().into()), vec![refusal.audit()]),
+            Err(_) => (
+                Err(SessionRefusal {
+                    reason_code: ReasonCode::Routine.as_str().to_owned(),
+                    explanation: "目录扫描未能正常完成，请重新准备只读计划。".to_owned(),
+                }),
+                Vec::new(),
+            ),
+        };
+        SessionFilePlanCompletion {
+            id: self.id,
+            revision: self.revision,
+            _lease: self.lease,
+            issuer,
+            result,
+            audit,
+        }
+    }
+}
+
+/// A lease is released only when the owned work or its completion is dropped.
+/// Invalidating a source never releases a still-running physical worker.
+struct DraftLease(Arc<AtomicBool>);
+
+impl Drop for DraftLease {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
+/// One dispatch, owned by the worker. Neither Clone nor an IPC value.
+pub struct SessionDraftWork {
+    id: Uuid,
+    revision: Uuid,
+    lease: DraftLease,
+    work: draft::DraftWork,
+    memory: Option<soul_memory::ContextSelection>,
+    insight: Option<super::insights::SelectedInsightContext>,
+}
+
+/// Must be returned to the same Session, even if the invoking page disappeared.
+pub struct SessionDraftCompletion {
+    id: Uuid,
+    revision: Uuid,
+    _lease: DraftLease,
+    expires_at: Instant,
+    execution: draft::DraftExecution,
+    memory: Option<soul_memory::ContextSelection>,
+    insight: Option<super::insights::SelectedInsightContext>,
+}
+
+/// A summary snapshot; only an actual E1 dispatch occupies the shared slot.
+pub struct SessionSummaryWork {
+    id: Option<Uuid>,
+    revision: Uuid,
+    lease: Option<DraftLease>,
+    work: draft::SummaryWork,
+}
+
+/// Owned by the worker until the same Session accounts for its request.
+pub struct SessionSummaryCompletion {
+    id: Option<Uuid>,
+    revision: Uuid,
+    _lease: Option<DraftLease>,
+    execution: draft::SummaryExecution,
+}
+
+impl std::fmt::Debug for SessionSummaryWork {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionSummaryWork")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for SessionSummaryCompletion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionSummaryCompletion")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SessionSummaryWork {
+    /// HTTP and answer parsing borrow neither the Session nor the store.
+    pub fn execute(self) -> SessionSummaryCompletion {
+        SessionSummaryCompletion {
+            id: self.id,
+            revision: self.revision,
+            _lease: self.lease,
+            execution: self.work.execute(),
+        }
+    }
+}
+
+impl std::fmt::Debug for SessionDraftWork {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionDraftWork")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for SessionDraftCompletion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionDraftCompletion")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SessionDraftWork {
+    /// Blocking network and parsing only. A panic becomes a fixed refusal;
+    /// the panic payload never crosses IPC or enters the audit chain.
+    pub fn execute(self) -> SessionDraftCompletion {
+        self.execute_with(|work| work.execute())
+    }
+
+    fn execute_with(
+        self,
+        execute: impl FnOnce(draft::DraftWork) -> draft::DraftExecution,
+    ) -> SessionDraftCompletion {
+        let expires_at = self.work.expires_at;
+        let execution =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| execute(self.work)))
+                .unwrap_or_else(|_| draft::DraftExecution {
+                    result: Err(DraftRefusal::WorkerFailed),
+                    egress_audit: Vec::new(),
+                });
+        SessionDraftCompletion {
+            id: self.id,
+            revision: self.revision,
+            _lease: self.lease,
+            expires_at,
+            execution,
+            memory: self.memory,
+            insight: self.insight,
+        }
+    }
+}
+
 /// One running collector, and the label of the source feeding it.
 ///
 /// The label is kept beside the handle because [`ForegroundSource::describe`]
@@ -451,7 +709,7 @@ struct RunningCollector {
 struct HeldForget {
     preview_id: Uuid,
     memory_id: Uuid,
-    impact: ForgetImpact,
+    scope: ForgetScope,
 }
 
 impl Session {
@@ -487,7 +745,18 @@ impl Session {
             .collect();
 
         let (keys, key_protection) = key_provider(&directory);
-        let store = match store_commands::open_store(&directory, keys.as_ref()) {
+        let mut import_runtime = None;
+        let opened = (|| -> Result<SqlCipherStore, soul_store_api::types::StoreError> {
+            let runtime = Arc::new(soul_store::import_ops::ImportRuntimeLease::claim(
+                store_commands::database_path(&directory),
+            )?);
+            let mut store = store_commands::open_store(&directory, keys.as_ref())?;
+            store.recover_import_operations(&runtime)?;
+            store.attach_import_runtime(Arc::clone(&runtime))?;
+            import_runtime = Some(runtime);
+            Ok(store)
+        })();
+        let store = match opened {
             Ok(store) => StoreHandle::Open(share(store)),
             Err(error) => StoreHandle::Unavailable(error.to_string()),
         };
@@ -502,9 +771,19 @@ impl Session {
             config_problem,
             fileplan,
             unavailable_roots,
-            issuer: TokenIssuer::new(),
+            issuer: Some(TokenIssuer::new()),
             draft,
             policy,
+            draft_revision: Uuid::now_v7(),
+            active_draft: None,
+            import_runtime,
+            held_import: None,
+            stale_import: None,
+            deferred_revoke: None,
+            held_memory: None,
+            pending_memory: None,
+            held_insight: None,
+            pending_insight: None,
             held_forget: None,
             consent: ConsentHandle::closed(),
             collector: None,
@@ -531,6 +810,9 @@ impl Session {
     /// second connection, and `Session::open` is the only place that opens the
     /// first.
     pub fn store(&self) -> Option<Arc<Mutex<SqlCipherStore>>> {
+        if self.import_busy() {
+            return None;
+        }
         match &self.store {
             StoreHandle::Open(store) => Some(Arc::clone(store)),
             StoreHandle::Unavailable(_) => None,
@@ -600,6 +882,7 @@ impl Session {
     /// AC-23 expects to find in the chain — including the two cases where the
     /// disk refused rather than Soul, which record as `ROUTINE` and say so.
     pub fn authorize(&mut self, path: &str) -> Result<FilesView, SessionRefusal> {
+        self.invalidate_drafts();
         let root = match self.fileplan.authorize(path) {
             Ok(root) => root,
             Err(refusal) => {
@@ -636,23 +919,51 @@ impl Session {
     ///
     /// [`Preview::audit`]: soul_fileplan::Preview::audit
     pub fn preview(&mut self, path: &str) -> Result<PlanPreview, SessionRefusal> {
-        let preview = match self.fileplan.preview(
-            &mut self.issuer,
-            path,
-            RequestOrigin::User,
-            ScanLimits::default(),
-            now_unix_millis(),
-        ) {
-            Ok(preview) => preview,
-            Err(refusal) => {
-                self.append_audit(&[refusal.audit()])?;
-                return Err(refusal.into());
-            }
-        };
-        let mut entries = vec![preview.audit()];
-        entries.extend(preview.scan().injection_audit());
-        self.append_audit(&entries)?;
-        Ok(PlanPreview::of(&preview))
+        let work = self.begin_file_plan(path)?;
+        self.complete_file_plan(work.execute())
+    }
+
+    pub fn begin_file_plan(&mut self, path: &str) -> Result<SessionFilePlanWork, SessionRefusal> {
+        self.require_draft_slot()?;
+        let issuer = self
+            .issuer
+            .take()
+            .ok_or_else(|| self.refuse_draft(DraftRefusal::Busy))?;
+        let id = Uuid::now_v7();
+        let finished = Arc::new(AtomicBool::new(false));
+        self.active_draft = Some(ActiveDraft {
+            id,
+            kind: E1WorkerKind::Scan,
+            finished: Arc::clone(&finished),
+        });
+        Ok(SessionFilePlanWork {
+            id,
+            revision: self.draft_revision,
+            lease: DraftLease(finished),
+            issuer,
+            fileplan: self.fileplan.clone(),
+            path: path.to_owned(),
+        })
+    }
+
+    pub fn complete_file_plan(
+        &mut self,
+        completed: SessionFilePlanCompletion,
+    ) -> Result<PlanPreview, SessionRefusal> {
+        if !self
+            .active_draft
+            .as_ref()
+            .is_some_and(|active| active.id == completed.id && active.kind == E1WorkerKind::Scan)
+        {
+            return Err(file_plan_changed());
+        }
+        self.active_draft = None;
+        self.issuer = Some(completed.issuer);
+        self.append_audit(&completed.audit)?;
+        if completed.revision != self.draft_revision {
+            return Err(file_plan_changed());
+        }
+        completed.result
     }
 
     /// The people graph, with every edge's evidence resolved.
@@ -670,6 +981,7 @@ impl Session {
         relationship_id: &str,
         band: &str,
     ) -> Result<PeopleGraphView, SessionRefusal> {
+        self.invalidate_drafts();
         let relationship_id = Uuid::parse_str(relationship_id).map_err(|_| SessionRefusal {
             reason_code: ReasonCode::Routine.as_str().to_owned(),
             explanation: "这不是一条认得出来的关系编号。".to_owned(),
@@ -690,6 +1002,7 @@ impl Session {
         &mut self,
         relationship_id: &str,
     ) -> Result<PeopleGraphView, SessionRefusal> {
+        self.invalidate_drafts();
         let relationship_id = Uuid::parse_str(relationship_id).map_err(|_| SessionRefusal {
             reason_code: ReasonCode::Routine.as_str().to_owned(),
             explanation: "这不是一条认得出来的关系编号。".to_owned(),
@@ -717,14 +1030,29 @@ impl Session {
         &mut self,
         contact_id: &str,
     ) -> Result<PersonSummaryView, SessionRefusal> {
+        let work = self.begin_person_summary(contact_id)?;
+        self.complete_person_summary(work.execute())
+    }
+
+    /// Snapshot the existing evidence and issue a permit while serialized
+    /// with source changes. The store guard never leaves this method.
+    pub fn begin_person_summary(
+        &mut self,
+        contact_id: &str,
+    ) -> Result<SessionSummaryWork, SessionRefusal> {
         let contact_id = Uuid::parse_str(contact_id).map_err(|_| SessionRefusal {
             reason_code: ReasonCode::Routine.as_str().to_owned(),
             explanation: "这不是一个认得出来的人的编号。".to_owned(),
         })?;
-        let summarized = {
+        // Local counts remain available after withdrawal even while the old
+        // physical E1 worker is draining. They do not take or release its slot.
+        if self.policy.guard().config().e1_endpoint().is_some() {
+            self.require_draft_slot()?;
+        }
+        let work = {
             let store = self.opened_store()?;
             let store = hold(&store);
-            draft::summarize_person(
+            draft::prepare_person_summary(
                 &self.draft,
                 &mut self.policy,
                 &store,
@@ -733,8 +1061,49 @@ impl Session {
                 now_unix_millis(),
             )?
         };
-        self.append_audit(&summarized.audit)?;
-        Ok(summarized.view)
+        let (id, lease) = if work.needs_worker() {
+            let id = Uuid::now_v7();
+            let finished = Arc::new(AtomicBool::new(false));
+            self.active_draft = Some(ActiveDraft {
+                id,
+                kind: E1WorkerKind::PersonSummary,
+                finished: finished.clone(),
+            });
+            (Some(id), Some(DraftLease(finished)))
+        } else {
+            (None, None)
+        };
+        Ok(SessionSummaryWork {
+            id,
+            revision: self.draft_revision,
+            lease,
+            work,
+        })
+    }
+
+    /// Record the attempt before rejecting stale statistics or endpoint prose.
+    pub fn complete_person_summary(
+        &mut self,
+        completed: SessionSummaryCompletion,
+    ) -> Result<PersonSummaryView, SessionRefusal> {
+        if let Some(id) = completed.id {
+            if !self
+                .active_draft
+                .as_ref()
+                .is_some_and(|active| active.id == id && active.kind == E1WorkerKind::PersonSummary)
+            {
+                return Err(self.refuse_draft(DraftRefusal::SourceChanged));
+            }
+            self.active_draft = None;
+        }
+        self.append_audit(&completed.execution.audit)?;
+        if completed.revision != self.draft_revision {
+            return Err(self.refuse_draft(DraftRefusal::SourceChanged));
+        }
+        completed
+            .execution
+            .result
+            .map_err(|refusal| self.refuse_draft(refusal))
     }
 
     /// AC-17: a draft written on this machine, with no request body built.
@@ -745,6 +1114,11 @@ impl Session {
     /// did not open leaves the neutral voice, which is what a blank profile
     /// would have said anyway.
     pub fn draft_pasted(&mut self, pasted: &str) -> Result<DraftValue, SessionRefusal> {
+        self.require_store_idle()?;
+        self.held_insight = None;
+        if self.pending_insight.take().is_some() {
+            self.draft.discard();
+        }
         let brief = self.owner_brief();
         let drafted = draft::draft_pasted(&self.draft, &mut self.policy, brief, pasted)?;
         self.append_audit(&drafted.audit)?;
@@ -780,6 +1154,12 @@ impl Session {
         pasted: &str,
         include_original: Option<bool>,
     ) -> Result<E1DraftPlan, SessionRefusal> {
+        self.require_store_idle()?;
+        self.require_draft_slot()?;
+        self.pending_memory = None;
+        self.held_memory = None;
+        self.held_insight = None;
+        self.pending_insight = None;
         // Read every time, for the reason `owner_brief` is: a cached set is a
         // set that does not have the person imported five minutes ago in it,
         // and their name is what this call is deciding whether to send.
@@ -793,7 +1173,12 @@ impl Session {
             include_original == Some(true),
         );
         let plan = prepared.map_err(|refusal| self.refuse_draft(refusal))?;
-        self.note_injection(injection::scan(&UntrustedText::new(pasted)).len() as u64)?;
+        if let Err(refusal) =
+            self.note_injection(injection::scan(&UntrustedText::new(pasted)).len() as u64)
+        {
+            self.draft.discard();
+            return Err(refusal);
+        }
         Ok(plan)
     }
 
@@ -811,10 +1196,135 @@ impl Session {
     /// about generations that succeeded and nothing at all about the ones that
     /// were stopped.
     pub fn generate_draft(&mut self, approval: &Approval) -> Result<DraftValue, SessionRefusal> {
-        let generated = draft::generate_prepared(&mut self.draft, &mut self.policy, approval);
-        let drafted = generated.map_err(|refusal| self.refuse_draft(refusal))?;
-        self.append_audit(&drafted.audit)?;
-        Ok(drafted.draft)
+        // Compatibility for synchronous core callers. The desktop shell uses
+        // begin/execute/complete to release its Session mutex during HTTP.
+        let work = self.begin_draft(approval)?;
+        self.complete_draft(work.execute())
+    }
+
+    /// Serialized with mutations and withdrawal by the shell's Session lock.
+    pub fn begin_draft(&mut self, approval: &Approval) -> Result<SessionDraftWork, SessionRefusal> {
+        self.require_draft_slot()?;
+        let memory = self
+            .memory_for_dispatch(approval)
+            .map_err(|_| self.refuse_draft(DraftRefusal::SourceChanged))?;
+        let insight = self
+            .insight_for_dispatch(approval)
+            .map_err(|_| self.refuse_draft(DraftRefusal::SourceChanged))?;
+        if memory.is_some() && insight.is_some() {
+            return Err(self.refuse_draft(DraftRefusal::SourceChanged));
+        }
+        let work = self
+            .draft
+            .dispatch(&mut self.policy, approval, now_unix_millis())
+            .map_err(|refusal| self.refuse_draft(refusal))?;
+        if memory.is_some() {
+            self.pending_memory = None;
+            self.held_memory = None;
+        }
+        if insight.is_some() {
+            self.pending_insight = None;
+            self.held_insight = None;
+        }
+        let id = Uuid::now_v7();
+        let finished = Arc::new(AtomicBool::new(false));
+        self.active_draft = Some(ActiveDraft {
+            id,
+            kind: E1WorkerKind::Draft,
+            finished: finished.clone(),
+        });
+        Ok(SessionDraftWork {
+            id,
+            revision: self.draft_revision,
+            lease: DraftLease(finished),
+            work,
+            memory,
+            insight,
+        })
+    }
+
+    /// Account for the request before deciding whether its result is current.
+    /// Completion and mutations share one lock; no content escapes on refusal.
+    pub fn complete_draft(
+        &mut self,
+        completed: SessionDraftCompletion,
+    ) -> Result<DraftValue, SessionRefusal> {
+        if !self
+            .active_draft
+            .as_ref()
+            .is_some_and(|active| active.id == completed.id && active.kind == E1WorkerKind::Draft)
+        {
+            return Err(self.refuse_draft(DraftRefusal::SourceChanged));
+        }
+        self.active_draft = None;
+        self.append_audit(&completed.execution.egress_audit)?;
+        // Transport refusals still owe their audit even after withdrawal.
+        let draft = completed
+            .execution
+            .result
+            .map_err(|refusal| self.refuse_draft(refusal))?;
+        if completed.revision != self.draft_revision {
+            return Err(self.refuse_draft(DraftRefusal::SourceChanged));
+        }
+        if let Some(selection) = &completed.memory {
+            self.revalidate_memory(selection)
+                .map_err(|_| self.refuse_draft(DraftRefusal::SourceChanged))?;
+        }
+        if let Some(selection) = &completed.insight {
+            self.revalidate_insight(selection)
+                .map_err(|_| self.refuse_draft(DraftRefusal::SourceChanged))?;
+        }
+        if Instant::now() >= completed.expires_at {
+            return Err(self.refuse_draft(DraftRefusal::Expired));
+        }
+        self.append_audit(&draft.audit())?;
+        Ok(draft)
+    }
+
+    fn require_draft_slot(&mut self) -> Result<(), SessionRefusal> {
+        if let Some(active) = &self.active_draft {
+            if !active.finished.load(Ordering::Acquire) {
+                return Err(self.refuse_draft(DraftRefusal::Busy));
+            }
+            if active.kind == E1WorkerKind::Scan && self.issuer.is_none() {
+                // File actions never mint tokens. A directly dropped owned
+                // work can recover capacity, but not its missing audit.
+                self.issuer = Some(TokenIssuer::new());
+            }
+            self.active_draft = None;
+        }
+        Ok(())
+    }
+
+    fn require_no_scan(&mut self) -> Result<(), SessionRefusal> {
+        if self
+            .active_draft
+            .as_ref()
+            .is_some_and(|active| active.kind == E1WorkerKind::Scan)
+        {
+            self.require_draft_slot()?;
+        }
+        Ok(())
+    }
+
+    /// Before source writes (including failed writes), but after a valid
+    /// endpoint parse. Background foreground-duration events are not inputs
+    /// to the current draft or person summary and do not use this revision.
+    fn invalidate_drafts(&mut self) -> bool {
+        self.held_memory = None;
+        self.pending_memory = None;
+        self.held_insight = None;
+        self.pending_insight = None;
+        if let Some(held) = self.held_import.take() {
+            self.stale_import = Some(held.operation.operation_id);
+        }
+        let changed = self.draft.discard()
+            || self
+                .active_draft
+                .as_ref()
+                .is_some_and(|active| !active.finished.load(Ordering::Acquire));
+        self.draft_revision = Uuid::now_v7();
+        changed
     }
 
     /// Write down what a refused draft owes the chain, and hand it back.
@@ -882,7 +1392,7 @@ impl Session {
 
     /// The honest answer to a user who read the plan and said no.
     pub fn discard_draft(&mut self) -> bool {
-        self.draft.discard()
+        self.invalidate_drafts()
     }
 
     // ------------------------------------------------- WP08: the endpoint ---
@@ -932,7 +1442,7 @@ impl Session {
             })?;
         // After the parse, so an address that is not one leaves both the guard
         // and the confirmation screen exactly as they were.
-        self.draft.discard();
+        self.invalidate_drafts();
         self.config.llm_endpoint = self
             .policy
             .guard()
@@ -955,7 +1465,7 @@ impl Session {
     /// an approval can still be given for.
     pub fn clear_user_endpoint(&mut self) -> ConfigSnapshot {
         self.policy.clear_user_endpoint();
-        self.draft.discard();
+        self.invalidate_drafts();
         self.config.llm_endpoint = None;
         self.snapshot()
     }
@@ -1019,6 +1529,8 @@ impl Session {
         &mut self,
         text: &str,
     ) -> Result<ImportReceiptView, SessionRefusal> {
+        self.require_no_scan()?;
+        self.invalidate_drafts();
         import_commands::within_byte_budget(text).map_err(over_budget)?;
         let staged = import_commands::read_soul_import_v1(text)?;
         import_commands::within_staged_budget(&staged).map_err(over_budget)?;
@@ -1027,6 +1539,8 @@ impl Session {
 
     /// Seal a Telegram export into the store. AC-05.
     pub fn commit_telegram(&mut self, text: &str) -> Result<ImportReceiptView, SessionRefusal> {
+        self.require_no_scan()?;
+        self.invalidate_drafts();
         import_commands::within_byte_budget(text).map_err(over_budget)?;
         let staged = import_commands::read_telegram(&telegram_document(text)?)?;
         import_commands::within_staged_budget(&staged).map_err(over_budget)?;
@@ -1119,6 +1633,7 @@ impl Session {
         &mut self,
         answers: &[GivenAnswer],
     ) -> Result<IntakeReceipt, SessionRefusal> {
+        self.invalidate_drafts();
         if answers.iter().all(|answer| answer.given.trim().is_empty()) {
             return Err(SessionRefusal {
                 reason_code: ReasonCode::Routine.as_str().to_owned(),
@@ -1154,6 +1669,7 @@ impl Session {
         axis_id: &str,
         position: &str,
     ) -> Result<ProfileScreen, SessionRefusal> {
+        self.invalidate_drafts();
         let axis_id = profile_commands::axis_named(axis_id).ok_or_else(|| SessionRefusal {
             reason_code: ReasonCode::Routine.as_str().to_owned(),
             explanation: "这不是这一版档案里的那五条轴之一。".to_owned(),
@@ -1179,6 +1695,7 @@ impl Session {
         field: &str,
         option: &str,
     ) -> Result<ProfileScreen, SessionRefusal> {
+        self.invalidate_drafts();
         let setting =
             profile_commands::voice_setting_named(field, option).ok_or_else(|| SessionRefusal {
                 reason_code: ReasonCode::Routine.as_str().to_owned(),
@@ -1202,6 +1719,24 @@ impl Session {
         Ok(memory_commands::rows(&store)?)
     }
 
+    pub fn evidence_sources(
+        &self,
+        request: &super::sources::EvidenceSourcesRequest,
+    ) -> Result<super::sources::EvidenceSourcesView, SessionRefusal> {
+        let shared = self.opened_store()?;
+        let store = hold(&shared);
+        super::sources::evidence_sources(&store, request)
+    }
+
+    pub fn read_evidence_event(
+        &self,
+        request: &super::sources::EvidenceEventRequest,
+    ) -> Result<super::sources::EvidenceEventView, SessionRefusal> {
+        let shared = self.opened_store()?;
+        let store = hold(&shared);
+        super::sources::read_evidence_event(&store, request)
+    }
+
     /// One memory, opened because the user asked for this one.
     pub fn memory(&self, memory_id: &str) -> Result<MemoryDetail, SessionRefusal> {
         let memory_id = parse_id(memory_id, "记忆")?;
@@ -1212,6 +1747,7 @@ impl Session {
 
     /// Write a memory the user typed.
     pub fn write_memory(&mut self, new: &NewMemory) -> Result<MemoryDetail, SessionRefusal> {
+        self.invalidate_drafts();
         let at = now_unix_seconds();
         let store = self.opened_store()?;
         let mut store = hold(&store);
@@ -1227,6 +1763,7 @@ impl Session {
         memory_id: &str,
         change: &MemoryChange,
     ) -> Result<MemoryDetail, SessionRefusal> {
+        self.invalidate_drafts();
         let memory_id = parse_id(memory_id, "记忆")?;
         let at = now_unix_seconds();
         let store = self.opened_store()?;
@@ -1243,18 +1780,19 @@ impl Session {
     /// confirmation carries an id rather than only a memory.
     pub fn preview_forget(&mut self, memory_id: &str) -> Result<ForgetPreview, SessionRefusal> {
         let memory_id = parse_id(memory_id, "记忆")?;
-        let impact = {
+        let scope = {
             let store = self.opened_store()?;
             let store = hold(&store);
-            memory_commands::preview_forget(&store, memory_id)?
+            store.preview_forget_scope(ForgetUnit::Memory(memory_id))?
         };
         let preview_id = Uuid::now_v7();
+        let preview = ForgetPreview::of(preview_id, memory_id, scope.impact());
         self.held_forget = Some(HeldForget {
             preview_id,
             memory_id,
-            impact: impact.clone(),
+            scope,
         });
-        Ok(ForgetPreview::of(preview_id, memory_id, &impact))
+        Ok(preview)
     }
 
     /// Destroy the content key behind one memory. AC-15, and irreversible.
@@ -1280,24 +1818,38 @@ impl Session {
         &mut self,
         confirmation: &ForgetConfirmation,
     ) -> Result<ForgetReceiptView, SessionRefusal> {
+        self.invalidate_drafts();
         if !self.forget_was_previewed(confirmation) {
             return Err(self.refuse_forget());
         }
 
         let at = now_unix_seconds();
         let store = self.opened_store()?;
-        // Taken now, and not before: everything above this line can refuse,
-        // and none of it destroys anything.
+        let mut store = hold(&store);
+        let quoted = self
+            .held_forget
+            .as_ref()
+            .expect("the confirmation matched the held preview");
+        if !store.forget_scope_is_current(&quoted.scope)? {
+            // The denial appends audit through the same mutex. Release it
+            // before auditing; no destruction has begun. Retain the quote,
+            // as for an identity mismatch, until the user asks for a new one.
+            drop(store);
+            return Err(self.refuse_forget());
+        }
+        // Revalidation and destruction share one guard: collection or other
+        // callers of the shared store cannot change the scope in between.
+        // Do not wrap forget in an outer transaction: its WAL cleanup must
+        // still happen after its own logical destruction has committed.
         let held = self
             .held_forget
             .take()
             .expect("the confirmation matched the held preview");
-        let mut store = hold(&store);
         let receipt = memory_commands::forget(&mut store, held.memory_id, at)?;
         Ok(ForgetReceiptView::of(
             held.memory_id,
             &receipt,
-            &held.impact,
+            held.scope.impact(),
         ))
     }
 
@@ -1423,6 +1975,14 @@ impl Session {
         // showing a capability as open.
         self.config.collect_enabled = false;
 
+        if self.import_busy() {
+            if self.deferred_revoke.is_none() {
+                self.deferred_revoke = Some((entry, at));
+            }
+            self.collect_problem = Some("权限已撤回，撤回审计等待当前导入结束后记录。".to_owned());
+            return Ok(self.collect_status());
+        }
+
         // Stopping is what the user asked for, and it happens whether or not
         // the chain can be written to. A store that has gone away is reported
         // in the notice; it is not a reason to leave a collector running.
@@ -1455,6 +2015,8 @@ impl Session {
         if self.running_collector().is_some() {
             return Ok(self.collect_status());
         }
+
+        self.flush_deferred_revoke()?;
 
         let store = self.opened_store()?;
         let at = now_unix_seconds();
@@ -1561,6 +2123,10 @@ impl Session {
     /// AC-17 says must still work. A store that *is* open and refuses the
     /// write is the opposite case, and it is returned.
     fn append_audit(&self, entries: &[AuditContent]) -> Result<(), SessionRefusal> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        self.require_store_idle()?;
         let StoreHandle::Open(store) = &self.store else {
             return Ok(());
         };
@@ -1598,6 +2164,7 @@ impl Session {
     }
 
     fn opened_store(&self) -> Result<Arc<Mutex<SqlCipherStore>>, SessionRefusal> {
+        self.require_store_idle()?;
         match &self.store {
             StoreHandle::Open(store) => Ok(Arc::clone(store)),
             StoreHandle::Unavailable(reason) => Err(SessionRefusal {
@@ -1789,6 +2356,13 @@ pub struct SessionRefusal {
     pub explanation: String,
 }
 
+fn file_plan_changed() -> SessionRefusal {
+    SessionRefusal {
+        reason_code: ReasonCode::Routine.as_str().to_owned(),
+        explanation: "计划的依据或授权已变更，请重新扫描。这份旧计划不再展示。".to_owned(),
+    }
+}
+
 impl From<Refusal> for SessionRefusal {
     fn from(refusal: Refusal) -> SessionRefusal {
         SessionRefusal {
@@ -1870,5 +2444,90 @@ impl From<soul_store_api::types::StoreError> for SessionRefusal {
             reason_code: ReasonCode::Routine.as_str().to_owned(),
             explanation: error.to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod draft_worker_tests {
+    use super::*;
+    use soul_testkit::mock_llm::MockLlm;
+
+    #[test]
+    fn scan_ledger_returns_after_panic_and_foreign_completion_cannot_release_work() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut session = Session::open(directory.path());
+        let mut other = Session::open(directory.path().join("other"));
+        let completed = other.begin_file_plan("not-authorized").unwrap().execute();
+        let work = session.begin_file_plan("not-authorized").unwrap();
+        assert!(session.complete_file_plan(completed).is_err());
+        assert!(session.begin_file_plan("not-authorized").is_err());
+        let completed = work.execute_with(|_, _, _| panic!("private path payload"));
+        let refusal = session.complete_file_plan(completed).unwrap_err();
+        assert!(!refusal.explanation.contains("private path payload"));
+        assert!(session.issuer.is_some());
+        drop(session.begin_file_plan("not-authorized").unwrap());
+        assert!(session.begin_file_plan("not-authorized").is_ok());
+    }
+
+    #[test]
+    fn source_change_rejects_scan_result_after_auditing_and_returns_ledger() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(root.path()).unwrap();
+        std::fs::write(root.join("photo.jpg"), b"synthetic").unwrap();
+        let mut session = Session::open(directory.path());
+        session.authorize(root.to_str().unwrap()).unwrap();
+        let work = session.begin_file_plan(root.to_str().unwrap()).unwrap();
+        assert!(session.commit_telegram("{}").is_err());
+        session.clear_user_endpoint();
+        let completed = work.execute();
+        assert!(session.complete_file_plan(completed).is_err());
+        assert!(session
+            .audit()
+            .unwrap()
+            .entries
+            .iter()
+            .any(|e| e.action == "file.plan"));
+        assert!(session.preview(root.to_str().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn a_worker_panic_is_a_fixed_refusal_and_its_slot_is_reclaimed() {
+        let directory = tempfile::tempdir().unwrap();
+        let endpoint = MockLlm::start().unwrap();
+        let mut session = Session::open(directory.path());
+        session.set_user_endpoint(&endpoint.base_url()).unwrap();
+        let plan = session.prepare_draft("synthetic paste", None).unwrap();
+        let work = session.begin_draft(&plan.approval()).unwrap();
+        let completed = work.execute_with(|_| panic!("synthetic panic payload"));
+        let refusal = session.complete_draft(completed).unwrap_err();
+        assert!(!refusal.explanation.contains("synthetic panic payload"));
+        assert_eq!(refusal.reason_code, "ROUTINE");
+        let next = session.prepare_draft("synthetic next", None).unwrap();
+        session.generate_draft(&next.approval()).unwrap();
+        assert_eq!(endpoint.request_count(), 1);
+    }
+
+    #[test]
+    fn expiry_at_acceptance_accounts_for_http_without_creating_a_draft() {
+        let directory = tempfile::tempdir().unwrap();
+        let endpoint = MockLlm::start().unwrap();
+        let mut session = Session::open(directory.path());
+        session.set_user_endpoint(&endpoint.base_url()).unwrap();
+        let plan = session.prepare_draft("synthetic paste", None).unwrap();
+        let mut completed = session.begin_draft(&plan.approval()).unwrap().execute();
+        completed.expires_at = Instant::now();
+        let refusal = session.complete_draft(completed).unwrap_err();
+        assert_eq!(refusal.reason_code, "PLAN_HASH_MISMATCH");
+        let entries = session.audit().unwrap().entries;
+        assert_eq!(
+            entries
+                .iter()
+                .filter(|e| e.action == "egress.request")
+                .count(),
+            1
+        );
+        assert!(!entries.iter().any(|e| e.action == "draft.create"));
+        assert_eq!(endpoint.request_count(), 1);
     }
 }

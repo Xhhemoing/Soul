@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 660" role="img" aria-labelledby="title desc">
+<title id="title">Soul 用例编排与证据上下文目标设计</title>
+<desc id="desc">尚未接入生产。意图进入快照准备、证据选择、用户批准和控制状态，再锁外执行并检查最新状态；撤权直接更新控制状态，结果反馈用户。</desc>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L8 3L0 6Z" fill="#638179"/></marker></defs>
+<rect width="960" height="660" fill="#f4f7f3" rx="24"/>
+<g fill="none" stroke="#638179" stroke-width="2" marker-end="url(#arrow)">
+<path d="M480 104V138"/><path d="M270 176H340"/><path d="M480 216V250"/><path d="M480 328V362"/>
+<path d="M480 440V474"/><path d="M690 512H620"/><path d="M340 512H270"/>
+<path d="M150 550V616H340"/><path d="M480 550V594"/>
+<path d="M620 616H810V440"/><path d="M810 362V66H620"/>
+</g>
+<g font-family="Noto Sans CJK SC, Microsoft YaHei, system-ui, sans-serif" text-anchor="middle">
+<g fill="#173e35"><rect x="340" y="26" width="280" height="78" rx="14"/><rect x="340" y="474" width="280" height="76" rx="14"/></g>
+<g fill="#fff" stroke="#cedbd5"><rect x="340" y="138" width="280" height="78" rx="14"/><rect x="340" y="250" width="280" height="78" rx="14"/><rect x="340" y="362" width="280" height="78" rx="14"/><rect x="30" y="138" width="240" height="78" rx="14"/><rect x="30" y="474" width="240" height="76" rx="14"/><rect x="690" y="474" width="240" height="76" rx="14"/><rect x="690" y="362" width="240" height="78" rx="14"/></g>
+<g fill="#fff" font-size="20" font-weight="650"><text x="480" y="59">用户意图</text><text x="480" y="507">控制状态</text></g>
+<g fill="#c7e2d5" font-size="14"><text x="480" y="83">编辑代次 · 页面归属</text><text x="480" y="530">版本 · 超时 · 一次许可</text></g>
+<g fill="#173e35" font-size="19" font-weight="600"><text x="480" y="172">准备资料快照</text><text x="480" y="284">选择证据上下文</text><text x="480" y="396">材料预览与批准</text><text x="150" y="172">现有领域与存储</text><text x="150" y="507">锁外执行</text><text x="810" y="507">撤权 / 来源变化</text><text x="810" y="396">草稿与证据</text></g>
+<g fill="#60706b" font-size="14"><text x="480" y="196">不可变准备体 + 来源版本</text><text x="480" y="308">用途 → 冲突 → 排序 → 预算</text><text x="480" y="420">本次批准 · 默认占位</text><text x="150" y="196">密封记录 · 档案 · 图谱</text><text x="150" y="530">既有策略 + 出网边界</text><text x="810" y="530">独立短路径</text><text x="810" y="420">或拒收、澄清、结果未知</text></g>
+<rect x="340" y="594" width="280" height="44" rx="12" fill="#e8d9b7"/><text x="480" y="622" fill="#4d422a" font-size="17">结果接收前复验最新状态</text>
+</g></svg>

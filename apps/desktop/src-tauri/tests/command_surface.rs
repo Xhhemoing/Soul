@@ -51,6 +51,7 @@ fn every_named_command_is_actually_a_command() {
         let declaration = format!("pub fn {name}(");
         let position = COMMANDS_RS
             .find(&declaration)
+            .or_else(|| COMMANDS_RS.find(&format!("pub async fn {name}(")))
             .unwrap_or_else(|| panic!("{name} is listed but not defined"));
         let before = &COMMANDS_RS[..position];
         assert!(
@@ -72,7 +73,13 @@ fn no_command_exists_outside_the_list() {
         .match_indices("#[tauri::command]")
         .filter_map(|(at, _)| {
             let rest = &COMMANDS_RS[at..];
-            let start = rest.find("pub fn ")? + "pub fn ".len();
+            let declaration = rest.lines().find(|line| line.starts_with("pub "))?;
+            let prefix = if declaration.starts_with("pub async fn ") {
+                "pub async fn "
+            } else {
+                "pub fn "
+            };
+            let start = rest.find(prefix)? + prefix.len();
             let end = rest[start..].find('(')? + start;
             Some(rest[start..end].trim())
         })
@@ -133,21 +140,85 @@ fn the_shell_never_reads_an_endpoint_address_itself() {
 #[test]
 fn the_command_layer_stays_thin() {
     for name in COMMAND_NAMES {
+        if matches!(
+            *name,
+            "generate_draft"
+                | "person_summary"
+                | "preview_plan"
+                | "prepare_import"
+                | "confirm_import"
+        ) {
+            // Scheduling is the exception. Policy/body construction
+            // must still be in core, and no Session guard may cross execute.
+            let start = COMMANDS_RS.find(&format!("pub async fn {name}(")).unwrap();
+            let body = COMMANDS_RS[start..]
+                .split("#[tauri::command]")
+                .next()
+                .unwrap();
+            assert!(body.contains("tauri::async_runtime::spawn_blocking(move ||"));
+            let (begin, complete) = if *name == "generate_draft" {
+                ("begin_draft(&approval)", "complete_draft(completed)")
+            } else if *name == "person_summary" {
+                (
+                    "begin_person_summary(&contact_id)",
+                    "complete_person_summary(completed)",
+                )
+            } else if *name == "preview_plan" {
+                ("begin_file_plan(&path)", "complete_file_plan(completed)")
+            } else if *name == "prepare_import" {
+                (
+                    "begin_import_prepare_request(request)",
+                    "complete_import_prepare(completed)",
+                )
+            } else {
+                (
+                    "begin_import(&operation_id, &preview_id)",
+                    "complete_import(completed)",
+                )
+            };
+            assert!(body.contains(&format!("let work = session.held().{begin}?;")));
+            assert!(body.contains("let completed = work.execute();"));
+            assert!(body.contains(&format!("session.held().{complete}")));
+            for forbidden in [
+                "issue_token",
+                "authorize_e1",
+                "RedactedBody",
+                "let mut guard",
+                "let guard",
+            ] {
+                assert!(
+                    !body.contains(forbidden),
+                    "{name} scheduling grew policy or a held guard"
+                );
+            }
+            continue;
+        }
         let position = COMMANDS_RS
             .find(&format!("pub fn {name}("))
             .expect("the command is defined");
         let body = &COMMANDS_RS[position..];
         let open = body.find('{').expect("a body");
         let close = body[open..].find('}').expect("the body ends") + open;
-        let statements = body[open + 1..close]
+        let expression = body[open + 1..close]
             .lines()
             .map(str::trim)
             .filter(|line| !line.is_empty() && !line.starts_with("//"))
-            .count();
+            .collect::<String>()
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect::<String>();
+        let forwarded = if *name == "draft_notices" {
+            expression == "DraftNotices::of_this_build()"
+        } else if *name == "retry_forget_cleanup" {
+            expression == "soulcore::commands::memory::retry_cleanup_for_session(&session.held())"
+        } else {
+            expression.starts_with("session.held().")
+                && expression.ends_with(')')
+                && expression.matches("session.held()").count() == 1
+        };
         assert!(
-            statements <= 1,
-            "{name} has {statements} statements; a command that does more than forward \
-             is business logic in the shell",
+            forwarded && !expression.contains([';', '{', '}']),
+            "{name} must be one forwarding expression, regardless of rustfmt line breaks",
         );
     }
 }

@@ -99,12 +99,18 @@ fn an_ipv6_origin_survives_its_own_display() {
     assert_eq!(explicit.host(), "::1");
     assert_eq!(explicit.port(), 11434);
     assert_eq!(explicit.to_string(), "http://[::1]:11434");
-    assert_eq!(Origin::parse(&explicit.to_string()).expect("its display reparses"), explicit);
+    assert_eq!(
+        Origin::parse(&explicit.to_string()).expect("its display reparses"),
+        explicit
+    );
 
     let implicit = Origin::parse("https://[::1]/v1").expect("default-port IPv6 parses");
     assert_eq!(implicit.port(), 443);
     assert_eq!(implicit.to_string(), "https://[::1]");
-    assert_eq!(Origin::parse(&implicit.to_string()).expect("its display reparses"), implicit);
+    assert_eq!(
+        Origin::parse(&implicit.to_string()).expect("its display reparses"),
+        implicit
+    );
 }
 
 /// The product path behind the display fix: the guard is asked about the URL
@@ -118,7 +124,9 @@ fn the_request_url_built_from_an_ipv6_endpoint_is_authorized() {
     );
     let endpoint = guard.config().e1_endpoint().expect("configured").clone();
     let url = format!("{endpoint}/v1/chat/completions");
-    let permit = guard.authorize_e1(&url).expect("the rebuilt URL is the same origin");
+    let permit = guard
+        .authorize_e1(&url)
+        .expect("the rebuilt URL is the same origin");
     assert_eq!(permit.origin(), &endpoint);
     assert_eq!(permit.class(), EgressClass::E1);
 }
@@ -129,7 +137,10 @@ fn the_request_url_built_from_an_ipv6_endpoint_is_authorized() {
 #[test]
 fn an_ipv6_authority_without_brackets_is_rejected_rather_than_misread() {
     for url in ["http://::1:11434/v1", "http://::1", "https://fe80::1:2/v1"] {
-        assert!(matches!(Origin::parse(url), Err(OriginError::UnbracketedIpv6(_))), "{url}");
+        assert!(
+            matches!(Origin::parse(url), Err(OriginError::UnbracketedIpv6(_))),
+            "{url}"
+        );
     }
 }
 
