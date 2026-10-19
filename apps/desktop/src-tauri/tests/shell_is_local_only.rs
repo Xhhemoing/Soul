@@ -134,12 +134,13 @@ fn block_after<'a>(source: &'a str, needle: &str) -> &'a str {
 /// single-instance reveal then both hand back a window that is not there.
 #[test]
 fn closing_the_window_leaves_soul_in_the_tray_rather_than_ending_it() {
+    let run = block_after(LIB, "pub fn run()");
     assert!(
-        LIB.contains("on_window_event"),
+        run.contains("on_window_event"),
         "nothing in run answers a window event, so closing the window ends Soul",
     );
 
-    let handler = block_after(LIB, "on_window_event");
+    let handler = block_after(run, "on_window_event");
     assert!(
         handler.contains("CloseRequested"),
         "the window handler does not single out a close request: {handler}",
@@ -165,17 +166,21 @@ fn closing_the_window_leaves_soul_in_the_tray_rather_than_ending_it() {
     // And it is registered on the chain that actually starts Soul, rather than
     // in a helper nobody calls: after `configure` builds the application and
     // before `run` hands it to Tauri.
-    let configured = LIB
+    let configured = run
         .find("configure(")
         .expect("run no longer builds the application through configure");
-    let registered = LIB
+    let registered = run
         .find(".on_window_event(")
         .expect("the close handler is not registered on a builder at all");
-    let started = LIB
-        .find(".run(tauri::generate_context!())")
-        .expect("run no longer starts the application; this test is reading the wrong file");
+    let built = run
+        .find(".build(tauri::generate_context!())")
+        .expect("run no longer builds the registered application");
+    let started = built
+        + run[built..]
+            .find(".run(")
+            .expect("run no longer starts the built application");
     assert!(
-        configured < registered && registered < started,
+        configured < registered && registered < built && built < started,
         "the close handler is not on the builder chain that run starts",
     );
 }

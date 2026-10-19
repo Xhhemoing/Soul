@@ -15,10 +15,11 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use serde_json::{json, Value};
 use soul_testkit::mock_llm::MockLlm;
-use soulcore::commands::session::Session;
+use soulcore::commands::draft::BODY_SLOT;
+use soulcore::commands::session::{CreateAssistanceGoal, Session, SetAssistanceLocalPreparation};
 use tauri::test::{get_ipc_response, mock_builder, INVOKE_KEY};
 use tauri::webview::InvokeRequest;
-use tauri::WebviewWindowBuilder;
+use tauri::{Manager, WebviewWindowBuilder};
 
 /// A directory no installation uses.
 ///
@@ -120,6 +121,167 @@ fn local_preparation_commands_require_exact_item_preference_and_template_selecti
     assert_eq!(off["state"], "off");
     assert_eq!(off["item_revision"], *revision);
     assert_ne!(off["preference_revision"], on["preference_revision"]);
+}
+
+/// Produce a real template with the shipped owned work, then hand that same
+/// Session to the registered IPC handlers. No template or response is seeded.
+fn ready_local_template(endpoint: &MockLlm) -> (Shell, Value) {
+    let directory = scratch();
+    let mut session = Session::open(&directory);
+    assert!(session.status().store_opened);
+    session.set_user_endpoint(&endpoint.base_url()).unwrap();
+    session.set_voice("register", "plain").unwrap();
+    let item = session
+        .create_assistance_goal(CreateAssistanceGoal {
+            title: "Synthetic local preview goal".into(),
+            summary: "SYNTHETIC_PRIVATE_GOAL_IS_NOT_AN_INBOUND_MESSAGE".into(),
+            deadline_at: None,
+            source_observation: None,
+        })
+        .unwrap()
+        .item;
+    let enabled = session
+        .set_assistance_local_preparation(SetAssistanceLocalPreparation {
+            item_id: item.item_id,
+            expected_revision: item.revision,
+            expected_preference_revision: None,
+            enabled: true,
+        })
+        .unwrap();
+    let work = session.begin_assistance_work().unwrap().unwrap();
+    let completed = work.execute();
+    session.complete_assistance_work(completed).unwrap();
+    assert!(session.begin_assistance_work().unwrap().is_none());
+    assert_eq!(endpoint.request_count(), 0);
+
+    let shell = Shell::with_session(directory, session);
+    let metadata = shell
+        .invoke(
+            "assistance_local_preparation",
+            json!({"itemId": item.item_id}),
+        )
+        .expect("the registered handler reads the prepared template metadata");
+    assert_eq!(metadata["state"], "ready");
+    assert_eq!(metadata["enabled"], true);
+    assert_eq!(metadata["item_id"], item.item_id.to_string());
+    assert_eq!(metadata["item_revision"], item.revision.to_string());
+    assert_eq!(
+        metadata["preference_revision"],
+        enabled.preference_revision.unwrap().to_string()
+    );
+    assert!(metadata["template_id"].is_string());
+    assert!(metadata.get("body").is_none());
+    assert!(metadata.get("summary").is_none());
+    let request = json!({"request": {
+        "item_id": metadata["item_id"],
+        "expected_revision": metadata["item_revision"],
+        "expected_preference_revision": metadata["preference_revision"],
+        "template_id": metadata["template_id"]
+    }});
+    let preview = shell
+        .invoke("preview_assistance_local_template", request.clone())
+        .expect("the real async handler returns the selected local preview");
+    for field in [
+        "item_id",
+        "item_revision",
+        "preference_revision",
+        "template_id",
+    ] {
+        assert_eq!(preview[field], metadata[field], "preview field {field}");
+    }
+    assert_eq!(preview["kind"], "opening_v1");
+    assert!(preview["prepared_at"].is_i64());
+    let body = preview["body"].as_str().expect("preview body is text");
+    assert!(!body.trim().is_empty());
+    assert!(body.contains(BODY_SLOT));
+    assert!(!body.contains("SYNTHETIC_PRIVATE_GOAL_IS_NOT_AN_INBOUND_MESSAGE"));
+    let after_preview = shell
+        .invoke(
+            "assistance_local_preparation",
+            json!({"itemId": item.item_id}),
+        )
+        .unwrap();
+    assert_eq!(after_preview, metadata, "preview does not change metadata");
+    let detail = shell
+        .invoke("assistance_item", json!({"itemId": item.item_id}))
+        .unwrap();
+    assert_eq!(detail["item"]["handling"], "open");
+    assert_eq!(endpoint.request_count(), 0);
+    (shell, request)
+}
+
+#[test]
+fn local_preparation_preview_succeeds_then_opt_out_rejects_the_old_template() {
+    let endpoint = MockLlm::start().unwrap();
+    let (shell, request) = ready_local_template(&endpoint);
+    let selected = &request["request"];
+    let off = shell
+        .invoke(
+            "set_assistance_local_preparation",
+            json!({"request": {
+                "item_id": selected["item_id"],
+                "expected_revision": selected["expected_revision"],
+                "expected_preference_revision": selected["expected_preference_revision"],
+                "enabled": false
+            }}),
+        )
+        .unwrap();
+    assert_eq!(off["state"], "off");
+    assert_eq!(off["enabled"], false);
+    assert!(off["template_id"].is_null());
+    assert!(off.get("body").is_none());
+    assert_ne!(
+        off["preference_revision"],
+        selected["expected_preference_revision"]
+    );
+    let refusal = shell
+        .invoke("preview_assistance_local_template", request)
+        .expect_err("opt-out revokes the previously successful preview");
+    assert_eq!(
+        refusal["reason_code"],
+        "ASSISTANCE_LOCAL_PREPARATION_CHANGED"
+    );
+    assert!(refusal.get("body").is_none());
+    assert_eq!(endpoint.request_count(), 0);
+}
+
+#[test]
+fn local_preparation_preview_succeeds_then_voice_change_rejects_the_old_template() {
+    let endpoint = MockLlm::start().unwrap();
+    let (shell, request) = ready_local_template(&endpoint);
+    shell
+        .invoke(
+            "set_voice",
+            json!({"field": "register", "option": "formal"}),
+        )
+        .unwrap();
+    let metadata = shell
+        .invoke(
+            "assistance_local_preparation",
+            json!({"itemId": request["request"]["item_id"]}),
+        )
+        .unwrap();
+    assert_eq!(metadata["enabled"], true);
+    assert_eq!(metadata["state"], "pending");
+    assert_eq!(
+        metadata["item_revision"],
+        request["request"]["expected_revision"]
+    );
+    assert_eq!(
+        metadata["preference_revision"],
+        request["request"]["expected_preference_revision"]
+    );
+    assert!(metadata["template_id"].is_null());
+    assert!(metadata.get("body").is_none());
+    let refusal = shell
+        .invoke("preview_assistance_local_template", request)
+        .expect_err("changed owner voice revokes the previously successful preview");
+    assert_eq!(
+        refusal["reason_code"],
+        "ASSISTANCE_LOCAL_PREPARATION_CHANGED"
+    );
+    assert!(refusal.get("body").is_none());
+    assert_eq!(endpoint.request_count(), 0);
 }
 
 #[test]
@@ -273,6 +435,10 @@ impl Shell {
     fn on(directory: impl Into<PathBuf>) -> Shell {
         let directory = directory.into();
         let session = Session::open(&directory);
+        Self::with_session(directory, session)
+    }
+
+    fn with_session(directory: PathBuf, session: Session) -> Shell {
         let status = session.status();
         assert!(
             status.store_opened,
@@ -299,7 +465,20 @@ impl Shell {
     /// Shut this one down and launch another on the same directory.
     fn restart(self) -> Shell {
         let directory = self.directory.clone();
+        // MockRuntime does not emit Destroyed, so its manager/webview cycle
+        // keeps managed state alive even after the last Shell is dropped.
+        // Only explicit restart removes it: all invoke calls have returned,
+        // this fixture retains no State borrows, and configure starts no
+        // background owners. Never do this from Drop or an unwinding path.
+        #[allow(deprecated)]
+        let session = self
+            .webview
+            .unmanage::<soul_desktop::commands::SessionState>()
+            .expect("the old shell owns its Session");
+        drop(session);
         drop(self);
+        // The normal open assertion checks that the old OS lease was really
+        // released; no busy refusal, retry or lease override is accepted.
         Shell::on(directory)
     }
 

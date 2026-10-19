@@ -49,6 +49,8 @@ soulcore = { path = "../../../crates/soulcore" }
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
 soul-testkit = { path = "../../../crates/soul-testkit" }
+soul-policy = { path = "../../../crates/soul-policy" }
+tempfile = "3.15.0"
 
 [features]
 # Embeds `../dist` into the executable. `tauri build` turns it on; a plain

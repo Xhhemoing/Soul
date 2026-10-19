@@ -2,6 +2,27 @@
 
 本文件是当前状态入口。历史见 [2026-09-28 快照](STATUS_HISTORY_20260928.md) 与[遗忘阶段 1–4 记录](SOUL_FORGET_PROGRESS_2026-09-29.md)。历史记录中的“尚未接入”描述其当时版本，不覆盖本页的新进展。
 
+## Windows 独立桌面复核（2026-10-19，修复已验证，完整 G-W 待运行）
+
+起点为 `codex/soul-rebuild-20261019` 的 `b0e2334`，本节对应其上的本轮未提交修改。业务与测试改动已完成独立只读复审；下列实跑均在 Windows、pwsh 7.6.5、Rust 1.83.0 / MSVC x64 下完成，仅使用合成资料、临时库和 loopback endpoint。当前不是 GATED / INTEGRATED，Goal 1、正式 Goal 2 与 Wave 1 均未关闭。
+
+- 首次独立 desktop `--all-targets --locked` 编译退出 101：通知 runtime 测试缺少 `soul-policy` / `tempfile` 的直接 dev 依赖。已补齐并删除冗余导入；桌面锁仅增加两个 dev 根依赖边和 `tempfile 3.27.0`，未升级已有包，完整 `metadata --locked --offline` 验证通过。
+- 实跑发现公开“失败重试”也接受 Pending / Ready。先新增两个存储回归并实际观察到错误成功，再在原事务内、保留 CAS / Running 拒绝后限定 Failed。拒绝不改工作元数据或已完成 claim 回执；原 Session 测试改用真实记忆修改触发下一轮工作，保留未知结果、新旧待办和旧 revision 断言。
+- 补齐两条 U5 成功预览 IPC：真实 Session / SQLCipher / owned work 生成模板，同一 Session 交给生产注册 handler；先成功预览，再分别关闭准备或修改语气，精确拒绝旧模板。核对正文占位、身份版本、元数据无正文及指定 loopback 模型端点零请求，不将其扩称所有 TCP / UDP 零出站。
+- 修复 Tauri mock 重启夹具未释放管理状态的问题，仅在显式重启且所有调用返回后释放旧 Session，再正常打开同目录，不放宽库租约；修复旧静态托盘检查对 `build(context).run(callback)` 的误报，关闭拦截、隐藏及托盘前提断言保留。这些测试不证明生产窗口或真实通知交互。
+
+| 本轮实际命令 | 结果 |
+| --- | --- |
+| `cargo test -p soul-store --lib retry_rejects_ --locked --offline`（修复前） | 0 通过 / 2 失败，退出 101，因非 Failed 工作错误返回成功 |
+| `cargo test -p soul-store --lib assistance_work::tests --locked --offline` | 6 通过，退出 0 |
+| `cargo test -p soulcore --test session_assistance_work --locked --offline` | 11 通过，退出 0 |
+| `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --locked --offline` | 7 个输出套件（含一个空套件），130 通过 / 0 失败；IPC 67 项包含新增 U5 两项，退出 0 |
+| 根 / desktop `cargo fmt --all -- --check`、`git diff --check` | 均退出 0 |
+
+原始日志位于本机 `E:\Project\Soul-checks-20261019-win`：`desktop-initial.log`、`desktop-after-fixes.log`、`retry-red.log`、`retry-green.log`、`session-assistance-work.log`、最终 `desktop-verified.log`，退出码由各对应 `*-exit.txt` 或初轮 JSON 记录；中间失败不累计为通过。首次完整构建生成本机 OpenSSL 3.6.3 静态库，后续命令仅在子进程中通过 `OPENSSL_DIR` / `OPENSSL_NO_VENDOR=1` / `OPENSSL_STATIC=1` 复用该实际产物；根 / desktop 的 target 路径不变，已核对 build 输出的实际链接目录。此复用不证明 release 默认 vendored 冷构建路径。
+
+历史 `ebff0c9` 的原始证据目录本机再次确认缺失，[计划索引](PLAN_INDEX.md)与[历史记录](gates/20260925-ebff0c9-win.md)已恢复 `NOT VERIFIED`。当前完整 G-W 尚未运行，须固定干净候选后按原入口执行；G-L 继续暂缓，安装 / 卸载及 G-M 未运行。
+
 ## 统一辅助重建（2026-10-19，U1–U6 已实现，U7 部分验收）
 
 工作区维护清理后从可取得的生产提交 `600f309` 和原计划 `64faa56` 继续，当前开发分支 `codex/soul-rebuild-20261019`。原计划已恢复为 `1433951`；此前未同步代码及其历史测试结果不能作为本轮交付。按[原计划 U1–U7](design/2026-10-16-unified-assistance.md)逐块调研、编写、独立复审和验证，工程选择从 D97 记录。

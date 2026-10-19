@@ -99,6 +99,11 @@ impl SqlCipherStore {
                     "ASSISTANCE_WORK_RUNNING".into(),
                 ));
             }
+            if metadata.state != AssistanceWorkState::Failed {
+                return Err(StoreError::ContractViolation(
+                    "ASSISTANCE_WORK_NOT_FAILED".into(),
+                ));
+            }
             if metadata.pending_revision != Some(revision) {
                 enqueue(&store.conn, &id.to_string())?;
             }
@@ -232,6 +237,58 @@ mod tests {
         assert_eq!(store.assistance_item_work(item.item_id).unwrap(), metadata);
     }
     #[test]
+    fn retry_rejects_pending_work_without_changing_the_intent() {
+        let (_dir, mut store, item) = setup();
+        let before = store.assistance_item_work(item.item_id).unwrap();
+        assert_eq!(before.state, AssistanceWorkState::Pending);
+        let error = store
+            .retry_assistance_work(item.item_id, item.revision)
+            .unwrap_err();
+        assert!(
+            matches!(error, StoreError::ContractViolation(code) if code == "ASSISTANCE_WORK_NOT_FAILED")
+        );
+        assert_eq!(store.assistance_item_work(item.item_id).unwrap(), before);
+        assert_eq!(store.assistance_work_counts().unwrap(), (1, 0));
+    }
+    #[test]
+    fn retry_rejects_completed_or_missing_work_without_replaying_a_claim() {
+        for state in [
+            AssistanceWorkState::Ready,
+            AssistanceWorkState::SourceUnavailable,
+        ] {
+            let (_dir, mut store, item) = setup();
+            let claim = store.claim_assistance_work().unwrap().unwrap();
+            store
+                .transact(|s| s.finish_assistance_work(&claim, state, None))
+                .unwrap();
+            let before = store.assistance_item_work(item.item_id).unwrap();
+            assert_eq!(before.state, state);
+            let error = store
+                .retry_assistance_work(item.item_id, item.revision)
+                .unwrap_err();
+            assert!(
+                matches!(error, StoreError::ContractViolation(code) if code == "ASSISTANCE_WORK_NOT_FAILED")
+            );
+            assert_eq!(store.assistance_item_work(item.item_id).unwrap(), before);
+            assert!(store.assistance_claim_completed(&claim).unwrap());
+            assert_eq!(store.assistance_work_counts().unwrap(), (0, 0));
+            store
+                .conn
+                .execute("DELETE FROM assistance_work", [])
+                .unwrap();
+            let before = store.assistance_item_work(item.item_id).unwrap();
+            assert_eq!(before.state, AssistanceWorkState::None);
+            let error = store
+                .retry_assistance_work(item.item_id, item.revision)
+                .unwrap_err();
+            assert!(
+                matches!(error, StoreError::ContractViolation(code) if code == "ASSISTANCE_WORK_NOT_FAILED")
+            );
+            assert_eq!(store.assistance_item_work(item.item_id).unwrap(), before);
+            assert_eq!(store.assistance_work_counts().unwrap(), (0, 0));
+        }
+    }
+    #[test]
     fn failed_same_revision_needs_explicit_retry_and_new_claim() {
         let (_dir, mut store, item) = setup();
         let claim = store.claim_assistance_work().unwrap().unwrap();
@@ -252,6 +309,10 @@ mod tests {
         store
             .retry_assistance_work(item.item_id, item.revision)
             .unwrap();
+        assert!(matches!(
+            store.retry_assistance_work(item.item_id, item.revision),
+            Err(StoreError::ContractViolation(code)) if code == "ASSISTANCE_WORK_NOT_FAILED"
+        ));
         let next = store.claim_assistance_work().unwrap().unwrap();
         assert_ne!(next.claim_id, claim.claim_id);
         assert_eq!(next.revision, claim.revision);

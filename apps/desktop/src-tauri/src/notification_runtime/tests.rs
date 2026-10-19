@@ -1,5 +1,4 @@
 use super::*;
-use crate::notification_runtime::NotificationRuntime;
 use crate::notification_transport::Resource;
 use soul_testkit::mock_llm::MockLlm;
 use soulcore::commands::session::*;

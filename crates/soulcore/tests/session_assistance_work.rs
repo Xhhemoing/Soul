@@ -4,6 +4,7 @@ use soul_store_api::import::{ImportSourceKind, LegacyImportChoice};
 use soul_store_api::MemoryStore;
 use soul_testkit::fixtures;
 use soulcore::commands::collect::{AppIdentity, CollectorConfig, ForegroundSource, SourceError};
+use soulcore::commands::memory::{self, MemoryChange};
 use soulcore::commands::session::*;
 use soulcore::commands::store::database_path;
 use std::sync::{
@@ -116,20 +117,36 @@ fn durable_result_survives_lost_completion_and_new_pending_survives_old_result()
     drop(w.execute());
     s.reconcile_assistance_work().unwrap();
     assert!(s.begin_assistance_work().unwrap().is_none());
-    s.retry_assistance_work(req(&i)).unwrap();
+    let AssistanceSource::ManualGoal { memory_id, .. } = i.source else {
+        panic!("memory")
+    };
+    // Only a genuine domain edit queues new work after a completed result.
+    s.edit_memory(
+        &memory_id.to_string(),
+        &MemoryChange {
+            summary: Some("synthetic updated goal body".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let edited = s.assistance_item(&i.item_id.to_string()).unwrap().item;
+    assert_ne!(edited.revision, i.revision);
     let shared = s.store().unwrap();
     let w = s.begin_assistance_work().unwrap().unwrap();
     {
         let mut store = shared.lock().unwrap();
-        let AssistanceSource::ManualGoal { memory_id, .. } = i.source else {
-            panic!("memory")
-        };
-        let m = store.get_memory(memory_id).unwrap();
-        store.put_memory(m).unwrap();
+        memory::update(
+            &mut store,
+            memory_id,
+            &soul_memory::MemoryEdit::summary("synthetic second updated goal body"),
+            1_800_000_000,
+        )
+        .unwrap();
     }
     let out = s.complete_assistance_work(w.execute()).unwrap();
     assert_eq!(out.status, AssistanceWorkDisposition::Superseded);
     let current = s.assistance_item(&i.item_id.to_string()).unwrap().item;
+    assert_ne!(current.revision, edited.revision);
     let metadata = s.assistance_item_work(&i.item_id.to_string()).unwrap();
     assert_eq!(metadata.pending_revision, Some(current.revision));
     assert_eq!(metadata.state, AssistanceWorkState::Pending);
