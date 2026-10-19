@@ -4,7 +4,7 @@
 
 平台：v0.1 在 Windows 11 上开发与验收；核心后续部署于 Linux / macOS / Windows；接入端（数据采集与结果呈现）含 macOS / Linux / Windows / Android（DECISIONS D65）。
 
-状态（2026-10-15）：Goal 1、正式 Goal 2 与 Wave 1 均未关闭。PR #66 工作分支新增销毁前精确范围重校验、Memory 写入输入保护、Import 旧结果失效修复。338 项前端和 65 项定向 Rust 测试，以及类型检查、lint、生产 build 已通过，独立只读复审未发现阻塞项。独立撤权执行模型、原生桌面与完整平台验收仍待完成。见 [docs/STATUS.md](docs/STATUS.md) 与 [验证记录](docs/reviews/2026-10-15-validation.md)。
+状态（2026-10-19）：开发分支 `codex/soul-rebuild-20261019` 已实现统一事项、显式目标、持久待办与恢复、提醒和通知、默认关闭的本地模板准备及明确反馈（U1–U6）。本轮重建与合成集成验证按[原计划](docs/design/2026-10-16-unified-assistance.md)推进，实际检查与同步记录见 [STATUS](docs/STATUS.md) 和[实施验证](docs/design/2026-10-19-unified-assistance-implementation.md)。Windows 真机通知、原生桌面及完整平台验收和真实任务效用仍未完成；Goal 1、正式 Goal 2 与 Wave 1 均未关闭，开发分支未合并。
 
 架构导航：[离线 HTML 架构地图](docs/architecture.html)（下载后用浏览器打开；四图切换、节点说明、缩放、模块筛选和图源下载），或阅读 [系统架构与设计图](docs/ARCHITECTURE.md)（附 Mermaid 源文件与 SVG）。HTML 是固定在 `b47ddfa` 的单文件说明快照，不自动联网。设计依据和取舍见 [架构审查报告](docs/reviews/2026-10-15-architecture-review.md)。
 

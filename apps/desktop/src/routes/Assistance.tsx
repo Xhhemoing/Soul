@@ -13,6 +13,7 @@ import { draftAssistanceSelection } from "./draftMaterialSelection";
 import { isDraftRefusal } from "./draftRequests";
 import { AssistanceItemWork, AssistanceWork } from "./AssistanceWork";
 import { AssistanceFeedback, AssistanceNotifications, AssistanceReminder } from "./AssistanceNotifications";
+import { AssistanceLocalPreparationPanel } from "./AssistanceLocalPreparation";
 
 const HANDLING = { open: "待处理", cancelled: "已取消", resolved_reported: "已自报完成" };
 const VALIDITY = { current: "可打开核对", stale: "来源需重新核对", forgotten: "已遗忘" };
@@ -183,6 +184,7 @@ export function Assistance(): React.JSX.Element {
       }} />
       <AssistanceReminder key={`reminder/${detail.item.item_id}/${detail.item.revision}`} item={detail.item} getCurrentItem={() => current() && ownsPayload(detailOwner.current) ? detailRef.current?.item ?? null : null} />
       <AssistanceFeedback key={`feedback/${detail.item.item_id}/${detail.item.revision}`} item={detail.item} getCurrentItem={() => current() && ownsPayload(detailOwner.current) ? detailRef.current?.item ?? null : null} />
+      {detail.item.source.kind !== "manual_goal" ? null : <AssistanceLocalPreparationPanel key={`local/${detail.item.item_id}/${detail.item.revision}`} item={detail.item} getCurrentItem={() => current() && ownsPayload(detailOwner.current) ? detailRef.current?.item ?? null : null} />}
       {detail.goal === null ? null : <><h3>{detail.goal.title}</h3><p className="pre-wrap">{detail.goal.summary}</p></>}
       {detail.observation === null ? null : <><p>统计来源：{detail.observation.bundle_id}；联系人 {detail.observation.contact_id}。</p><p>{detail.observation.summary.text}</p><p>这里只展示本地统计，不读取消息正文。</p></>}
       {editable ? <>{goalFields}<button type="button" disabled={blocked || !deadlineValid || !fields.title.trim() || !fields.summary.trim()} onClick={() => write(() => editAssistanceGoal({ ...pointer(detail.item), ...fields }), detail)}>保存当前版本的目标修改</button>

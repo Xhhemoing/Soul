@@ -130,8 +130,15 @@ pub use assistance_work::{
 };
 #[path = "session_collector_handoff.rs"]
 mod collector_handoff;
+#[path = "session_preparation.rs"]
+mod preparation;
 #[path = "session_reminders.rs"]
 mod reminders;
+pub use preparation::{
+    AssistanceLocalPreparation, AssistanceLocalPreparationState, AssistanceLocalTemplatePreview,
+    LocalTemplateKind, PreviewAssistanceLocalTemplate, SessionLocalTemplateCompletion,
+    SessionLocalTemplateWork, SetAssistanceLocalPreparation,
+};
 pub use reminders::{
     assistance_reminder_timestamp_ms, AssistanceCategory, AssistanceCategoryPreference,
     AssistanceCategoryPreferences, AssistanceFeedbackChange, AssistanceFeedbackValue,
@@ -526,6 +533,7 @@ enum E1WorkerKind {
     Import,
     Assistance,
     ReminderCheck,
+    LocalPreview,
 }
 
 /// A read-only scan owns the file-plan ledger and authorization snapshot.

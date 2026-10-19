@@ -666,6 +666,9 @@ export const COMMANDS = {
   setAssistanceCategoryPreference: "set_assistance_category_preference",
   retryAssistanceNotificationWithdrawal: "retry_assistance_notification_withdrawal",
   assistanceNotificationRuntimeStatus: "assistance_notification_runtime_status",
+  assistanceLocalPreparation: "assistance_local_preparation",
+  setAssistanceLocalPreparation: "set_assistance_local_preparation",
+  previewAssistanceLocalTemplate: "preview_assistance_local_template",
   configSnapshot: "config_snapshot",
   sessionStatus: "session_status",
   completeWizard: "complete_wizard",
@@ -971,6 +974,40 @@ export async function retryAssistanceNotificationWithdrawal(request: { readonly 
     || !["pending", "claimed", "withdrawn", "failed", "unknown", "not_present"].includes(value.state)) throw new Error("撤除返回的通知或请求身份不符，请重新核对。"); return value;
 }
 export function assistanceNotificationRuntimeStatus(): Promise<AssistanceNotificationRuntimeStatus> { return currentDraftResult(COMMANDS.assistanceNotificationRuntimeStatus, {}); }
+export interface AssistanceLocalPreparation {
+  readonly item_id: string; readonly item_revision: string; readonly preference_revision: string | null;
+  readonly enabled: boolean; readonly state: "off" | "none" | "pending" | "running" | "ready" | "source_unavailable" | "failed" | "unknown";
+  readonly template_id: string | null; readonly failure_code: string | null;
+}
+export interface AssistanceLocalTemplateRequest extends AssistancePointer {
+  readonly expected_preference_revision: string; readonly template_id: string;
+}
+export interface AssistanceLocalTemplatePreview {
+  readonly item_id: string; readonly item_revision: string; readonly preference_revision: string; readonly template_id: string;
+  readonly kind: "opening_v1"; readonly prepared_at: number; readonly body: string;
+}
+export const LOCAL_TEMPLATE_BODY_SLOT = "（这里写你要说的内容）";
+function checkedLocalPreparation(value: AssistanceLocalPreparation, itemId: string, revision?: string): AssistanceLocalPreparation {
+  if (value.item_id !== itemId || (revision !== undefined && value.item_revision !== revision)
+    || (value.state === "ready" && (!value.enabled || value.preference_revision === null || value.template_id === null))) throw new Error("本地模板准备返回的事项版本或状态不符，请重新核对。");
+  return value;
+}
+export async function assistanceLocalPreparation(itemId: string): Promise<AssistanceLocalPreparation> {
+  return checkedLocalPreparation(await currentDraftResult(COMMANDS.assistanceLocalPreparation, { itemId }), itemId);
+}
+export async function setAssistanceLocalPreparation(request: AssistancePointer & { readonly expected_preference_revision: string | null; readonly enabled: boolean }): Promise<AssistanceLocalPreparation> {
+  const value = checkedLocalPreparation(await currentDraftResult(COMMANDS.setAssistanceLocalPreparation, { request }), request.item_id, request.expected_revision);
+  if (value.preference_revision === null || value.preference_revision === request.expected_preference_revision || value.enabled !== request.enabled
+    || (!request.enabled && (value.state !== "off" || value.template_id !== null))) throw new Error("本地模板偏好返回的版本或选择不符，请重新核对。");
+  return value;
+}
+export async function previewAssistanceLocalTemplate(request: AssistanceLocalTemplateRequest): Promise<AssistanceLocalTemplatePreview> {
+  const value = await currentDraftResult<AssistanceLocalTemplatePreview>(COMMANDS.previewAssistanceLocalTemplate, { request });
+  if (value.item_id !== request.item_id || value.item_revision !== request.expected_revision || value.preference_revision !== request.expected_preference_revision
+    || value.template_id !== request.template_id || value.kind !== "opening_v1" || !Number.isFinite(value.prepared_at)
+    || typeof value.body !== "string" || !value.body.includes(LOCAL_TEMPLATE_BODY_SLOT)) throw new Error("本地模板预览返回的事项、偏好、模板或正文占位不符，请重新核对。");
+  return value;
+}
 export interface ImportNamespace {
   readonly namespace_id: string; readonly source: ImportSource;
   readonly state: "active" | "revoked"; readonly coverage: "full_from_creation" | "forward_only";

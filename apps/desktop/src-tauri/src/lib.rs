@@ -55,6 +55,9 @@ pub fn configure<R: tauri::Runtime>(
     builder
         .manage(session)
         .invoke_handler(tauri::generate_handler![
+            commands::assistance_local_preparation,
+            commands::set_assistance_local_preparation,
+            commands::preview_assistance_local_template,
             commands::assistance_reminder,
             commands::set_assistance_reminder,
             commands::assistance_feedback,

@@ -94,4 +94,5 @@ pub struct AssistanceWorkClaim {
     pub item_id: Uuid,
     pub revision: Uuid,
     pub claim_id: Uuid,
+    pub preparation_revision: Option<Uuid>,
 }

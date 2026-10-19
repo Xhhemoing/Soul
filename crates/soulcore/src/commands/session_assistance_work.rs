@@ -121,6 +121,9 @@ impl SessionAssistanceWork {
                 };
                 // The same guard/transaction owns final source validation and
                 // publication. A changed revision cannot receive this result.
+                if status == AssistanceWorkState::Ready {
+                    preparation::prepare_for_claim(store, &self.claim, &item)?;
+                }
                 let accepted = store.finish_assistance_work(&self.claim, status, code)?;
                 let disposition = if !accepted {
                     AssistanceWorkDisposition::Superseded

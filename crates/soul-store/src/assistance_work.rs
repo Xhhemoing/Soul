@@ -11,13 +11,14 @@ pub(crate) fn enqueue(conn: &Connection, item: &str) -> StoreResult<()> {
     conn.execute("INSERT INTO assistance_work(item_id,pending_revision) SELECT item_id,revision FROM assistance_items WHERE item_id=?1 AND handling='open' AND validity!='forgotten' ON CONFLICT(item_id) DO UPDATE SET pending_revision=excluded.pending_revision,result_revision=NULL,result_status=NULL,failure_code=NULL",[item]).map_err(backend)?;
     conn.execute("UPDATE assistance_work SET pending_revision=NULL,result_revision=NULL,result_status=NULL,failure_code=NULL WHERE item_id=?1 AND EXISTS(SELECT 1 FROM assistance_items WHERE item_id=?1 AND (handling!='open' OR validity='forgotten'))",[item]).map_err(backend)?;
     crate::reminders::invalidate_item(conn, item)?;
+    crate::preparation::invalidate_item(conn, item)?;
     Ok(())
 }
 
 /// Store-level writes coalesce candidates; only domain validation decides stale.
 pub(crate) fn enqueue_sources(conn: &Connection) -> StoreResult<()> {
     conn.execute("INSERT INTO assistance_work(item_id,pending_revision) SELECT item_id,revision FROM assistance_items WHERE bundle_id IS NOT NULL AND handling='open' AND validity!='forgotten' ON CONFLICT(item_id) DO UPDATE SET pending_revision=excluded.pending_revision,result_revision=NULL,result_status=NULL,failure_code=NULL",[]).map_err(backend)?;
-    Ok(())
+    crate::preparation::invalidate_sources(conn)
 }
 
 pub(crate) fn invalidate_bundle(conn: &Connection, bundle: Uuid) -> StoreResult<()> {
@@ -110,7 +111,9 @@ impl SqlCipherStore {
             if running{return Ok(None)}
             let next:Option<(String,String)>=store.conn.query_row("SELECT w.item_id,w.pending_revision FROM assistance_work w JOIN assistance_items i ON i.item_id=w.item_id WHERE w.pending_revision=i.revision AND i.handling='open' AND i.validity!='forgotten' ORDER BY i.created_at,i.item_id LIMIT 1",[],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(backend)?;
             let Some((id,revision))=next else{return Ok(None)};
-            let claim=AssistanceWorkClaim{item_id:id.parse().map_err(backend)?,revision:revision.parse().map_err(backend)?,claim_id:Uuid::now_v7()};
+            let item_id=id.parse().map_err(backend)?;
+            let preference=store.local_preparation_preference(item_id)?;
+            let claim=AssistanceWorkClaim{item_id,revision:revision.parse().map_err(backend)?,claim_id:Uuid::now_v7(),preparation_revision:if preference.enabled{preference.revision}else{None}};
             store.conn.execute("UPDATE assistance_work SET claim_id=?2,claimed_revision=pending_revision,pending_revision=NULL WHERE item_id=?1 AND claim_id IS NULL",params![id,claim.claim_id.to_string()]).map_err(backend)?;Ok(Some(claim))
         })
     }

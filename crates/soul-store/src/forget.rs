@@ -54,6 +54,8 @@ pub(crate) struct ForgetPlan {
     pub(crate) notification_rows: Vec<Vec<Option<String>>>,
     pub(crate) withdrawal_rows: Vec<Vec<Option<String>>>,
     pub(crate) feedback_rows: Vec<Vec<Option<String>>>,
+    pub(crate) preparation_rows: Vec<Vec<Option<String>>>,
+    pub(crate) template_rows: Vec<Vec<Option<String>>>,
 }
 
 #[cfg(test)]
@@ -549,6 +551,13 @@ impl SqlCipherStore {
             self.auxiliary_scope_rows(&format!("SELECT CAST(withdrawal_id AS TEXT),CAST(attempt_id AS TEXT),CAST(state AS TEXT),CAST(created_order AS TEXT),CAST(claim_token AS TEXT) FROM notification_withdrawals WHERE attempt_id IN (SELECT attempt_id FROM notification_attempts WHERE item_id IN ({slots})) ORDER BY withdrawal_id"),&items)?,
             self.auxiliary_scope_rows(&format!("SELECT CAST(item_id AS TEXT),CAST(revision AS TEXT),CAST(value AS TEXT) FROM assistance_feedback WHERE item_id IN ({slots}) ORDER BY item_id"),&items)?)
         };
+        let (preparation_rows, template_rows) = if items.is_empty() {
+            (vec![], vec![])
+        } else {
+            let slots = placeholders(items.len());
+            (self.auxiliary_scope_rows(&format!("SELECT CAST(item_id AS TEXT),CAST(revision AS TEXT),CAST(enabled AS TEXT),CAST(owner_profile_id AS TEXT),CAST(failure_code AS TEXT) FROM assistance_preparation_preferences WHERE item_id IN ({slots}) ORDER BY item_id"),&items)?,
+            self.auxiliary_scope_rows(&format!("SELECT CAST(item_id AS TEXT),CAST(template_id AS TEXT),CAST(item_revision AS TEXT),CAST(preference_revision AS TEXT),CAST(source_doc AS TEXT),CAST(owner_profile_id AS TEXT),CAST(voice_register AS TEXT),CAST(voice_directness AS TEXT),CAST(voice_warmth AS TEXT),CAST(voice_emoji_use AS TEXT),CAST(prepared_at AS TEXT),CAST(kind AS TEXT) FROM assistance_local_templates WHERE item_id IN ({slots}) ORDER BY item_id"),&items)?)
+        };
         Ok(ForgetPlan {
             content_keys,
             memories,
@@ -565,6 +574,8 @@ impl SqlCipherStore {
             notification_rows,
             withdrawal_rows,
             feedback_rows,
+            preparation_rows,
+            template_rows,
         })
     }
 

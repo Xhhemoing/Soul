@@ -753,13 +753,30 @@ impl ProfileStore for SqlCipherStore {
     fn put_profile(&mut self, profile: SoulProfile) -> StoreResult<Uuid> {
         self.check(SchemaId::Profile, &profile)?;
         let id = profile.profile_id;
-        self.conn
-            .execute(
-                "INSERT INTO profiles (profile_id, doc) VALUES (?1, ?2)
-                 ON CONFLICT (profile_id) DO UPDATE SET doc = excluded.doc",
-                rusqlite::params![id.to_string(), to_doc(&profile)?],
+        let tx = self.conn.savepoint().map_err(backend)?;
+        let old: Option<SoulProfile> = tx
+            .query_row(
+                "SELECT doc FROM profiles WHERE profile_id=?1",
+                [id.to_string()],
+                |r| r.get::<_, String>(0),
             )
-            .map_err(backend)?;
+            .optional()
+            .map_err(backend)?
+            .map(|doc| from_doc(&doc))
+            .transpose()?;
+        tx.execute(
+            "INSERT INTO profiles (profile_id, doc) VALUES (?1, ?2)
+                 ON CONFLICT (profile_id) DO UPDATE SET doc = excluded.doc",
+            rusqlite::params![id.to_string(), to_doc(&profile)?],
+        )
+        .map_err(backend)?;
+        crate::preparation::profile_changed(
+            &tx,
+            id,
+            old.as_ref().map(|p| &p.voice),
+            &profile.voice,
+        )?;
+        tx.commit().map_err(backend)?;
         Ok(id)
     }
 

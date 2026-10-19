@@ -76,6 +76,9 @@ import type {
   AssistanceNotificationRuntimeStatus,
   NotificationWithdrawal,
   AssistanceCategory,
+  AssistanceLocalPreparation,
+  AssistanceLocalTemplatePreview,
+  AssistanceLocalTemplateRequest,
 } from "../core";
 
 export const CLOUD_LABEL = "尚未启用";
@@ -419,6 +422,15 @@ export function anAssistanceFeedback(overrides: Partial<AssistanceFeedbackView> 
 }
 export function assistanceCategoryDefaults(): AssistanceCategoryPreferences {
   return { preferences: [{ category: "manual_goal", revision: null, muted: false }, { category: "observation", revision: null, muted: false }] };
+}
+export const ASSISTANCE_LOCAL_PREFERENCE_REVISION = "0192f000-0000-7000-8000-00000000a534";
+export const ASSISTANCE_LOCAL_TEMPLATE_ID = "0192f000-0000-7000-8000-00000000a535";
+export function anAssistanceLocalPreparation(overrides: Partial<AssistanceLocalPreparation> = {}): AssistanceLocalPreparation {
+  return { item_id: ASSISTANCE_ITEM_ID, item_revision: ASSISTANCE_REVISION, preference_revision: null, enabled: false, state: "off", template_id: null, failure_code: null, ...overrides };
+}
+export function anAssistanceLocalTemplatePreview(overrides: Partial<AssistanceLocalTemplatePreview> = {}): AssistanceLocalTemplatePreview {
+  return { item_id: ASSISTANCE_ITEM_ID, item_revision: ASSISTANCE_REVISION, preference_revision: ASSISTANCE_LOCAL_PREFERENCE_REVISION,
+    template_id: ASSISTANCE_LOCAL_TEMPLATE_ID, kind: "opening_v1", prepared_at: 1792166400000, body: "你好。\n（这里写你要说的内容）", ...overrides };
 }
 export const EVIDENCE_EVENT_ID = "0192f000-0000-7000-8000-00000000ea31";
 export function anEvidenceEventSource(overrides: Partial<EvidenceEventSource> = {}): EvidenceEventSource {
@@ -1035,6 +1047,9 @@ export interface FakeCoreOptions {
   readonly settingAssistanceCategory?: (request: { readonly category: AssistanceCategory; readonly expected_revision: string | null; readonly muted: boolean }) => AssistanceCategoryPreference | Promise<AssistanceCategoryPreference>;
   readonly withdrawingAssistanceNotification?: (request: { readonly attempt_id: string; readonly expected_withdrawal_id: string | null }) => NotificationWithdrawal | Promise<NotificationWithdrawal>;
   readonly notificationRuntimeStatus?: () => AssistanceNotificationRuntimeStatus | Promise<AssistanceNotificationRuntimeStatus>;
+  readonly readingAssistanceLocalPreparation?: (itemId: string) => AssistanceLocalPreparation | Promise<AssistanceLocalPreparation>;
+  readonly settingAssistanceLocalPreparation?: (request: AssistancePointer & { readonly expected_preference_revision: string | null; readonly enabled: boolean }) => AssistanceLocalPreparation | Promise<AssistanceLocalPreparation>;
+  readonly previewingAssistanceLocalTemplate?: (request: AssistanceLocalTemplateRequest) => AssistanceLocalTemplatePreview | Promise<AssistanceLocalTemplatePreview>;
   readonly questions?: readonly Question[];
   /** Able to throw, because a questionnaire with nothing in it is refused. */
   readonly recording?: (answers: readonly { question_id: string; given: string }[]) =>
@@ -1357,6 +1372,20 @@ export function installFakeCore(
         return options.withdrawingAssistanceNotification?.(request) ?? { attempt_id: request.attempt_id, withdrawal_id: nextAssistanceRevision(), state: "pending" };
       }
       case "assistance_notification_runtime_status": return options.notificationRuntimeStatus?.() ?? { state: "running", last_error: null };
+      case "assistance_local_preparation": {
+        const itemId = (payload as { itemId: string }).itemId;
+        return options.readingAssistanceLocalPreparation?.(itemId) ?? anAssistanceLocalPreparation({ item_id: itemId });
+      }
+      case "set_assistance_local_preparation": {
+        const request = (payload as { request: Parameters<NonNullable<FakeCoreOptions["settingAssistanceLocalPreparation"]>>[0] }).request;
+        return options.settingAssistanceLocalPreparation?.(request) ?? anAssistanceLocalPreparation({ item_id: request.item_id, item_revision: request.expected_revision,
+          preference_revision: nextAssistanceRevision(), enabled: request.enabled, state: request.enabled ? "pending" : "off" });
+      }
+      case "preview_assistance_local_template": {
+        const request = (payload as { request: AssistanceLocalTemplateRequest }).request;
+        return options.previewingAssistanceLocalTemplate?.(request) ?? anAssistanceLocalTemplatePreview({ item_id: request.item_id, item_revision: request.expected_revision,
+          preference_revision: request.expected_preference_revision, template_id: request.template_id });
+      }
       case "assistance_item": {
         const id = (payload as { itemId: string }).itemId;
         return options.readingAssistanceItem?.(id) ?? anAssistanceDetail({ item: anAssistanceRow({ item_id: id }) });

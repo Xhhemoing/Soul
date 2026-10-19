@@ -57,6 +57,72 @@ fn invoke_from(command: &str, body: Value, origin: Option<&str>) -> Result<Value
 }
 
 #[test]
+fn local_preparation_commands_require_exact_item_preference_and_template_selection() {
+    let shell = Shell::on(scratch());
+    let detail = shell
+        .invoke(
+            "create_assistance_goal",
+            json!({"request": {
+                "title": "Synthetic local preparation", "summary": "Synthetic private goal",
+                "deadline_at": null, "source_observation": null
+            }}),
+        )
+        .unwrap();
+    let item = &detail["item"]["item_id"];
+    let revision = &detail["item"]["revision"];
+    let off = shell
+        .invoke("assistance_local_preparation", json!({"itemId": item}))
+        .unwrap();
+    assert_eq!(off["enabled"], false);
+    assert_eq!(off["state"], "off");
+    assert!(off["template_id"].is_null());
+    assert!(off.get("body").is_none());
+    let on = shell
+        .invoke(
+            "set_assistance_local_preparation",
+            json!({"request": {
+                "item_id": item, "expected_revision": revision,
+                "expected_preference_revision": null, "enabled": true
+            }}),
+        )
+        .unwrap();
+    assert_eq!(on["enabled"], true);
+    assert!(on["preference_revision"].is_string());
+    assert!(on.get("body").is_none());
+    assert!(shell
+        .invoke(
+            "set_assistance_local_preparation",
+            json!({"request": {
+                "item_id": item, "expected_revision": revision,
+                "expected_preference_revision": null, "enabled": false
+            }})
+        )
+        .is_err());
+    assert!(shell
+        .invoke(
+            "preview_assistance_local_template",
+            json!({"request": {
+                "item_id": item, "expected_revision": revision,
+                "expected_preference_revision": on["preference_revision"], "template_id": item
+            }})
+        )
+        .is_err());
+    let off = shell
+        .invoke(
+            "set_assistance_local_preparation",
+            json!({"request": {
+                "item_id": item, "expected_revision": revision,
+                "expected_preference_revision": on["preference_revision"], "enabled": false
+            }}),
+        )
+        .unwrap();
+    assert_eq!(off["enabled"], false);
+    assert_eq!(off["state"], "off");
+    assert_eq!(off["item_revision"], *revision);
+    assert_ne!(off["preference_revision"], on["preference_revision"]);
+}
+
+#[test]
 fn assistance_notification_commands_preserve_explicit_cas_and_metadata_boundaries() {
     let shell = Shell::on(scratch());
     let detail = shell

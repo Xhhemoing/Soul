@@ -1,7 +1,18 @@
 # Soul 架构与演进图
 
 
-**2026-10-16 当前框架：** 在 `b66f093a1407887eb873fe33defe984906252d29` 上续写的 W1–W5 已接入，并经过逐模块规划与独立源码复审。最终检查结果以 [STATUS](STATUS.md) 为准；源码完成不等于已合入 main 或完整平台验收。入口为 [HTML 框架页](framework-design.html) 与[剩余模块计划](design/2026-10-16-remaining-implementation.md)。
+**2026-10-19 当前框架：** `codex/soul-rebuild-20261019` 保留 W1–W5，按[统一辅助原计划](design/2026-10-16-unified-assistance.md)实现 U1–U6，并补充 U7 合成贯通与百项积压检查。最终检查与同步结果以 [STATUS](STATUS.md) 和[实施验证](design/2026-10-19-unified-assistance-implementation.md)为准；源码、合成验证、原生平台与真实任务效用分别记录，开发分支未合并。
+
+| 统一辅助工作面 | 当前实现与边界 | 源码入口 |
+| --- | --- | --- |
+| U1/U2 事项与目标 | 稳定 UUID、事项 revision、显式 Commitment、绝对截止、固定观察来源、自报完成/取消；沿原 Memory 内容密钥遗忘 | [Session assistance](../crates/soulcore/src/commands/session_assistance.rs)、[Assistance](../apps/desktop/src/routes/Assistance.tsx) |
+| U3 待办与恢复 | 同事务合并待办、精确 claim 回执、未知不重算、新持有期一次恢复；同一物理槽与 collector 真 stop/flush/join 交接，前台材料优先 | [work](../crates/soulcore/src/commands/session_assistance_work.rs)、[production runtime](../apps/desktop/src-tauri/src/assistance_runtime/mod.rs) |
+| U4 提醒与通知 | 默认关闭、独立 schedule CAS、完整来源/时间核验后一次 attempt；Windows 通用指针通知、精确撤回代次；实际提交/展示/打开/撤回分列，未知不重投 | [reminders](../crates/soulcore/src/commands/session_reminders.rs)、[notification runtime](../apps/desktop/src-tauri/src/notification_runtime/mod.rs) |
+| U5 本地准备 | 仅明确目标逐项启用；后台准备已有语气开场模板，只存元数据；显式 owned 预览重验精确事项/来源/偏好/四项语气，保留正文占位，不自动采用或批准 E1 | [local preparation](../crates/soulcore/src/commands/session_preparation.rs)、[local panel](../apps/desktop/src/routes/AssistanceLocalPreparation.tsx) |
+| U6 明确反馈 | 独立 helpful/not_relevant/clear CAS 与两类静默/恢复；不改事实、人格、语气、批准或完成，恢复不补发积压 | [feedback metadata](../crates/soul-store-api/src/reminders.rs)、[notification panel](../apps/desktop/src/routes/AssistanceNotifications.tsx) |
+| U7 集成 | 合成 SQLCipher/Session、实际后台 driver、MockHTTP 与状态机检查；100 项样本只验证一致性，不推算吞吐、时延或效用；原生平台和真实任务仍待执行 | [unified flow](../crates/soulcore/tests/unified_assistance_flow.rs)、[实施验证](design/2026-10-19-unified-assistance-implementation.md) |
+
+**W1–W5 基础层：** 以下能力此前在 `b66f093a1407887eb873fe33defe984906252d29` 上续写，保留其原计划和实现边界；不是本轮测试数字的来源。入口为 [HTML 框架页](framework-design.html) 与[剩余模块计划](design/2026-10-16-remaining-implementation.md)。
 
 | 模块 | 当前实现与边界 | 源码入口 |
 | --- | --- | --- |

@@ -40,9 +40,31 @@
 /// the forget ledger and the hash-chained audit cannot be built a second time —
 /// and there is deliberately no migrations table and no numbered migration
 /// files to fall out of step with the schema they claim to describe.
-pub const STORE_SCHEMA_VERSION: i64 = 6;
+pub const STORE_SCHEMA_VERSION: i64 = 7;
 
 pub const DDL: &str = r#"
+-- U5 stores only closed template inputs. Rendering is an explicit local read.
+CREATE TABLE IF NOT EXISTS assistance_preparation_preferences (
+    item_id TEXT PRIMARY KEY,
+    revision TEXT NOT NULL,
+    enabled INTEGER NOT NULL,
+    owner_profile_id TEXT NOT NULL,
+    failure_code TEXT
+);
+CREATE TABLE IF NOT EXISTS assistance_local_templates (
+    item_id TEXT PRIMARY KEY,
+    template_id TEXT NOT NULL UNIQUE,
+    item_revision TEXT NOT NULL,
+    preference_revision TEXT NOT NULL,
+    source_doc TEXT NOT NULL,
+    owner_profile_id TEXT NOT NULL,
+    voice_register TEXT NOT NULL CHECK(voice_register IN ('casual','plain','formal')),
+    voice_directness TEXT NOT NULL CHECK(voice_directness IN ('reserved','balanced','direct')),
+    voice_warmth TEXT NOT NULL CHECK(voice_warmth IN ('cool','even','warm')),
+    voice_emoji_use TEXT NOT NULL CHECK(voice_emoji_use IN ('never','sparing','frequent')),
+    prepared_at INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK(kind='opening_v1')
+);
 -- U1/U2 contains only identifiers, fixed states and explicit absolute deadlines.
 -- Goal prose uses the existing memory content key, never an auxiliary copy.
 CREATE TABLE IF NOT EXISTS assistance_items (

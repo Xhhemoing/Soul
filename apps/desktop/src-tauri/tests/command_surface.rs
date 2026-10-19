@@ -147,6 +147,7 @@ fn the_command_layer_stays_thin() {
                 | "preview_plan"
                 | "prepare_import"
                 | "confirm_import"
+                | "preview_assistance_local_template"
         ) {
             // Scheduling is the exception. Policy/body construction
             // must still be in core, and no Session guard may cross execute.
@@ -170,15 +171,29 @@ fn the_command_layer_stays_thin() {
                     "begin_import_prepare_request(request)",
                     "complete_import_prepare(completed)",
                 )
+            } else if *name == "preview_assistance_local_template" {
+                (
+                    "begin_assistance_local_template_preview(request)",
+                    "complete_assistance_local_template_preview(completed)",
+                )
             } else {
                 (
                     "begin_import(&operation_id, &preview_id)",
                     "complete_import(completed)",
                 )
             };
-            assert!(body.contains(&format!("let work = session.held().{begin}?;")));
-            assert!(body.contains("let completed = work.execute();"));
-            assert!(body.contains(&format!("session.held().{complete}")));
+            // rustfmt may wrap a long method chain. Normalize only whitespace
+            // for these exact scheduling structures, preserving every token.
+            let compact = |source: &str| {
+                source
+                    .chars()
+                    .filter(|character| !character.is_whitespace())
+                    .collect::<String>()
+            };
+            let structure = compact(body);
+            assert!(structure.contains(&compact(&format!("let work = session.held().{begin}?;"))));
+            assert!(structure.contains("letcompleted=work.execute();"));
+            assert!(structure.contains(&compact(&format!("session.held().{complete}"))));
             for forbidden in [
                 "issue_token",
                 "authorize_e1",

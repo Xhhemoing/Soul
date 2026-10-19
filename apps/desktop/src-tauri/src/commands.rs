@@ -29,15 +29,17 @@ use soulcore::commands::profile::{GivenAnswer, IntakeReceipt, ProfileScreen, Que
 use soulcore::commands::session::{
     AssistanceActionRequest, AssistanceCategoryPreference, AssistanceCategoryPreferences,
     AssistanceContextView, AssistanceFeedbackView, AssistanceItemDetail, AssistanceItemRequest,
-    AssistanceItems, AssistanceNotificationRuntimeStatus, AssistanceReminderView,
-    AssistanceWorkMetadata, AssistanceWorkStatus, BindAssistanceGoalSource, CollectStatus,
-    ContextMemoryId, CreateAssistanceGoal, EditAssistanceGoal, FilesView, ImportNamespaceView,
-    ImportOperationView, ImportPrepareRequest, ImportRecoveryState, InsightContextRequest,
-    InsightContextView, InsightDraftPlan, InsightDraftValue, LinkAssistanceObservation,
-    MemoryContextRequest, MemoryContextView, MemoryDraftPlan, MemoryDraftValue,
-    NotificationWithdrawal, PreparedImportView, RefreshAssistanceObservation,
+    AssistanceItems, AssistanceLocalPreparation, AssistanceLocalTemplatePreview,
+    AssistanceNotificationRuntimeStatus, AssistanceReminderView, AssistanceWorkMetadata,
+    AssistanceWorkStatus, BindAssistanceGoalSource, CollectStatus, ContextMemoryId,
+    CreateAssistanceGoal, EditAssistanceGoal, FilesView, ImportNamespaceView, ImportOperationView,
+    ImportPrepareRequest, ImportRecoveryState, InsightContextRequest, InsightContextView,
+    InsightDraftPlan, InsightDraftValue, LinkAssistanceObservation, MemoryContextRequest,
+    MemoryContextView, MemoryDraftPlan, MemoryDraftValue, NotificationWithdrawal,
+    PreparedImportView, PreviewAssistanceLocalTemplate, RefreshAssistanceObservation,
     RetryAssistanceNotificationWithdrawal, Session, SessionRefusal, SessionStatus,
-    SetAssistanceCategoryPreference, SetAssistanceFeedback, SetAssistanceReminder,
+    SetAssistanceCategoryPreference, SetAssistanceFeedback, SetAssistanceLocalPreparation,
+    SetAssistanceReminder,
 };
 use soulcore::commands::shell::{CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
 use soulcore::commands::sources::{
@@ -74,6 +76,42 @@ impl SessionState {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
+
+#[tauri::command]
+pub fn assistance_local_preparation(
+    session: State<'_, SessionState>,
+    item_id: String,
+) -> Result<AssistanceLocalPreparation, SessionRefusal> {
+    session.held().assistance_local_preparation(&item_id)
+}
+
+#[tauri::command]
+pub fn set_assistance_local_preparation(
+    session: State<'_, SessionState>,
+    request: SetAssistanceLocalPreparation,
+) -> Result<AssistanceLocalPreparation, SessionRefusal> {
+    session.held().set_assistance_local_preparation(request)
+}
+
+#[tauri::command]
+pub async fn preview_assistance_local_template(
+    session: State<'_, SessionState>,
+    request: PreviewAssistanceLocalTemplate,
+) -> Result<AssistanceLocalTemplatePreview, SessionRefusal> {
+    let session = session.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let work = session
+            .held()
+            .begin_assistance_local_template_preview(request)?;
+        let completed = work.execute();
+        let result = session
+            .held()
+            .complete_assistance_local_template_preview(completed);
+        result
+    })
+    .await
+    .map_err(|_| SessionRefusal::from(DraftRefusal::WorkerFailed))?
 }
 
 #[tauri::command]
@@ -784,6 +822,9 @@ impl DraftNotices {
 /// `apps/desktop/src/core.ts`, which is the only place the other side names
 /// them. A command added to one and not the other is a failing test.
 pub const COMMAND_NAMES: &[&str] = &[
+    "assistance_local_preparation",
+    "set_assistance_local_preparation",
+    "preview_assistance_local_template",
     "assistance_reminder",
     "set_assistance_reminder",
     "assistance_feedback",

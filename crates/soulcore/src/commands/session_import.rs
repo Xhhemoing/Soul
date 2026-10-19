@@ -468,11 +468,12 @@ impl Session {
 
     pub(super) fn require_store_idle(&self) -> Result<(), SessionRefusal> {
         if self.store_work_busy() {
-            if self
-                .active_draft
-                .as_ref()
-                .is_some_and(|a| a.kind == E1WorkerKind::Assistance)
-            {
+            if self.active_draft.as_ref().is_some_and(|a| {
+                matches!(
+                    a.kind,
+                    E1WorkerKind::Assistance | E1WorkerKind::LocalPreview
+                )
+            }) {
                 Err(problem("ASSISTANCE_BUSY","本地辅助工作正在使用加密库，请稍后重试读取或修改。端点清除和采集撤回仍可使用；本次拒绝尚未写入审计。"))
             } else if self
                 .active_draft
@@ -491,7 +492,10 @@ impl Session {
         self.active_draft.as_ref().is_some_and(|active| {
             matches!(
                 active.kind,
-                E1WorkerKind::Import | E1WorkerKind::Assistance | E1WorkerKind::ReminderCheck
+                E1WorkerKind::Import
+                    | E1WorkerKind::Assistance
+                    | E1WorkerKind::ReminderCheck
+                    | E1WorkerKind::LocalPreview
             ) && !active.finished.load(Ordering::Acquire)
         })
     }
