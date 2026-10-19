@@ -73,7 +73,6 @@ impl std::fmt::Debug for HeldImport {
 pub struct SessionImportPrepareWork {
     id: Uuid,
     revision: Uuid,
-    lease: DraftLease,
     runtime: Arc<ImportRuntimeLease>,
     store: Arc<Mutex<SqlCipherStore>>,
     text: String,
@@ -81,6 +80,9 @@ pub struct SessionImportPrepareWork {
     namespace: Option<Uuid>,
     choice: LegacyImportChoice,
     stale: Option<Uuid>,
+    pause: Option<collector_handoff::ImportCollectorPause>,
+    // Drop joins a paused collector before advertising physical completion.
+    lease: DraftLease,
 }
 
 pub struct SessionImportPrepareCompletion {
@@ -88,21 +90,24 @@ pub struct SessionImportPrepareCompletion {
     revision: Uuid,
     _lease: DraftLease,
     result: Result<HeldImport, SessionRefusal>,
+    pause: Option<collector_handoff::CollectorPauseResult>,
 }
 
 pub struct SessionImportWork {
     id: Uuid,
-    lease: DraftLease,
     runtime: Arc<ImportRuntimeLease>,
     store: Arc<Mutex<SqlCipherStore>>,
     operation: ImportOperation,
     held: Option<HeldImport>,
+    pause: Option<collector_handoff::ImportCollectorPause>,
+    lease: DraftLease,
 }
 
 pub struct SessionImportCompletion {
     id: Uuid,
     _lease: DraftLease,
     result: Result<ImportOperationView, SessionRefusal>,
+    pause: Option<collector_handoff::CollectorPauseResult>,
 }
 
 macro_rules! private_debug {
@@ -161,7 +166,11 @@ fn source(source: ImportSourceKind) -> ImportSource {
 
 impl SessionImportPrepareWork {
     pub fn execute(self) -> SessionImportPrepareCompletion {
+        let pause = self.pause.map(|pause| pause.stop());
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if let Some(pause) = &pause {
+                pause.require_stopped()?;
+            }
             import_commands::within_byte_budget(&self.text).map_err(over_budget)?;
             let staged = match self.source {
                 ImportSourceKind::SoulImportV1 => import_commands::read_soul_import_v1(&self.text)?,
@@ -252,6 +261,7 @@ impl SessionImportPrepareWork {
             revision: self.revision,
             _lease: self.lease,
             result,
+            pause,
         }
     }
 }
@@ -266,7 +276,23 @@ fn coverage(choice: LegacyImportChoice) -> ImportCoverage {
 
 impl SessionImportWork {
     pub fn execute(self) -> SessionImportCompletion {
+        let pause = self.pause.map(|pause| pause.stop());
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if let Some(pause) = &pause {
+                if let Err(error) = pause.require_stopped() {
+                    if self.held.is_some() {
+                        let mut store = hold(&self.store);
+                        store.end_import_operation(
+                            &self.runtime,
+                            self.operation.operation_id,
+                            ImportOperationState::Running,
+                            ImportOperationState::Rejected,
+                            Some(ImportOperationError::WorkerFailed),
+                        )?;
+                    }
+                    return Err(error);
+                }
+            }
             let mut store = hold(&self.store);
             if let Some(held) = self.held {
                 let outcome = store.transact(|store| -> Result<ImportOperation, SessionRefusal> {
@@ -344,6 +370,7 @@ impl SessionImportWork {
             id: self.id,
             _lease: self.lease,
             result,
+            pause,
         }
     }
 }
@@ -440,11 +467,25 @@ impl Session {
     }
 
     pub(super) fn require_store_idle(&self) -> Result<(), SessionRefusal> {
-        if self.import_busy() {
-            Err(problem("IMPORT_BUSY", "导入正在使用本机加密库，请等本次操作结束后再读取或修改。端点清除和采集撤回仍可使用；本次拒绝尚未写入审计。"))
+        if self.store_work_busy() {
+            if self
+                .active_draft
+                .as_ref()
+                .is_some_and(|a| a.kind == E1WorkerKind::Assistance)
+            {
+                Err(problem("ASSISTANCE_BUSY","本地辅助工作正在使用加密库，请稍后重试读取或修改。端点清除和采集撤回仍可使用；本次拒绝尚未写入审计。"))
+            } else {
+                Err(problem("IMPORT_BUSY", "导入正在使用本机加密库，请等本次操作结束后再读取或修改。端点清除和采集撤回仍可使用；本次拒绝尚未写入审计。"))
+            }
         } else {
             Ok(())
         }
+    }
+    pub(super) fn store_work_busy(&self) -> bool {
+        self.active_draft.as_ref().is_some_and(|active| {
+            matches!(active.kind, E1WorkerKind::Import | E1WorkerKind::Assistance)
+                && !active.finished.load(Ordering::Acquire)
+        })
     }
 
     pub(super) fn flush_deferred_revoke(&mut self) -> Result<(), SessionRefusal> {
@@ -527,12 +568,6 @@ impl Session {
                 "已有一份仍有效的准备。请按它的操作编号明确丢弃，再准备新文件。切页不会替你丢弃。",
             ));
         }
-        if self.running_collector().is_some() {
-            return Err(problem(
-                "IMPORT_COLLECTOR_ACTIVE",
-                "请先停止前台时长采集，再准备导入。",
-            ));
-        }
         self.invalidate_drafts();
         import_commands::within_byte_budget(&text).map_err(over_budget)?;
         let store = self.opened_store()?;
@@ -556,6 +591,7 @@ impl Session {
             namespace,
             choice,
             stale: self.stale_import.take(),
+            pause: self.take_import_collector(),
         })
     }
 
@@ -572,6 +608,7 @@ impl Session {
         }
         self.active_draft = None;
         self.flush_deferred_revoke()?;
+        self.finish_import_collector_pause(completed.pause);
         let held = completed.result?;
         if completed.revision != self.draft_revision {
             let store = self.opened_store()?;
@@ -596,9 +633,6 @@ impl Session {
         preview_id: &str,
     ) -> Result<SessionImportWork, SessionRefusal> {
         self.require_draft_slot()?;
-        if self.running_collector().is_some() {
-            return Err(problem("IMPORT_COLLECTOR_ACTIVE", "请先停止采集。"));
-        }
         let operation_id = parse_id(operation_id, "导入操作")?;
         let preview_id = parse_id(preview_id, "导入预览")?;
         let store = self.opened_store()?;
@@ -631,6 +665,11 @@ impl Session {
             kind: E1WorkerKind::Import,
             finished: Arc::clone(&finished),
         });
+        let pause = if held.is_some() {
+            self.take_import_collector()
+        } else {
+            None
+        };
         Ok(SessionImportWork {
             id,
             lease: DraftLease(finished),
@@ -638,6 +677,7 @@ impl Session {
             store,
             operation,
             held,
+            pause,
         })
     }
 
@@ -656,6 +696,7 @@ impl Session {
         // A post-commit audit problem cannot erase an acknowledged import.
         let _ = self.flush_deferred_revoke();
         self.sync_identifiers();
+        self.finish_import_collector_pause(completed.pause);
         completed.result
     }
 

@@ -184,7 +184,10 @@ impl SqlCipherStore {
             .optional().map_err(backend)?.map(Raw::decode).transpose()
     }
     pub fn insert_assistance_item(&mut self, item: &AssistanceItem) -> StoreResult<()> {
-        write(&self.conn, item, None)
+        let tx = self.conn.savepoint().map_err(backend)?;
+        write(&tx, item, None)?;
+        crate::assistance_work::enqueue(&tx, &item.item_id.to_string())?;
+        tx.commit().map_err(backend)
     }
     /// Caller keeps domain changes and this CAS inside its existing transaction.
     pub fn replace_assistance_item(
@@ -197,6 +200,19 @@ impl SqlCipherStore {
         // A source's new revision never silently follows into another goal.
         tx.execute("UPDATE assistance_items SET validity='stale',revision=?2,updated_at=?3 WHERE observation_item_id=?1 AND validity!='forgotten'",
             params![item.item_id.to_string(),Uuid::now_v7().to_string(),item.updated_at]).map_err(backend)?;
+        crate::assistance_work::enqueue(&tx, &item.item_id.to_string())?;
+        let mut statement = tx
+            .prepare("SELECT item_id FROM assistance_items WHERE observation_item_id=?1")
+            .map_err(backend)?;
+        let ids = statement
+            .query_map([item.item_id.to_string()], |r| r.get::<_, String>(0))
+            .map_err(backend)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(backend)?;
+        drop(statement);
+        for id in ids {
+            crate::assistance_work::enqueue(&tx, &id)?;
+        }
         tx.commit().map_err(backend)
     }
 }

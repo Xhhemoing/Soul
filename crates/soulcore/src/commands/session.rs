@@ -120,6 +120,15 @@ pub use assistance::{
     CreateAssistanceGoal, EditAssistanceGoal, LinkAssistanceObservation,
     RefreshAssistanceObservation,
 };
+#[path = "session_assistance_work.rs"]
+mod assistance_work;
+pub use assistance_work::{
+    AssistanceRuntimeState, AssistanceWorkDisposition, AssistanceWorkMetadata,
+    AssistanceWorkOutcome, AssistanceWorkState, AssistanceWorkStatus, SessionAssistanceCompletion,
+    SessionAssistanceWork,
+};
+#[path = "session_collector_handoff.rs"]
+mod collector_handoff;
 
 /// The environment variable that names the data directory outright.
 ///
@@ -445,6 +454,13 @@ pub struct Session {
     draft_revision: Uuid,
     /// The one physical E1 worker, shared by drafting and person summaries.
     active_draft: Option<ActiveDraft>,
+    active_assistance: Option<assistance_work::ActiveAssistance>,
+    assistance_runtime_state: AssistanceRuntimeState,
+    last_assistance_runtime_error: Option<String>,
+    collector_paused_for_import: bool,
+    collector_factory: Option<collector_handoff::CollectorFactory>,
+    collect_generation: Uuid,
+    collect_config: CollectorConfig,
     import_runtime: Option<Arc<soul_store::import_ops::ImportRuntimeLease>>,
     held_import: Option<import_work::HeldImport>,
     stale_import: Option<Uuid>,
@@ -491,6 +507,7 @@ enum E1WorkerKind {
     PersonSummary,
     Scan,
     Import,
+    Assistance,
 }
 
 /// A read-only scan owns the file-plan ledger and authorization snapshot.
@@ -788,6 +805,13 @@ impl Session {
             policy,
             draft_revision: Uuid::now_v7(),
             active_draft: None,
+            active_assistance: None,
+            assistance_runtime_state: AssistanceRuntimeState::NotStarted,
+            last_assistance_runtime_error: None,
+            collector_paused_for_import: false,
+            collector_factory: None,
+            collect_generation: Uuid::now_v7(),
+            collect_config: CollectorConfig::default(),
             import_runtime,
             held_import: None,
             stale_import: None,
@@ -822,7 +846,7 @@ impl Session {
     /// second connection, and `Session::open` is the only place that opens the
     /// first.
     pub fn store(&self) -> Option<Arc<Mutex<SqlCipherStore>>> {
-        if self.import_busy() {
+        if self.store_work_busy() {
             return None;
         }
         match &self.store {
@@ -1308,6 +1332,13 @@ impl Session {
     }
 
     fn require_draft_slot(&mut self) -> Result<(), SessionRefusal> {
+        if self
+            .active_draft
+            .as_ref()
+            .is_some_and(|a| a.kind == E1WorkerKind::Assistance)
+        {
+            self.reconcile_assistance_work()?;
+        }
         if let Some(active) = &self.active_draft {
             if !active.finished.load(Ordering::Acquire) {
                 return Err(self.refuse_draft(DraftRefusal::Busy));
@@ -1957,8 +1988,8 @@ impl Session {
     /// status says which of the two happened rather than reporting the grant
     /// as if something were being watched.
     pub fn grant_collect_consent(&mut self) -> Result<CollectStatus, SessionRefusal> {
-        self.grant_collection(
-            collect_commands::platform_source(),
+        self.grant_collect_consent_with_factory(
+            collect_commands::platform_source,
             CollectorConfig::default(),
         )
     }
@@ -1981,6 +2012,8 @@ impl Session {
     where
         F: ForegroundSource + Send + 'static,
     {
+        self.require_store_idle()?;
+        self.collector_factory = None;
         self.grant_collection(Ok(source), config)
     }
 
@@ -1992,6 +2025,8 @@ impl Session {
     /// producing events inside `STOP_BUDGET`, which `soul-collect`'s own tests
     /// measure.
     pub fn revoke_collect_consent(&mut self) -> Result<CollectStatus, SessionRefusal> {
+        self.collect_generation = Uuid::now_v7();
+        self.collector_paused_for_import = false;
         let at = now_unix_seconds();
         let entry = self.consent.revoke(COLLECTION_TOPIC, at);
         // Closed in the snapshot as well, so 概览 goes back to 全部能力默认关闭
@@ -2001,7 +2036,7 @@ impl Session {
         // showing a capability as open.
         self.config.collect_enabled = false;
 
-        if self.import_busy() {
+        if self.store_work_busy() {
             if self.deferred_revoke.is_none() {
                 self.deferred_revoke = Some((entry, at));
             }
@@ -2047,6 +2082,9 @@ impl Session {
         let store = self.opened_store()?;
         let at = now_unix_seconds();
         let entry = self.consent.grant(COLLECTION_TOPIC, at);
+        self.collect_generation = Uuid::now_v7();
+        self.collect_config = config;
+        self.collector_paused_for_import = false;
         // The ledger is the authority, and the in-memory [`Config`] now agrees
         // with it, exactly the way [`Session::set_user_endpoint`] makes the
         // configuration agree with the guard. Without this the overview badge

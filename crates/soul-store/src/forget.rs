@@ -43,6 +43,13 @@ pub(crate) struct ForgetPlan {
     // Raw auxiliary identifiers remain comparable even if a damaged row no
     // longer decodes as an assistance item. Such damage must not block CK loss.
     pub(crate) assistance_items: Vec<(String, String, bool)>,
+    pub(crate) assistance_work: Vec<(
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )>,
 }
 
 #[cfg(test)]
@@ -502,6 +509,13 @@ impl SqlCipherStore {
             }
         }
         drop(rows);
+        let mut assistance_work = Vec::new();
+        for (id, _, _) in &assistance_items {
+            let row=self.conn.query_row("SELECT item_id,pending_revision,claim_id,claimed_revision,result_revision FROM assistance_work WHERE item_id=?1",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).optional().map_err(backend)?;
+            if let Some(row) = row {
+                assistance_work.push(row)
+            }
+        }
         Ok(ForgetPlan {
             content_keys,
             memories,
@@ -513,6 +527,7 @@ impl SqlCipherStore {
             import_messages,
             local_insights,
             assistance_items,
+            assistance_work,
         })
     }
 
@@ -676,6 +691,7 @@ impl ForgetOutcomeOps for SqlCipherStore {
                 ],
             )
             .map_err(backend)?;
+            crate::assistance_work::enqueue(&tx, item_id)?;
         }
         for contact_id in &plan.contacts {
             mark_forgotten(&tx, "contacts", "contact_id", *contact_id)?;

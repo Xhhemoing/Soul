@@ -101,17 +101,20 @@ impl SqlCipherStore {
     }
 
     fn write_local_insight(&mut self, bundle: &LocalInsightBundle) -> StoreResult<()> {
-        self.conn
-            .execute(
-                "UPDATE local_insights SET validity=?2,ignored=?3,doc=?4 WHERE bundle_id=?1",
-                rusqlite::params![
-                    bundle.bundle_id.to_string(),
-                    enum_text(&bundle.validity)?,
-                    bundle.ignored,
-                    encode(bundle)?
-                ],
-            )
-            .map_err(backend)?;
-        Ok(())
+        let tx = self.conn.savepoint().map_err(backend)?;
+        tx.execute(
+            "UPDATE local_insights SET validity=?2,ignored=?3,doc=?4 WHERE bundle_id=?1",
+            rusqlite::params![
+                bundle.bundle_id.to_string(),
+                enum_text(&bundle.validity)?,
+                bundle.ignored,
+                encode(bundle)?
+            ],
+        )
+        .map_err(backend)?;
+        if bundle.validity != InsightValidity::Active || bundle.ignored {
+            crate::assistance_work::invalidate_bundle(&tx, bundle.bundle_id)?;
+        }
+        tx.commit().map_err(backend)
     }
 }

@@ -33,11 +33,33 @@ pub use soul_policy::clinical::WORKING_HYPOTHESIS_NOTICE;
 /// growing a second graph. `at_unix_seconds` is the caller's clock, passed in
 /// so a replay writes the same audit entry.
 pub fn rebuild(store: &mut SqlCipherStore, at_unix_seconds: i64) -> Result<GraphBuild, GraphError> {
-    let build = soul_graph::rebuild(store)?;
-    for content in build.audit.clone() {
-        append_or_store_error(store, content, at_unix_seconds)?;
+    graph_transaction(store, |store| {
+        let build = soul_graph::rebuild(store)?;
+        for content in build.audit.clone() {
+            append_or_store_error(store, content, at_unix_seconds)?;
+        }
+        Ok(build)
+    })
+}
+
+fn graph_transaction<T>(
+    store: &mut SqlCipherStore,
+    work: impl FnOnce(&mut SqlCipherStore) -> Result<T, GraphError>,
+) -> Result<T, GraphError> {
+    let update = |store: &mut SqlCipherStore| {
+        let result = work(store)?;
+        crate::commands::insights::sync_assistance_sources(store).map_err(|_| {
+            soul_store_api::types::StoreError::ContractViolation(
+                "ASSISTANCE_SOURCE_READ_FAILED".into(),
+            )
+        })?;
+        Ok(result)
+    };
+    if store.transaction_in_progress() {
+        update(store)
+    } else {
+        store.transact(update)
     }
-    Ok(build)
 }
 
 /// The graph as the UI reads it. Reads nothing but what a rebuild left behind.
@@ -58,7 +80,9 @@ pub fn correct_tie(
     band: SupportedBand,
     at_unix_seconds: i64,
 ) -> Result<TieCorrection, GraphError> {
-    soul_graph::correct_tie(store, relationship_id, band, at_unix_seconds)
+    graph_transaction(store, |store| {
+        soul_graph::correct_tie(store, relationship_id, band, at_unix_seconds)
+    })
 }
 
 /// Hand the band back to the counts.
@@ -67,7 +91,9 @@ pub fn release_tie(
     relationship_id: Uuid,
     at_unix_seconds: i64,
 ) -> Result<TieCorrection, GraphError> {
-    soul_graph::release_tie(store, relationship_id, at_unix_seconds)
+    graph_transaction(store, |store| {
+        soul_graph::release_tie(store, relationship_id, at_unix_seconds)
+    })
 }
 
 /// The band a vocabulary word names, and nothing else.

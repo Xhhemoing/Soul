@@ -184,7 +184,7 @@ fn source_from(
         bundle_id,
     })
 }
-fn validate(
+pub(super) fn validate(
     store: &mut SqlCipherStore,
     item: &AssistanceItemRow,
 ) -> Result<Option<SelectedInsightContext>, SessionRefusal> {

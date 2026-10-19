@@ -64,3 +64,34 @@ impl AssistanceItem {
         self.is_open() && self.validity == AssistanceValidity::Current
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssistanceWorkState {
+    None,
+    Pending,
+    Running,
+    Ready,
+    SourceUnavailable,
+    Failed,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssistanceWorkMetadata {
+    pub item_id: Uuid,
+    pub item_revision: Uuid,
+    pub state: AssistanceWorkState,
+    pub pending_revision: Option<Uuid>,
+    pub claimed_revision: Option<Uuid>,
+    pub claim_id: Option<Uuid>,
+    pub result_revision: Option<Uuid>,
+    pub failure_code: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssistanceWorkClaim {
+    pub item_id: Uuid,
+    pub revision: Uuid,
+    pub claim_id: Uuid,
+}

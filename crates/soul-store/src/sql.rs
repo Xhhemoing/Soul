@@ -40,7 +40,7 @@
 /// the forget ledger and the hash-chained audit cannot be built a second time —
 /// and there is deliberately no migrations table and no numbered migration
 /// files to fall out of step with the schema they claim to describe.
-pub const STORE_SCHEMA_VERSION: i64 = 4;
+pub const STORE_SCHEMA_VERSION: i64 = 5;
 
 pub const DDL: &str = r#"
 -- U1/U2 contains only identifiers, fixed states and explicit absolute deadlines.
@@ -72,6 +72,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS assistance_observation ON assistance_items(nam
 CREATE INDEX IF NOT EXISTS assistance_by_namespace ON assistance_items(namespace_id);
 CREATE INDEX IF NOT EXISTS assistance_by_contact ON assistance_items(contact_id);
 CREATE INDEX IF NOT EXISTS assistance_by_observation ON assistance_items(observation_item_id);
+CREATE TABLE IF NOT EXISTS assistance_work (
+    item_id TEXT PRIMARY KEY,
+    pending_revision TEXT,
+    claim_id TEXT,
+    claimed_revision TEXT,
+    result_revision TEXT,
+    result_status TEXT CHECK(result_status IN ('ready','source_unavailable','failed')),
+    failure_code TEXT,
+    last_completed_claim_id TEXT,
+    CHECK((claim_id IS NULL)=(claimed_revision IS NULL))
+);
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL

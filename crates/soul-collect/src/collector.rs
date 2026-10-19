@@ -229,6 +229,13 @@ impl<F: ForegroundSource, S: CollectSink> Collector<F, S> {
         let event_id = Uuid::now_v7();
         let body = session.sealed_body().to_json_bytes()?;
         let mut sink = lock(&self.sink);
+        // A local import/analysis can have held the sink since the first
+        // check. Revocation while waiting must not become a delayed write.
+        if let Err(missing) = self.consent.require_collection() {
+            self.tally.consent_refusals += 1;
+            self.tally.sessions_discarded += 1;
+            return Err(CollectError::Consent(missing));
+        }
 
         let sealed = sink.seal(SealRequest::new(
             self.content_key_id,

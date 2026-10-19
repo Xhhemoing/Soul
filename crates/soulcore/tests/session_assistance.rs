@@ -147,7 +147,7 @@ fn schema_three_gains_empty_assistance_metadata_without_changing_existing_memory
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(version, "4");
+    assert_eq!(version, soul_store::sql::STORE_SCHEMA_VERSION.to_string());
 }
 
 #[test]

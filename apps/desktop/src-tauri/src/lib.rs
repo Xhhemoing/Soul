@@ -28,6 +28,7 @@
 
 use tauri::Manager;
 
+pub mod assistance_runtime;
 pub mod commands;
 pub mod instance;
 pub mod tray;
@@ -52,6 +53,9 @@ pub fn configure<R: tauri::Runtime>(
     builder
         .manage(session)
         .invoke_handler(tauri::generate_handler![
+            commands::assistance_work_status,
+            commands::assistance_item_work,
+            commands::retry_assistance_work,
             commands::assistance_items,
             commands::assistance_item,
             commands::create_assistance_goal,
@@ -157,6 +161,9 @@ pub fn run() {
     )
     .setup(|app| {
         app.manage(tray::install_or_report(app.handle()));
+        app.manage(assistance_runtime::AssistanceRuntime::start(
+            app.state::<commands::SessionState>().shared(),
+        ));
         Ok(())
     })
     // Closing the window puts Soul in the tray rather than ending it —
@@ -171,6 +178,12 @@ pub fn run() {
             }
         }
     })
-    .run(tauri::generate_context!())
-    .expect("Soul could not start");
+    .build(tauri::generate_context!())
+    .expect("Soul could not start")
+    .run(|app, event| {
+        if matches!(event, tauri::RunEvent::Exit) {
+            app.state::<assistance_runtime::AssistanceRuntime>()
+                .shutdown();
+        }
+    });
 }

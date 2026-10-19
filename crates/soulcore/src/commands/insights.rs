@@ -25,6 +25,7 @@ use soul_store_api::import::{
     ImportCounts, ImportIndexStore, ImportNamespaceState, ImportOperation, ImportOperationState,
 };
 use soul_store_api::insight::{InsightValidity, LocalInsightBundle};
+use soul_store_api::types::{StoreError, StoreResult};
 use soul_store_api::{BlobStore, EventStore, ProfileStore};
 
 use super::draft::PersonSummaryView;
@@ -207,7 +208,72 @@ pub fn create_for_import(
         dependency_flags: built.dependencies.flags,
     };
     store.put_local_insight(&bundle)?;
+    // Same import transaction, only a local observation. Existing stable
+    // namespace/contact identities retain their explicitly fixed bundle.
+    for contact_id in candidates(&bundle).ok_or_else(unavailable)? {
+        if store
+            .assistance_observation(bundle.namespace_id, contact_id)?
+            .is_none()
+        {
+            use soul_store_api::assistance::*;
+            store.insert_assistance_item(&AssistanceItem {
+                item_id: Uuid::now_v7(),
+                revision: Uuid::now_v7(),
+                source: AssistanceSource::Observation {
+                    namespace_id: bundle.namespace_id,
+                    contact_id,
+                    bundle_id: bundle.bundle_id,
+                },
+                validity: AssistanceValidity::Current,
+                handling: AssistanceHandling::Open,
+                deadline_at: None,
+                created_at: at,
+                updated_at: at,
+            })?;
+        }
+    }
     Ok(bundle)
+}
+
+/// Called once at the end of a real Graph mutation, never by the runtime tick.
+/// Whole snapshot comparison includes global_as_of; namespace alone is unsound.
+pub(crate) fn sync_assistance_sources(store: &mut SqlCipherStore) -> Result<(), SessionRefusal> {
+    use soul_store_api::assistance::AssistanceSource;
+    let mut selected = std::collections::BTreeMap::new();
+    for item in store
+        .assistance_items()?
+        .into_iter()
+        .filter(|i| i.is_current())
+    {
+        match item.source {
+            AssistanceSource::Observation {
+                bundle_id,
+                contact_id,
+                ..
+            } => {
+                selected.entry(bundle_id).or_insert(contact_id);
+            }
+            AssistanceSource::ManualGoal {
+                observation: Some(source),
+                ..
+            } => {
+                selected
+                    .entry(source.bundle_id)
+                    .or_insert(source.contact_id);
+            }
+            _ => {}
+        }
+    }
+    for (bundle, contact) in selected {
+        if let Err(error) = select_context(store, bundle, contact) {
+            // A strict successful build must have proved a snapshot mismatch.
+            // SQL/open errors remain errors and roll the domain transaction back.
+            if store.local_insight(bundle)?.validity != InsightValidity::Invalidated {
+                return Err(error);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Revalidation also runs after restart; no persisted wording is trusted.
@@ -262,15 +328,24 @@ fn ensure_operation(
     store: &SqlCipherStore,
     operation: &ImportOperation,
 ) -> Result<(), SessionRefusal> {
+    if !operation_is_current(store, operation)? {
+        return Err(unavailable());
+    }
+    Ok(())
+}
+fn operation_is_current(
+    store: &SqlCipherStore,
+    operation: &ImportOperation,
+) -> Result<bool, SessionRefusal> {
     let namespace = store.import_namespace(operation.namespace_id)?;
     if namespace.state != ImportNamespaceState::Active
         || operation.state != ImportOperationState::Committed
         || operation.receipt.is_none()
         || store.import_operation(operation.operation_id)? != *operation
     {
-        return Err(unavailable());
+        return Ok(false);
     }
-    Ok(())
+    Ok(true)
 }
 
 fn view(
@@ -279,20 +354,25 @@ fn view(
 ) -> Result<LocalInsightView, SessionRefusal> {
     let mut summaries = Vec::new();
     if bundle.validity == InsightValidity::Active {
-        let current = (|| {
-            let operation = store.import_operation(bundle.operation_id).ok()?;
-            ensure_operation(store, &operation).ok()?;
+        let current = (|| -> Result<Option<Vec<PersonSummaryView>>, SessionRefusal> {
+            let operation = store.import_operation(bundle.operation_id)?;
+            if !operation_is_current(store, &operation)? {
+                return Ok(None);
+            }
             if operation.namespace_id != bundle.namespace_id
                 || operation.receipt.as_ref() != Some(&bundle.counts)
             {
-                return None;
+                return Ok(None);
             }
-            let built = build(store, &candidates(&bundle)?).ok()?;
-            (built.dependencies.uuids == bundle.dependency_uuids
+            let Some(contacts) = candidates(&bundle) else {
+                return Ok(None);
+            };
+            let built = build(store, &contacts)?;
+            Ok((built.dependencies.uuids == bundle.dependency_uuids
                 && built.dependencies.values == bundle.dependency_values
                 && built.dependencies.flags == bundle.dependency_flags)
-                .then_some(built.summaries)
-        })();
+                .then_some(built.summaries))
+        })()?;
         match current {
             Some(current) => summaries = current,
             None => bundle = store.invalidate_local_insight(bundle.bundle_id)?,
@@ -393,7 +473,7 @@ fn candidates(bundle: &LocalInsightBundle) -> Option<Vec<Uuid>> {
 }
 
 fn build(store: &SqlCipherStore, contacts: &[Uuid]) -> Result<Built, SessionRefusal> {
-    let graph = soul_graph::load(store).map_err(|_| unavailable())?;
+    let graph = soul_graph::load(store)?;
     let mut global_as_of = None;
     for at in graph
         .edges
@@ -412,7 +492,12 @@ fn build(store: &SqlCipherStore, contacts: &[Uuid]) -> Result<Built, SessionRefu
         if selected.len() == MAX_CONTACTS {
             break;
         }
-        let Some((group, summary, domain)) = contact(store, &graph, id) else {
+        let mut read_failure = None;
+        let candidate = contact(store, &graph, id, &mut read_failure);
+        if let Some(error) = read_failure {
+            return Err(error.into());
+        }
+        let Some((group, summary, domain)) = candidate else {
             continue;
         };
         if used.uuids.len() + group.uuids.len() + MAX_CONTACTS + 1 > MAX_UUIDS
@@ -454,6 +539,7 @@ fn contact(
     store: &SqlCipherStore,
     graph: &SoulGraph,
     id: Uuid,
+    failure: &mut Option<StoreError>,
 ) -> Option<(Dependencies, PersonSummaryView, PersonSummary)> {
     let node = graph.node(id)?;
     if node.is_owner() || node.forget_state != ForgetState::Active {
@@ -486,8 +572,8 @@ fn contact(
     d.values.push(evidence_ids.len() as i64);
     let mut resolved = Vec::new();
     for id in evidence_ids {
-        let evidence = store.get_evidence(id).ok()?;
-        d.append(evidence_dependencies(store, &evidence)?);
+        let evidence = checked_read(store.get_evidence(id), failure)?;
+        d.append(evidence_dependencies(store, &evidence, failure)?);
         if !d.fits() {
             return None;
         }
@@ -572,7 +658,23 @@ fn edge_dependencies(edge: &TieEdge) -> Option<Dependencies> {
     Some(d)
 }
 
-fn evidence_dependencies(store: &SqlCipherStore, row: &SoulEvidence) -> Option<Dependencies> {
+fn checked_read<T>(result: StoreResult<T>, failure: &mut Option<StoreError>) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(error) => {
+            if failure.is_none() {
+                *failure = Some(error)
+            }
+            None
+        }
+    }
+}
+
+fn evidence_dependencies(
+    store: &SqlCipherStore,
+    row: &SoulEvidence,
+    failure: &mut Option<StoreError>,
+) -> Option<Dependencies> {
     if row.source_refs.len() > MAX_UUIDS / 4 {
         return None;
     }
@@ -650,7 +752,7 @@ fn evidence_dependencies(store: &SqlCipherStore, row: &SoulEvidence) -> Option<D
                 .values
                 .push(i64::from(byte(pair[0])? * 16 + byte(pair[1])?));
         }
-        let event = store.get_event(observation.event_id).ok()?;
+        let event = checked_read(store.get_event(observation.event_id), failure)?;
         entry.time(Some(&event.ts))?;
         entry.values.extend([
             match event.source {
@@ -684,14 +786,13 @@ fn evidence_dependencies(store: &SqlCipherStore, row: &SoulEvidence) -> Option<D
         entry.flags.push(event.body_ref.is_some());
         if let Some(sealed) = event.body_ref {
             if sealed.aad.as_deref() != Some(field_aad(&event.event_id, "body_ref").as_str())
-                || !store.has_content_key(sealed.content_key_id)
-                || store.import_key_destroyed(sealed.content_key_id).ok()?
+                || checked_read(store.import_key_destroyed(sealed.content_key_id), failure)?
             {
                 return None;
             }
             // Reading is only a liveness check. No text, content hash, length
             // derived from plaintext, or reversible body fingerprint is saved.
-            drop(store.open(&sealed).ok()?);
+            drop(checked_read(store.open(&sealed), failure)?);
             entry.uuids.extend([sealed.content_key_id, sealed.blob_id]);
             entry.values.push(match sealed.subject {
                 SealedSubject::Owner => 0,

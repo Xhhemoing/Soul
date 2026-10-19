@@ -56,6 +56,42 @@ fn invoke_from(command: &str, body: Value, origin: Option<&str>) -> Result<Value
     Shell::on(scratch()).invoke_from(command, body, origin)
 }
 
+#[test]
+fn assistance_work_commands_use_the_registered_session_and_exact_request_shape() {
+    let shell = Shell::on(scratch());
+    let detail = shell
+        .invoke(
+            "create_assistance_goal",
+            json!({"request": {
+                "title": "Synthetic goal", "summary": "Synthetic local-only context",
+                "deadline_at": null, "source_observation": null
+            }}),
+        )
+        .unwrap();
+    let status = shell.invoke("assistance_work_status", json!({})).unwrap();
+    assert_eq!(status["runtime_state"], "not_started");
+    assert_eq!(status["pending_items"], 1);
+    let metadata = shell
+        .invoke(
+            "assistance_item_work",
+            json!({"itemId": detail["item"]["item_id"]}),
+        )
+        .unwrap();
+    assert_eq!(metadata["state"], "pending");
+    assert_eq!(metadata["item_revision"], detail["item"]["revision"]);
+    assert!(metadata.get("summary").is_none());
+    // A pending item is not a failed attempt and cannot be retried from the UI.
+    assert!(shell
+        .invoke(
+            "retry_assistance_work",
+            json!({"request": {
+                "item_id": detail["item"]["item_id"],
+                "expected_revision": detail["item"]["revision"]
+            }})
+        )
+        .is_err());
+}
+
 /// One launched application: one session, one store handle, one WebView.
 ///
 /// Most tests below want a single command and do not care what session it ran

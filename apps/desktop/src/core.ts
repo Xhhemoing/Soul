@@ -655,6 +655,9 @@ export const COMMANDS = {
   bindAssistanceGoalSource: "bind_assistance_goal_source",
   actAssistanceItem: "act_assistance_item",
   prepareAssistanceContext: "prepare_assistance_context",
+  assistanceWorkStatus: "assistance_work_status",
+  assistanceItemWork: "assistance_item_work",
+  retryAssistanceWork: "retry_assistance_work",
   configSnapshot: "config_snapshot",
   sessionStatus: "session_status",
   completeWizard: "complete_wizard",
@@ -865,6 +868,33 @@ export async function prepareAssistanceContext(request: AssistancePointer): Prom
   invalidateDraftSource();
   const value = await currentDraftResult<AssistanceContextView>(COMMANDS.prepareAssistanceContext, { request });
   if (value.item_id !== request.item_id || value.revision !== request.expected_revision) throw new Error("事项准备返回的版本身份不符，请重新核对。");
+  return value;
+}
+export interface AssistanceWorkMetadata {
+  readonly item_id: string; readonly item_revision: string;
+  readonly state: "none" | "pending" | "running" | "ready" | "source_unavailable" | "failed" | "unknown";
+  readonly pending_revision: string | null; readonly claimed_revision: string | null;
+  readonly claim_id: string | null; readonly result_revision: string | null; readonly failure_code: string | null;
+}
+export interface AssistanceWorkStatus {
+  readonly active_worker: boolean; readonly active_item_id: string | null;
+  readonly pending_items: number | null; readonly claimed_items: number | null;
+  readonly foreground_preparation_held: boolean; readonly coordination_unknown: boolean;
+  readonly collector_paused_for_import: boolean; readonly can_begin: boolean;
+  readonly runtime_state: "not_started" | "running" | "stopped" | "failed"; readonly last_runtime_error: string | null;
+}
+export function assistanceWorkStatus(): Promise<AssistanceWorkStatus> {
+  return currentDraftResult(COMMANDS.assistanceWorkStatus, {});
+}
+export async function assistanceItemWork(itemId: string): Promise<AssistanceWorkMetadata> {
+  const value = await currentDraftResult<AssistanceWorkMetadata>(COMMANDS.assistanceItemWork, { itemId });
+  if (value.item_id !== itemId) throw new Error("本地工作状态返回的事项身份不符，请重新核对。");
+  return value;
+}
+export async function retryAssistanceWork(request: AssistancePointer): Promise<AssistanceWorkMetadata> {
+  // Retrying local work does not revoke or replace a held foreground context.
+  const value = await currentDraftResult<AssistanceWorkMetadata>(COMMANDS.retryAssistanceWork, { request });
+  if (value.item_id !== request.item_id || value.item_revision !== request.expected_revision) throw new Error("本地重试返回的事项版本不符，结果尚未确认，请重新核对。");
   return value;
 }
 export interface ImportNamespace {

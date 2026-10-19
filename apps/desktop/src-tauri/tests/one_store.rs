@@ -19,15 +19,19 @@ const INSTANCE_RS: &str = include_str!("../src/instance.rs");
 const LIB_RS: &str = include_str!("../src/lib.rs");
 const MAIN_RS: &str = include_str!("../src/main.rs");
 const TRAY_RS: &str = include_str!("../src/tray.rs");
+const ASSISTANCE_RUNTIME_RS: &str = include_str!("../src/assistance_runtime/mod.rs");
+const ASSISTANCE_DRIVER_RS: &str = include_str!("../src/assistance_runtime/driver.rs");
 
 /// Every source file in the shell, with the file it came from.
-fn shell_sources() -> [(&'static str, &'static str); 5] {
+fn shell_sources() -> [(&'static str, &'static str); 7] {
     [
         ("src/commands.rs", COMMANDS_RS),
         ("src/instance.rs", INSTANCE_RS),
         ("src/lib.rs", LIB_RS),
         ("src/main.rs", MAIN_RS),
         ("src/tray.rs", TRAY_RS),
+        ("src/assistance_runtime/mod.rs", ASSISTANCE_RUNTIME_RS),
+        ("src/assistance_runtime/driver.rs", ASSISTANCE_DRIVER_RS),
     ]
 }
 

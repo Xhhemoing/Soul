@@ -117,7 +117,7 @@ enum StampedVersion {
     /// written before the stamp existed.
     Unstamped,
     /// A version this build can read, at or below [`sql::STORE_SCHEMA_VERSION`].
-    Readable,
+    Readable(i64),
     /// Written by a build that knew a schema this one does not, or stamped
     /// with something that is not a version at all.
     Unreadable(String),
@@ -173,7 +173,9 @@ fn stamped_version(conn: &Connection, path: &Path) -> StoreResult<StampedVersion
         None => StampedVersion::Unstamped,
         Some(None) => StampedVersion::Unreadable("NULL".into()),
         Some(Some(text)) => match text.trim().parse::<i64>() {
-            Ok(version) if version <= sql::STORE_SCHEMA_VERSION => StampedVersion::Readable,
+            Ok(version) if version <= sql::STORE_SCHEMA_VERSION => {
+                StampedVersion::Readable(version)
+            }
             Ok(version) => StampedVersion::Unreadable(version.to_string()),
             Err(_) => StampedVersion::Unreadable(format!("{text:?}")),
         },
@@ -241,7 +243,10 @@ impl SqlCipherStore {
 
         // Everything below this line writes to the file, so the question of
         // whether this build may write to it at all is settled here.
-        if let StampedVersion::Unreadable(found) = stamped_version(&conn, &path)? {
+        let prior_version = stamped_version(&conn, &path)?;
+        let seed_assistance_work =
+            matches!(&prior_version,StampedVersion::Readable(version) if *version<5);
+        if let StampedVersion::Unreadable(found) = prior_version {
             return Err(StoreError::Backend(format!(
                 "the database at {} is stamped meta.schema_version = {found}, and this build \
                  understands {}: it was written by a newer Soul, or by something that is not \
@@ -279,6 +284,11 @@ impl SqlCipherStore {
         }
         let migration = conn.transaction().map_err(backend)?;
         migration.execute_batch(sql::DDL).map_err(backend)?;
+        if seed_assistance_work {
+            // Schema 4's explicit items existed before durable local work.
+            // Seed once with the additive upgrade, never on ordinary opens.
+            migration.execute("INSERT OR IGNORE INTO assistance_work(item_id,pending_revision) SELECT item_id,revision FROM assistance_items WHERE handling='open' AND validity!='forgotten'",[]).map_err(backend)?;
+        }
         // The old formats never stored external message ids. Record that gap
         // once; later indexed imports must not turn into new legacy history.
         for (source, event_source) in [
@@ -772,18 +782,20 @@ impl ProfileStore for SqlCipherStore {
     fn put_evidence(&mut self, evidence: SoulEvidence) -> StoreResult<Uuid> {
         self.check(SchemaId::Evidence, &evidence)?;
         let id = evidence.evidence_id;
-        self.conn
-            .execute(
-                "INSERT INTO evidence (evidence_id, subject, doc) VALUES (?1, ?2, ?3)
+        let tx = self.conn.savepoint().map_err(backend)?;
+        tx.execute(
+            "INSERT INTO evidence (evidence_id, subject, doc) VALUES (?1, ?2, ?3)
                  ON CONFLICT (evidence_id) DO UPDATE
                  SET subject = excluded.subject, doc = excluded.doc",
-                rusqlite::params![
-                    id.to_string(),
-                    enum_text(&evidence.subject)?,
-                    to_doc(&evidence)?
-                ],
-            )
-            .map_err(backend)?;
+            rusqlite::params![
+                id.to_string(),
+                enum_text(&evidence.subject)?,
+                to_doc(&evidence)?
+            ],
+        )
+        .map_err(backend)?;
+        crate::assistance_work::enqueue_sources(&tx)?;
+        tx.commit().map_err(backend)?;
         Ok(id)
     }
 
@@ -1005,6 +1017,17 @@ impl MemoryStore for SqlCipherStore {
         // invalidation as the assistance route, in this very savepoint.
         tx.execute("UPDATE assistance_items SET revision=?2,validity=CASE WHEN ?3='forgotten' THEN 'forgotten' ELSE validity END WHERE memory_id=?1",
             rusqlite::params![id.to_string(),Uuid::now_v7().to_string(),enum_text(&memory.forget_state)?]).map_err(backend)?;
+        let item: Option<String> = tx
+            .query_row(
+                "SELECT item_id FROM assistance_items WHERE memory_id=?1",
+                [id.to_string()],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(backend)?;
+        if let Some(item) = item {
+            crate::assistance_work::enqueue(&tx, &item)?;
+        }
         tx.commit().map_err(backend)?;
         Ok(id)
     }
@@ -1045,9 +1068,9 @@ impl GraphStore for SqlCipherStore {
     fn put_contact(&mut self, contact: SoulContact) -> StoreResult<Uuid> {
         self.check(SchemaId::Contact, &contact)?;
         let id = contact.contact_id;
-        self.conn
-            .execute(
-                "INSERT INTO contacts
+        let tx = self.conn.savepoint().map_err(backend)?;
+        tx.execute(
+            "INSERT INTO contacts
                     (contact_id, contact_class, forget_state, display_label_key_id, doc)
                  VALUES (?1, ?2, ?3, ?4, ?5)
                  ON CONFLICT (contact_id) DO UPDATE SET
@@ -1055,18 +1078,20 @@ impl GraphStore for SqlCipherStore {
                      forget_state         = excluded.forget_state,
                      display_label_key_id = excluded.display_label_key_id,
                      doc                  = excluded.doc",
-                rusqlite::params![
-                    id.to_string(),
-                    enum_text(&contact.contact_class)?,
-                    enum_text(&contact.forget_state)?,
-                    contact
-                        .display_label_ref
-                        .as_ref()
-                        .map(|sealed| sealed.content_key_id.to_string()),
-                    to_doc(&contact)?,
-                ],
-            )
-            .map_err(backend)?;
+            rusqlite::params![
+                id.to_string(),
+                enum_text(&contact.contact_class)?,
+                enum_text(&contact.forget_state)?,
+                contact
+                    .display_label_ref
+                    .as_ref()
+                    .map(|sealed| sealed.content_key_id.to_string()),
+                to_doc(&contact)?,
+            ],
+        )
+        .map_err(backend)?;
+        crate::assistance_work::enqueue_sources(&tx)?;
+        tx.commit().map_err(backend)?;
         Ok(id)
     }
 
@@ -1135,6 +1160,7 @@ impl GraphStore for SqlCipherStore {
             )
             .map_err(backend)?;
         }
+        crate::assistance_work::enqueue_sources(&tx)?;
         tx.commit().map_err(backend)?;
         Ok(id)
     }

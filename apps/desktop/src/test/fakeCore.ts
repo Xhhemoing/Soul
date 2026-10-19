@@ -66,6 +66,8 @@ import type {
   AssistanceItemDetail,
   AssistanceItemRow,
   AssistancePointer,
+  AssistanceWorkMetadata,
+  AssistanceWorkStatus,
 } from "../core";
 
 export const CLOUD_LABEL = "尚未启用";
@@ -383,6 +385,14 @@ export function anAssistanceDetail(overrides: Partial<AssistanceItemDetail> = {}
 }
 export function anAssistanceContext(overrides: Partial<Extract<AssistanceContextView, { kind: "memory" }>> = {}): AssistanceContextView {
   return { item_id: ASSISTANCE_ITEM_ID, revision: ASSISTANCE_REVISION, kind: "memory", memory: aMemoryContextView(), ...overrides };
+}
+export function anAssistanceWork(overrides: Partial<AssistanceWorkMetadata> = {}): AssistanceWorkMetadata {
+  return { item_id: ASSISTANCE_ITEM_ID, item_revision: ASSISTANCE_REVISION, state: "none", pending_revision: null,
+    claimed_revision: null, claim_id: null, result_revision: null, failure_code: null, ...overrides };
+}
+export function anAssistanceWorkStatus(overrides: Partial<AssistanceWorkStatus> = {}): AssistanceWorkStatus {
+  return { active_worker: false, active_item_id: null, pending_items: 0, claimed_items: 0, foreground_preparation_held: false,
+    coordination_unknown: false, collector_paused_for_import: false, can_begin: true, runtime_state: "running", last_runtime_error: null, ...overrides };
 }
 export const EVIDENCE_EVENT_ID = "0192f000-0000-7000-8000-00000000ea31";
 export function anEvidenceEventSource(overrides: Partial<EvidenceEventSource> = {}): EvidenceEventSource {
@@ -988,6 +998,9 @@ export interface FakeCoreOptions {
   readonly readingAssistanceItem?: (itemId: string) => AssistanceItemDetail | Promise<AssistanceItemDetail>;
   readonly changingAssistance?: (command: string, request: Record<string, unknown>) => AssistanceItemDetail | Promise<AssistanceItemDetail>;
   readonly preparingAssistance?: (request: AssistancePointer) => AssistanceContextView | Promise<AssistanceContextView>;
+  readonly assistanceWorkStatus?: () => AssistanceWorkStatus | Promise<AssistanceWorkStatus>;
+  readonly readingAssistanceWork?: (itemId: string) => AssistanceWorkMetadata | Promise<AssistanceWorkMetadata>;
+  readonly retryingAssistanceWork?: (request: AssistancePointer) => AssistanceWorkMetadata | Promise<AssistanceWorkMetadata>;
   readonly questions?: readonly Question[];
   /** Able to throw, because a questionnaire with nothing in it is refused. */
   readonly recording?: (answers: readonly { question_id: string; given: string }[]) =>
@@ -1271,6 +1284,16 @@ export function installFakeCore(
         return DRAFT_NOTICES;
       case "assistance_items":
         return options.readingAssistanceItems?.() ?? { items: options.assistanceRows ?? [] };
+      case "assistance_work_status":
+        return options.assistanceWorkStatus?.() ?? anAssistanceWorkStatus();
+      case "assistance_item_work": {
+        const itemId = (payload as { itemId: string }).itemId;
+        return options.readingAssistanceWork?.(itemId) ?? anAssistanceWork({ item_id: itemId });
+      }
+      case "retry_assistance_work": {
+        const request = (payload as { request: AssistancePointer }).request;
+        return options.retryingAssistanceWork?.(request) ?? anAssistanceWork({ item_id: request.item_id, item_revision: request.expected_revision, state: "pending", pending_revision: request.expected_revision });
+      }
       case "assistance_item": {
         const id = (payload as { itemId: string }).itemId;
         return options.readingAssistanceItem?.(id) ?? anAssistanceDetail({ item: anAssistanceRow({ item_id: id }) });

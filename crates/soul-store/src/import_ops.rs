@@ -224,6 +224,7 @@ impl SqlCipherStore {
             .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
             .map_err(|_| fixed("IMPORT_RECOVERY_ALREADY_STARTED"))?;
         let result = self.transact(|store| {
+            store.recover_assistance_work()?;
             let mut statement = store
                 .conn
                 .prepare("SELECT doc FROM import_operations WHERE state IN ('reserved','running')")
@@ -416,10 +417,28 @@ impl ImportIndexStore for SqlCipherStore {
             Err(StoreError::NotFound { .. }) => {}
             Err(error) => return Err(error),
         }
-        self.conn.execute("INSERT INTO import_namespaces(namespace_id,source,state,owner_contact_id,doc) VALUES(?1,?2,?3,?4,?5)
+        let tx = self.conn.savepoint().map_err(backend)?;
+        tx.execute("INSERT INTO import_namespaces(namespace_id,source,state,owner_contact_id,doc) VALUES(?1,?2,?3,?4,?5)
             ON CONFLICT(namespace_id) DO UPDATE SET state=excluded.state,owner_contact_id=excluded.owner_contact_id,doc=excluded.doc",
             rusqlite::params![namespace.namespace_id.to_string(),namespace.source.as_str(),enum_text(&namespace.state)?,namespace.owner_contact_id.map(|id|id.to_string()),encode(namespace)?]).map_err(backend)?;
-        Ok(())
+        if namespace.state == ImportNamespaceState::Revoked {
+            tx.execute("UPDATE assistance_items SET validity='stale',revision=?2 WHERE namespace_id=?1 AND validity='current'",rusqlite::params![namespace.namespace_id.to_string(),Uuid::now_v7().to_string()]).map_err(backend)?;
+            let mut statement = tx
+                .prepare("SELECT item_id FROM assistance_items WHERE namespace_id=?1")
+                .map_err(backend)?;
+            let ids = statement
+                .query_map([namespace.namespace_id.to_string()], |r| {
+                    r.get::<_, String>(0)
+                })
+                .map_err(backend)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(backend)?;
+            drop(statement);
+            for id in ids {
+                crate::assistance_work::enqueue(&tx, &id)?;
+            }
+        }
+        tx.commit().map_err(backend)
     }
 
     fn import_legacy_events(&self, source: ImportSourceKind) -> StoreResult<u64> {

@@ -28,12 +28,13 @@ use soulcore::commands::memory::{
 use soulcore::commands::profile::{GivenAnswer, IntakeReceipt, ProfileScreen, QuestionView};
 use soulcore::commands::session::{
     AssistanceActionRequest, AssistanceContextView, AssistanceItemDetail, AssistanceItemRequest,
-    AssistanceItems, BindAssistanceGoalSource, CollectStatus, ContextMemoryId,
-    CreateAssistanceGoal, EditAssistanceGoal, FilesView, ImportNamespaceView, ImportOperationView,
-    ImportPrepareRequest, ImportRecoveryState, InsightContextRequest, InsightContextView,
-    InsightDraftPlan, InsightDraftValue, LinkAssistanceObservation, MemoryContextRequest,
-    MemoryContextView, MemoryDraftPlan, MemoryDraftValue, PreparedImportView,
-    RefreshAssistanceObservation, Session, SessionRefusal, SessionStatus,
+    AssistanceItems, AssistanceWorkMetadata, AssistanceWorkStatus, BindAssistanceGoalSource,
+    CollectStatus, ContextMemoryId, CreateAssistanceGoal, EditAssistanceGoal, FilesView,
+    ImportNamespaceView, ImportOperationView, ImportPrepareRequest, ImportRecoveryState,
+    InsightContextRequest, InsightContextView, InsightDraftPlan, InsightDraftValue,
+    LinkAssistanceObservation, MemoryContextRequest, MemoryContextView, MemoryDraftPlan,
+    MemoryDraftValue, PreparedImportView, RefreshAssistanceObservation, Session, SessionRefusal,
+    SessionStatus,
 };
 use soulcore::commands::shell::{CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
 use soulcore::commands::sources::{
@@ -56,6 +57,10 @@ impl SessionState {
         SessionState(Arc::new(Mutex::new(session)))
     }
 
+    pub(crate) fn shared(&self) -> Arc<Mutex<Session>> {
+        Arc::clone(&self.0)
+    }
+
     /// The session, with a poisoned lock recovered rather than propagated.
     ///
     /// A panic in one command must not take the whole interface away for the
@@ -66,6 +71,29 @@ impl SessionState {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
+
+#[tauri::command]
+pub fn assistance_work_status(
+    session: State<'_, SessionState>,
+) -> Result<AssistanceWorkStatus, SessionRefusal> {
+    session.held().assistance_work_status()
+}
+
+#[tauri::command]
+pub fn assistance_item_work(
+    session: State<'_, SessionState>,
+    item_id: String,
+) -> Result<AssistanceWorkMetadata, SessionRefusal> {
+    session.held().assistance_item_work(&item_id)
+}
+
+#[tauri::command]
+pub fn retry_assistance_work(
+    session: State<'_, SessionState>,
+    request: AssistanceItemRequest,
+) -> Result<AssistanceWorkMetadata, SessionRefusal> {
+    session.held().retry_assistance_work(request)
 }
 
 #[tauri::command]
@@ -689,6 +717,9 @@ impl DraftNotices {
 /// `apps/desktop/src/core.ts`, which is the only place the other side names
 /// them. A command added to one and not the other is a failing test.
 pub const COMMAND_NAMES: &[&str] = &[
+    "assistance_work_status",
+    "assistance_item_work",
+    "retry_assistance_work",
     "assistance_items",
     "assistance_item",
     "create_assistance_goal",
