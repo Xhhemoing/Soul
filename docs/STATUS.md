@@ -2,9 +2,9 @@
 
 本文件是当前状态入口。历史见 [2026-09-28 快照](STATUS_HISTORY_20260928.md) 与[遗忘阶段 1–4 记录](SOUL_FORGET_PROGRESS_2026-09-29.md)。历史记录中的“尚未接入”描述其当时版本，不覆盖本页的新进展。
 
-## Windows 独立桌面复核（2026-10-19，修复已验证，完整 G-W 待运行）
+## Windows 独立桌面复核（2026-10-19，完整 G-W 执行通过）
 
-起点为 `codex/soul-rebuild-20261019` 的 `b0e2334`，本节对应其上的本轮未提交修改。业务与测试改动已完成独立只读复审；下列实跑均在 Windows、pwsh 7.6.5、Rust 1.83.0 / MSVC x64 下完成，仅使用合成资料、临时库和 loopback endpoint。当前不是 GATED / INTEGRATED，Goal 1、正式 Goal 2 与 Wave 1 均未关闭。
+起点为 `codex/soul-rebuild-20261019` 的 `b0e2334`，修复候选为本地提交 `237ef18f71de04b73abdc1a93baec50d87d1fc09`。业务与测试改动已完成独立只读复审；下列实跑均在 Windows、pwsh 7.6.5、Rust 1.83.0 / MSVC x64 下完成，仅使用合成资料、临时库和 loopback endpoint。该干净候选已完整执行 G-W，前后 HEAD / 空状态一致；完整记录见 [20261019-237ef18-win](gates/20261019-237ef18-win.md)。当前不是 GATED / INTEGRATED，Goal 1、正式 Goal 2 与 Wave 1 均未关闭。
 
 - 首次独立 desktop `--all-targets --locked` 编译退出 101：通知 runtime 测试缺少 `soul-policy` / `tempfile` 的直接 dev 依赖。已补齐并删除冗余导入；桌面锁仅增加两个 dev 根依赖边和 `tempfile 3.27.0`，未升级已有包，完整 `metadata --locked --offline` 验证通过。
 - 实跑发现公开“失败重试”也接受 Pending / Ready。先新增两个存储回归并实际观察到错误成功，再在原事务内、保留 CAS / Running 拒绝后限定 Failed。拒绝不改工作元数据或已完成 claim 回执；原 Session 测试改用真实记忆修改触发下一轮工作，保留未知结果、新旧待办和旧 revision 断言。
@@ -18,10 +18,11 @@
 | `cargo test -p soulcore --test session_assistance_work --locked --offline` | 11 通过，退出 0 |
 | `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --locked --offline` | 7 个输出套件（含一个空套件），130 通过 / 0 失败；IPC 67 项包含新增 U5 两项，退出 0 |
 | 根 / desktop `cargo fmt --all -- --check`、`git diff --check` | 均退出 0 |
+| `pwsh -NoProfile -File scripts/gate-win.ps1`（候选 `237ef18`） | 完整退出 0，无跳过 workspace；根 1305 通过 / 1 项既有测量忽略，desktop 130 通过，前端 668 通过，生产包与两个 release 产物通过，manifest / smoke 通过 |
 
 原始日志位于本机 `E:\Project\Soul-checks-20261019-win`：`desktop-initial.log`、`desktop-after-fixes.log`、`retry-red.log`、`retry-green.log`、`session-assistance-work.log`、最终 `desktop-verified.log`，退出码由各对应 `*-exit.txt` 或初轮 JSON 记录；中间失败不累计为通过。首次完整构建生成本机 OpenSSL 3.6.3 静态库，后续命令仅在子进程中通过 `OPENSSL_DIR` / `OPENSSL_NO_VENDOR=1` / `OPENSSL_STATIC=1` 复用该实际产物；根 / desktop 的 target 路径不变，已核对 build 输出的实际链接目录。此复用不证明 release 默认 vendored 冷构建路径。
 
-历史 `ebff0c9` 的原始证据目录本机再次确认缺失，[计划索引](PLAN_INDEX.md)与[历史记录](gates/20260925-ebff0c9-win.md)已恢复 `NOT VERIFIED`。当前完整 G-W 尚未运行，须固定干净候选后按原入口执行；G-L 继续暂缓，安装 / 卸载及 G-M 未运行。
+历史 `ebff0c9` 的原始证据目录本机再次确认缺失，[计划索引](PLAN_INDEX.md)与[历史记录](gates/20260925-ebff0c9-win.md)已恢复 `NOT VERIFIED`。当前候选 G-W 的 15 项 smoke 检查通过，包含一次成功的 Windows TCP 表观察；headless 自身的 `observed=false` 不计网络观察通过。G-L 继续暂缓，安装 / 卸载及 G-M 未运行，真实通知与任务效用未验收。本次 G-W 结论只属于 `237ef18`，后续门禁文档提交不冒称为另一次新源码门禁运行。
 
 ## 统一辅助重建（2026-10-19，U1–U6 已实现，U7 部分验收）
 
