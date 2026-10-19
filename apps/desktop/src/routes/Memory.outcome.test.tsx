@@ -52,6 +52,18 @@ beforeEach(() => {
 });
 
 describe("遗忘结果的桌面接线", () => {
+  it("确认前后分别显示核心给出的辅助事项失效范围", async () => {
+    vi.mocked(core.previewForget).mockResolvedValue({
+      preview_id: "synthetic-preview", memory_id: id, content_key_count: 1,
+      memories_affected: 1, contacts_affected: 0, sealed_blobs_destroyed: 2,
+      inferences_orphaned: 1, assistance_items_invalidated: 3, audit_entries_retained: 0, destroys_anything: false, notice: "合成预览",
+    });
+    vi.mocked(core.forgetMemory).mockResolvedValue({ ...receipt, assistance_items_invalidated: 3 });
+    const { user } = await prepared();
+    expect(screen.getByTestId("forget-preview")).toHaveTextContent("将失效辅助事项：3");
+    await confirm(user);
+    expect(await screen.findByTestId("forget-receipt")).toHaveTextContent("辅助事项失效：3");
+  });
   it("shows all three observations from the current core", async () => {
     const { user } = await prepared(); await confirm(user);
     expect(await screen.findByTestId("forget-status")).toHaveTextContent("清理与审计均已确认");

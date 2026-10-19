@@ -262,6 +262,8 @@ pub struct ForgetPreview {
     pub import_namespaces_revoked: u64,
     #[serde(default)]
     pub local_insights_invalidated: u64,
+    #[serde(default)]
+    pub assistance_items_invalidated: u64,
     /// Kept deliberately: the chain records that a forget happened and must
     /// never be in a position to prevent one.
     pub audit_entries_retained: u64,
@@ -282,6 +284,7 @@ impl ForgetPreview {
             inferences_orphaned: impact.inferences_orphaned,
             import_namespaces_revoked: impact.import_namespaces_revoked,
             local_insights_invalidated: impact.local_insights_invalidated,
+            assistance_items_invalidated: impact.assistance_items_invalidated,
             audit_entries_retained: impact.audit_entries_retained,
             destroys_anything: false,
             notice: FORGET_NOTICE.to_owned(),
@@ -309,6 +312,8 @@ pub struct ForgetReceiptView {
     pub import_namespaces_revoked: u64,
     #[serde(default)]
     pub local_insights_invalidated: u64,
+    #[serde(default)]
+    pub assistance_items_invalidated: u64,
     /// Whether the receipt charges what the preview quoted.
     pub matched_preview: bool,
     /// Only constructed from a committed service outcome, never from an error.
@@ -330,6 +335,7 @@ impl ForgetReceiptView {
             inferences_orphaned: receipt.impact.inferences_orphaned,
             import_namespaces_revoked: receipt.impact.import_namespaces_revoked,
             local_insights_invalidated: receipt.impact.local_insights_invalidated,
+            assistance_items_invalidated: receipt.impact.assistance_items_invalidated,
             matched_preview: &receipt.impact == quoted,
             logical_committed: true,
             cleanup: receipt.cleanup.clone(),

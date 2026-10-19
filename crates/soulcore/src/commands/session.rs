@@ -111,6 +111,15 @@ mod insight_context;
 pub use insight_context::{
     InsightContextRequest, InsightContextView, InsightDraftPlan, InsightDraftValue,
 };
+#[path = "session_assistance.rs"]
+mod assistance;
+pub use assistance::{
+    AssistanceAction, AssistanceActionRequest, AssistanceContextView, AssistanceHandling,
+    AssistanceItemDetail, AssistanceItemRequest, AssistanceItemRow, AssistanceItems,
+    AssistanceObservationSource, AssistanceSource, AssistanceValidity, BindAssistanceGoalSource,
+    CreateAssistanceGoal, EditAssistanceGoal, LinkAssistanceObservation,
+    RefreshAssistanceObservation,
+};
 
 /// The environment variable that names the data directory outright.
 ///
@@ -590,6 +599,7 @@ pub struct SessionDraftWork {
     work: draft::DraftWork,
     memory: Option<soul_memory::ContextSelection>,
     insight: Option<super::insights::SelectedInsightContext>,
+    assistance: Option<assistance::AssistanceBinding>,
 }
 
 /// Must be returned to the same Session, even if the invoking page disappeared.
@@ -601,6 +611,7 @@ pub struct SessionDraftCompletion {
     execution: draft::DraftExecution,
     memory: Option<soul_memory::ContextSelection>,
     insight: Option<super::insights::SelectedInsightContext>,
+    assistance: Option<assistance::AssistanceBinding>,
 }
 
 /// A summary snapshot; only an actual E1 dispatch occupies the shared slot.
@@ -689,6 +700,7 @@ impl SessionDraftWork {
             execution,
             memory: self.memory,
             insight: self.insight,
+            assistance: self.assistance,
         }
     }
 }
@@ -1214,6 +1226,15 @@ impl Session {
         if memory.is_some() && insight.is_some() {
             return Err(self.refuse_draft(DraftRefusal::SourceChanged));
         }
+        let assistance = self
+            .pending_memory
+            .as_ref()
+            .and_then(|pending| pending.assistance.clone())
+            .or_else(|| {
+                self.pending_insight
+                    .as_ref()
+                    .and_then(|pending| pending.assistance.clone())
+            });
         let work = self
             .draft
             .dispatch(&mut self.policy, approval, now_unix_millis())
@@ -1240,6 +1261,7 @@ impl Session {
             work,
             memory,
             insight,
+            assistance,
         })
     }
 
@@ -1265,6 +1287,10 @@ impl Session {
             .map_err(|refusal| self.refuse_draft(refusal))?;
         if completed.revision != self.draft_revision {
             return Err(self.refuse_draft(DraftRefusal::SourceChanged));
+        }
+        if let Some(binding) = &completed.assistance {
+            self.revalidate_assistance(binding)
+                .map_err(|_| self.refuse_draft(DraftRefusal::SourceChanged))?;
         }
         if let Some(selection) = &completed.memory {
             self.revalidate_memory(selection)

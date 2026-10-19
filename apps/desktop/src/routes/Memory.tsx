@@ -517,6 +517,7 @@ function Price({ preview, busy, onForget, onKeep }: PriceProps): React.JSX.Eleme
         </li>
         <li>{preview.audit_entries_retained} 条审计记录会留着：链子不记内容，也不该挡住遗忘。</li>
         <li>将撤销导入来源：{preview.import_namespaces_revoked ?? "未提供"}；将失效本地洞察：{preview.local_insights_invalidated ?? "未提供"}。来源撤销后禁止继续重导。</li>
+        <li>将失效辅助事项：{preview.assistance_items_invalidated ?? "未提供"}。旧事项准备不能继续使用。</li>
         <li data-testid="forget-preview-id">
           这份预览的编号：<code>{preview.preview_id}</code>
         </li>

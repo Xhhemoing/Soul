@@ -46,11 +46,13 @@ pub(super) struct HeldMemory {
     id: Uuid,
     revision: Uuid,
     selection: ContextSelection,
+    pub(super) assistance: Option<assistance::AssistanceBinding>,
 }
 #[derive(Debug)]
 pub(super) struct PendingMemory {
     preparation_id: String,
     selection: ContextSelection,
+    pub(super) assistance: Option<assistance::AssistanceBinding>,
 }
 
 fn changed() -> SessionRefusal {
@@ -135,6 +137,7 @@ impl Session {
             id,
             revision: self.draft_revision,
             selection,
+            assistance: None,
         });
         Ok(MemoryContextView {
             context_id: id,
@@ -150,6 +153,9 @@ impl Session {
             || held.selection.outcome() != SelectionOutcome::Context
         {
             return Err(changed());
+        }
+        if let Some(binding) = &held.assistance {
+            self.revalidate_assistance(binding)?;
         }
         self.revalidate_memory(&held.selection)?;
         Ok(held.selection.clone())
@@ -171,6 +177,9 @@ impl Session {
         if let Some(pending) = &self.pending_memory {
             if pending.preparation_id != approval.preparation_id {
                 return Err(changed());
+            }
+            if let Some(binding) = &pending.assistance {
+                self.revalidate_assistance(binding)?;
             }
             self.revalidate_memory(&pending.selection)?;
             // Dispatch failures must not consume a different preparation, but
@@ -212,6 +221,10 @@ impl Session {
     ) -> Result<MemoryDraftPlan, SessionRefusal> {
         self.require_draft_slot()?;
         let mut selection = self.selected_memory(context_id)?;
+        let assistance = self
+            .held_memory
+            .as_ref()
+            .and_then(|held| held.assistance.clone());
         self.held_insight = None;
         self.pending_insight = None;
         let memory = material(&selection, owner_ids)?;
@@ -242,6 +255,7 @@ impl Session {
         self.pending_memory = Some(PendingMemory {
             preparation_id: prepared.plan.preparation_id.clone(),
             selection: selection.clone(),
+            assistance,
         });
         Ok(MemoryDraftPlan {
             prepared,

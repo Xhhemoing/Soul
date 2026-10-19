@@ -49,6 +49,8 @@ pub struct ForgetImpact {
     /// removed without blocking the destruction of content keys.
     #[serde(default)]
     pub local_insights_invalidated: u64,
+    #[serde(default)]
+    pub assistance_items_invalidated: u64,
 }
 
 /// Proof of what a completed forget actually did.

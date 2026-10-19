@@ -83,4 +83,37 @@ describe("本地洞察与精确实例反馈", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("合成忽略拒绝");
     expect(core.callsTo("ignore_local_insight")).toHaveLength(1); expect(core.callsTo("local_insights")).toHaveLength(1);
   });
+  it("当前读取快照筛选不发新IPC、不读取正文、不反馈", async () => {
+    const active = aLocalInsight(); const ignored = aLocalInsight({ bundle_id: "0192f000-0000-7000-8000-000000001622", ignored: true });
+    const core = installFakeCore({ insights: [active, ignored] }); const user = userEvent.setup(); render(<LocalInsights />);
+    await screen.findByRole("heading", { name: `本地候选 ${LOCAL_INSIGHT_ID}` });
+    const before = core.calls.length;
+    await user.selectOptions(screen.getByLabelText("候选展示范围"), "ignored");
+    expect(screen.queryByRole("heading", { name: `本地候选 ${LOCAL_INSIGHT_ID}` })).toBeNull();
+    expect(screen.getByRole("heading", { name: `本地候选 ${ignored.bundle_id}` })).toBeVisible();
+    await user.type(screen.getByLabelText("在已读取候选中筛联系人编号"), "不存在的合成编号");
+    expect(screen.getByText(/没有符合展示筛选的候选/)).toBeVisible();
+    expect(core.calls.length).toBe(before);
+    expect(core.callsTo("read_evidence_event")).toHaveLength(0); expect(core.callsTo("ignore_local_insight")).toHaveLength(0);
+  });
+  it("首次读取失败可见且允许明确重读，不默默吞掉错误", async () => {
+    let reads = 0; const core = installFakeCore({ readingInsights: () => { if (++reads === 1) throw new Error("合成候选读取失败"); return [aLocalInsight()]; } });
+    const user = userEvent.setup(); render(<LocalInsights />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("合成候选读取失败");
+    await user.click(screen.getByRole("button", { name: "核对本地洞察" }));
+    expect(await screen.findByRole("heading", { name: `本地候选 ${LOCAL_INSIGHT_ID}` })).toBeVisible();
+    expect(core.callsTo("local_insights")).toHaveLength(2);
+  });
+  it("地址A→B→A拒收旧initial read，也拒绝旧DOM反馈", async () => {
+    const pending = deferred<readonly LocalInsight[]>(); const core = installFakeCore({ readingInsights: () => pending.promise });
+    const oldHash = window.location.hash; render(<LocalInsights />);
+    await waitFor(() => expect(core.callsTo("local_insights")).toHaveLength(1));
+    await act(async () => {
+      window.location.hash = "#/memory"; window.dispatchEvent(new HashChangeEvent("hashchange"));
+      window.location.hash = oldHash; window.dispatchEvent(new HashChangeEvent("hashchange"));
+      pending.resolve([aLocalInsight()]); await pending.promise;
+    });
+    expect(screen.queryByRole("heading", { name: `本地候选 ${LOCAL_INSIGHT_ID}` })).toBeNull();
+    expect(core.callsTo("ignore_local_insight")).toHaveLength(0);
+  });
 });

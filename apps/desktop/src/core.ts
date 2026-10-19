@@ -495,6 +495,7 @@ export interface ForgetPreview {
   readonly inferences_orphaned: number;
   readonly import_namespaces_revoked?: number;
   readonly local_insights_invalidated?: number;
+  readonly assistance_items_invalidated?: number;
   readonly audit_entries_retained: number;
   readonly destroys_anything: false;
   readonly notice: string;
@@ -513,6 +514,7 @@ export interface ForgetReceipt {
   readonly inferences_orphaned: number;
   readonly import_namespaces_revoked?: number;
   readonly local_insights_invalidated?: number;
+  readonly assistance_items_invalidated?: number;
   /** Whether the receipt charges what the preview quoted. */
   readonly matched_preview: boolean;
   /** Missing fields from a legacy peer stay unconfirmed, never default true. */
@@ -644,6 +646,15 @@ export const COMMANDS = {
   localInsights: "local_insights",
   ignoreLocalInsight: "ignore_local_insight",
   recomputeLocalInsight: "recompute_local_insight",
+  assistanceItems: "assistance_items",
+  assistanceItem: "assistance_item",
+  createAssistanceGoal: "create_assistance_goal",
+  editAssistanceGoal: "edit_assistance_goal",
+  linkAssistanceObservation: "link_assistance_observation",
+  refreshAssistanceObservation: "refresh_assistance_observation",
+  bindAssistanceGoalSource: "bind_assistance_goal_source",
+  actAssistanceItem: "act_assistance_item",
+  prepareAssistanceContext: "prepare_assistance_context",
   configSnapshot: "config_snapshot",
   sessionStatus: "session_status",
   completeWizard: "complete_wizard",
@@ -785,6 +796,76 @@ export function ignoreLocalInsight(bundleId: string): Promise<LocalInsight> {
 }
 export function recomputeLocalInsight(bundleId: string): Promise<LocalInsight> {
   return mutateDraftSource(COMMANDS.recomputeLocalInsight, { bundleId });
+}
+
+export interface AssistancePointer { readonly item_id: string; readonly expected_revision: string }
+export interface AssistanceObservationSource {
+  readonly item_id: string; readonly revision: string; readonly namespace_id: string;
+  readonly contact_id: string; readonly bundle_id: string;
+}
+export type AssistanceSource =
+  | { readonly kind: "manual_goal"; readonly memory_id: string; readonly observation: AssistanceObservationSource | null }
+  | { readonly kind: "observation"; readonly namespace_id: string; readonly contact_id: string; readonly bundle_id: string };
+export interface AssistanceItemRow {
+  readonly item_id: string; readonly revision: string; readonly source: AssistanceSource;
+  readonly validity: "current" | "stale" | "forgotten";
+  readonly handling: "open" | "cancelled" | "resolved_reported";
+  readonly deadline_at: string | null; readonly created_at: number; readonly updated_at: number;
+}
+export interface AssistanceItemDetail {
+  readonly item: AssistanceItemRow; readonly goal: MemoryDetail | null;
+  readonly observation: InsightReference | null; readonly notice: string;
+}
+export interface AssistanceGoalFields { readonly title: string; readonly summary: string; readonly deadline_at: string | null }
+/** Native returns revision, while mutation requests name expected_revision. */
+export type AssistanceContextView =
+  | { readonly item_id: string; readonly revision: string; readonly kind: "memory"; readonly memory: MemoryContextView }
+  | { readonly item_id: string; readonly revision: string; readonly kind: "insight"; readonly insight: InsightContextView };
+
+function checkedAssistanceDetail(value: AssistanceItemDetail, itemId?: string): AssistanceItemDetail {
+  if ((itemId !== undefined && value.item.item_id !== itemId)
+    || (value.goal !== null && (value.item.source.kind !== "manual_goal" || value.goal.memory_id !== value.item.source.memory_id))) {
+    throw new Error("事项返回的身份不符，结果尚未确认，请重新读取。");
+  }
+  const source = value.item.source.kind === "observation" ? value.item.source : value.item.source.observation;
+  if (value.observation !== null && (source === null || value.observation.bundle_id !== source.bundle_id
+    || value.observation.contact_id !== source.contact_id || value.observation.namespace_id !== source.namespace_id
+    || value.observation.summary.contact_id !== source.contact_id)) throw new Error("事项返回的观察来源不符，请重新读取。");
+  return value;
+}
+export function assistanceItems(): Promise<{ readonly items: readonly AssistanceItemRow[] }> {
+  return currentDraftResult(COMMANDS.assistanceItems, {});
+}
+export async function assistanceItem(itemId: string): Promise<AssistanceItemDetail> {
+  return checkedAssistanceDetail(await currentDraftResult(COMMANDS.assistanceItem, { itemId }), itemId);
+}
+export async function createAssistanceGoal(request: AssistanceGoalFields & { readonly source_observation?: AssistancePointer | null }): Promise<AssistanceItemDetail> {
+  return checkedAssistanceDetail(await mutateDraftSource(COMMANDS.createAssistanceGoal, { request }));
+}
+export async function editAssistanceGoal(request: AssistanceGoalFields & AssistancePointer): Promise<AssistanceItemDetail> {
+  return checkedAssistanceDetail(await mutateDraftSource(COMMANDS.editAssistanceGoal, { request }), request.item_id);
+}
+export async function linkAssistanceObservation(request: { readonly bundle_id: string; readonly contact_id: string }, expectedNamespace?: string): Promise<AssistanceItemDetail> {
+  const value = checkedAssistanceDetail(await mutateDraftSource<AssistanceItemDetail>(COMMANDS.linkAssistanceObservation, { request }));
+  // An existing stable observation keeps its old bundle until explicit refresh.
+  if (value.item.source.kind !== "observation" || value.item.source.contact_id !== request.contact_id
+    || (expectedNamespace !== undefined && value.item.source.namespace_id !== expectedNamespace)) throw new Error("观察事项返回的来源身份不符，请重新读取。");
+  return value;
+}
+export async function refreshAssistanceObservation(request: AssistancePointer & { readonly bundle_id: string }): Promise<AssistanceItemDetail> {
+  return checkedAssistanceDetail(await mutateDraftSource(COMMANDS.refreshAssistanceObservation, { request }), request.item_id);
+}
+export async function bindAssistanceGoalSource(request: AssistancePointer & { readonly source_observation: AssistancePointer | null }): Promise<AssistanceItemDetail> {
+  return checkedAssistanceDetail(await mutateDraftSource(COMMANDS.bindAssistanceGoalSource, { request }), request.item_id);
+}
+export async function actAssistanceItem(request: AssistancePointer & { readonly action: "cancel" | "complete_self_reported" }): Promise<AssistanceItemDetail> {
+  return checkedAssistanceDetail(await mutateDraftSource(COMMANDS.actAssistanceItem, { request }), request.item_id);
+}
+export async function prepareAssistanceContext(request: AssistancePointer): Promise<AssistanceContextView> {
+  invalidateDraftSource();
+  const value = await currentDraftResult<AssistanceContextView>(COMMANDS.prepareAssistanceContext, { request });
+  if (value.item_id !== request.item_id || value.revision !== request.expected_revision) throw new Error("事项准备返回的版本身份不符，请重新核对。");
+  return value;
 }
 export interface ImportNamespace {
   readonly namespace_id: string; readonly source: ImportSource;

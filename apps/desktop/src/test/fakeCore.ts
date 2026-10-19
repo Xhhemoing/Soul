@@ -61,6 +61,11 @@ import type {
   EvidenceEventRequest,
   EvidenceEventView,
   EvidenceEventSource,
+  AssistanceContextView,
+  AssistanceGoalFields,
+  AssistanceItemDetail,
+  AssistanceItemRow,
+  AssistancePointer,
 } from "../core";
 
 export const CLOUD_LABEL = "尚未启用";
@@ -364,6 +369,20 @@ export function anInsightContext(overrides: Partial<InsightContextView> = {}): I
 }
 export function anInsightDraftPlan(overrides: Partial<InsightDraftPlan> = {}): InsightDraftPlan {
   return { prepared: { plan: anE1Plan(), encoded_bytes: 1200, body_preview: "[本次统计仅作本地参考]", includes_counts: false }, reference: anInsightReference(), ...overrides };
+}
+export const ASSISTANCE_ITEM_ID = "0192f000-0000-7000-8000-00000000a511";
+export const ASSISTANCE_REVISION = "0192f000-0000-7000-8000-00000000a512";
+export function anAssistanceRow(overrides: Partial<AssistanceItemRow> = {}): AssistanceItemRow {
+  return { item_id: ASSISTANCE_ITEM_ID, revision: ASSISTANCE_REVISION,
+    source: { kind: "manual_goal", memory_id: DRAFT_MEMORY_ID, observation: null }, validity: "current", handling: "open",
+    deadline_at: null, created_at: 1_800_000_000, updated_at: 1_800_000_000, ...overrides };
+}
+export function anAssistanceDetail(overrides: Partial<AssistanceItemDetail> = {}): AssistanceItemDetail {
+  return { item: anAssistanceRow(), goal: aMemoryDetail({ memory_id: DRAFT_MEMORY_ID, title: "合成明确目标", summary: "完成条件由本人确认。" }),
+    observation: null, notice: "合成事项详情；完成只表示自报，不代表核实。", ...overrides };
+}
+export function anAssistanceContext(overrides: Partial<Extract<AssistanceContextView, { kind: "memory" }>> = {}): AssistanceContextView {
+  return { item_id: ASSISTANCE_ITEM_ID, revision: ASSISTANCE_REVISION, kind: "memory", memory: aMemoryContextView(), ...overrides };
 }
 export const EVIDENCE_EVENT_ID = "0192f000-0000-7000-8000-00000000ea31";
 export function anEvidenceEventSource(overrides: Partial<EvidenceEventSource> = {}): EvidenceEventSource {
@@ -702,6 +721,7 @@ export function aForgetPreview(overrides: Partial<ForgetPreview> = {}): ForgetPr
     contacts_affected: 0,
     sealed_blobs_destroyed: 2,
     inferences_orphaned: 1,
+    assistance_items_invalidated: 0,
     audit_entries_retained: 3,
     destroys_anything: false,
     notice: FORGET_NOTICE,
@@ -715,6 +735,7 @@ export function aForgetReceipt(overrides: Partial<ForgetReceipt> = {}): ForgetRe
     content_keys_destroyed: 1,
     sealed_blobs_destroyed: 2,
     inferences_orphaned: 1,
+    assistance_items_invalidated: 0,
     matched_preview: true,
     ...overrides,
   };
@@ -938,7 +959,7 @@ export interface FakeCoreOptions {
    * this side.
    */
   readonly preparing?: (pasted: string, includeOriginal: boolean) => E1DraftPlan;
-  readonly generating?: (approval: { preparation_id: string; plan_hash: string }) => Draft;
+  readonly generating?: (approval: { preparation_id: string; plan_hash: string }) => Draft | Promise<Draft>;
   readonly discardingDraft?: () => boolean | Promise<boolean>;
   /** Able to throw: a file that does not parse arrives as a refusal value. */
   readonly readingImport?: (format: string, text: string) => ImportPreview;
@@ -962,6 +983,11 @@ export interface FakeCoreOptions {
   readonly readingInsights?: () => readonly LocalInsight[] | Promise<readonly LocalInsight[]>;
   readonly ignoringInsight?: (bundleId: string) => LocalInsight | Promise<LocalInsight>;
   readonly recomputingInsight?: (bundleId: string) => LocalInsight | Promise<LocalInsight>;
+  readonly assistanceRows?: readonly AssistanceItemRow[];
+  readonly readingAssistanceItems?: () => { readonly items: readonly AssistanceItemRow[] } | Promise<{ readonly items: readonly AssistanceItemRow[] }>;
+  readonly readingAssistanceItem?: (itemId: string) => AssistanceItemDetail | Promise<AssistanceItemDetail>;
+  readonly changingAssistance?: (command: string, request: Record<string, unknown>) => AssistanceItemDetail | Promise<AssistanceItemDetail>;
+  readonly preparingAssistance?: (request: AssistancePointer) => AssistanceContextView | Promise<AssistanceContextView>;
   readonly questions?: readonly Question[];
   /** Able to throw, because a questionnaire with nothing in it is refused. */
   readonly recording?: (answers: readonly { question_id: string; given: string }[]) =>
@@ -1243,6 +1269,30 @@ export function installFakeCore(
         );
       case "draft_notices":
         return DRAFT_NOTICES;
+      case "assistance_items":
+        return options.readingAssistanceItems?.() ?? { items: options.assistanceRows ?? [] };
+      case "assistance_item": {
+        const id = (payload as { itemId: string }).itemId;
+        return options.readingAssistanceItem?.(id) ?? anAssistanceDetail({ item: anAssistanceRow({ item_id: id }) });
+      }
+      case "create_assistance_goal":
+      case "edit_assistance_goal":
+      case "link_assistance_observation":
+      case "refresh_assistance_observation":
+      case "bind_assistance_goal_source":
+      case "act_assistance_item": {
+        const request = (payload as { request: Record<string, unknown> }).request;
+        if (options.changingAssistance !== undefined) return options.changingAssistance(cmd, request);
+        const fields = request as unknown as AssistanceGoalFields;
+        return anAssistanceDetail({ item: anAssistanceRow({ item_id: typeof request.item_id === "string" ? request.item_id : ASSISTANCE_ITEM_ID }),
+          goal: aMemoryDetail({ memory_id: DRAFT_MEMORY_ID, title: fields.title ?? "合成明确目标", summary: fields.summary ?? "完成条件由本人确认。" }) });
+      }
+      case "prepare_assistance_context": {
+        const request = (payload as { request: AssistancePointer }).request;
+        return Promise.resolve(options.preparingAssistance?.(request) ?? anAssistanceContext({ item_id: request.item_id, revision: request.expected_revision })).then((value) => {
+          heldMemory = value.kind === "memory" ? value.memory : null; heldInsight = value.kind === "insight" ? value.insight : null; return value;
+        });
+      }
       case "draft_reply":
         return drafting((payload as { pasted?: string }).pasted ?? "");
       case "prepare_draft": {

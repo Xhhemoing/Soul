@@ -1,4 +1,5 @@
 import { requestDraftDiscard } from "./draftDiscard";
+import type { AssistancePointer } from "../core";
 
 export interface InsightSelection {
   readonly bundle_id: string;
@@ -8,6 +9,7 @@ export interface InsightSelection {
 
 let memory: readonly string[] = [];
 let insight: InsightSelection | null = null;
+let assistance: AssistancePointer | null = null;
 let revision = 0;
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void): (() => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
@@ -26,7 +28,7 @@ export const draftMemoryCandidates = {
   subscribe,
   add: (id: string): void => {
     if (memory.includes(id) || memory.length >= 32) return;
-    memory = [...memory, id]; insight = null; changed();
+    memory = [...memory, id]; insight = null; assistance = null; changed();
   },
   remove: (id: string): void => {
     if (!memory.includes(id)) return;
@@ -37,9 +39,15 @@ export const draftInsightSelection = {
   snapshot: (): InsightSelection | null => insight,
   subscribe,
   select: (bundleId: string, contactId: string): void => {
-    memory = [];
+    memory = []; assistance = null;
     insight = { bundle_id: bundleId, contact_id: contactId, revision: revision + 1 };
     changed();
   },
   clear: (): void => { if (insight !== null) { insight = null; changed(); } },
+};
+export const draftAssistanceSelection = {
+  snapshot: (): AssistancePointer | null => assistance,
+  subscribe,
+  select: (value: AssistancePointer): void => { memory = []; insight = null; assistance = { ...value }; changed(); },
+  clear: (): void => { if (assistance !== null) { assistance = null; changed(); } },
 };

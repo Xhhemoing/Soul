@@ -40,6 +40,9 @@ pub(crate) struct ForgetPlan {
     pub(crate) import_participants: Vec<Uuid>,
     pub(crate) import_messages: Vec<Uuid>,
     pub(crate) local_insights: Vec<Uuid>,
+    // Raw auxiliary identifiers remain comparable even if a damaged row no
+    // longer decodes as an assistance item. Such damage must not block CK loss.
+    pub(crate) assistance_items: Vec<(String, String, bool)>,
 }
 
 #[cfg(test)]
@@ -467,6 +470,38 @@ impl SqlCipherStore {
             );
             self.uuid_column(&format!("SELECT bundle_id FROM local_insights WHERE validity='active' AND namespace_id IN ({}) ORDER BY bundle_id",placeholders(namespaces.len())),&namespaces)?
         };
+        let mut assistance_items = Vec::new();
+        let mut rows = self.conn.prepare("SELECT item_id,revision,memory_id,namespace_id,contact_id,bundle_id FROM assistance_items ORDER BY item_id").map_err(backend)?;
+        let candidates = rows
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                    r.get::<_, Option<String>>(3)?,
+                    r.get::<_, Option<String>>(4)?,
+                    r.get::<_, Option<String>>(5)?,
+                ))
+            })
+            .map_err(backend)?;
+        let includes = |v: &Option<String>, ids: &[Uuid]| {
+            v.as_ref()
+                .is_some_and(|v| ids.iter().any(|id| id.to_string() == *v))
+        };
+        for row in candidates {
+            let (id, revision, memory, namespace, contact, bundle) = row.map_err(backend)?;
+            let own_memory = includes(&memory, &memories);
+            if own_memory
+                || includes(&contact, &contacts)
+                || includes(&bundle, &local_insights)
+                || namespace
+                    .as_ref()
+                    .is_some_and(|v| import_namespaces.iter().any(|(id, _)| id.to_string() == *v))
+            {
+                assistance_items.push((id, revision, own_memory));
+            }
+        }
+        drop(rows);
         Ok(ForgetPlan {
             content_keys,
             memories,
@@ -477,6 +512,7 @@ impl SqlCipherStore {
             import_participants,
             import_messages,
             local_insights,
+            assistance_items,
         })
     }
 
@@ -526,6 +562,7 @@ impl SqlCipherStore {
             audit_entries_retained,
             import_namespaces_revoked: plan.import_namespaces.len() as u64,
             local_insights_invalidated: plan.local_insights.len() as u64,
+            assistance_items_invalidated: plan.assistance_items.len() as u64,
         })
     }
 }
@@ -628,6 +665,17 @@ impl ForgetOutcomeOps for SqlCipherStore {
 
         for memory_id in &plan.memories {
             mark_forgotten(&tx, "memories", "memory_id", *memory_id)?;
+        }
+        for (item_id, _, own_memory) in &plan.assistance_items {
+            tx.execute(
+                "UPDATE assistance_items SET validity=?2,revision=?3 WHERE item_id=?1",
+                rusqlite::params![
+                    item_id,
+                    if *own_memory { "forgotten" } else { "stale" },
+                    Uuid::now_v7().to_string()
+                ],
+            )
+            .map_err(backend)?;
         }
         for contact_id in &plan.contacts {
             mark_forgotten(&tx, "contacts", "contact_id", *contact_id)?;

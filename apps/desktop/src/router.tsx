@@ -14,6 +14,8 @@ import { useEffect, useState } from "react";
 export type RouteId =
   | "home"
   | "import"
+  | "insights"
+  | "assistance"
   | "collect"
   | "profile"
   | "graph"
@@ -37,6 +39,8 @@ export interface RouteDefinition {
 export const ROUTES: readonly RouteDefinition[] = [
   { id: "home", path: "/", title: "概览", ownedBy: null },
   { id: "import", path: "/import", title: "导入", ownedBy: null },
+  { id: "insights", path: "/insights", title: "本地洞察", ownedBy: null },
+  { id: "assistance", path: "/assistance", title: "辅助事项", ownedBy: null },
   { id: "collect", path: "/collect", title: "采集", ownedBy: null },
   { id: "profile", path: "/profile", title: "灵魂档案", ownedBy: null },
   { id: "graph", path: "/graph", title: "人脉图", ownedBy: null },
@@ -55,6 +59,7 @@ export function routeForHash(hash: string): RouteDefinition {
   // Only graph has a read-only, independently validated navigation target.
   // Other route queries and extended paths retain the exact-path fallback.
   if (path.startsWith("/graph?")) return ROUTES.find((route) => route.id === "graph") ?? HOME;
+  if (path.startsWith("/assistance?")) return ROUTES.find((route) => route.id === "assistance") ?? HOME;
   return ROUTES.find((route) => route.path === path) ?? HOME;
 }
 

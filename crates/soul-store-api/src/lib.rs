@@ -17,6 +17,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]
 
+pub mod assistance;
 pub mod conformance;
 pub mod fake;
 pub mod forget;

@@ -26,6 +26,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]
 
+pub mod assistance;
 pub mod audit;
 pub mod forget;
 pub mod import_ops;

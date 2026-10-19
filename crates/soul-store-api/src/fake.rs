@@ -246,6 +246,7 @@ impl FakeStore {
             content_key_ids: keys,
             import_namespaces_revoked: 0,
             local_insights_invalidated: 0,
+            assistance_items_invalidated: 0,
         }
     }
 

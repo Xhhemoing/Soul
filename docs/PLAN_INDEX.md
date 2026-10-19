@@ -16,6 +16,7 @@
 | 问题 | 去哪 |
 |---|---|
 | 现在到哪一步、还有哪些缺口 | [STATUS.md](STATUS.md) 顶部当前状态；历史段按当时日期阅读 |
+| 统一辅助事项 U1–U7 的依赖、范围和验收 | [统一辅助原计划](design/2026-10-16-unified-assistance.md) 第 10–11 节；重建阶段的编码前决定从 D97 开始，实际实现与运行结果见 [STATUS](STATUS.md) 顶部与[实施验证](design/2026-10-19-unified-assistance-implementation.md)，不移用参考模型或丢失工作区的旧验证结论 |
 | 当前分层、操作流程与后续执行架构图 | [ARCHITECTURE.md](ARCHITECTURE.md)；明确区分已实现与设计中，图源在 [architecture/](architecture/) |
 | 最新框架 W1–W5 的已接线能力与边界 | [ARCHITECTURE 当前表](ARCHITECTURE.md) / [HTML 顶部当前框架](framework-design.html) / [剩余模块计划](design/2026-10-16-remaining-implementation.md)：owned 扫描、本次候选记忆、持久导入/恢复、封存自然键去重/迁移、本地 A2 反馈；实际验证看 STATUS |
 | 本次记忆用途、过滤/澄清与实际请求预算 | [剩余模块计划的 W2 节](design/2026-10-16-remaining-implementation.md)；明确候选内的关键词/类型选择，缺事实时间先 Clarify，默认 local，真实 JSON serializer 64 KiB 与整条裁剪/引用复验 |

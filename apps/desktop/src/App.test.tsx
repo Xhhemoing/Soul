@@ -27,6 +27,7 @@ const FIRST_RUN: FakeCoreOptions = {
 
 async function startAtRoute(path: string, options: FakeCoreOptions = {}) {
   window.location.hash = path;
+  await new Promise<void>((resolve) => { window.setTimeout(resolve, 0); });
   const core = installFakeCore(options);
   render(<App />);
   await screen.findByRole("navigation", { name: "主导航" });
@@ -119,6 +120,20 @@ describe("桌面壳", () => {
     expect(screen.queryByTestId("pending-owner")).toBeNull();
     expect(await screen.findByTestId("no-people")).toBeVisible();
     expect(screen.getByTestId("graph-notice")).toHaveTextContent("工作假设，非临床结论");
+  });
+  it("本地洞察有独立入口，不必回到导入页", async () => {
+    const core = await startAtRoute("#/insights");
+    expect(await screen.findByRole("heading", { name: "导入后的本地洞察与反馈" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "本地洞察" })).toHaveAttribute("aria-current", "page");
+    expect(core.callsTo("local_insights")).toHaveLength(1);
+    expect(core.callsTo("prepare_import")).toHaveLength(0);
+  });
+  it("辅助事项有独立入口且初次只读取列表", async () => {
+    const core = await startAtRoute("#/assistance");
+    expect(await screen.findByRole("heading", { name: "辅助事项收件箱" })).toBeVisible();
+    expect(core.callsTo("assistance_items")).toHaveLength(1);
+    expect(core.callsTo("assistance_item")).toHaveLength(0);
+    expect(core.callsTo("prepare_assistance_context")).toHaveLength(0);
   });
 
   it("灵魂档案页有内容了，不再是空路由", async () => {

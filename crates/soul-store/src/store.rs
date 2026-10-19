@@ -925,6 +925,26 @@ impl MemoryStore for SqlCipherStore {
     fn put_memory(&mut self, memory: SoulMemory) -> StoreResult<Uuid> {
         self.check(SchemaId::Memory, &memory)?;
         let id = memory.memory_id;
+        let bound: bool = self
+            .conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM assistance_items WHERE memory_id=?1)",
+                [id.to_string()],
+                |row| row.get(0),
+            )
+            .map_err(backend)?;
+        if bound {
+            if memory.memory_type != soul_schema::memory::MemoryType::Commitment {
+                return Err(StoreError::ContractViolation(
+                    "a goal memory must remain a commitment".into(),
+                ));
+            }
+            if self.get_memory(id)?.content_key_id != memory.content_key_id {
+                return Err(StoreError::ContractViolation(
+                    "a goal memory must retain its content key".into(),
+                ));
+            }
+        }
 
         // Every key that has to die when this memory is forgotten.
         let mut key_ids = vec![memory.content_key_id];
@@ -981,6 +1001,10 @@ impl MemoryStore for SqlCipherStore {
             )
             .map_err(backend)?;
         }
+        // Direct store callers and ordinary Memory edits obey the same CAS
+        // invalidation as the assistance route, in this very savepoint.
+        tx.execute("UPDATE assistance_items SET revision=?2,validity=CASE WHEN ?3='forgotten' THEN 'forgotten' ELSE validity END WHERE memory_id=?1",
+            rusqlite::params![id.to_string(),Uuid::now_v7().to_string(),enum_text(&memory.forget_state)?]).map_err(backend)?;
         tx.commit().map_err(backend)?;
         Ok(id)
     }

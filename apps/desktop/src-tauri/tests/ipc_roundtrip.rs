@@ -2926,6 +2926,138 @@ fn a_memory_is_written_read_edited_and_forgotten_over_the_ipc() {
     let _ = std::fs::remove_dir_all(&next_launch.directory);
 }
 
+/// Uses configure's actual handler, so nested request fields, itemId conversion,
+/// and the prepared context all pass through the same Session as the application.
+#[test]
+fn assistance_goal_navigation_edit_and_terminal_state_share_one_item_over_ipc() {
+    let shell = Shell::on(scratch());
+    let created = shell
+        .invoke(
+            "create_assistance_goal",
+            json!({"request": {
+                "title": "Synthetic confirmed goal",
+                "summary": "Synthetic private goal description",
+                "deadline_at": "2030-01-02T15:00:00+08:00",
+                "source_observation": null
+            }}),
+        )
+        .unwrap();
+    let item_id = created["item"]["item_id"].as_str().unwrap().to_owned();
+    let revision = created["item"]["revision"].as_str().unwrap().to_owned();
+    let listed = shell.invoke("assistance_items", json!({})).unwrap();
+    assert_eq!(listed["items"].as_array().unwrap().len(), 1);
+    assert_eq!(listed["items"][0]["item_id"], item_id);
+    assert!(!listed.to_string().contains("Synthetic confirmed goal"));
+    assert!(!listed
+        .to_string()
+        .contains("Synthetic private goal description"));
+    assert_eq!(
+        shell
+            .invoke("assistance_item", json!({"itemId": item_id}))
+            .unwrap(),
+        created
+    );
+
+    let prepared = shell
+        .invoke(
+            "prepare_assistance_context",
+            json!({"request": {
+                "item_id": item_id, "expected_revision": revision
+            }}),
+        )
+        .unwrap();
+    assert_eq!(prepared["kind"], "memory");
+    assert_eq!(prepared["item_id"], item_id);
+    let context_id = prepared["memory"]["context_id"].as_str().unwrap();
+    let local = shell
+        .invoke(
+            "draft_reply_with_memory",
+            json!({
+                "pasted": "Synthetic explicit input", "contextId": context_id
+            }),
+        )
+        .unwrap();
+    assert_eq!(local["draft"]["delivery"], false);
+    assert_eq!(local["draft"]["source"], "tone_template");
+
+    let edited = shell
+        .invoke(
+            "edit_assistance_goal",
+            json!({"request": {
+                "item_id": item_id, "expected_revision": revision,
+                "title": "Synthetic revised goal", "summary": "Synthetic changed description",
+                "deadline_at": null
+            }}),
+        )
+        .unwrap();
+    assert_eq!(edited["item"]["item_id"], item_id);
+    assert_ne!(edited["item"]["revision"], revision);
+    assert!(edited["item"]["deadline_at"].is_null());
+    assert!(shell
+        .invoke(
+            "act_assistance_item",
+            json!({"request": {
+                "item_id": item_id, "expected_revision": revision, "action": "cancel"
+            }})
+        )
+        .is_err());
+    let terminal = shell
+        .invoke(
+            "act_assistance_item",
+            json!({"request": {
+                "item_id": item_id, "expected_revision": edited["item"]["revision"],
+                "action": "complete_self_reported"
+            }}),
+        )
+        .unwrap();
+    assert_eq!(terminal["item"]["handling"], "resolved_reported");
+    assert!(shell
+        .invoke(
+            "prepare_assistance_context",
+            json!({"request": {
+                "item_id": item_id, "expected_revision": terminal["item"]["revision"]
+            }})
+        )
+        .is_err());
+    let restarted = shell.restart();
+    let current = restarted
+        .invoke("assistance_item", json!({"itemId": item_id}))
+        .unwrap();
+    assert_eq!(current["item"], terminal["item"]);
+}
+
+#[test]
+fn assistance_commands_reject_missing_wire_arguments_on_the_real_handler() {
+    let shell = Shell::on(scratch());
+    for command in [
+        "assistance_item",
+        "create_assistance_goal",
+        "edit_assistance_goal",
+        "link_assistance_observation",
+        "refresh_assistance_observation",
+        "bind_assistance_goal_source",
+        "act_assistance_item",
+        "prepare_assistance_context",
+    ] {
+        assert!(shell.invoke(command, json!({})).is_err(), "{command}");
+    }
+    assert!(shell
+        .invoke(
+            "create_assistance_goal",
+            json!({"request": {
+                "title": "Synthetic", "summary": "Synthetic", "deadline_at": "tomorrow",
+                "source_observation": null
+            }})
+        )
+        .is_err());
+    assert!(
+        shell.invoke("assistance_items", json!({})).unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}
+
 /// What three memories say. AC-14's Given is a store with several in it, so
 /// the leakage checks below have three titles and three summaries to look for
 /// on the JSON the 记忆 page receives.

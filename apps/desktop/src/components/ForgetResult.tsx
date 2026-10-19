@@ -23,6 +23,7 @@ export function ForgetResult({ receipt }: { readonly receipt: ForgetReceipt }): 
           涉及 {receipt.sealed_blobs_destroyed} 块密封正文。</li>
         <li>回执记录：{receipt.inferences_orphaned} 条推断失去了依据。</li>
         <li>导入来源撤销：{receipt.import_namespaces_revoked ?? "未提供"}；本地洞察失效：{receipt.local_insights_invalidated ?? "未提供"}。这不会恢复历史内容或密钥。</li>
+        <li>辅助事项失效：{receipt.assistance_items_invalidated ?? "未提供"}。</li>
         <li data-testid="receipt-matched">
           {receipt.matched_preview
             ? "回执中的数和你看过的那份预览一致。"

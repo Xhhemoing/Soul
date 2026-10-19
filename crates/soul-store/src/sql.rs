@@ -40,9 +40,38 @@
 /// the forget ledger and the hash-chained audit cannot be built a second time —
 /// and there is deliberately no migrations table and no numbered migration
 /// files to fall out of step with the schema they claim to describe.
-pub const STORE_SCHEMA_VERSION: i64 = 3;
+pub const STORE_SCHEMA_VERSION: i64 = 4;
 
 pub const DDL: &str = r#"
+-- U1/U2 contains only identifiers, fixed states and explicit absolute deadlines.
+-- Goal prose uses the existing memory content key, never an auxiliary copy.
+CREATE TABLE IF NOT EXISTS assistance_items (
+    item_id TEXT PRIMARY KEY,
+    revision TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('manual_goal','observation')),
+    memory_id TEXT,
+    observation_item_id TEXT,
+    observation_revision TEXT,
+    namespace_id TEXT,
+    contact_id TEXT,
+    bundle_id TEXT,
+    validity TEXT NOT NULL CHECK(validity IN ('current','stale','forgotten')),
+    handling TEXT NOT NULL CHECK(handling IN ('open','cancelled','resolved_reported')),
+    deadline_at TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    CHECK((kind='manual_goal' AND memory_id IS NOT NULL) OR
+          (kind='observation' AND memory_id IS NULL AND namespace_id IS NOT NULL
+           AND contact_id IS NOT NULL AND bundle_id IS NOT NULL)),
+    CHECK((observation_item_id IS NULL AND observation_revision IS NULL) OR
+          (kind='manual_goal' AND observation_item_id IS NOT NULL AND observation_revision IS NOT NULL
+           AND namespace_id IS NOT NULL AND contact_id IS NOT NULL AND bundle_id IS NOT NULL))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS assistance_by_memory ON assistance_items(memory_id) WHERE memory_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS assistance_observation ON assistance_items(namespace_id,contact_id) WHERE kind='observation';
+CREATE INDEX IF NOT EXISTS assistance_by_namespace ON assistance_items(namespace_id);
+CREATE INDEX IF NOT EXISTS assistance_by_contact ON assistance_items(contact_id);
+CREATE INDEX IF NOT EXISTS assistance_by_observation ON assistance_items(observation_item_id);
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL

@@ -32,12 +32,14 @@ pub(super) struct HeldInsight {
     id: Uuid,
     revision: Uuid,
     selection: SelectedInsightContext,
+    pub(super) assistance: Option<assistance::AssistanceBinding>,
 }
 
 #[derive(Debug)]
 pub(super) struct PendingInsight {
     preparation_id: String,
     selection: SelectedInsightContext,
+    pub(super) assistance: Option<assistance::AssistanceBinding>,
 }
 
 fn changed() -> SessionRefusal {
@@ -64,6 +66,7 @@ impl Session {
             id,
             revision: self.draft_revision,
             selection,
+            assistance: None,
         });
         Ok(InsightContextView {
             context_id: id,
@@ -76,6 +79,9 @@ impl Session {
         let held = self.held_insight.as_ref().ok_or_else(changed)?;
         if held.id != id || held.revision != self.draft_revision {
             return Err(changed());
+        }
+        if let Some(binding) = &held.assistance {
+            self.revalidate_assistance(binding)?;
         }
         self.revalidate_insight(&held.selection)?;
         Ok(held.selection.clone())
@@ -97,6 +103,9 @@ impl Session {
         if let Some(pending) = &self.pending_insight {
             if pending.preparation_id != approval.preparation_id {
                 return Err(changed());
+            }
+            if let Some(binding) = &pending.assistance {
+                self.revalidate_assistance(binding)?;
             }
             self.revalidate_insight(&pending.selection)?;
             return Ok(Some(pending.selection.clone()));
@@ -137,6 +146,10 @@ impl Session {
         self.require_store_idle()?;
         self.require_draft_slot()?;
         let selection = self.selected_insight(context_id)?;
+        let assistance = self
+            .held_insight
+            .as_ref()
+            .and_then(|held| held.assistance.clone());
         self.held_memory = None;
         self.pending_memory = None;
         self.pending_insight = None;
@@ -161,6 +174,7 @@ impl Session {
         self.pending_insight = Some(PendingInsight {
             preparation_id: prepared.plan.preparation_id.clone(),
             selection: selection.clone(),
+            assistance,
         });
         Ok(InsightDraftPlan {
             prepared,

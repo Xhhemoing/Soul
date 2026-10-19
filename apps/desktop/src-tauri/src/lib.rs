@@ -52,6 +52,15 @@ pub fn configure<R: tauri::Runtime>(
     builder
         .manage(session)
         .invoke_handler(tauri::generate_handler![
+            commands::assistance_items,
+            commands::assistance_item,
+            commands::create_assistance_goal,
+            commands::edit_assistance_goal,
+            commands::link_assistance_observation,
+            commands::refresh_assistance_observation,
+            commands::bind_assistance_goal_source,
+            commands::act_assistance_item,
+            commands::prepare_assistance_context,
             commands::local_insights,
             commands::ignore_local_insight,
             commands::recompute_local_insight,

@@ -27,10 +27,13 @@ use soulcore::commands::memory::{
 };
 use soulcore::commands::profile::{GivenAnswer, IntakeReceipt, ProfileScreen, QuestionView};
 use soulcore::commands::session::{
-    CollectStatus, ContextMemoryId, FilesView, ImportNamespaceView, ImportOperationView,
+    AssistanceActionRequest, AssistanceContextView, AssistanceItemDetail, AssistanceItemRequest,
+    AssistanceItems, BindAssistanceGoalSource, CollectStatus, ContextMemoryId,
+    CreateAssistanceGoal, EditAssistanceGoal, FilesView, ImportNamespaceView, ImportOperationView,
     ImportPrepareRequest, ImportRecoveryState, InsightContextRequest, InsightContextView,
-    InsightDraftPlan, InsightDraftValue, MemoryContextRequest, MemoryContextView, MemoryDraftPlan,
-    MemoryDraftValue, PreparedImportView, Session, SessionRefusal, SessionStatus,
+    InsightDraftPlan, InsightDraftValue, LinkAssistanceObservation, MemoryContextRequest,
+    MemoryContextView, MemoryDraftPlan, MemoryDraftValue, PreparedImportView,
+    RefreshAssistanceObservation, Session, SessionRefusal, SessionStatus,
 };
 use soulcore::commands::shell::{CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
 use soulcore::commands::sources::{
@@ -63,6 +66,77 @@ impl SessionState {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
+
+#[tauri::command]
+pub fn assistance_items(
+    session: State<'_, SessionState>,
+) -> Result<AssistanceItems, SessionRefusal> {
+    session.held().assistance_items()
+}
+
+#[tauri::command]
+pub fn assistance_item(
+    session: State<'_, SessionState>,
+    item_id: String,
+) -> Result<AssistanceItemDetail, SessionRefusal> {
+    session.held().assistance_item(&item_id)
+}
+
+#[tauri::command]
+pub fn create_assistance_goal(
+    session: State<'_, SessionState>,
+    request: CreateAssistanceGoal,
+) -> Result<AssistanceItemDetail, SessionRefusal> {
+    session.held().create_assistance_goal(request)
+}
+
+#[tauri::command]
+pub fn edit_assistance_goal(
+    session: State<'_, SessionState>,
+    request: EditAssistanceGoal,
+) -> Result<AssistanceItemDetail, SessionRefusal> {
+    session.held().edit_assistance_goal(request)
+}
+
+#[tauri::command]
+pub fn link_assistance_observation(
+    session: State<'_, SessionState>,
+    request: LinkAssistanceObservation,
+) -> Result<AssistanceItemDetail, SessionRefusal> {
+    session.held().link_assistance_observation(request)
+}
+
+#[tauri::command]
+pub fn refresh_assistance_observation(
+    session: State<'_, SessionState>,
+    request: RefreshAssistanceObservation,
+) -> Result<AssistanceItemDetail, SessionRefusal> {
+    session.held().refresh_assistance_observation(request)
+}
+
+#[tauri::command]
+pub fn bind_assistance_goal_source(
+    session: State<'_, SessionState>,
+    request: BindAssistanceGoalSource,
+) -> Result<AssistanceItemDetail, SessionRefusal> {
+    session.held().bind_assistance_goal_source(request)
+}
+
+#[tauri::command]
+pub fn act_assistance_item(
+    session: State<'_, SessionState>,
+    request: AssistanceActionRequest,
+) -> Result<AssistanceItemDetail, SessionRefusal> {
+    session.held().act_assistance_item(request)
+}
+
+#[tauri::command]
+pub fn prepare_assistance_context(
+    session: State<'_, SessionState>,
+    request: AssistanceItemRequest,
+) -> Result<AssistanceContextView, SessionRefusal> {
+    session.held().prepare_assistance_context(request)
 }
 
 #[tauri::command]
@@ -615,6 +689,15 @@ impl DraftNotices {
 /// `apps/desktop/src/core.ts`, which is the only place the other side names
 /// them. A command added to one and not the other is a failing test.
 pub const COMMAND_NAMES: &[&str] = &[
+    "assistance_items",
+    "assistance_item",
+    "create_assistance_goal",
+    "edit_assistance_goal",
+    "link_assistance_observation",
+    "refresh_assistance_observation",
+    "bind_assistance_goal_source",
+    "act_assistance_item",
+    "prepare_assistance_context",
     "evidence_sources",
     "read_evidence_event",
     "prepare_insight_context",

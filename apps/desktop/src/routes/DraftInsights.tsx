@@ -3,6 +3,7 @@ import { DraftSourceChangedError, getDraftSourceRevision, prepareInsightContext,
 import { asRefusal } from "../refusal";
 import { draftInsightSelection, type InsightSelection } from "./draftMaterialSelection";
 import { draftLane, isDraftRefusal } from "./draftRequests";
+import { getRouteAddress, useRouteAddress } from "../routeAddress";
 
 export interface InsightTask {
   readonly context_id: string | null;
@@ -23,16 +24,16 @@ export function DraftInsights({ selection, value, busy, canClear, hasQuote, getH
 }): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const mount = useRef<symbol | null>(null);
-  const hash = window.location.hash;
+  const address = useRouteAddress();
   const renderedSource = getDraftSourceRevision(); const renderedPaste = getPasteGeneration();
   useEffect(() => { const life = Symbol(); mount.current = life; return () => { if (mount.current === life) mount.current = null; }; }, []);
   const preview = (): void => {
-    if (busy || hasQuote || getHasQuote() || hash !== window.location.hash || selection !== draftInsightSelection.snapshot()
+    if (busy || hasQuote || getHasQuote() || address !== getRouteAddress() || selection !== draftInsightSelection.snapshot()
       || renderedSource !== getDraftSourceRevision() || renderedPaste !== getPasteGeneration()) return;
     const slot = draftLane.begin("prepare"); if (slot === null) return;
     const life = mount.current; const paste = renderedPaste;
     const current = (): boolean => life !== null && mount.current === life && selection === draftInsightSelection.snapshot()
-      && hash === window.location.hash && paste === getPasteGeneration();
+      && address === getRouteAddress() && paste === getPasteGeneration();
     setError(null);
     let unknown = false;
     let deliverySource = renderedSource;
@@ -41,6 +42,8 @@ export function DraftInsights({ selection, value, busy, canClear, hasQuote, getH
       const result = prepareInsightContext({ bundle_id: selection.bundle_id, contact_id: selection.contact_id });
       deliverySource = getDraftSourceRevision();
       const context = await result;
+      if (context.reference.bundle_id !== selection.bundle_id || context.reference.contact_id !== selection.contact_id
+        || context.reference.summary.contact_id !== selection.contact_id) throw new Error("统计返回的来源身份不符，请重新核对。");
       if (current() && deliverySource === getDraftSourceRevision()) onChange({ ...context, include_counts: false });
     }).catch((error: unknown) => {
       unknown = !isDraftRefusal(error) && !(error instanceof DraftSourceChangedError);
@@ -50,11 +53,11 @@ export function DraftInsights({ selection, value, busy, canClear, hasQuote, getH
   return <section className="panel">
     <h2>本次选择的本地统计参考</h2>
     <p>候选 <code>{selection.bundle_id}</code>；联系人 <code>{selection.contact_id}</code>。此选择替换手选记忆；只保留编号，尚未授权端点使用。</p>
-    <p><a href="#/import">重新选择本地洞察或联系人</a>；在记忆页选择记忆会替换这份统计参考。</p>
+    <p><a href="#/insights">重新选择本地洞察或联系人</a>；在记忆页选择记忆会替换这份统计参考。</p>
     <p>统计来自当前整库的有效关系记录，不限于产生这份候选的单次导入。只把统计作为材料，不展示或提供聊天正文。</p>
     <button type="button" disabled={busy || hasQuote} onClick={preview}>预览本次统计与出处</button>
     <button type="button" disabled={!canClear} onClick={() => {
-      if (selection === draftInsightSelection.snapshot() && hash === window.location.hash
+      if (mount.current !== null && selection === draftInsightSelection.snapshot() && address === getRouteAddress()
         && renderedSource === getDraftSourceRevision() && renderedPaste === getPasteGeneration()) onClear();
     }}>清除本次统计，使用普通起草</button>
     {error === null ? null : <p role="alert">{error}</p>}
@@ -63,7 +66,7 @@ export function DraftInsights({ selection, value, busy, canClear, hasQuote, getH
       <label><input type="checkbox" checked={value.include_counts} disabled={busy || hasQuote || value.context_id === null}
         onChange={(event) => {
           if (!hasQuote && !getHasQuote() && !draftLane.snapshot().busy && value.context_id !== null
-            && selection === draftInsightSelection.snapshot() && hash === window.location.hash
+            && mount.current !== null && selection === draftInsightSelection.snapshot() && address === getRouteAddress()
             && renderedSource === getDraftSourceRevision() && renderedPaste === getPasteGeneration()) onChange({ ...value, include_counts: event.target.checked });
         }} />本次另行允许将这份匿名 A2 派生计数提供给端点（仍需最终确认）</label>
       {value.include_counts ? null : <p>未勾选时模型不会获得这些计数，统计只供你在本地核对。</p>}
