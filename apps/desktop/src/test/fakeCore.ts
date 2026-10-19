@@ -68,6 +68,14 @@ import type {
   AssistancePointer,
   AssistanceWorkMetadata,
   AssistanceWorkStatus,
+  AssistanceReminderView,
+  AssistanceFeedbackView,
+  AssistanceNotificationAttempt,
+  AssistanceCategoryPreferences,
+  AssistanceCategoryPreference,
+  AssistanceNotificationRuntimeStatus,
+  NotificationWithdrawal,
+  AssistanceCategory,
 } from "../core";
 
 export const CLOUD_LABEL = "尚未启用";
@@ -393,6 +401,24 @@ export function anAssistanceWork(overrides: Partial<AssistanceWorkMetadata> = {}
 export function anAssistanceWorkStatus(overrides: Partial<AssistanceWorkStatus> = {}): AssistanceWorkStatus {
   return { active_worker: false, active_item_id: null, pending_items: 0, claimed_items: 0, foreground_preparation_held: false,
     coordination_unknown: false, collector_paused_for_import: false, can_begin: true, runtime_state: "running", last_runtime_error: null, ...overrides };
+}
+export const ASSISTANCE_SCHEDULE_REVISION = "0192f000-0000-7000-8000-00000000a530";
+export const ASSISTANCE_FEEDBACK_REVISION = "0192f000-0000-7000-8000-00000000a531";
+export const ASSISTANCE_NOTIFICATION_ATTEMPT = "0192f000-0000-7000-8000-00000000a532";
+export const ASSISTANCE_WITHDRAWAL_ID = "0192f000-0000-7000-8000-00000000a533";
+export function anAssistanceNotificationAttempt(overrides: Partial<AssistanceNotificationAttempt> = {}): AssistanceNotificationAttempt {
+  return { attempt_id: ASSISTANCE_NOTIFICATION_ATTEMPT, item_id: ASSISTANCE_ITEM_ID, item_revision: ASSISTANCE_REVISION,
+    schedule_revision: ASSISTANCE_SCHEDULE_REVISION, delivery: "submitted_to_os", shown_at: null, opened_at: null, hidden_at: null,
+    timed_out_at: null, tracking_expired_at: null, latest_withdrawal: null, ...overrides };
+}
+export function anAssistanceReminder(overrides: Partial<AssistanceReminderView> = {}): AssistanceReminderView {
+  return { item_id: ASSISTANCE_ITEM_ID, item_revision: ASSISTANCE_REVISION, schedule_revision: null, state: "off", remind_at: null, latest_attempt: null, failure_code: null, ...overrides };
+}
+export function anAssistanceFeedback(overrides: Partial<AssistanceFeedbackView> = {}): AssistanceFeedbackView {
+  return { item_id: ASSISTANCE_ITEM_ID, item_revision: ASSISTANCE_REVISION, feedback_revision: null, value: "none", ...overrides };
+}
+export function assistanceCategoryDefaults(): AssistanceCategoryPreferences {
+  return { preferences: [{ category: "manual_goal", revision: null, muted: false }, { category: "observation", revision: null, muted: false }] };
 }
 export const EVIDENCE_EVENT_ID = "0192f000-0000-7000-8000-00000000ea31";
 export function anEvidenceEventSource(overrides: Partial<EvidenceEventSource> = {}): EvidenceEventSource {
@@ -1001,6 +1027,14 @@ export interface FakeCoreOptions {
   readonly assistanceWorkStatus?: () => AssistanceWorkStatus | Promise<AssistanceWorkStatus>;
   readonly readingAssistanceWork?: (itemId: string) => AssistanceWorkMetadata | Promise<AssistanceWorkMetadata>;
   readonly retryingAssistanceWork?: (request: AssistancePointer) => AssistanceWorkMetadata | Promise<AssistanceWorkMetadata>;
+  readonly readingAssistanceReminder?: (itemId: string) => AssistanceReminderView | Promise<AssistanceReminderView>;
+  readonly settingAssistanceReminder?: (request: AssistancePointer & { readonly expected_schedule_revision: string | null; readonly remind_at: string | null }) => AssistanceReminderView | Promise<AssistanceReminderView>;
+  readonly readingAssistanceFeedback?: (itemId: string) => AssistanceFeedbackView | Promise<AssistanceFeedbackView>;
+  readonly settingAssistanceFeedback?: (request: AssistancePointer & { readonly expected_feedback_revision: string | null; readonly value: "helpful" | "not_relevant" | "clear" }) => AssistanceFeedbackView | Promise<AssistanceFeedbackView>;
+  readonly readingAssistanceCategories?: () => AssistanceCategoryPreferences | Promise<AssistanceCategoryPreferences>;
+  readonly settingAssistanceCategory?: (request: { readonly category: AssistanceCategory; readonly expected_revision: string | null; readonly muted: boolean }) => AssistanceCategoryPreference | Promise<AssistanceCategoryPreference>;
+  readonly withdrawingAssistanceNotification?: (request: { readonly attempt_id: string; readonly expected_withdrawal_id: string | null }) => NotificationWithdrawal | Promise<NotificationWithdrawal>;
+  readonly notificationRuntimeStatus?: () => AssistanceNotificationRuntimeStatus | Promise<AssistanceNotificationRuntimeStatus>;
   readonly questions?: readonly Question[];
   /** Able to throw, because a questionnaire with nothing in it is refused. */
   readonly recording?: (answers: readonly { question_id: string; given: string }[]) =>
@@ -1152,6 +1186,8 @@ export function installFakeCore(
   const files = options.files ?? NO_ROOTS;
   const questions = options.questions ?? QUESTIONS;
   const calls: RecordedCall[] = [];
+  let assistanceWriteSequence = 0;
+  const nextAssistanceRevision = (): string => `0192f000-0000-7000-8000-${(++assistanceWriteSequence).toString(16).padStart(12, "0")}`;
   /** The three pieces of state the double keeps, because the core keeps them
    *  too: a consent ledger, an endpoint that lives for one run, and a profile
    *  that a questionnaire or a correction writes to and the next read sees. */
@@ -1294,6 +1330,33 @@ export function installFakeCore(
         const request = (payload as { request: AssistancePointer }).request;
         return options.retryingAssistanceWork?.(request) ?? anAssistanceWork({ item_id: request.item_id, item_revision: request.expected_revision, state: "pending", pending_revision: request.expected_revision });
       }
+      case "assistance_reminder": {
+        const itemId = (payload as { itemId: string }).itemId;
+        return options.readingAssistanceReminder?.(itemId) ?? anAssistanceReminder({ item_id: itemId });
+      }
+      case "set_assistance_reminder": {
+        const request = (payload as { request: Parameters<NonNullable<FakeCoreOptions["settingAssistanceReminder"]>>[0] }).request;
+        return options.settingAssistanceReminder?.(request) ?? anAssistanceReminder({ item_id: request.item_id, item_revision: request.expected_revision,
+          schedule_revision: nextAssistanceRevision(), state: request.remind_at === null ? "off" : "scheduled", remind_at: request.remind_at });
+      }
+      case "assistance_feedback": {
+        const itemId = (payload as { itemId: string }).itemId; return options.readingAssistanceFeedback?.(itemId) ?? anAssistanceFeedback({ item_id: itemId });
+      }
+      case "set_assistance_feedback": {
+        const request = (payload as { request: Parameters<NonNullable<FakeCoreOptions["settingAssistanceFeedback"]>>[0] }).request;
+        return options.settingAssistanceFeedback?.(request) ?? anAssistanceFeedback({ item_id: request.item_id, item_revision: request.expected_revision,
+          feedback_revision: nextAssistanceRevision(), value: request.value === "clear" ? "none" : request.value });
+      }
+      case "assistance_category_preferences": return options.readingAssistanceCategories?.() ?? assistanceCategoryDefaults();
+      case "set_assistance_category_preference": {
+        const request = (payload as { request: Parameters<NonNullable<FakeCoreOptions["settingAssistanceCategory"]>>[0] }).request;
+        return options.settingAssistanceCategory?.(request) ?? { category: request.category, revision: nextAssistanceRevision(), muted: request.muted };
+      }
+      case "retry_assistance_notification_withdrawal": {
+        const request = (payload as { request: { attempt_id: string; expected_withdrawal_id: string | null } }).request;
+        return options.withdrawingAssistanceNotification?.(request) ?? { attempt_id: request.attempt_id, withdrawal_id: nextAssistanceRevision(), state: "pending" };
+      }
+      case "assistance_notification_runtime_status": return options.notificationRuntimeStatus?.() ?? { state: "running", last_error: null };
       case "assistance_item": {
         const id = (payload as { itemId: string }).itemId;
         return options.readingAssistanceItem?.(id) ?? anAssistanceDetail({ item: anAssistanceRow({ item_id: id }) });

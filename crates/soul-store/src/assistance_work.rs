@@ -10,6 +10,7 @@ use uuid::Uuid;
 pub(crate) fn enqueue(conn: &Connection, item: &str) -> StoreResult<()> {
     conn.execute("INSERT INTO assistance_work(item_id,pending_revision) SELECT item_id,revision FROM assistance_items WHERE item_id=?1 AND handling='open' AND validity!='forgotten' ON CONFLICT(item_id) DO UPDATE SET pending_revision=excluded.pending_revision,result_revision=NULL,result_status=NULL,failure_code=NULL",[item]).map_err(backend)?;
     conn.execute("UPDATE assistance_work SET pending_revision=NULL,result_revision=NULL,result_status=NULL,failure_code=NULL WHERE item_id=?1 AND EXISTS(SELECT 1 FROM assistance_items WHERE item_id=?1 AND (handling!='open' OR validity='forgotten'))",[item]).map_err(backend)?;
+    crate::reminders::invalidate_item(conn, item)?;
     Ok(())
 }
 

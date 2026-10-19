@@ -658,6 +658,14 @@ export const COMMANDS = {
   assistanceWorkStatus: "assistance_work_status",
   assistanceItemWork: "assistance_item_work",
   retryAssistanceWork: "retry_assistance_work",
+  assistanceReminder: "assistance_reminder",
+  setAssistanceReminder: "set_assistance_reminder",
+  assistanceFeedback: "assistance_feedback",
+  setAssistanceFeedback: "set_assistance_feedback",
+  assistanceCategoryPreferences: "assistance_category_preferences",
+  setAssistanceCategoryPreference: "set_assistance_category_preference",
+  retryAssistanceNotificationWithdrawal: "retry_assistance_notification_withdrawal",
+  assistanceNotificationRuntimeStatus: "assistance_notification_runtime_status",
   configSnapshot: "config_snapshot",
   sessionStatus: "session_status",
   completeWizard: "complete_wizard",
@@ -897,6 +905,72 @@ export async function retryAssistanceWork(request: AssistancePointer): Promise<A
   if (value.item_id !== request.item_id || value.item_revision !== request.expected_revision) throw new Error("本地重试返回的事项版本不符，结果尚未确认，请重新核对。");
   return value;
 }
+export interface NotificationWithdrawal {
+  readonly withdrawal_id: string; readonly attempt_id: string;
+  readonly state: "pending" | "claimed" | "withdrawn" | "failed" | "unknown" | "not_present";
+}
+export interface AssistanceNotificationAttempt {
+  readonly attempt_id: string; readonly item_id: string; readonly item_revision: string; readonly schedule_revision: string;
+  readonly delivery: "claimed" | "submitted_to_os" | "failed" | "unknown";
+  readonly shown_at: number | null; readonly opened_at: number | null; readonly hidden_at: number | null;
+  readonly timed_out_at: number | null; readonly tracking_expired_at: number | null; readonly latest_withdrawal: NotificationWithdrawal | null;
+}
+export interface AssistanceReminderView {
+  readonly item_id: string; readonly item_revision: string; readonly schedule_revision: string | null;
+  readonly state: "off" | "scheduled" | "invalidated" | "expired_in_inbox" | "suppressed" | "check_failed";
+  readonly remind_at: string | null; readonly latest_attempt: AssistanceNotificationAttempt | null; readonly failure_code: string | null;
+}
+export interface AssistanceFeedbackView {
+  readonly item_id: string; readonly item_revision: string; readonly feedback_revision: string | null;
+  readonly value: "none" | "helpful" | "not_relevant";
+}
+export type AssistanceCategory = "manual_goal" | "observation";
+export interface AssistanceCategoryPreference { readonly category: AssistanceCategory; readonly revision: string | null; readonly muted: boolean }
+export interface AssistanceCategoryPreferences { readonly preferences: readonly AssistanceCategoryPreference[] }
+export interface AssistanceNotificationRuntimeStatus {
+  readonly state: "not_started" | "running" | "unsupported" | "failed" | "stopping" | "stopped"; readonly last_error: string | null;
+}
+function checkedReminder(value: AssistanceReminderView, itemId: string, revision?: string): AssistanceReminderView {
+  if (value.item_id !== itemId || (revision !== undefined && value.item_revision !== revision)
+    || (value.latest_attempt !== null && (value.latest_attempt.item_id !== itemId || (value.latest_attempt.latest_withdrawal !== null
+      && value.latest_attempt.latest_withdrawal.attempt_id !== value.latest_attempt.attempt_id)))) throw new Error("提醒返回的事项或通知身份不符，请重新核对。");
+  return value;
+}
+export async function assistanceReminder(itemId: string): Promise<AssistanceReminderView> {
+  return checkedReminder(await currentDraftResult(COMMANDS.assistanceReminder, { itemId }), itemId);
+}
+export async function setAssistanceReminder(request: AssistancePointer & { readonly expected_schedule_revision: string | null; readonly remind_at: string | null }): Promise<AssistanceReminderView> {
+  const value = checkedReminder(await currentDraftResult(COMMANDS.setAssistanceReminder, { request }), request.item_id, request.expected_revision);
+  if (value.schedule_revision === null || value.schedule_revision === request.expected_schedule_revision
+    || value.remind_at !== request.remind_at || value.state !== (request.remind_at === null ? "off" : "scheduled")) throw new Error("提醒更改返回的安排版本或选择不符，请重新核对。");
+  return value;
+}
+function checkedFeedback(value: AssistanceFeedbackView, itemId: string, revision?: string): AssistanceFeedbackView {
+  if (value.item_id !== itemId || (revision !== undefined && value.item_revision !== revision)) throw new Error("反馈返回的事项版本不符，请重新核对。"); return value;
+}
+export async function assistanceFeedback(itemId: string): Promise<AssistanceFeedbackView> {
+  return checkedFeedback(await currentDraftResult(COMMANDS.assistanceFeedback, { itemId }), itemId);
+}
+export async function setAssistanceFeedback(request: AssistancePointer & { readonly expected_feedback_revision: string | null; readonly value: "helpful" | "not_relevant" | "clear" }): Promise<AssistanceFeedbackView> {
+  const value = checkedFeedback(await currentDraftResult(COMMANDS.setAssistanceFeedback, { request }), request.item_id, request.expected_revision);
+  if (value.feedback_revision === null || value.feedback_revision === request.expected_feedback_revision
+    || value.value !== (request.value === "clear" ? "none" : request.value)) throw new Error("反馈更改返回的版本或选择不符，请重新核对。");
+  return value;
+}
+export async function assistanceCategoryPreferences(): Promise<AssistanceCategoryPreferences> {
+  const value = await currentDraftResult<AssistanceCategoryPreferences>(COMMANDS.assistanceCategoryPreferences, {});
+  if (value.preferences.length !== 2 || !["manual_goal", "observation"].every((category) => value.preferences.filter((row) => row.category === category).length === 1)) throw new Error("提醒类别返回的范围不符，请重新核对。"); return value;
+}
+export async function setAssistanceCategoryPreference(request: { readonly category: AssistanceCategory; readonly expected_revision: string | null; readonly muted: boolean }): Promise<AssistanceCategoryPreference> {
+  const value = await currentDraftResult<AssistanceCategoryPreference>(COMMANDS.setAssistanceCategoryPreference, { request });
+  if (value.category !== request.category || value.muted !== request.muted || value.revision === null || value.revision === request.expected_revision) throw new Error("提醒类别返回的版本或选择不符，请重新核对。"); return value;
+}
+export async function retryAssistanceNotificationWithdrawal(request: { readonly attempt_id: string; readonly expected_withdrawal_id: string | null }): Promise<NotificationWithdrawal> {
+  const value = await currentDraftResult<NotificationWithdrawal>(COMMANDS.retryAssistanceNotificationWithdrawal, { request });
+  if (value.attempt_id !== request.attempt_id || value.withdrawal_id === request.expected_withdrawal_id || !value.withdrawal_id
+    || !["pending", "claimed", "withdrawn", "failed", "unknown", "not_present"].includes(value.state)) throw new Error("撤除返回的通知或请求身份不符，请重新核对。"); return value;
+}
+export function assistanceNotificationRuntimeStatus(): Promise<AssistanceNotificationRuntimeStatus> { return currentDraftResult(COMMANDS.assistanceNotificationRuntimeStatus, {}); }
 export interface ImportNamespace {
   readonly namespace_id: string; readonly source: ImportSource;
   readonly state: "active" | "revoked"; readonly coverage: "full_from_creation" | "forward_only";

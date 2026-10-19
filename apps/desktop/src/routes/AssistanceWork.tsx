@@ -15,7 +15,7 @@ const RUNTIME = { not_started: "尚未启动", running: "运行中", stopped: "�
 const WORK = { none: "尚无本地准备记录", pending: "等待本地准备", running: "正在本地准备", ready: "当前版本的本地准备已完成",
   source_unavailable: "来源暂不可用", failed: "本地准备失败", unknown: "本地准备结果尚未确认" };
 
-function useWorkOwner() {
+export function useAssistanceRequestOwner() {
   const address = useRouteAddress(); const [source, setSource] = useState(getDraftSourceRevision);
   const mount = useRef<symbol | null>(null); const active = useRef<symbol | null>(null);
   useEffect(() => {
@@ -39,7 +39,7 @@ function useWorkOwner() {
 
 /** Explicit metadata reads only. The core/Tauri runtime owns scheduling. */
 export function AssistanceWork(): React.JSX.Element {
-  const owner = useWorkOwner();
+  const owner = useAssistanceRequestOwner();
   const [stored, setStored] = useState<Owned<AssistanceWorkStatus> | null>(null);
   const [reading, setReading] = useState(false); const [error, setError] = useState<string | null>(null);
   const value = stored !== null && owner.ownsPayload(stored.owner) ? stored.value : null;
@@ -73,7 +73,7 @@ export function AssistanceWork(): React.JSX.Element {
 export function AssistanceItemWork({ item, getCurrentItem }: {
   readonly item: AssistanceItemRow; readonly getCurrentItem: () => AssistanceItemRow | null;
 }): React.JSX.Element {
-  const owner = useWorkOwner(); const writes = useAssistanceWrites();
+  const owner = useAssistanceRequestOwner(); const writes = useAssistanceWrites();
   const [stored, setStored] = useState<Owned<AssistanceWorkMetadata> | null>(null);
   const [reading, setReading] = useState(false); const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);

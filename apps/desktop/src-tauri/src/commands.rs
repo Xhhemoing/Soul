@@ -27,14 +27,17 @@ use soulcore::commands::memory::{
 };
 use soulcore::commands::profile::{GivenAnswer, IntakeReceipt, ProfileScreen, QuestionView};
 use soulcore::commands::session::{
-    AssistanceActionRequest, AssistanceContextView, AssistanceItemDetail, AssistanceItemRequest,
-    AssistanceItems, AssistanceWorkMetadata, AssistanceWorkStatus, BindAssistanceGoalSource,
-    CollectStatus, ContextMemoryId, CreateAssistanceGoal, EditAssistanceGoal, FilesView,
-    ImportNamespaceView, ImportOperationView, ImportPrepareRequest, ImportRecoveryState,
-    InsightContextRequest, InsightContextView, InsightDraftPlan, InsightDraftValue,
-    LinkAssistanceObservation, MemoryContextRequest, MemoryContextView, MemoryDraftPlan,
-    MemoryDraftValue, PreparedImportView, RefreshAssistanceObservation, Session, SessionRefusal,
-    SessionStatus,
+    AssistanceActionRequest, AssistanceCategoryPreference, AssistanceCategoryPreferences,
+    AssistanceContextView, AssistanceFeedbackView, AssistanceItemDetail, AssistanceItemRequest,
+    AssistanceItems, AssistanceNotificationRuntimeStatus, AssistanceReminderView,
+    AssistanceWorkMetadata, AssistanceWorkStatus, BindAssistanceGoalSource, CollectStatus,
+    ContextMemoryId, CreateAssistanceGoal, EditAssistanceGoal, FilesView, ImportNamespaceView,
+    ImportOperationView, ImportPrepareRequest, ImportRecoveryState, InsightContextRequest,
+    InsightContextView, InsightDraftPlan, InsightDraftValue, LinkAssistanceObservation,
+    MemoryContextRequest, MemoryContextView, MemoryDraftPlan, MemoryDraftValue,
+    NotificationWithdrawal, PreparedImportView, RefreshAssistanceObservation,
+    RetryAssistanceNotificationWithdrawal, Session, SessionRefusal, SessionStatus,
+    SetAssistanceCategoryPreference, SetAssistanceFeedback, SetAssistanceReminder,
 };
 use soulcore::commands::shell::{CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
 use soulcore::commands::sources::{
@@ -71,6 +74,70 @@ impl SessionState {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
+
+#[tauri::command]
+pub fn assistance_reminder(
+    session: State<'_, SessionState>,
+    item_id: String,
+) -> Result<AssistanceReminderView, SessionRefusal> {
+    session.held().assistance_reminder(&item_id)
+}
+
+#[tauri::command]
+pub fn set_assistance_reminder(
+    session: State<'_, SessionState>,
+    request: SetAssistanceReminder,
+) -> Result<AssistanceReminderView, SessionRefusal> {
+    session.held().set_assistance_reminder(request)
+}
+
+#[tauri::command]
+pub fn assistance_feedback(
+    session: State<'_, SessionState>,
+    item_id: String,
+) -> Result<AssistanceFeedbackView, SessionRefusal> {
+    session.held().assistance_feedback(&item_id)
+}
+
+#[tauri::command]
+pub fn set_assistance_feedback(
+    session: State<'_, SessionState>,
+    request: SetAssistanceFeedback,
+) -> Result<AssistanceFeedbackView, SessionRefusal> {
+    session.held().set_assistance_feedback(request)
+}
+
+#[tauri::command]
+pub fn assistance_category_preferences(
+    session: State<'_, SessionState>,
+) -> Result<AssistanceCategoryPreferences, SessionRefusal> {
+    session.held().assistance_category_preferences()
+}
+
+#[tauri::command]
+pub fn set_assistance_category_preference(
+    session: State<'_, SessionState>,
+    request: SetAssistanceCategoryPreference,
+) -> Result<AssistanceCategoryPreference, SessionRefusal> {
+    session.held().set_assistance_category_preference(request)
+}
+
+#[tauri::command]
+pub fn retry_assistance_notification_withdrawal(
+    session: State<'_, SessionState>,
+    request: RetryAssistanceNotificationWithdrawal,
+) -> Result<NotificationWithdrawal, SessionRefusal> {
+    session
+        .held()
+        .retry_assistance_notification_withdrawal(request)
+}
+
+#[tauri::command]
+pub fn assistance_notification_runtime_status(
+    session: State<'_, SessionState>,
+) -> AssistanceNotificationRuntimeStatus {
+    session.held().assistance_notification_runtime_status()
 }
 
 #[tauri::command]
@@ -717,6 +784,14 @@ impl DraftNotices {
 /// `apps/desktop/src/core.ts`, which is the only place the other side names
 /// them. A command added to one and not the other is a failing test.
 pub const COMMAND_NAMES: &[&str] = &[
+    "assistance_reminder",
+    "set_assistance_reminder",
+    "assistance_feedback",
+    "set_assistance_feedback",
+    "assistance_category_preferences",
+    "set_assistance_category_preference",
+    "retry_assistance_notification_withdrawal",
+    "assistance_notification_runtime_status",
     "assistance_work_status",
     "assistance_item_work",
     "retry_assistance_work",

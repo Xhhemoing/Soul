@@ -12,6 +12,7 @@ import { assistanceWrites, useAssistanceWrites } from "./assistanceRequests";
 import { draftAssistanceSelection } from "./draftMaterialSelection";
 import { isDraftRefusal } from "./draftRequests";
 import { AssistanceItemWork, AssistanceWork } from "./AssistanceWork";
+import { AssistanceFeedback, AssistanceNotifications, AssistanceReminder } from "./AssistanceNotifications";
 
 const HANDLING = { open: "待处理", cancelled: "已取消", resolved_reported: "已自报完成" };
 const VALIDITY = { current: "可打开核对", stale: "来源需重新核对", forgotten: "已遗忘" };
@@ -149,6 +150,7 @@ export function Assistance(): React.JSX.Element {
 
   return <>
     <AssistanceWork />
+    <AssistanceNotifications />
     <section className="panel">
       <h2>辅助事项收件箱</h2>
       <p>列表只读取编号、来源和状态。明确打开一项后才读取目标或统计详情；不会自动准备草稿或出网。</p>
@@ -179,6 +181,8 @@ export function Assistance(): React.JSX.Element {
       <AssistanceItemWork key={`${detail.item.item_id}/${detail.item.revision}`} item={detail.item} getCurrentItem={() => {
         return current() && ownsPayload(detailOwner.current) ? detailRef.current?.item ?? null : null;
       }} />
+      <AssistanceReminder key={`reminder/${detail.item.item_id}/${detail.item.revision}`} item={detail.item} getCurrentItem={() => current() && ownsPayload(detailOwner.current) ? detailRef.current?.item ?? null : null} />
+      <AssistanceFeedback key={`feedback/${detail.item.item_id}/${detail.item.revision}`} item={detail.item} getCurrentItem={() => current() && ownsPayload(detailOwner.current) ? detailRef.current?.item ?? null : null} />
       {detail.goal === null ? null : <><h3>{detail.goal.title}</h3><p className="pre-wrap">{detail.goal.summary}</p></>}
       {detail.observation === null ? null : <><p>统计来源：{detail.observation.bundle_id}；联系人 {detail.observation.contact_id}。</p><p>{detail.observation.summary.text}</p><p>这里只展示本地统计，不读取消息正文。</p></>}
       {editable ? <>{goalFields}<button type="button" disabled={blocked || !deadlineValid || !fields.title.trim() || !fields.summary.trim()} onClick={() => write(() => editAssistanceGoal({ ...pointer(detail.item), ...fields }), detail)}>保存当前版本的目标修改</button>

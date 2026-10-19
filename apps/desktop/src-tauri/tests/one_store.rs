@@ -23,7 +23,7 @@ const ASSISTANCE_RUNTIME_RS: &str = include_str!("../src/assistance_runtime/mod.
 const ASSISTANCE_DRIVER_RS: &str = include_str!("../src/assistance_runtime/driver.rs");
 
 /// Every source file in the shell, with the file it came from.
-fn shell_sources() -> [(&'static str, &'static str); 7] {
+fn shell_sources() -> [(&'static str, &'static str); 14] {
     [
         ("src/commands.rs", COMMANDS_RS),
         ("src/instance.rs", INSTANCE_RS),
@@ -32,6 +32,34 @@ fn shell_sources() -> [(&'static str, &'static str); 7] {
         ("src/tray.rs", TRAY_RS),
         ("src/assistance_runtime/mod.rs", ASSISTANCE_RUNTIME_RS),
         ("src/assistance_runtime/driver.rs", ASSISTANCE_DRIVER_RS),
+        (
+            "src/notification_runtime/mod.rs",
+            include_str!("../src/notification_runtime/mod.rs"),
+        ),
+        (
+            "src/notification_runtime/driver.rs",
+            include_str!("../src/notification_runtime/driver.rs"),
+        ),
+        (
+            "src/notification_runtime/tests.rs",
+            include_str!("../src/notification_runtime/tests.rs"),
+        ),
+        (
+            "src/notification_transport/mod.rs",
+            include_str!("../src/notification_transport/mod.rs"),
+        ),
+        (
+            "src/notification_transport/engine.rs",
+            include_str!("../src/notification_transport/engine.rs"),
+        ),
+        (
+            "src/notification_transport/windows.rs",
+            include_str!("../src/notification_transport/windows.rs"),
+        ),
+        (
+            "src/notification_transport/tests.rs",
+            include_str!("../src/notification_transport/tests.rs"),
+        ),
     ]
 }
 

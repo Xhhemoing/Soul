@@ -198,7 +198,7 @@ impl Session {
             _ => "ASSISTANCE_RUNTIME_FAILED".into(),
         });
     }
-    fn assistance_foreground_held(&self) -> bool {
+    pub(super) fn assistance_foreground_held(&self) -> bool {
         self.held_import.is_some()
             || self.held_memory.is_some()
             || self.held_insight.is_some()
@@ -271,6 +271,7 @@ impl Session {
     pub fn begin_assistance_work(
         &mut self,
     ) -> Result<Option<SessionAssistanceWork>, SessionRefusal> {
+        self.reconcile_assistance_reminder_check()?;
         self.reconcile_assistance_work()?;
         if self.active_draft.is_some() || self.assistance_foreground_held() {
             return Ok(None);

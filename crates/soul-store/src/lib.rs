@@ -33,6 +33,7 @@ pub mod forget;
 pub mod import_ops;
 pub mod insights;
 pub mod keys;
+pub mod reminders;
 pub mod research_preview;
 pub mod sql;
 pub mod store;

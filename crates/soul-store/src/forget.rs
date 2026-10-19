@@ -50,6 +50,10 @@ pub(crate) struct ForgetPlan {
         Option<String>,
         Option<String>,
     )>,
+    pub(crate) reminder_rows: Vec<Vec<Option<String>>>,
+    pub(crate) notification_rows: Vec<Vec<Option<String>>>,
+    pub(crate) withdrawal_rows: Vec<Vec<Option<String>>>,
+    pub(crate) feedback_rows: Vec<Vec<Option<String>>>,
 }
 
 #[cfg(test)]
@@ -276,6 +280,21 @@ impl ForgetScope {
 }
 
 impl SqlCipherStore {
+    fn auxiliary_scope_rows(
+        &self,
+        sql: &str,
+        ids: &[String],
+    ) -> StoreResult<Vec<Vec<Option<String>>>> {
+        let mut statement = self.conn.prepare(sql).map_err(backend)?;
+        let rows = statement
+            .query_map(rusqlite::params_from_iter(ids.iter()), |row| {
+                (0..row.as_ref().column_count())
+                    .map(|i| row.get::<_, Option<String>>(i))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .map_err(backend)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(backend)
+    }
     /// Resolve the quote while holding the session's sole store lock.
     pub fn preview_forget_scope(&self, unit: ForgetUnit) -> StoreResult<ForgetScope> {
         let plan = self.forget_plan(unit)?;
@@ -516,6 +535,20 @@ impl SqlCipherStore {
                 assistance_work.push(row)
             }
         }
+        let items: Vec<_> = assistance_items
+            .iter()
+            .map(|(id, _, _)| id.clone())
+            .collect();
+        let (reminder_rows, notification_rows, withdrawal_rows, feedback_rows) = if items.is_empty()
+        {
+            (vec![], vec![], vec![], vec![])
+        } else {
+            let slots = placeholders(items.len());
+            (self.auxiliary_scope_rows(&format!("SELECT CAST(item_id AS TEXT),CAST(schedule_revision AS TEXT),CAST(item_revision AS TEXT),CAST(remind_at AS TEXT),CAST(due_ms AS TEXT),CAST(state AS TEXT),CAST(check_receipt_id AS TEXT) FROM assistance_reminders WHERE item_id IN ({slots}) ORDER BY item_id"),&items)?,
+            self.auxiliary_scope_rows(&format!("SELECT CAST(attempt_id AS TEXT),CAST(schedule_revision AS TEXT),CAST(item_id AS TEXT),CAST(item_revision AS TEXT),CAST(delivery AS TEXT),CAST(submitted_at AS TEXT),CAST(shown_at AS TEXT),CAST(opened_at AS TEXT),CAST(hidden_at AS TEXT),CAST(timed_out_at AS TEXT),CAST(tracking_expired_at AS TEXT) FROM notification_attempts WHERE item_id IN ({slots}) ORDER BY attempt_id"),&items)?,
+            self.auxiliary_scope_rows(&format!("SELECT CAST(withdrawal_id AS TEXT),CAST(attempt_id AS TEXT),CAST(state AS TEXT),CAST(created_order AS TEXT),CAST(claim_token AS TEXT) FROM notification_withdrawals WHERE attempt_id IN (SELECT attempt_id FROM notification_attempts WHERE item_id IN ({slots})) ORDER BY withdrawal_id"),&items)?,
+            self.auxiliary_scope_rows(&format!("SELECT CAST(item_id AS TEXT),CAST(revision AS TEXT),CAST(value AS TEXT) FROM assistance_feedback WHERE item_id IN ({slots}) ORDER BY item_id"),&items)?)
+        };
         Ok(ForgetPlan {
             content_keys,
             memories,
@@ -528,6 +561,10 @@ impl SqlCipherStore {
             local_insights,
             assistance_items,
             assistance_work,
+            reminder_rows,
+            notification_rows,
+            withdrawal_rows,
+            feedback_rows,
         })
     }
 
@@ -692,6 +729,7 @@ impl ForgetOutcomeOps for SqlCipherStore {
             )
             .map_err(backend)?;
             crate::assistance_work::enqueue(&tx, item_id)?;
+            crate::reminders::forget_item(&tx, item_id)?;
         }
         for contact_id in &plan.contacts {
             mark_forgotten(&tx, "contacts", "contact_id", *contact_id)?;

@@ -225,6 +225,11 @@ impl SqlCipherStore {
             .map_err(|_| fixed("IMPORT_RECOVERY_ALREADY_STARTED"))?;
         let result = self.transact(|store| {
             store.recover_assistance_work()?;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(backend)?
+                .as_millis();
+            store.recover_reminders(i64::try_from(now).map_err(backend)?)?;
             let mut statement = store
                 .conn
                 .prepare("SELECT doc FROM import_operations WHERE state IN ('reserved','running')")

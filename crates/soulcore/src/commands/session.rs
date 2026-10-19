@@ -55,6 +55,7 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 pub use uuid::Uuid as ContextMemoryId;
+pub type AssistanceNotificationId = uuid::Uuid;
 
 use soul_fileplan::{Refusal, ScanLimits};
 use soul_policy::audit::{append_or_store_error, AuditContent};
@@ -129,6 +130,18 @@ pub use assistance_work::{
 };
 #[path = "session_collector_handoff.rs"]
 mod collector_handoff;
+#[path = "session_reminders.rs"]
+mod reminders;
+pub use reminders::{
+    assistance_reminder_timestamp_ms, AssistanceCategory, AssistanceCategoryPreference,
+    AssistanceCategoryPreferences, AssistanceFeedbackChange, AssistanceFeedbackValue,
+    AssistanceFeedbackView, AssistanceNotificationAttempt, AssistanceNotificationRuntimeState,
+    AssistanceNotificationRuntimeStatus, AssistanceNotificationTarget, AssistanceReminderView,
+    NotificationDelivery, NotificationDispatch, NotificationNativeEvent, NotificationWithdrawal,
+    NotificationWithdrawalState, ReminderState, RetryAssistanceNotificationWithdrawal,
+    SessionReminderCompletion, SessionReminderWork, SetAssistanceCategoryPreference,
+    SetAssistanceFeedback, SetAssistanceReminder,
+};
 
 /// The environment variable that names the data directory outright.
 ///
@@ -461,6 +474,10 @@ pub struct Session {
     collector_factory: Option<collector_handoff::CollectorFactory>,
     collect_generation: Uuid,
     collect_config: CollectorConfig,
+    active_reminder: Option<reminders::ActiveReminder>,
+    pending_withdrawal_claim: Option<reminders::PendingWithdrawalClaim>,
+    reminder_clock: reminders::ReminderClock,
+    notification_runtime: AssistanceNotificationRuntimeStatus,
     import_runtime: Option<Arc<soul_store::import_ops::ImportRuntimeLease>>,
     held_import: Option<import_work::HeldImport>,
     stale_import: Option<Uuid>,
@@ -508,6 +525,7 @@ enum E1WorkerKind {
     Scan,
     Import,
     Assistance,
+    ReminderCheck,
 }
 
 /// A read-only scan owns the file-plan ledger and authorization snapshot.
@@ -812,6 +830,13 @@ impl Session {
             collector_factory: None,
             collect_generation: Uuid::now_v7(),
             collect_config: CollectorConfig::default(),
+            active_reminder: None,
+            pending_withdrawal_claim: None,
+            reminder_clock: reminders::ReminderClock::default(),
+            notification_runtime: AssistanceNotificationRuntimeStatus {
+                state: AssistanceNotificationRuntimeState::NotStarted,
+                last_error: None,
+            },
             import_runtime,
             held_import: None,
             stale_import: None,
@@ -1332,6 +1357,13 @@ impl Session {
     }
 
     fn require_draft_slot(&mut self) -> Result<(), SessionRefusal> {
+        if self
+            .active_draft
+            .as_ref()
+            .is_some_and(|a| a.kind == E1WorkerKind::ReminderCheck)
+        {
+            self.reconcile_assistance_reminder_check()?;
+        }
         if self
             .active_draft
             .as_ref()

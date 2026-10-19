@@ -40,7 +40,7 @@
 /// the forget ledger and the hash-chained audit cannot be built a second time —
 /// and there is deliberately no migrations table and no numbered migration
 /// files to fall out of step with the schema they claim to describe.
-pub const STORE_SCHEMA_VERSION: i64 = 5;
+pub const STORE_SCHEMA_VERSION: i64 = 6;
 
 pub const DDL: &str = r#"
 -- U1/U2 contains only identifiers, fixed states and explicit absolute deadlines.
@@ -82,6 +82,51 @@ CREATE TABLE IF NOT EXISTS assistance_work (
     failure_code TEXT,
     last_completed_claim_id TEXT,
     CHECK((claim_id IS NULL)=(claimed_revision IS NULL))
+);
+CREATE TABLE IF NOT EXISTS assistance_reminders (
+    item_id TEXT PRIMARY KEY,
+    schedule_revision TEXT NOT NULL,
+    item_revision TEXT NOT NULL,
+    remind_at TEXT,
+    due_ms INTEGER,
+    state TEXT NOT NULL CHECK(state IN ('off','scheduled','invalidated','expired_in_inbox','suppressed','check_failed')),
+    failure_code TEXT,
+    check_receipt_id TEXT
+);
+CREATE TABLE IF NOT EXISTS notification_attempts (
+    attempt_id TEXT PRIMARY KEY,
+    schedule_revision TEXT NOT NULL UNIQUE,
+    item_id TEXT NOT NULL,
+    item_revision TEXT NOT NULL,
+    category TEXT NOT NULL,
+    category_revision TEXT,
+    claimed_at INTEGER NOT NULL,
+    delivery TEXT NOT NULL CHECK(delivery IN ('claimed','submitted_to_os','failed','unknown')),
+    submitted_at INTEGER,
+    shown_at INTEGER,
+    opened_at INTEGER,
+    hidden_at INTEGER,
+    timed_out_at INTEGER,
+    tracking_expired_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS notification_attempts_by_item ON notification_attempts(item_id,claimed_at);
+CREATE TABLE IF NOT EXISTS notification_withdrawals (
+    withdrawal_id TEXT PRIMARY KEY,
+    attempt_id TEXT NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('pending','claimed','withdrawn','not_present','failed','unknown')),
+    claim_token TEXT,
+    created_order INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS notification_withdrawals_by_attempt ON notification_withdrawals(attempt_id,created_order);
+CREATE TABLE IF NOT EXISTS assistance_category_preferences (
+    category TEXT PRIMARY KEY CHECK(category IN ('manual_goal','observation')),
+    revision TEXT NOT NULL,
+    muted INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS assistance_feedback (
+    item_id TEXT PRIMARY KEY,
+    revision TEXT NOT NULL,
+    value TEXT NOT NULL CHECK(value IN ('none','helpful','not_relevant'))
 );
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,

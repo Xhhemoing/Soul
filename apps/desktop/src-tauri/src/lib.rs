@@ -18,9 +18,9 @@
 //! | one store handle for the process | [`run`] opens it, `tests/one_store.rs` |
 //! | one Soul per signed-in user | `instance.rs`, `tests/shell_is_local_only.rs` |
 
-// `instance.rs` declares seven Win32 entry points and is the only place in the
-// crate that may: on Windows the root denies unsafe code rather than forbidding
-// it, so that module can allow it back for itself, and everywhere else the
+// The single-instance and notification Windows bindings declare Win32 entry
+// points: on Windows the root denies unsafe code rather than forbidding
+// it, so those modules can allow it back for themselves, and everywhere else the
 // stronger `forbid` still holds. Same arrangement, and same reason, as
 // `crates/soul-collect` and `crates/soul-win-dpapi`.
 #![cfg_attr(not(windows), forbid(unsafe_code))]
@@ -31,6 +31,8 @@ use tauri::Manager;
 pub mod assistance_runtime;
 pub mod commands;
 pub mod instance;
+pub mod notification_runtime;
+pub mod notification_transport;
 pub mod tray;
 
 /// State and command registration, kept separate from the window and the tray.
@@ -53,6 +55,14 @@ pub fn configure<R: tauri::Runtime>(
     builder
         .manage(session)
         .invoke_handler(tauri::generate_handler![
+            commands::assistance_reminder,
+            commands::set_assistance_reminder,
+            commands::assistance_feedback,
+            commands::set_assistance_feedback,
+            commands::assistance_category_preferences,
+            commands::set_assistance_category_preference,
+            commands::retry_assistance_notification_withdrawal,
+            commands::assistance_notification_runtime_status,
             commands::assistance_work_status,
             commands::assistance_item_work,
             commands::retry_assistance_work,
@@ -164,6 +174,19 @@ pub fn run() {
         app.manage(assistance_runtime::AssistanceRuntime::start(
             app.state::<commands::SessionState>().shared(),
         ));
+        let handle = app.handle().clone();
+        app.manage(notification_runtime::NotificationRuntime::start(
+            app.state::<commands::SessionState>().shared(),
+            move |item| {
+                if let Some(window) = handle.get_webview_window("main") {
+                    // `item` is a typed UUID, never source text or an external URL.
+                    let _ = window.eval(&format!(
+                        "window.location.hash = '#/assistance?item={item}'"
+                    ));
+                }
+                tray::reveal_main_window(&handle);
+            },
+        ));
         Ok(())
     })
     // Closing the window puts Soul in the tray rather than ending it —
@@ -182,7 +205,14 @@ pub fn run() {
     .expect("Soul could not start")
     .run(|app, event| {
         if matches!(event, tauri::RunEvent::Exit) {
+            // Signal every owner before waiting for any worker or collector.
             app.state::<assistance_runtime::AssistanceRuntime>()
+                .request_stop();
+            app.state::<notification_runtime::NotificationRuntime>()
+                .request_stop();
+            app.state::<assistance_runtime::AssistanceRuntime>()
+                .shutdown();
+            app.state::<notification_runtime::NotificationRuntime>()
                 .shutdown();
         }
     });

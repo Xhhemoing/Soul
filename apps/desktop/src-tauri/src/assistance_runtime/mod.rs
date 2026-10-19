@@ -81,9 +81,13 @@ impl AssistanceRuntime {
 
     /// Called on process exit and on Drop. Never called with a Session/store
     /// guard: an already executing worker retains its physical slot until join.
-    pub fn shutdown(&self) {
+    pub fn request_stop(&self) {
         self.stopping.store(true, Ordering::Release);
         let _ = self.wake.send(());
+    }
+
+    pub fn shutdown(&self) {
+        self.request_stop();
         if let Some(worker) = self
             .worker
             .lock()

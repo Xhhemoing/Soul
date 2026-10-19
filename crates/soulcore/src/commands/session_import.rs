@@ -474,6 +474,12 @@ impl Session {
                 .is_some_and(|a| a.kind == E1WorkerKind::Assistance)
             {
                 Err(problem("ASSISTANCE_BUSY","本地辅助工作正在使用加密库，请稍后重试读取或修改。端点清除和采集撤回仍可使用；本次拒绝尚未写入审计。"))
+            } else if self
+                .active_draft
+                .as_ref()
+                .is_some_and(|a| a.kind == E1WorkerKind::ReminderCheck)
+            {
+                Err(problem("REMINDER_BUSY","提醒正在核对本地来源，请稍后重试读取或修改。停止提醒和采集撤回仍可使用；本次拒绝尚未写入审计。"))
             } else {
                 Err(problem("IMPORT_BUSY", "导入正在使用本机加密库，请等本次操作结束后再读取或修改。端点清除和采集撤回仍可使用；本次拒绝尚未写入审计。"))
             }
@@ -483,8 +489,10 @@ impl Session {
     }
     pub(super) fn store_work_busy(&self) -> bool {
         self.active_draft.as_ref().is_some_and(|active| {
-            matches!(active.kind, E1WorkerKind::Import | E1WorkerKind::Assistance)
-                && !active.finished.load(Ordering::Acquire)
+            matches!(
+                active.kind,
+                E1WorkerKind::Import | E1WorkerKind::Assistance | E1WorkerKind::ReminderCheck
+            ) && !active.finished.load(Ordering::Acquire)
         })
     }
 

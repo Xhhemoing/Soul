@@ -57,6 +57,104 @@ fn invoke_from(command: &str, body: Value, origin: Option<&str>) -> Result<Value
 }
 
 #[test]
+fn assistance_notification_commands_preserve_explicit_cas_and_metadata_boundaries() {
+    let shell = Shell::on(scratch());
+    let detail = shell
+        .invoke(
+            "create_assistance_goal",
+            json!({"request": {
+                "title": "Synthetic reminder", "summary": "Synthetic private context",
+                "deadline_at": null, "source_observation": null
+            }}),
+        )
+        .unwrap();
+    let item = &detail["item"]["item_id"];
+    let revision = &detail["item"]["revision"];
+    let reminder = shell
+        .invoke("assistance_reminder", json!({"itemId": item}))
+        .unwrap();
+    assert_eq!(reminder["state"], "off");
+    assert!(reminder["schedule_revision"].is_null());
+    assert!(reminder.get("summary").is_none());
+    let scheduled = shell
+        .invoke(
+            "set_assistance_reminder",
+            json!({"request": {
+                "item_id": item, "expected_revision": revision,
+                "expected_schedule_revision": null, "remind_at": "2099-01-01T12:00:00+08:00"
+            }}),
+        )
+        .unwrap();
+    assert_eq!(scheduled["state"], "scheduled");
+    assert_eq!(scheduled["item_revision"], *revision);
+    assert!(shell
+        .invoke(
+            "set_assistance_reminder",
+            json!({"request": {
+                "item_id": item, "expected_revision": revision,
+                "expected_schedule_revision": null, "remind_at": null
+            }})
+        )
+        .is_err());
+    let feedback = shell
+        .invoke("assistance_feedback", json!({"itemId": item}))
+        .unwrap();
+    assert_eq!(feedback["value"], "none");
+    let helpful = shell
+        .invoke(
+            "set_assistance_feedback",
+            json!({"request": {
+                "item_id": item, "expected_revision": revision,
+                "expected_feedback_revision": null, "value": "helpful"
+            }}),
+        )
+        .unwrap();
+    assert_eq!(helpful["value"], "helpful");
+    assert_eq!(helpful["item_revision"], *revision);
+    let preferences = shell
+        .invoke("assistance_category_preferences", json!({}))
+        .unwrap();
+    assert_eq!(preferences["preferences"].as_array().unwrap().len(), 2);
+    let muted = shell
+        .invoke(
+            "set_assistance_category_preference",
+            json!({"request": {
+                "category": "manual_goal", "expected_revision": null, "muted": true
+            }}),
+        )
+        .unwrap();
+    assert_eq!(muted["muted"], true);
+    assert!(muted["revision"].is_string());
+    assert_eq!(
+        shell
+            .invoke("assistance_reminder", json!({"itemId": item}))
+            .unwrap()["state"],
+        "suppressed"
+    );
+    assert!(shell
+        .invoke(
+            "retry_assistance_notification_withdrawal",
+            json!({"request": {
+                "attempt_id": item, "expected_withdrawal_id": null
+            }})
+        )
+        .is_err());
+    // configure does not start any runtime in handler tests.
+    assert_eq!(
+        shell
+            .invoke("assistance_notification_runtime_status", json!({}))
+            .unwrap()["state"],
+        "not_started"
+    );
+    assert_eq!(
+        shell
+            .invoke("assistance_item", json!({"itemId": item}))
+            .unwrap()["item"]["revision"],
+        *revision
+    );
+}
+
+#[test]
 fn assistance_work_commands_use_the_registered_session_and_exact_request_shape() {
     let shell = Shell::on(scratch());
     let detail = shell
