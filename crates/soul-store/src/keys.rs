@@ -195,7 +195,7 @@ impl KeyProvider for TestKeyProvider {
 fn read_or_create_key_file(path: &Path) -> KeyResult<Vec<u8>> {
     const SEED_LEN: usize = 64;
 
-    let settled = match std::fs::read(path) {
+    let settled = match read_claimed_key_file(path) {
         Ok(bytes) if !bytes.is_empty() => bytes,
         // An empty file is not a malformed seed, it is a first run another
         // process is in the middle of. `mint_key_file` waits for it.
@@ -257,12 +257,10 @@ fn mint_key_file(path: &Path, len: usize) -> KeyResult<Vec<u8>> {
 
 /// How long a caller that lost the race waits for the winner's bytes.
 ///
-/// The window it covers is the moment between the winner creating the name
-/// and its single `write_all` landing — microseconds on a local disk. Running
-/// out of it is neither an error nor a wrong answer any more: it hands the
-/// question to the claim lock in [`fill_or_adopt`], which is slower and
-/// certain. Polling first is worth it because it is much the cheaper of the
-/// two on the ordinary second-launch path.
+/// The name may become visible before its creator takes the exclusive lock.
+/// Readers honor that lock, but can still see an empty file before the writer
+/// enters it. An empty file after this window is handed to [`fill_or_adopt`]
+/// for recovery; it is never unlinked or filled without the exclusive lock.
 const CLAIM_SETTLE_TIMEOUT: Duration = Duration::from_millis(250);
 
 /// Gap between looks at a file another process has claimed.
@@ -345,6 +343,20 @@ fn fill_or_adopt(mut file: std::fs::File, bytes: &[u8]) -> std::io::Result<Vec<u
     outcome
 }
 
+/// Read on the same handle that holds a shared claim lock. An unlocked read
+/// fails against Windows' mandatory byte-range locks and can observe half a
+/// write under Unix's advisory locks. Open read-only so ordinary adoption does
+/// not require write access. The lock is released before any recovery attempt;
+/// `fill_or_adopt` then checks the length again under its exclusive lock.
+fn read_claimed_key_file(path: &Path) -> std::io::Result<Vec<u8>> {
+    let mut file = std::fs::File::open(path)?;
+    FileExt::lock_shared(&file)?;
+    let mut bytes = Vec::new();
+    let outcome = file.read_to_end(&mut bytes).map(|_| bytes);
+    let _ = FileExt::unlock(&file);
+    outcome
+}
+
 /// Read a file somebody else claimed, waiting out the gap between the claim
 /// and the write that fills it.
 ///
@@ -354,20 +366,15 @@ fn fill_or_adopt(mut file: std::fs::File, bytes: &[u8]) -> std::io::Result<Vec<u
 fn settled_contents(path: &Path) -> std::io::Result<Option<Vec<u8>>> {
     let deadline = Instant::now() + CLAIM_SETTLE_TIMEOUT;
     loop {
-        match std::fs::read(path) {
+        match read_claimed_key_file(path) {
             Ok(bytes) if !bytes.is_empty() => return Ok(Some(bytes)),
             Ok(_) => {}
             // A name that is not there is not a slow claim, so there is
             // nothing to wait for.
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            // Anything else is treated as the transient it usually is. This
-            // read is unlocked, and on Windows an unlocked read of a range a
-            // peer holds the claim lock over fails with a lock violation —
-            // which is precisely the moment this function exists to wait out.
-            // An error that outlives the deadline is not swallowed: the
-            // caller's next move is to open the same path, and a real
-            // failure is reported from there.
-            Err(_) => {}
+            // Lock acquisition waits for the writer, so other failures are
+            // real open/lock/read errors rather than a partial claim to poll.
+            Err(error) => return Err(error),
         }
         if Instant::now() >= deadline {
             return Ok(None);
@@ -465,7 +472,7 @@ impl DpapiKeyProvider {
             )));
         }
 
-        match std::fs::read(&self.blob_path) {
+        match read_claimed_key_file(&self.blob_path) {
             Ok(bytes) if !bytes.is_empty() => self.open_blob(&bytes),
             // An empty blob is a first run another process is part-way
             // through, not a blob; `create_blob` waits for it.
@@ -732,6 +739,132 @@ mod tests {
 
     fn scratch() -> tempfile::TempDir {
         tempfile::tempdir().expect("temporary directory")
+    }
+
+    /// Hold the same exclusive file lock as `fill_or_adopt` across a split
+    /// write. All cleanup precedes the early-return assertion, so the expected
+    /// red result cannot leave a reader waiting for a lock held by this test.
+    fn read_during_partial_claim<T: fmt::Debug + Send + 'static>(
+        path: &Path,
+        bytes: &[u8],
+        read: impl FnOnce(PathBuf) -> T + Send + 'static,
+    ) -> T {
+        use std::sync::mpsc;
+
+        const WAIT: Duration = Duration::from_secs(8);
+        let mut writer = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .expect("claim synthetic key file");
+        FileExt::lock(&writer).expect("exclusive claim lock");
+        let split = bytes.len() / 2;
+        assert!(split > 0);
+        writer.write_all(&bytes[..split]).expect("first segment");
+        writer.sync_all().expect("persist first segment");
+
+        let path = path.to_path_buf();
+        let (started_tx, started_rx) = mpsc::sync_channel(0);
+        let (answer_tx, answer_rx) = mpsc::sync_channel(1);
+        let reader = std::thread::spawn(move || {
+            started_tx.send(()).expect("announce reader");
+            let _ = answer_tx.send(read(path));
+        });
+        let started = started_rx.recv_timeout(WAIT);
+        // Longer than the existing empty-file settle window: even that
+        // fallback must not mistake a held, partial write for a settled file.
+        let early = answer_rx.recv_timeout(CLAIM_SETTLE_TIMEOUT * 3);
+
+        writer.write_all(&bytes[split..]).expect("last segment");
+        writer.sync_all().expect("persist complete claim");
+        FileExt::unlock(&writer).expect("release claim lock");
+        drop(writer);
+        let (returned_while_locked, answer) = match early {
+            Ok(answer) => (true, answer),
+            Err(mpsc::RecvTimeoutError::Timeout) => (
+                false,
+                answer_rx
+                    .recv_timeout(WAIT)
+                    .expect("reader finishes after claim unlock"),
+            ),
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                reader.join().expect("reader thread");
+                panic!("reader disconnected without an answer");
+            }
+        };
+        reader.join().expect("reader thread");
+        started.expect("reader reached the controlled claim");
+        assert!(
+            !returned_while_locked,
+            "reader returned before the claim was fully written and unlocked: {answer:?}"
+        );
+        answer
+    }
+
+    #[test]
+    fn claimed_key_seed_reader_waits_for_complete_locked_write() {
+        let directory = scratch();
+        let seed = [0x57; 64];
+        let path = directory.path().join("soul-test-keys.bin");
+        let (dek, kek) = read_during_partial_claim(&path, &seed, |path| {
+            let provider = TestKeyProvider::in_dir(path.parent().unwrap());
+            Ok::<_, KeyError>((provider.database_key()?, provider.key_encryption_key()?))
+        })
+        .expect("adopt the writer's complete seed");
+        assert_eq!(dek.expose(), SecretKey::derive(DEK_DOMAIN, &seed).expose());
+        assert_eq!(kek.expose(), SecretKey::derive(KEK_DOMAIN, &seed).expose());
+        assert_eq!(std::fs::read(&path).expect("unchanged seed"), seed);
+    }
+
+    #[test]
+    fn claimed_key_settling_reader_waits_for_complete_locked_write() {
+        let directory = scratch();
+        let path = directory.path().join("keys.dpapi");
+        let complete = [0x6b; 128];
+        let adopted = read_during_partial_claim(&path, &complete, |path| settled_contents(&path))
+            .expect("read the held claim")
+            .expect("the completed claim is nonempty");
+        assert_eq!(adopted, complete);
+        assert_eq!(std::fs::read(&path).expect("unchanged file"), complete);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn claimed_key_dpapi_reader_waits_for_complete_locked_write() {
+        let directory = scratch();
+        let control = DpapiKeyProvider::new(directory.path().join("control.dpapi"));
+        let blob = control
+            .create_blob()
+            .expect("synthetic temporary DPAPI blob");
+        let expected = control.open_blob(&blob).expect("valid complete control");
+        let path = directory.path().join("keys.dpapi");
+        let (dek, kek) = read_during_partial_claim(&path, &blob, |path| {
+            let provider = DpapiKeyProvider::new(path);
+            Ok::<_, KeyError>((provider.database_key()?, provider.key_encryption_key()?))
+        })
+        .expect("adopt the writer's complete DPAPI blob");
+        assert_eq!(dek.expose(), expected.dek.expose());
+        assert_eq!(kek.expose(), expected.kek.expose());
+        assert_eq!(std::fs::read(&path).expect("unchanged blob"), blob);
+    }
+
+    #[test]
+    fn a_nonempty_malformed_seed_is_refused_without_overwriting_it() {
+        let directory = scratch();
+        let path = directory.path().join("soul-test-keys.bin");
+        let broken = [0x73; 32];
+        std::fs::write(&path, broken).expect("synthetic malformed seed");
+        let provider = TestKeyProvider::in_dir(directory.path());
+        assert!(matches!(
+            provider.database_key(),
+            Err(KeyError::Malformed {
+                found: 32,
+                expected: 64,
+                ..
+            })
+        ));
+        assert_eq!(std::fs::read(&path).expect("preserved bytes"), broken);
     }
 
     // ------------------------------------------------- one first run wins ---

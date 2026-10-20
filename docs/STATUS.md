@@ -2,6 +2,14 @@
 
 本文件是当前状态入口。历史见 [2026-09-28 快照](STATUS_HISTORY_20260928.md) 与[遗忘阶段 1–4 记录](SOUL_FORGET_PROGRESS_2026-09-29.md)。历史记录中的“尚未接入”描述其当时版本，不覆盖本页的新进展。
 
+## Windows 密钥读取竞争修复（2026-10-19）
+
+完整 G-W 在干净候选 `629c739` 的并发密钥测试中实际失败，见[失败记录](gates/20261019-629c739-win.md)。受控反例先持独占锁写入合成文件前半段，再调用真实读取：TestKeyProvider 和临时 DPAPI provider 均提前返回 os error 33，settling 路径提前返回 None，新增三项均实跑失败；原并发测试单独运行通过，不能消除已复现竞争。
+
+三个读取入口现共用只读句柄与 shared lock，在同一持锁句柄读取完整字节，再释放锁；真实 open/lock/read 错误传播。保留 create_new、独占发布、空文件恢复及非空损坏拒绝，不 unlink 或覆盖已有密钥，不改变 DPAPI/KEK/DEK 格式。新增损坏 seed 不覆盖控制。修复后 `cargo test -p soul-store --lib --locked --offline` **49 通过、0 失败**，根 workspace 格式及 diff 检查退出 0；证据为仓库外 `E:\Project\Soul-checks-20261019-continuation\keys-claimed-red.log`、`keys-lib-green.log` 与对应退出码文件。Linux advisory lock 半写风险经源码分析，尚未在 Linux 实跑。
+
+已完成独立只读源码与红绿日志复核，无阻塞发现。共享锁获取沿用阻塞式 OS 锁；既有 settle timeout 只限制空文件轮询，不承诺活写者永久持锁时的读取超时。本项局部验证不替代完整 G-W；新干净候选需复跑后另记结果。G-L 暂缓、系统 G-M 后置，Goal 1、正式 Goal 2 与 U7 未关闭。
+
 ## 后续评测设计（2026-10-19，实施未启动）
 
 按作者“保留门禁边界，先推进后续方案设计”的选择，完成 [VAL-01 合成评测适配设计](design/2026-10-19-val-01-evaluation-design.md)。基于当前公开 brief / DraftSession / policy API，独立只读复核可行性与逐边算术，明确先记录/汇总、再 brief/T1、最后 T2/T3 和真实 Session 桥接。未新增产品或测试适配源码，示例是合成手算期望，未测用户偏好。正式实施仍依赖 Goal 1 关闭与 Q2-00；G-L 暂缓、系统 G-M 后置与真实样本为 0 的边界不变。
