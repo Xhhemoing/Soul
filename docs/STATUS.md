@@ -2,6 +2,14 @@
 
 本文件是当前状态入口。历史见 [2026-09-28 快照](STATUS_HISTORY_20260928.md) 与[遗忘阶段 1–4 记录](SOUL_FORGET_PROGRESS_2026-09-29.md)。历史记录中的“尚未接入”描述其当时版本，不覆盖本页的新进展。
 
+## 严格 Clippy 续验与等价整理（2026-10-19）
+
+干净 `83d6143` 补跑根 `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` 实际失败。依次暴露两处存储 tuple 类型复杂度、相同拒绝分支、Option 早退、测试字符串判断、Windows 工厂冗余闭包，以及 Fake OS 测试导入完整生产模块产生的 dead-code。现用私有类型别名及等价表达式整理；SQL 字段顺序、遗忘原始标识比较、授权/collector 交接和正文隔离断言保持。仅在 `notification_runtime_driver` 的两个导入模块树允许 dead-code，并解释不启动真实 native owner 的测试边界；Windows 实现仍编译，生产模块没有此豁免，其余严格 lint 保留。
+
+最终根严格 Clippy 退出 0；定向存储 **58 项**（lib 49 / forget 7 / forget_scope 2），核心 **71 项**（notification_runtime_driver 25 / session_assistance 12 / session_assistance_work 11 / session_collect 9 / session_import_work 14），均通过。根与独立 desktop 格式、diff 检查退出 0，全部源码增量已完成独立只读评审，无阻塞发现。原始失败、逐次修复和最终输出见仓库外 `E:\Project\Soul-checks-20261019-continuation\root-clippy-83d6143.log`、`root-clippy-fix-1` 至 `root-clippy-fix-4.log`、`lint-store-regressions.log`、`lint-core-regressions.log` 及对应退出码；最终运行使用 Rust 1.83.0、既有静态 OpenSSL 和合成临时数据。
+
+这些是当前 dirty 候选的开发验证，提交后再执行完整 G-W；不是 G-L 通过。额外 `xtask all` 退出 0，但此前完整 G-W 的 `xtask/self_test` 已调用实际审计与 SBOM 逻辑，不重复计算为新覆盖。cargo-deny 未安装、未运行；完整 G-L 仍暂缓，完整 G-M、安装卸载和真实效用未完成，正式关闭边界不变。
+
 ## 当前源码规模测量（2026-10-19）
 
 干净 `83d96e1` 串行执行既有 Q2-03 显式合成测量，退出 0，1 passed / 2 filtered；执行段 131.23 秒。四组 1k/10k 消息 × 10/100 peer，各 1 热身 + 5 正式，共 24 对观察、48 个新临时库。Session total 中位数分别为 **393.0184 / 393.4259 / 5497.4764 / 4503.0451 ms**；包含 preview 至 audit，不含 open。实际计数、审计链与同路径 residual 校验通过；独立评审逐项重算 168 项 min/median/max，与原始样本吻合。

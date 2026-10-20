@@ -28,6 +28,15 @@ use soul_store_api::types::{InferenceState, StoreError, StoreResult};
 
 use crate::store::{as_text, backend, enum_text, placeholders, SqlCipherStore};
 
+/// Raw work identifiers compared by the forget scope, in query order.
+type AssistanceWorkScopeRow = (
+    String,         // item_id
+    Option<String>, // pending_revision
+    Option<String>, // claim_id
+    Option<String>, // claimed_revision
+    Option<String>, // result_revision
+);
+
 /// Everything one forget would touch, resolved against the database.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ForgetPlan {
@@ -43,13 +52,7 @@ pub(crate) struct ForgetPlan {
     // Raw auxiliary identifiers remain comparable even if a damaged row no
     // longer decodes as an assistance item. Such damage must not block CK loss.
     pub(crate) assistance_items: Vec<(String, String, bool)>,
-    pub(crate) assistance_work: Vec<(
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )>,
+    pub(crate) assistance_work: Vec<AssistanceWorkScopeRow>,
     pub(crate) reminder_rows: Vec<Vec<Option<String>>>,
     pub(crate) notification_rows: Vec<Vec<Option<String>>>,
     pub(crate) withdrawal_rows: Vec<Vec<Option<String>>>,

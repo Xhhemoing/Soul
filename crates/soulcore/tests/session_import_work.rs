@@ -353,12 +353,11 @@ fn dropped_preparation_work_releases_capacity_and_old_production_entrypoints_ref
     assert!(session.begin_file_plan("unused").is_err());
     drop(work);
     assert!(session.begin_file_plan("unused").is_ok());
-    assert!(session
+    assert!(!session
         .refuse_legacy_import("private synthetic content")
         .unwrap_err()
         .explanation
-        .find("private synthetic")
-        .is_none());
+        .contains("private synthetic"));
     assert!(session
         .refuse_legacy_preview("private synthetic content")
         .is_err());

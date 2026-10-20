@@ -7,6 +7,16 @@ use soul_store_api::assistance::{
 use soul_store_api::types::{StoreError, StoreResult};
 use uuid::Uuid;
 
+/// Raw columns selected by `assistance_item_work`, in query order.
+type AssistanceWorkRow = (
+    Option<String>, // pending_revision
+    Option<String>, // claimed_revision
+    Option<String>, // claim_id
+    Option<String>, // result_revision
+    Option<String>, // result_status
+    Option<String>, // failure_code
+);
+
 pub(crate) fn enqueue(conn: &Connection, item: &str) -> StoreResult<()> {
     conn.execute("INSERT INTO assistance_work(item_id,pending_revision) SELECT item_id,revision FROM assistance_items WHERE item_id=?1 AND handling='open' AND validity!='forgotten' ON CONFLICT(item_id) DO UPDATE SET pending_revision=excluded.pending_revision,result_revision=NULL,result_status=NULL,failure_code=NULL",[item]).map_err(backend)?;
     conn.execute("UPDATE assistance_work SET pending_revision=NULL,result_revision=NULL,result_status=NULL,failure_code=NULL WHERE item_id=?1 AND EXISTS(SELECT 1 FROM assistance_items WHERE item_id=?1 AND (handling!='open' OR validity='forgotten'))",[item]).map_err(backend)?;
@@ -48,7 +58,7 @@ impl SqlCipherStore {
     }
     pub fn assistance_item_work(&self, id: Uuid) -> StoreResult<AssistanceWorkMetadata> {
         let item = self.assistance_item(id)?;
-        let row:Option<(Option<String>,Option<String>,Option<String>,Option<String>,Option<String>,Option<String>)>=self.conn.query_row("SELECT pending_revision,claimed_revision,claim_id,result_revision,result_status,failure_code FROM assistance_work WHERE item_id=?1",[id.to_string()],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?))).optional().map_err(backend)?;
+        let row:Option<AssistanceWorkRow>=self.conn.query_row("SELECT pending_revision,claimed_revision,claim_id,result_revision,result_status,failure_code FROM assistance_work WHERE item_id=?1",[id.to_string()],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?))).optional().map_err(backend)?;
         let (pending, claimed, claim, result, status, failure) = row.unwrap_or_default();
         let parse = |v: Option<String>| v.map(|v| Uuid::parse_str(&v).map_err(backend)).transpose();
         let pending_revision = parse(pending)?;

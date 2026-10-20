@@ -67,9 +67,7 @@ impl Session {
         self.grant_collection(source, config)
     }
     pub(super) fn take_import_collector(&mut self) -> Option<ImportCollectorPause> {
-        if self.running_collector().is_none() {
-            return None;
-        }
+        self.running_collector()?;
         let running = self.collector.take()?;
         self.collector_paused_for_import = true;
         self.collect_problem = Some("采集正为本次导入暂停；完成交接前不开始导入。".into());

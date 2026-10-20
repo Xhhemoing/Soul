@@ -152,7 +152,7 @@ impl NativeTransport {
     pub fn spawn(config: Config) -> Result<Self, SpawnError> {
         #[cfg(windows)]
         {
-            Self::spawn_with(config, |shared| windows::WindowsOs::new(shared))
+            Self::spawn_with(config, windows::WindowsOs::new)
         }
         #[cfg(not(windows))]
         {

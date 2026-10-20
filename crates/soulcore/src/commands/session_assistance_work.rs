@@ -98,9 +98,10 @@ impl SessionAssistanceWork {
             let mut store = hold(&self.store);
             let result = store.transact(|store| -> Result<AssistanceWorkOutcome, SessionRefusal> {
                 let item = store.assistance_item(self.claim.item_id)?;
-                let (status, code) = if item.revision != self.claim.revision || !item.is_open() {
-                    (AssistanceWorkState::SourceUnavailable, None)
-                } else if item.validity != AssistanceValidity::Current {
+                let (status, code) = if item.revision != self.claim.revision
+                    || !item.is_open()
+                    || item.validity != AssistanceValidity::Current
+                {
                     (AssistanceWorkState::SourceUnavailable, None)
                 } else {
                     match assistance::validate(store, &item) {
