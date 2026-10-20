@@ -43,6 +43,8 @@ Run、Pair、Candidate 字段仍以 ROADMAP 表为唯一登记。本页不复制
 
 Pair 漏斗、Run 撤回、偏好及耗时分别重算。`assigned` 不等于已开始；生成成功不等于评分或完成。模板与端点、T1/T2/T3、模型条件和参与范围分层；不把单作者多任务当多个参与者。
 
+合成适配在生成前保留普通预分配槽位记录，顶层验证按 Run/task_slot 核对 Pair 的身份、任务、左右映射、种子和条件；不是新增冻结 contract 或 hash。发生安全暂停的 Pair 保留历史流程、生成和安全计数，同时单列安全排除数；该 Pair 双方不进入本次待汇总的偏好、耗时、首稿接受和事实正确效用分母，避免将受影响配对的对侧当正常效果。此规则不删除同 Run 无关历史数据，也不授权继续暂停路径；真实试验仍须另行满足原开始与撤回安排。
+
 合成汇总夹具采用下表的预设元数据，**不是实际效果数据**。P1–P4、P7 属于同一个合成 Run 的同条件 T2/AB；P5 是 T1/AC；P6 是 T3/BC；P8 属于另一已撤回的合成 Run。
 
 | Pair | 开始 | 两边生成 | 评分及可比较性 | Pair 完成 | 需要保留的解释 |
@@ -117,3 +119,13 @@ if ($LASTEXITCODE -ne 0) { throw '既有连续性/端点回归失败' }
 - v0.2 DATA/MODEL、可逆文件动作、多端与云端保持 ROADMAP 各自的设计与前置，不因为本页的评测类型而获得数据、权限或产品实现授权。
 
 本页的示例数字是独立手算的测试期望，不是测量结果。实施结果按 V1/V2/V3 分片追加，真实任务样本数仍为 0。
+
+## V1 实施与验证（2026-10-19）
+
+候选为 `b483f80` 加 V1 dirty 源码，随后由包含本节的提交收录。新增入口及 records/pairs/aggregate/fixtures/record_tests 六文件，普通类型记录 Run、预分配槽、Pair 与 Candidate；顶层验证关联、阶段、实际 brief/source/拒绝/安全形状后才汇总。P1–P8 的 16 候选与独立 30 槽作者计划分开；缺测保留原因，撤回/破盲/不可比较/降级不伪造正常效果，失败不从原计划完成率分母移走。
+
+初始 15 条行为测试因未实现而失败，完成后通过；槽位绑定再经 1 条行为红绿。独立规格/质量 review 找到失败/安全状态可混入效用、槽位 helper 未被顶层强制消费两项，新增 4 条反例实跑 **17 通过 / 4 失败**；修复后 **21 通过、0 失败**，严格定向 Clippy 退出 0，并已独立复审修复，无阻塞发现。Clippy 最初两个命名告警用等价重命名修复，未添加 lint 豁免；仅未使用的登记枚举变体有带解释的 dead-code 属性。
+
+实际命令为 `cargo test -p soulcore --test val01_evaluation --locked --offline` 与 `cargo clippy -p soulcore --test val01_evaluation --locked --offline -- -D warnings`；根格式及 diff 检查退出 0。Rust 1.83 / MSVC / Windows，既有静态 OpenSSL、jobs=4、debug=0、incremental=0；未改全局环境、target、依赖锁或生产代码。原始证据在仓库外 `E:\Project\Soul-checks-20261019-core-plan\`，包括 `environment.json`、`v1-red`、`v1-slot-red`、`v1-review-red`、`v1-review-green`、`v1-review-clippy` 的日志及退出文件。前期和最终重复运行不累计为更多测试。
+
+本片只证明记录与合成算术，尚不证明真实 brief、模板、HTTP/Session 接线或真人效果；V2/V3 继续按计划串行推进。不签发完整平台门禁，不关闭 Goal 1、正式 Goal 2 或 U7。
