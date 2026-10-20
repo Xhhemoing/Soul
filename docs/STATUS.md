@@ -8,6 +8,7 @@
 
 - 在途来源遗忘：新增真实 Session/SQLCipher 与阻塞 loopback HTTP 轨迹。完整请求到达、回复尚未发送时，直接同库来源遗忘可完成；物理工作槽继续准确返回 Busy。放行回复后拒收旧结果，真实请求审计保留、草稿接受数不增加；独立目标保留，来源消息 CK 重启后仍已销毁。额外使用独立目标的未消费批准验证重启拒旧。
 - 已完成独立只读源码复核；`cargo test -p soulcore --test unified_assistance_inflight_forget --test session_draft_work --test unified_assistance_source_forget --locked --offline` 实跑 **13 通过**（新增 1、既有 12），退出 0。初轮 fixture 无可选联系人标签导致测试失败，按真实导入索引改取该联系人消息密文后通过；不是生产缺陷修复。
+- 进程退出恢复：新增两条真实子进程轨迹，分别在持久 Running claim 带更新 pending revision、以及未消费批准/上下文和合成采集同意存在时，不运行 Rust Drop 直接退出。父进程只接受约定退出码，重新打开同库，经生产 driver 只发布最新版本，后续及再次重启均 Idle；旧批准/上下文和采集同意不恢复。源码已独立只读复核；定向 `unified_assistance_crash`、`assistance_runtime_driver`、`session_assistance_work` **20 项输出通过**，包含新增 2 条实质父轨迹及 2 个普通运行 noop 子入口，退出 0。该测试不证明写事务中途断电。
 
 详细命令、同步边界和未覆盖项见[实施补充](design/2026-10-19-unified-assistance-implementation.md)。当前仅增加原 U7 的合成故障验证，未新增功能、授权或算法。完整 G-W 待本次干净候选复验；G-L 暂缓，系统 G-M 后置，真实效用样本仍为 0。U7 / Goal 1 / 正式 Goal 2 / Wave 1 均未关闭，未推送或合并。
 

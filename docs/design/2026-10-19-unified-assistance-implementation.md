@@ -179,3 +179,14 @@ U1–U6 均已实现并完成独立源码复审（REVIEWED），U7 当前环境�
 主会话实际执行 `cargo test -p soulcore --test unified_assistance_inflight_forget --test session_draft_work --test unified_assistance_source_forget --locked --offline`：**13 通过、0 失败，退出 0**，含新增 1、既有 12。环境沿用上节，证据为 `E:\Project\Soul-checks-20261019-continuation\inflight-forget-final.log` / `inflight-forget-final-exit.txt`。初轮 `inflight-forget.log` 退出 101：fixture 没有可选联系人标签，测试在构造 CK 控制时失败；修正测试选择后重跑，不称业务缺陷红绿修复。最终新文件 `rustfmt --edition 2021 --check` 退出 0，实际源码经独立只读复核无阻塞。
 
 同步依赖完整请求及显式响应 channel，不以 sleep 推测 HTTP 阶段；accept/read/release 均有界。成功路径 join worker；断言失败路径的部分 worker 可能短暂 detach，端点 Drop 释放响应并 join 服务线程。该验证不替代真实 WebView 旧正文清除、OS 通知、外部服务效用或完整平台门禁；没有修改生产逻辑、数据迁移、依赖锁和算法。
+
+## U7：无 Drop 进程退出后的持久恢复
+
+新增 `crates/soulcore/tests/unified_assistance_crash.rs`，沿用 D98。既有正常 Drop/reopen 测试不足以证明进程死亡后 OS lease 与 Running claim 的组合恢复；本片使用当前测试二进制的精确子入口、临时 SQLCipher 库和生产 driver，不加生产 failpoint 或恢复机制。
+
+- 子进程持有未 execute/Drop 的 owned work，真实读取 Running/claim/revision；经既有 Memory 更新 API 在同库产生不同的最新 pending revision，再回读确认。最后只写 UUID manifest 并同步，以 `process::exit(86)` 结束；父进程等待真正退出，只接受 86，重新打开同目录，验证最新 Pending→Ready、旧 claim 不算完成，后续两轮及再次重启均 Idle。
+- 生产物理槽不允许前台准备与后台 claim 同驻，因此批准恢复另用一条子进程轨迹：保留真实未消费批准、held memory context 及 FakeForegroundSource 的采集同意后无 Drop 退出。重启先核对同意和前台材料清零，再恢复同一 loopback 端点，旧批准与上下文拒绝，端点请求数仍为零、审计无正文及出网/起草接受记录。
+
+主会话执行 `cargo test -p soulcore --test unified_assistance_crash --test assistance_runtime_driver --test session_assistance_work --locked --offline`：**20 项输出通过、0 失败，退出 0**。分别为既有 driver 5、Session work 11、新文件 4；新文件含 **2 条实质父轨迹与 2 个普通执行时 noop 的子入口**，不报告为四个新场景。日志及退出码：`E:\Project\Soul-checks-20261019-continuation\crash-recovery.log` / `crash-recovery-exit.txt`。环境同上，实际源码和计数已独立只读复核，无阻塞发现；新文件格式与提交 diff 检查退出 0。
+
+父进程等待期限 20 秒，异常路径 guard 执行 kill/reap，避免遗留仍持 lease 的子进程；未故障注入 kill 失败，底层 wait 没有第二层独立超时。该结果只证明已持久 Running 状态下无 Drop 退出恢复，不证明事务中途断电、真实采集或 Windows UI。生产逻辑、权限、依赖/schema/算法均未改变，完整 G-L 和人工/效用验收仍保留原边界。
