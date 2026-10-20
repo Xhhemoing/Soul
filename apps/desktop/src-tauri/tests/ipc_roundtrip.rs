@@ -21,6 +21,9 @@ use tauri::test::{get_ipc_response, mock_builder, INVOKE_KEY};
 use tauri::webview::InvokeRequest;
 use tauri::{Manager, WebviewWindowBuilder};
 
+#[path = "ipc_roundtrip/assistance_forget_flow.rs"]
+mod assistance_forget_flow;
+
 /// A directory no installation uses.
 ///
 /// `Session::open` writes a configuration file and opens a database, so a test

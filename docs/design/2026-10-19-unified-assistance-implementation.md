@@ -141,3 +141,31 @@ U3 本地提交 `1c8fca96e724c3c88dfcadd61ee258765f3b1bc9` 对应远端 `ba2b4f6
 U4/U6 本地提交 `293d1c6d2fffb8e06eab644b3ed553bdafb2371c` 对应远端 `8ee2675e39f7d19bb26c290506e601b693198fba`，两者文件树均为 `aa396f2426068eca0b3dd8d62c2a94ed17f44d3a`。U5 编码从这一已复审、验证、同步的检查点继续。
 
 U1–U6 均已实现并完成独立源码复审（REVIEWED），U7 当前环境可执行的合成集成验证已完成。本提交包含 U5/U7 源码、最终实际结果及当前文档，继续按同一方式同步并核对文件树。完整 G-L 仍按已有指示暂缓，G-W/G-M、原生桌面/Windows 通知与真实任务效用未执行；完整 U7、Goal 1、正式 Goal 2、Wave 1 没有因此关闭，未合并任何分支。
+
+## 核心闭环补强（2026-10-19，Windows）
+
+作者最新指示为核心优先，具体系统功能后期打磨；完整平台及真实效用验收仍保留缺口。起点 `b1147e3` 已有未提交的 G-M 文档，保留这些修改。本轮沿既有 D97 / U7 补充核心跨层组合，不新增生产 API、数据迁移、授权或算法规则，亦未发现需要修补的生产缺陷。
+
+| 新轨迹 | 实际结果与覆盖 |
+| --- | --- |
+| 来源遗忘在发送前 | 同一 Session/SQLCipher 经导入、固定来源关联、成功模型起草控制，再准备新的未消费批准；通过现有存储 API 遗忘来源，不调用 Session 清理。旧批准被拒绝，loopback 请求数仍为 1，不新增接受记录；目标自身与独立目标 Memory 保留。 |
+| 来源遗忘在 execute 后 / accept 前 | 第二次真实 loopback HTTP 已执行，再遗忘来源；接收旧正文被拒绝，审计仍有实际 2 次 E1，`draft.create` 仍只有控制组的 1 次。重启不恢复旧批准；明确清除失效来源后，同一目标重新以自身 Memory 本地起草；最后明确遗忘目标才删除其自身内容。 |
+| 公开 IPC 目标遗忘 / 重启 | 经生产注册 handler 导入、关联目标、成功 E1 控制，反馈不完成目标。准备新计划后，经公开 Memory 影响面预览与确认遗忘目标，旧批准拒绝且不新增请求；重启后正文仍拒读、目标为 forgotten，独立目标及导入来源保留，审计有效且无正文。 |
+
+源码为 `crates/soulcore/tests/unified_assistance_source_forget.rs`（两个核心轨迹）、`apps/desktop/src-tauri/tests/ipc_roundtrip/assistance_forget_flow.rs`（一个 IPC 轨迹）；原 `ipc_roundtrip.rs` 仅增加模块注册，避免继续扩张大文件。测试使用合成 fixture、临时加密库及 loopback MockLlm。联系人/来源遗忘属于核心存储 API，未伪称新增桌面入口；IPC 中只调用既有公开 Memory 遗忘命令。
+
+| 最终实际命令 | 退出 / 结果 |
+| --- | --- |
+| `cargo test -p soulcore --test unified_assistance_source_forget --test unified_assistance_flow --locked --offline` | 0；4 通过（新增 2、既有 2），0 失败 / 忽略 |
+| `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --test ipc_roundtrip --locked --offline` | 0；完整 IPC 68 通过，包含新增 1，0 失败 / 忽略 |
+| 根 / desktop `cargo fmt --all -- --check`（desktop 指定独立 manifest）、`git diff --check` | 均退出 0；六份本轮文档的相对链接目标存在 |
+
+运行环境沿用本机 Rust 1.83 / MSVC，进程内 `CARGO_BUILD_JOBS=4`、DEV/TEST DEBUG=0、INCREMENTAL=0，复用本机已构建 OpenSSL 静态库；未改变两个 target 或全局环境。原始输出与退出码位于 `E:\Project\Soul-checks-20261019-win\core-continuation`：`source-forget-core-final.log` / `*-result.json`、`ipc-forget-core-final.log` / `*-result.json`。初轮 `source-forget-core.log` 因测试误写 `Session.audit_chain` 编译退出 101，修正为真实 `Session.audit`；不将其计为已复现业务缺陷，亦不重复累计中间运行。
+
+实际测试 diff 及增强断言已独立只读复核，无阻塞问题；覆盖固定来源整体复验，不能单独证明每个内部防线分别命中。确定性轨迹在 HTTP execute 完成后、交付前遗忘，不声称覆盖 HTTP 仍在途时遗忘、真实 WebView 旧正文消失、通知展示或任务质量提升。生产逻辑/命令/锁/依赖/schema 均未修改；没有运行本轮完整 G-W 或 G-L，没有安装、卸载或合并。原执行阶段尚未提交或推送；后续接管复验与阶段提交见下节。
+
+### 接管复核与阶段提交
+
+作者随后明确授权接管以上既有修改，复核后分阶段提交。本次先读实际 diff，由独立只读 reviewer 核对测试的正向控制、同库来源失效、真实 IPC、请求与接受审计和重启断言，无阻塞发现。主会话重新执行上表两条测试命令：核心 4 通过、独立 desktop IPC 68 通过，均退出 0；定向 `rustfmt --edition 2021 --check` 检查核心测试和 `ipc_roundtrip.rs`（含新增子模块），以及相关路径 `git diff --check` 均退出 0。重复执行不累计为新增测试。
+
+本次仍为 Windows / pwsh 7.6.5 / Rust 1.83.0，沿用上述仅进程内构建参数及已存在的 OpenSSL 静态库。新证据为 `E:\Project\Soul-checks-20261019-continuation\initial-core.log`、`initial-ipc.log` 与各自 `*-exit.txt`。以上测试和记录随本节提交；原 G-M 观察单独收录，不代签人工验收，不扩称新 G-W、真实效用、推送或合并。
