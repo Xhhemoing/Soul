@@ -8,7 +8,7 @@
 
 三个读取入口现共用只读句柄与 shared lock，在同一持锁句柄读取完整字节，再释放锁；真实 open/lock/read 错误传播。保留 create_new、独占发布、空文件恢复及非空损坏拒绝，不 unlink 或覆盖已有密钥，不改变 DPAPI/KEK/DEK 格式。新增损坏 seed 不覆盖控制。修复后 `cargo test -p soul-store --lib --locked --offline` **49 通过、0 失败**，根 workspace 格式及 diff 检查退出 0；证据为仓库外 `E:\Project\Soul-checks-20261019-continuation\keys-claimed-red.log`、`keys-lib-green.log` 与对应退出码文件。Linux advisory lock 半写风险经源码分析，尚未在 Linux 实跑。
 
-已完成独立只读源码与红绿日志复核，无阻塞发现。共享锁获取沿用阻塞式 OS 锁；既有 settle timeout 只限制空文件轮询，不承诺活写者永久持锁时的读取超时。本项局部验证不替代完整 G-W；新干净候选需复跑后另记结果。G-L 暂缓、系统 G-M 后置，Goal 1、正式 Goal 2 与 U7 未关闭。
+已完成独立只读源码与红绿日志复核，无阻塞发现，提交 `2e37a6e`。共享锁获取沿用阻塞式 OS 锁；既有 settle timeout 只限制空文件轮询，不承诺活写者永久持锁时的读取超时。随后该干净候选完整 G-W 的密钥套件 49 项通过，但后续 `session_draft_work` 合成端点读取返回 Windows WouldBlock，门禁停止，见[第二次失败记录](gates/20261019-2e37a6e-win.md)。独立 desktop 及后续阶段未运行；G-L 暂缓、系统 G-M 后置，Goal 1、正式 Goal 2 与 U7 未关闭。
 
 ## 后续评测设计（2026-10-19，实施未启动）
 
