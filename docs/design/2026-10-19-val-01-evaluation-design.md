@@ -129,3 +129,11 @@ if ($LASTEXITCODE -ne 0) { throw '既有连续性/端点回归失败' }
 实际命令为 `cargo test -p soulcore --test val01_evaluation --locked --offline` 与 `cargo clippy -p soulcore --test val01_evaluation --locked --offline -- -D warnings`；根格式及 diff 检查退出 0。Rust 1.83 / MSVC / Windows，既有静态 OpenSSL、jobs=4、debug=0、incremental=0；未改全局环境、target、依赖锁或生产代码。原始证据在仓库外 `E:\Project\Soul-checks-20261019-core-plan\`，包括 `environment.json`、`v1-red`、`v1-slot-red`、`v1-review-red`、`v1-review-green`、`v1-review-clippy` 的日志及退出文件。前期和最终重复运行不累计为更多测试。
 
 本片只证明记录与合成算术，尚不证明真实 brief、模板、HTTP/Session 接线或真人效果；V2/V3 继续按计划串行推进。不签发完整平台门禁，不关闭 Goal 1、正式 Goal 2 或 U7。
+
+## V2 实施与验证（2026-10-19）
+
+起点 `068295c`，新增 briefs/local/local_tests 三模块并注册入口。A 用 neutral，B 显式 `from_view`，失败不回退；C 仅四个预先选择的语气枚举，不带 readings。配对借用同一 ProfileView，T1 比较四个生效枚举而非 `user_set` 或轴。准入检查已登记槽位、Run 的许可/起止、重复身份及同 Run/path 的安全暂停；拒绝发生在分配、构造和真实 `DraftSession::draft_offline` 调用之前。
+
+真实本机返回被映射进 V1 Candidate，并通过顶层验证/汇总；输出正文只在当前断言中，不进入记录。生成仍为 incomplete，偏好 unrated，首稿接受、耗时和帮助次数保持缺测。本机模板以 request.context 的入站轮次选择话术，但返回默认 BodyFacts，出口 `third_party_turns/placeheld_turns=0`；初次实跑的 1 项失败来自新测试误将两种计数混同，修正预期与实际映射断言，未修改生产逻辑。
+
+新增 10 项先得到 **21 通过 / 10 TODO 失败**，实施后首次 **30 通过 / 1 失败**，最终 **31 通过、0 失败**；严格定向 Clippy、根格式和 diff 检查均退出 0。命令与环境沿 V1，证据在同目录 `v2-red`、`v2-green`、`v2-verified`、`v2-clippy` 日志及退出文件。完成独立只读规格/质量审查，无阻塞发现。V3 的 HTTP/Session 桥接尚未完成；真实同意收集、原生 UI 和真人效果均未测。

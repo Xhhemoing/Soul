@@ -12,6 +12,8 @@ D101 将 [VAL-01 的 V1–V3](design/2026-10-19-val-01-evaluation-design.md) 测
 
 VAL V1 已实现普通记录、注册槽位、一致性检查和分层汇总；独立 review 的失败/安全效用混入及注册未强制核对两项均实跑反例后修复、复审。定向适配 **21 项通过**，严格定向 Clippy、格式与 diff 检查退出 0，见[分片回执](design/2026-10-19-val-01-evaluation-design.md#v1-实施与验证2026-10-19)。V2/V3 尚待实施；不是个性化效果、平台门禁或正式 Goal 关闭证据。
 
+随后 V2 完成显式 A/B/C brief 与真实本机模板接线，准入共享注册/许可/时间和路径安全暂停检查；返回只记生成观察，不填人工评分。新增 10 项合并 V1 共 **31 项通过**，严格定向 Clippy、格式与 diff 检查退出 0，独立只读审查无阻塞。中间 1 项测试误设已按本机真实出口元数据修正，生产未改；见[V2 回执](design/2026-10-19-val-01-evaluation-design.md#v2-实施与验证2026-10-19)。V3 继续推进，真人样本仍为 0。
+
 ## 严格 Clippy 续验与等价整理（2026-10-19）
 
 干净 `83d6143` 补跑根 `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` 实际失败。依次暴露两处存储 tuple 类型复杂度、相同拒绝分支、Option 早退、测试字符串判断、Windows 工厂冗余闭包，以及 Fake OS 测试导入完整生产模块产生的 dead-code。现用私有类型别名及等价表达式整理；SQL 字段顺序、遗忘原始标识比较、授权/collector 交接和正文隔离断言保持。仅在 `notification_runtime_driver` 的两个导入模块树允许 dead-code，并解释不启动真实 native owner 的测试边界；Windows 实现仍编译，生产模块没有此豁免，其余严格 lint 保留。
