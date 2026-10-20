@@ -6,7 +6,9 @@
 
 作者要求核心优先，逐部分分析可行性、编码、独立 review 并本地提交；系统功能与安装验收继续后置。起点为干净 `5821f29`，相对 `b22b7be` 只有文档变化。独立只读核对现有 U7 flow、source/inflight forget、crash 与公开 IPC 遗忘轨迹及对应门禁原始证据，未发现本轮必须新增的核心差集，记 NO-CHANGE；不因此关闭 U7。
 
-D101 将 [VAL-01 的 V1–V3](design/2026-10-19-val-01-evaluation-design.md) 测试专用合成适配提前为独立质量预备，正式 Goal 1/Q2、真实试验与 DATA/MODEL 生产前置保持。编码前 `cargo test -p soulcore --test q2_continuity --test q2_recovery --test session_e1 --locked --offline` 实跑 34 通过、退出 0；日志在仓库外 `E:\Project\Soul-checks-20261019-core-plan\before.log` 与 `before-exit.txt`。使用 Rust 1.83、MSVC、既有静态 OpenSSL，未更改 target 路径或全局环境。适配仍待分片实现和验证，真实任务样本为 0；DATA 只继续 L1 设计收敛。
+D101 将 [VAL-01 的 V1–V3](design/2026-10-19-val-01-evaluation-design.md) 测试专用合成适配提前为独立质量预备，正式 Goal 1/Q2、真实试验与 DATA/MODEL 生产前置保持。编码前 `cargo test -p soulcore --test q2_continuity --test q2_recovery --test session_e1 --locked --offline` 实跑 34 通过、退出 0；日志在仓库外 `E:\Project\Soul-checks-20261019-core-plan\before.log` 与 `before-exit.txt`。使用 Rust 1.83、MSVC、既有静态 OpenSSL，未更改 target 路径或全局环境。适配仍待分片实现和验证，真实任务样本为 0。
+
+[DATA L1 设计](design/2026-10-19-data-01-recovery-boundaries.md#69-本轮-l1-设计选择与下一片验收未经运行)已收敛为当前 `SoulMemory.summary_ref`、同持有期正常读取私有保留的原 ciphertext；首片拒绝非空来源/证据关联，不把普通读取成功当完整来源核验。列出相关变更拒绝、无关写入正控制、事务内复验及 N1–N3 待验边界，完成独立只读规格/质量审查及文档检查。仅设计，无新增恢复代码、实验或正式 DATA 实施；原两组有限实验的结论保持。
 
 ## 严格 Clippy 续验与等价整理（2026-10-19）
 
