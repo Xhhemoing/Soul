@@ -2,6 +2,12 @@
 
 本文件是当前状态入口。历史见 [2026-09-28 快照](STATUS_HISTORY_20260928.md) 与[遗忘阶段 1–4 记录](SOUL_FORGET_PROGRESS_2026-09-29.md)。历史记录中的“尚未接入”描述其当时版本，不覆盖本页的新进展。
 
+## Windows 完整门禁续验（2026-10-19）
+
+干净候选 `6f8f31f` 实际执行完整 G-W **PASS，退出 0**，未跳过 workspace 测试；18:23:54–18:32:49（UTC−07:00）运行前后为同一干净提交。根 **1317 通过、0 失败、1 项既有规模测量忽略**；独立桌面 **131 通过**（IPC 68），前端 **53 文件 / 668 通过**；production build、两份 release、asInvoker manifest 和 SkipInstall smoke 均通过。原始日志、计数和 scope 已独立只读复核，无阻塞发现；完整证据和告警见[本候选记录](gates/20261019-6f8f31f-win.md)。
+
+此前两次完整入口分别暴露密钥文件锁竞争及合成 HTTP 端点模式问题，均先实跑受控反例、最小修复、定向测试和独立评审，再重跑完整门禁；失败记录保留。Windows TCP smoke 只有 1 次成功样本，不代表连续网络抓包或 WebView2 验收。G-L 仍暂缓，系统 G-M 后置，NSIS/安装卸载与真实任务效用未执行；Goal 1、正式 Goal 2、U7 与 Wave 1 均未关闭。后续 VAL/DATA 仅设计，未推送或合并。
+
 ## Windows 密钥读取竞争修复（2026-10-19）
 
 完整 G-W 在干净候选 `629c739` 的并发密钥测试中实际失败，见[失败记录](gates/20261019-629c739-win.md)。受控反例先持独占锁写入合成文件前半段，再调用真实读取：TestKeyProvider 和临时 DPAPI provider 均提前返回 os error 33，settling 路径提前返回 None，新增三项均实跑失败；原并发测试单独运行通过，不能消除已复现竞争。
@@ -10,7 +16,7 @@
 
 已完成独立只读源码与红绿日志复核，无阻塞发现，提交 `2e37a6e`。共享锁获取沿用阻塞式 OS 锁；既有 settle timeout 只限制空文件轮询，不承诺活写者永久持锁时的读取超时。随后该干净候选完整 G-W 的密钥套件 49 项通过，但后续 `session_draft_work` 合成端点读取返回 Windows WouldBlock，门禁停止，见[第二次失败记录](gates/20261019-2e37a6e-win.md)。独立 desktop 及后续阶段未运行；G-L 暂缓、系统 G-M 后置，Goal 1、正式 Goal 2 与 U7 未关闭。
 
-该第二处失败定位为合成端点接入流未明确切回 blocking。先新增“预连接、预写半段正文、完整前不得通知到达”的受控反例，实际得到 Windows 10035 / Disconnected，退出 101；随后在草稿、摘要、在途遗忘三个同模式夹具显式设置 blocking，草稿/摘要沿既有 WAIT 补齐总读取期限、响应等待与写超时。生产行为、原撤回/忙槽/来源失效/审计断言未改变。独立只读复核无阻塞；`cargo test -p soulcore --test session_draft_work --test session_summary_work --test unified_assistance_inflight_forget --locked --offline` **22 通过**（11+10+1）、退出 0，根格式/diff 检查通过。原始证据为同一仓库外目录的 `endpoint-body-red.log`、`endpoint-fixtures-green.log` 及退出码文件；新干净候选完整 G-W 待运行，局部绿不代替门禁。
+该第二处失败定位为合成端点接入流未明确切回 blocking。先新增“预连接、预写半段正文、完整前不得通知到达”的受控反例，实际得到 Windows 10035 / Disconnected，退出 101；随后在草稿、摘要、在途遗忘三个同模式夹具显式设置 blocking，草稿/摘要沿既有 WAIT 补齐总读取期限、响应等待与写超时。生产行为、原撤回/忙槽/来源失效/审计断言未改变。独立只读复核无阻塞；`cargo test -p soulcore --test session_draft_work --test session_summary_work --test unified_assistance_inflight_forget --locked --offline` **22 通过**（11+10+1）、退出 0，根格式/diff 检查通过。原始证据为同一仓库外目录的 `endpoint-body-red.log`、`endpoint-fixtures-green.log` 及退出码文件；修复提交 `6f8f31f` 后完成顶部完整 G-W 复验，局部数量不重复累计。
 
 ## 后续方案设计（2026-10-19，实施未启动）
 
