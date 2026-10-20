@@ -606,3 +606,26 @@ A1 只加缺失组合；已有 81×2 语气安全测试不重复。A2 先区分 
 - 本轮提交前独立复核确认该证据根与所列安装包、app、日志、receipt、review JSON 当前均不存在；在现有项目目录与已知 Soul 证据目录中未找到替代保存位置。记录中的历史哈希因此不能作为当前可复核证据。
 - 按作者手动清单，第 0 节必须由作者在非管理员 Windows 11 上亲手执行。代理构建即使曾成功也不能代勾 G-M 0。本轮将 G-M 0 恢复为 `NOT RUN`，不保留 `ARTIFACT_SHA256` 通过值。
 - 现存 `ebff0c9` G-W 日志、前端日志与集成审查回执仍可复核，其结论不受打包证据缺失影响。真实 NSIS 安装/卸载仍按用户要求跳过，G-L 暂缓，G-M 0–7 与受影响 Import/WebView/辅助技术观察未完成；Q2-00、正式 Q2-05 和 Goal 1/2 不关闭。
+
+### Q2-03 当前源码显式测量（2026-10-19）
+
+沿用 D68 的既有合成质量验证，未修改测试或新增性能门禁。干净候选 `83d96e12706c1b622dad60f1e00c2bc43d58c4b0`，前后 HEAD 与空 status 一致。命令：`cargo test -p soulcore --test q2_scale --locked --offline measure_four_synthetic_scales_with_five_independent_trials -- --ignored --exact --nocapture --test-threads=1`；仅在本次进程设置 `SOUL_Q2_SOURCE_SHA` 为候选并在 finally 恢复。
+
+18:51:15.667–18:53:35.676（UTC−07:00）退出 0，**1 passed / 0 failed / 2 filtered**；编译 7.18 秒，测试执行 131.23 秒。四组各 1 次热身与 5 次正式试次，共 4 热身 / 20 正式；每个 sample 在两个不同的新临时库分别运行 Session 与事务分解路径，共顺序创建 48 个库。报告 30 行：1 run、24 sample、4 summary、1 complete。
+
+环境为 Windows 11 build 26200、Ryzen 7 H 260、16 逻辑核、约 15.26 GiB 可见内存；Rust/Cargo 1.83、pwsh 7.6.5。既有 test profile opt-level=1、debug assertions 开启；jobs=4、DEV/TEST DEBUG=0、incremental=0，未覆盖 CARGO_TARGET_DIR，使用根 `target`。复用同次 Windows 构建的静态 OpenSSL。构建不计入样本，OS 页缓存未清空、冷热不受控，不是 release 或冷启动测量。
+
+下表单位为 **ms，中位数来自每组 5 个正式样本，排除热身**；原始报告同时保留 min/max。
+
+| 消息 / peer | Session total | Session commit | parse | transaction total | import + audit | graph + audit | residual |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1000 / 10 | 393.0184 | 341.3061 | 13.9351 | 360.0236 | 278.2637 | 53.2028 | 25.3944 |
+| 1000 / 100 | 393.4259 | 324.8099 | 11.5396 | 400.3124 | 289.4095 | 76.4979 | 31.2913 |
+| 10000 / 10 | 5497.4764 | 4414.8727 | 89.1915 | 4274.4241 | 3274.2211 | 608.5700 | 412.1429 |
+| 10000 / 100 | 4503.0451 | 3970.2554 | 76.6436 | 3775.6638 | 2577.7169 | 886.5442 | 347.5504 |
+
+Session total 从 preview 前计至 audit 返回，排除 Session::open、fixture/元数据生成、断言、输出和析构；commit 包含 rebuild。事务分解在另一新库运行，parse/open 在 transaction 外，residual 是同一样本内 transaction 减两项 command，含计时与调用杂项，不是纯 SQLite 提交成本。两条路径不能相减，各阶段中位数也不能相加还原 total。未与不同环境/源码的历史数值作性能回归结论。
+
+实际计数断言及审计链通过：事件/evidence 数与消息数一致，peer 关系数一致，未丢失或合并。当前合成 profile 未填充、memories=0，研究输出按许可过滤后为空；不代表真实用户数据、全量个人模型、后台工作吞吐、重复导入、端点、UI/通知、安装或 Linux 性能。没有 p95、硬件阈值或耗时 PASS 线，也不以本次执行关闭 U7、Goal 1、Q2-00/05 或正式 Goal 2。
+
+原始 `target/q2/q2-scale-1792461088354683800.jsonl` 已按 UTF-8 保存在仓库外 `E:\Project\Soul-checks-20261019-continuation\` 同名文件；同目录 `q2-scale-83d96e1.log` 与 `q2-scale-83d96e1-result.json` 保存命令、退出码、起止时间与前后状态。独立只读评审确认原件/副本/控制台逐行一致，四组 **168 项 min/median/max** 重算吻合，两路径计数及同路径 residual 校验通过。此后文档提交不冒称另一次源码测量；历史集成证据现状仍以 [STATUS](STATUS.md) 和对应门禁更正为准。
