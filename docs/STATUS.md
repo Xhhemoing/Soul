@@ -2,6 +2,12 @@
 
 本文件是当前状态入口。历史见 [2026-09-28 快照](STATUS_HISTORY_20260928.md) 与[遗忘阶段 1–4 记录](SOUL_FORGET_PROGRESS_2026-09-29.md)。历史记录中的“尚未接入”描述其当时版本，不覆盖本页的新进展。
 
+## 核心计划分阶段推进（2026-10-19，D101）
+
+作者要求核心优先，逐部分分析可行性、编码、独立 review 并本地提交；系统功能与安装验收继续后置。起点为干净 `5821f29`，相对 `b22b7be` 只有文档变化。独立只读核对现有 U7 flow、source/inflight forget、crash 与公开 IPC 遗忘轨迹及对应门禁原始证据，未发现本轮必须新增的核心差集，记 NO-CHANGE；不因此关闭 U7。
+
+D101 将 [VAL-01 的 V1–V3](design/2026-10-19-val-01-evaluation-design.md) 测试专用合成适配提前为独立质量预备，正式 Goal 1/Q2、真实试验与 DATA/MODEL 生产前置保持。编码前 `cargo test -p soulcore --test q2_continuity --test q2_recovery --test session_e1 --locked --offline` 实跑 34 通过、退出 0；日志在仓库外 `E:\Project\Soul-checks-20261019-core-plan\before.log` 与 `before-exit.txt`。使用 Rust 1.83、MSVC、既有静态 OpenSSL，未更改 target 路径或全局环境。适配仍待分片实现和验证，真实任务样本为 0；DATA 只继续 L1 设计收敛。
+
 ## 严格 Clippy 续验与等价整理（2026-10-19）
 
 干净 `83d6143` 补跑根 `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` 实际失败。依次暴露两处存储 tuple 类型复杂度、相同拒绝分支、Option 早退、测试字符串判断、Windows 工厂冗余闭包，以及 Fake OS 测试导入完整生产模块产生的 dead-code。现用私有类型别名及等价表达式整理；SQL 字段顺序、遗忘原始标识比较、授权/collector 交接和正文隔离断言保持。仅在 `notification_runtime_driver` 的两个导入模块树允许 dead-code，并解释不启动真实 native owner 的测试边界；Windows 实现仍编译，生产模块没有此豁免，其余严格 lint 保留。

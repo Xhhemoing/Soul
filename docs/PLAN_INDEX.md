@@ -37,7 +37,7 @@
 | 算法判档与中文话术 | [algorithms/DECISION.md](algorithms/DECISION.md)、[COPY_ZH.md](algorithms/COPY_ZH.md)、[REJECTED.md](algorithms/REJECTED.md) |
 | 长期目标、版本路线、个人/商业/研究如何并进 | [ROADMAP.md](ROADMAP.md)；含能力工作包、验证方法及多 agent 资源分配 |
 | Goal 2 具体派工、文件归属、依赖、测试与交付回执 | [GOAL2_PLAN.md](GOAL2_PLAN.md)；正式启动须满足前置条件，D68 独立质量预备支线不等于正式启动 |
-| VAL-01 评测如何保留失败、缺测与指标分母 | [合成评测适配设计](design/2026-10-19-val-01-evaluation-design.md)；仅设计细化，实施仍待 Goal 1 / Q2-00，合成手算不代表真实效用 |
+| VAL-01 评测如何保留失败、缺测与指标分母 | [合成评测适配设计与实施](design/2026-10-19-val-01-evaluation-design.md)；D101 允许 V1–V3 测试专用合成预备提前实施，正式 Goal 1 / Q2 前置与真实试验边界保持，手算和合成检查不代表真实效用 |
 | 未来迁移/恢复怎样处理旧备份、遗忘与密钥 | [DATA-01 恢复边界设计](design/2026-10-19-data-01-recovery-boundaries.md)；候选选择与未运行的验收反例，产品语义和实施前置待满足，不是已生效契约 |
 | 项目专用实现与只读评审角色、单写者热点、重构建调度 | [AGENTS.md](../AGENTS.md) 与 [.codex/](../.codex/)；任务卡和短交接留在会话或仓库外，不新增流程系统 |
 | 审查发现和修复证据 | [reviews/](reviews/)；局部修复回执不等于完整门禁通过 |

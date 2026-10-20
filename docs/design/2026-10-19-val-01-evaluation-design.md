@@ -1,8 +1,8 @@
 # VAL-01 合成评测适配设计草案
 
-状态：**设计草案；实施保持 BLOCKED_BY_GOAL1_AND_Q2-00**。作者于 2026-10-19 选择保留门禁边界、先推进后续方案设计。本页细化 [ROADMAP 7.2](../ROADMAP.md#72-首轮个性化试验) 与 [GOAL2_PLAN 的 VAL-01 交接](../GOAL2_PLAN.md#val-01-评测适配交接非-q2-关闭包)，不改变其进入条件、样本登记或指标口径，不新增产品功能、冻结 contract、baseline 或 gate。
+状态：**D101 合成质量预备实施已获授权，分片结果见本页后续记录**。作者于 2026-10-19 先选择保留门禁边界、推进设计，随后要求按核心计划逐部分分析、编码、review 和提交。本页细化 [ROADMAP 7.2](../ROADMAP.md#72-首轮个性化试验) 与 [GOAL2_PLAN 的 VAL-01 交接](../GOAL2_PLAN.md#val-01-评测适配交接非-q2-关闭包)；D101 仅提前测试专用适配，正式阶段及真实试验前置、样本登记和指标口径不变，不新增产品功能、冻结 contract、baseline 或 gate。
 
-目标是让后续评测如实回答：实际用了哪种 brief、哪些候选失败或降级、哪些配对可比较、结果分母是什么。本页没有采集真实反馈，也没有执行评测适配代码。源码可行性核于 `629c739`。
+目标是让后续评测如实回答：实际用了哪种 brief、哪些候选失败或降级、哪些配对可比较、结果分母是什么。没有采集真实反馈。原设计源码可行性核于 `629c739`，D101 实施起点为 `5821f29`；设计中的手算数字不作为执行结果。
 
 ## 已有能力与需要补的差集
 
@@ -85,19 +85,19 @@ Candidate 总生成数=11。按未降级 endpoint / T2 / variant 分层，A 首�
 
 另增降级反例：端点请求已发生但返回本机模板时，`generated` 与具体结果来源按登记如实保存，不能纳入未降级端点偏好或 T3 正确率；只有一边生成的 Pair 不进 generated。未暴露的模型版本和服务参数保持 unknown/not_exposed，不捏造相等条件或可重复性。
 
-## 后续实施拆分（尚未启动）
+## 分阶段实施拆分（D101）
 
-所有路径均为未来认领建议；本次不创建这些源文件。每一片先写可失败的行为测试、运行、实现最小测试适配，再独立 review 和提交。若首次运行已绿，只算已有能力的覆盖，不编造业务红绿修复。
+每一片先写可失败的行为测试、运行、实现最小测试适配，再独立 review 和提交。若首次运行已绿，只算已有能力的覆盖，不编造业务红绿修复。协调者独占构建与提交，实现者只改认领路径；沿用现有干净开发分支及缓存，不另建流程目录。
 
 | 片 | 拟写路径与职责 | 消费 / 产出 | 最小反例与通过证据 |
 | --- | --- | --- | --- |
-| V1 记录一致性与汇总 | `crates/soulcore/tests/val01_evaluation.rs` 入口；`tests/val01_evaluation/records.rs`、`pairs.rs`、`aggregate.rs` | 消费 ROADMAP 登记和固定合成元数据；产出无正文的分层计数、分母及缺失原因 | 上表逐边手算、重复/缺失关联拒绝、完成状态一致、左右交换、unrated/not_comparable/broken/withdrawn、A=0与缺测分开、模型变更不合并 |
-| V2 brief 与 T1 适配 | `tests/val01_evaluation/briefs.rs`、`paths.rs` 的本机路径 | 消费公开 ProfileBrief API、合成 ProfileView 和 V1 typed Candidate；产出显式 brief 身份与本机结果 | B 失败不回退、C 无 readings、T1 同枚举不可比较、模板正文槽不伪称首稿接受 |
-| V3 T2/T3 与 Session 桥接 | `tests/val01_evaluation/paths.rs` 的端点路径；入口只注册模块 | 消费 V1/V2；产出实际 source/degraded/refusal/privacy shape | 未批准零请求、错批准/重放拒绝、T2 占位、T3 仅单次原文、降级不当端点成功；一条真实 Session/SQLCipher 桥接 B 的资料来源和审计边界 |
+| V1 记录一致性与汇总 | `crates/soulcore/tests/val01_evaluation.rs` 入口；`tests/val01_evaluation/records.rs`、`pairs.rs`、`aggregate.rs`、`fixtures.rs`、`record_tests.rs` | 消费 ROADMAP 登记和固定合成元数据；`validate` 产出已验证记录，`summarize` 产出无正文分层计数；V2/V3 填同一 Candidate | 上表逐边手算、重复/缺失关联拒绝、完成状态一致、左右交换、unrated/not_comparable/broken/withdrawn、A=0与缺测分开、模型变更不合并 |
+| V2 brief 与 T1 适配 | `tests/val01_evaluation/briefs.rs`、`local.rs` | 消费公开 ProfileBrief API、合成 ProfileView 和 V1 typed Candidate；产出显式 brief 身份与本机结果 | B 失败不回退、C 无 readings、T1 同枚举不可比较、模板正文槽不伪称首稿接受 |
+| V3 T2/T3 与 Session 桥接 | `tests/val01_evaluation/endpoint.rs`、`session_bridge.rs`；入口只注册模块 | 消费 V1/V2；产出实际 source/degraded/refusal/privacy shape | 未批准零请求、错批准/重放拒绝、T2 占位、T3 仅单次原文、降级不当端点成功；一条真实 Session/SQLCipher 桥接 B 的资料来源和审计边界 |
 
 V1→V2→V3 串行集成，先独立核验记录和算术，再连接生成路径，避免每次分母修订都触发 HTTP 或数据库测试；测试模块有一个实现 owner，独立 reviewer 只读。现有 q2_continuity/q2_recovery 的功能不移植或删除，不为评测便利修改 Session、IPC、schema、锁文件或已有算法。若既有公开 API 无法满足任一断言，先回报具体差距并形成新的认领，不能在测试适配里绕过安全边界。
 
-首次实现才运行下列定向命令；当前未创建测试文件，因此本次不把命令记录为通过：
+各片实施后运行下列定向命令，保留实际输出与退出码；计划不作为通过证据：
 
 ```pwsh
 $ErrorActionPreference = 'Stop'
@@ -112,8 +112,8 @@ if ($LASTEXITCODE -ne 0) { throw '既有连续性/端点回归失败' }
 ## 进入实施与真实试用之前
 
 - 本草案可先独立 review；设计完成不把任何 Q2/Goal 或 U7 标为关闭。
-- 实施仍需要 Goal 1 按 ACCEPTANCE/STATUS 正式关闭、Q2-00 给出可比较实现输入以及可用构建。用户本次没有解除 G-L 暂缓、系统 G-M 后置和真实效用未测状态。
-- 真实阶段需要单独的产品评测同意、开始/截止、撤回及汇总处理说明、固定任务槽与人工盲评安排；外部端点每次仍按既有授权。尚未提供这些信息时只保留合成设计，不联系参与者、不启动真实试验。
+- D101 仅允许 V1–V3 合成测试适配提前实施；正式阶段仍需要 Goal 1 按 ACCEPTANCE/STATUS 关闭、Q2-00 给出可比较实现输入以及可用构建。用户没有解除 G-L 暂缓、系统 G-M 后置和真实效用未测状态。
+- 真实阶段需要单独的产品评测同意、开始/截止、撤回及汇总处理说明、固定任务槽与人工盲评安排；外部端点每次仍按既有授权。尚未提供这些信息时只做合成适配，不联系参与者、不启动真实试验。
 - v0.2 DATA/MODEL、可逆文件动作、多端与云端保持 ROADMAP 各自的设计与前置，不因为本页的评测类型而获得数据、权限或产品实现授权。
 
-本页只提交设计和源码可行性分析。拟新增类型、验证器、汇总器和命令均未实施/执行；示例数字是独立手算的测试期望，不是测量结果。
+本页的示例数字是独立手算的测试期望，不是测量结果。实施结果按 V1/V2/V3 分片追加，真实任务样本数仍为 0。
