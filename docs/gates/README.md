@@ -106,6 +106,7 @@ sha7 是跑门禁时 `git rev-parse --short=7 HEAD`。工作区不干净就先�
 
 ## 已有记录
 
+- [20261019-b22b7be-win.md](20261019-b22b7be-win.md) — 严格 Clippy 整理后的干净候选完整 G-W PASS，原始证据已独立核验：根 1317、独立桌面 131、前端 668 通过，release/manifest/smoke 通过；正式关闭边界不变。
 - [20261019-6f8f31f-win.md](20261019-6f8f31f-win.md) — 干净候选完整 G-W PASS，原始证据已独立核验：根 1317、独立桌面 131、前端 668 通过，release/manifest/smoke 通过；G-L 暂缓，完整 G-M、NSIS、安装卸载和真实效用未完成。
 - [20261019-2e37a6e-win.md](20261019-2e37a6e-win.md) — 完整入口执行 FAIL：密钥修复套件 49 通过；后续草稿撤回测试的合成 HTTP 端点在 Windows 返回 WouldBlock。独立桌面及后续阶段未运行。
 - [20261019-629c739-win.md](20261019-629c739-win.md) — 完整入口执行 FAIL：根 workspace 的并发密钥读取遇 Windows os error 33；后续桌面、前端、打包与 smoke 未运行。修复后需新候选完整复跑。

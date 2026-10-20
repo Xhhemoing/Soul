@@ -8,7 +8,7 @@
 
 最终根严格 Clippy 退出 0；定向存储 **58 项**（lib 49 / forget 7 / forget_scope 2），核心 **71 项**（notification_runtime_driver 25 / session_assistance 12 / session_assistance_work 11 / session_collect 9 / session_import_work 14），均通过。根与独立 desktop 格式、diff 检查退出 0，全部源码增量已完成独立只读评审，无阻塞发现。原始失败、逐次修复和最终输出见仓库外 `E:\Project\Soul-checks-20261019-continuation\root-clippy-83d6143.log`、`root-clippy-fix-1` 至 `root-clippy-fix-4.log`、`lint-store-regressions.log`、`lint-core-regressions.log` 及对应退出码；最终运行使用 Rust 1.83.0、既有静态 OpenSSL 和合成临时数据。
 
-这些是当前 dirty 候选的开发验证，提交后再执行完整 G-W；不是 G-L 通过。额外 `xtask all` 退出 0，但此前完整 G-W 的 `xtask/self_test` 已调用实际审计与 SBOM 逻辑，不重复计算为新覆盖。cargo-deny 未安装、未运行；完整 G-L 仍暂缓，完整 G-M、安装卸载和真实效用未完成，正式关闭边界不变。
+上述为提交前 dirty 源码的开发验证，现已收录于 `b22b7be`，该干净候选随后完整执行 G-W，见下节；不是 G-L 通过。额外 `xtask all` 退出 0，但此前完整 G-W 的 `xtask/self_test` 已调用实际审计与 SBOM 逻辑，不重复计算为新覆盖。cargo-deny 未安装、未运行；完整 G-L 仍暂缓，完整 G-M、安装卸载和真实效用未完成，正式关闭边界不变。
 
 ## 当前源码规模测量（2026-10-19）
 
@@ -26,7 +26,7 @@
 
 ## Windows 完整门禁续验（2026-10-19）
 
-干净候选 `6f8f31f` 实际执行完整 G-W **PASS，退出 0**，未跳过 workspace 测试；18:23:54–18:32:49（UTC−07:00）运行前后为同一干净提交。根 **1317 通过、0 失败、1 项既有规模测量忽略**；独立桌面 **131 通过**（IPC 68），前端 **53 文件 / 668 通过**；production build、两份 release、asInvoker manifest 和 SkipInstall smoke 均通过。原始日志、计数和 scope 已独立只读复核，无阻塞发现；完整证据和告警见[本候选记录](gates/20261019-6f8f31f-win.md)。
+严格 Clippy 整理后的干净候选 `b22b7be` 实际执行完整 G-W，**PASS、退出 0**，未跳过 workspace 测试；19:24:20–19:35:05（UTC−07:00）运行前后为同一干净提交。根 **1317 通过、0 失败、1 项既有规模测量忽略**；独立桌面 **131 通过**（IPC 68），前端 **53 文件 / 668 通过**；production build、两份 release、asInvoker manifest 和 SkipInstall smoke 均通过。原始证据已独立只读核验，无阻塞发现；完整证据和告警见[本候选记录](gates/20261019-b22b7be-win.md)，此前 [6f8f31f](gates/20261019-6f8f31f-win.md) 的实跑通过仍保留。
 
 此前两次完整入口分别暴露密钥文件锁竞争及合成 HTTP 端点模式问题，均先实跑受控反例、最小修复、定向测试和独立评审，再重跑完整门禁；失败记录保留。Windows TCP smoke 只有 1 次成功样本，不代表连续网络抓包或 WebView2 验收。G-L 仍暂缓，系统 G-M 后置，NSIS/安装卸载与真实任务效用未执行；Goal 1、正式 Goal 2、U7 与 Wave 1 均未关闭。后续 VAL/DATA 仅设计，未推送或合并。
 
