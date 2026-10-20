@@ -1,6 +1,6 @@
-# VAL-01 合成评测适配设计草案
+# VAL-01 合成评测适配设计与实施
 
-状态：**D101 合成质量预备实施已获授权，分片结果见本页后续记录**。作者于 2026-10-19 先选择保留门禁边界、推进设计，随后要求按核心计划逐部分分析、编码、review 和提交。本页细化 [ROADMAP 7.2](../ROADMAP.md#72-首轮个性化试验) 与 [GOAL2_PLAN 的 VAL-01 交接](../GOAL2_PLAN.md#val-01-评测适配交接非-q2-关闭包)；D101 仅提前测试专用适配，正式阶段及真实试验前置、样本登记和指标口径不变，不新增产品功能、冻结 contract、baseline 或 gate。
+状态：**D101 的 V1–V3 合成适配已实现，分片结果见本页后续记录**。作者于 2026-10-19 先选择保留门禁边界、推进设计，随后要求按核心计划逐部分分析、编码、review 和提交。本页细化 [ROADMAP 7.2](../ROADMAP.md#72-首轮个性化试验) 与 [GOAL2_PLAN 的 VAL-01 交接](../GOAL2_PLAN.md#val-01-评测适配交接非-q2-关闭包)；D101 仅提前测试专用适配，正式阶段及真实试验前置、样本登记和指标口径不变，不新增产品功能、冻结 contract、baseline 或 gate。
 
 目标是让后续评测如实回答：实际用了哪种 brief、哪些候选失败或降级、哪些配对可比较、结果分母是什么。没有采集真实反馈。原设计源码可行性核于 `629c739`，D101 实施起点为 `5821f29`；设计中的手算数字不作为执行结果。
 
@@ -94,8 +94,8 @@ Candidate 总生成数=11。按未降级 endpoint / T2 / variant 分层，A 首�
 | 片 | 拟写路径与职责 | 消费 / 产出 | 最小反例与通过证据 |
 | --- | --- | --- | --- |
 | V1 记录一致性与汇总 | `crates/soulcore/tests/val01_evaluation.rs` 入口；`tests/val01_evaluation/records.rs`、`pairs.rs`、`aggregate.rs`、`fixtures.rs`、`record_tests.rs` | 消费 ROADMAP 登记和固定合成元数据；`validate` 产出已验证记录，`summarize` 产出无正文分层计数；V2/V3 填同一 Candidate | 上表逐边手算、重复/缺失关联拒绝、完成状态一致、左右交换、unrated/not_comparable/broken/withdrawn、A=0与缺测分开、模型变更不合并 |
-| V2 brief 与 T1 适配 | `tests/val01_evaluation/briefs.rs`、`local.rs` | 消费公开 ProfileBrief API、合成 ProfileView 和 V1 typed Candidate；产出显式 brief 身份与本机结果 | B 失败不回退、C 无 readings、T1 同枚举不可比较、模板正文槽不伪称首稿接受 |
-| V3 T2/T3 与 Session 桥接 | `tests/val01_evaluation/endpoint.rs`、`session_bridge.rs`；入口只注册模块 | 消费 V1/V2；产出实际 source/degraded/refusal/privacy shape | 未批准零请求、错批准/重放拒绝、T2 占位、T3 仅单次原文、降级不当端点成功；一条真实 Session/SQLCipher 桥接 B 的资料来源和审计边界 |
+| V2 brief 与 T1 适配 | `tests/val01_evaluation/briefs.rs`、`local.rs`、`local_tests.rs` | 消费公开 ProfileBrief API、合成 ProfileView 和 V1 typed Candidate；产出显式 brief 身份与本机结果 | B 失败不回退、C 无 readings、T1 同枚举不可比较、模板正文槽不伪称首稿接受 |
+| V3 T2/T3 与 Session 桥接 | `tests/val01_evaluation/endpoint.rs`、`endpoint_tests.rs`、`endpoint_transport.rs`、`session_bridge.rs`；入口只注册模块 | 消费 V1/V2；产出实际 source/degraded/refusal/privacy shape | 未批准零请求、错批准/重放拒绝、T2 占位、T3 仅单次原文、降级不当端点成功；一条真实 Session/SQLCipher 桥接 B 的资料来源和审计边界 |
 
 V1→V2→V3 串行集成，先独立核验记录和算术，再连接生成路径，避免每次分母修订都触发 HTTP 或数据库测试；测试模块有一个实现 owner，独立 reviewer 只读。现有 q2_continuity/q2_recovery 的功能不移植或删除，不为评测便利修改 Session、IPC、schema、锁文件或已有算法。若既有公开 API 无法满足任一断言，先回报具体差距并形成新的认领，不能在测试适配里绕过安全边界。
 
@@ -136,4 +136,24 @@ if ($LASTEXITCODE -ne 0) { throw '既有连续性/端点回归失败' }
 
 真实本机返回被映射进 V1 Candidate，并通过顶层验证/汇总；输出正文只在当前断言中，不进入记录。生成仍为 incomplete，偏好 unrated，首稿接受、耗时和帮助次数保持缺测。本机模板以 request.context 的入站轮次选择话术，但返回默认 BodyFacts，出口 `third_party_turns/placeheld_turns=0`；初次实跑的 1 项失败来自新测试误将两种计数混同，修正预期与实际映射断言，未修改生产逻辑。
 
-新增 10 项先得到 **21 通过 / 10 TODO 失败**，实施后首次 **30 通过 / 1 失败**，最终 **31 通过、0 失败**；严格定向 Clippy、根格式和 diff 检查均退出 0。命令与环境沿 V1，证据在同目录 `v2-red`、`v2-green`、`v2-verified`、`v2-clippy` 日志及退出文件。完成独立只读规格/质量审查，无阻塞发现。V3 的 HTTP/Session 桥接尚未完成；真实同意收集、原生 UI 和真人效果均未测。
+新增 10 项先得到 **21 通过 / 10 TODO 失败**，实施后首次 **30 通过 / 1 失败**，最终 **31 通过、0 失败**；严格定向 Clippy、根格式和 diff 检查均退出 0。命令与环境沿 V1，证据在同目录 `v2-red`、`v2-green`、`v2-verified`、`v2-clippy` 日志及退出文件。完成独立只读规格/质量审查，无阻塞发现。该时点 V3 的 HTTP/Session 桥接尚未完成，后续结果见下一节；真实同意收集、原生 UI 和真人效果均未测。
+
+## V3 实施与验证（2026-10-20）
+
+起点 `8d872e3`，新增 endpoint、endpoint_tests、endpoint_transport、session_bridge 四模块，入口注册及记录枚举作最小扩展。复用真实 DraftSession/PolicySession，配对固定资料快照、标识脱敏配置与 endpoint origin；每候选准备和派发均检查 Run、登记身份和同路径安全暂停。未批准、错批、跨候选批准、重放及改址用实际请求数核对；T3→T2 保留同一组会话与令牌记录，核对一次原文授权不会延续。拒绝、真实 HTTP 503、跨 origin 重定向、不可读/空/临床回复的模板降级分别入记录，不补人工评分。
+
+合成端点只接收字面 loopback HTTP 地址，不做外部 DNS；补充端点采用完整 Content-Length、总读取期限和退出唤醒。退出时可能在唤醒前关闭 listener 的竞争是静态发现并修正，未声称实跑复现。Session 桥接使用临时 SQLCipher 与合成导入，显式 `ProfileBrief::from_view` 的 B 与实际 Session 请求一致；语气纠正重开保持，审计不带正文。未修改生产代码、产品 UI/IPC、依赖或锁文件。
+
+初始 `v3-red` 为 **31 通过 / 8 TODO 失败**；首轮实现编译因 ForgetState 导入路径错误失败，未执行测试，修正后 `v3-green2` **43 通过**。独立 review 发现不同 endpoint 可继续生成可比较配对、失败候选可重试覆盖原失败两项，三反例 `v3-review-red` 实跑 **45 通过 / 3 失败**。修复后 `v3-final-tests` 为 **48 + 34 通过**；针对性复审继续找到截止/撤回准入能覆盖已终止失败，`v3-terminal-red` 两条定向反例均失败。终止检查现集中在已验证身份之后、任何准入记录修改之前；重试需新登记槽位，错批后仍可使用正确批准，成功后的重放仍由真实 DraftSession 拒绝。
+
+最终开发验证（`8d872e3` 加本片 dirty 源码）：
+
+| 实际命令 | 结果 | 仓库外证据 |
+| --- | --- | --- |
+| `cargo test -p soulcore --test val01_evaluation --test q2_continuity --test q2_recovery --test session_e1 --locked --offline` | **50 + 4 + 3 + 27 = 84 通过**，退出 0 | `v3-verified-tests.log` / `v3-verified-tests-exit.txt` |
+| `cargo clippy -p soulcore --test val01_evaluation --locked --offline -- -D warnings` | 退出 0 | `v3-verified-clippy.log` / `v3-verified-clippy-exit.txt` |
+| `cargo fmt --all -- --check` | 退出 0 | `v3-verified-fmt.log` / `v3-verified-fmt-exit.txt` |
+
+日志均在 `E:\Project\Soul-checks-20261019-core-plan\`；沿 V1 的 Rust 1.83 / Windows MSVC / 既有静态 OpenSSL 环境，实际调用与退出记录补入 `environment.json` 的 `final_verification`。50 项合成适配由 V1 21、V2 10、V3 19 项组成；重复运行不累加。独立规格/质量 review 及针对性修复复审已完成，无阻塞或非阻塞缺陷发现；最终 reviewer 只读核验原始红绿输出与必要上下游，未自跑构建。side 索引安全有前置 `.get(side)` 静态证据，未另设专门越界运行例。
+
+本片只交付合成适配与开发验证：真人样本仍为 0，未运行真实外部模型、原生 UI、Linux G-L、完整 G-W/G-M 或安装卸载；未改变正式 Goal 1/Q2/U7 的关闭状态。DATA L1 仅完成设计收敛，生产恢复器仍不在本轮范围内。

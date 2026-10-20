@@ -4,7 +4,7 @@
 pub enum MissingReason {
     NotStarted,
     ConsentWithdrawnBeforeGeneration,
-    #[allow(dead_code)] // Registered missing reason; V2 fills failed brief construction.
+    DeadlineReached,
     BriefBuildFailed,
     NotGenerated,
     NotRated,
@@ -101,7 +101,6 @@ pub enum PairCompletion {
     Incomplete,
     Aborted,
     SystemFailure,
-    #[allow(dead_code)] // Retain registered safety outcomes, outside P1–P8 arithmetic.
     SafetyStop,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -158,10 +157,8 @@ pub enum DraftSource {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DegradedReason {
     None,
-    #[allow(dead_code)] // Actual reply degradation distinctions are filled by V3.
     ReplyUnreadable,
     ReplyEmpty,
-    #[allow(dead_code)]
     ReplyClinical,
     NotGenerated,
 }
@@ -170,7 +167,6 @@ pub enum CandidateCompletion {
     Completed,
     Incomplete,
     SystemFailure,
-    #[allow(dead_code)] // Keep safety termination distinct from a system failure.
     SafetyStop,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -178,22 +174,19 @@ pub enum FailureCode {
     None,
     NotStarted,
     ConsentWithdrawnBeforeGeneration,
+    DeadlineReached,
     BriefBuildFailed,
     TransportFailure,
-    #[allow(dead_code)] // V3 records actual refusal/response/safety outcomes here.
+    EndpointNotConfigured,
+    OriginRejected,
     ApprovalRejected,
-    #[allow(dead_code)]
     ResponseRejected,
-    #[allow(dead_code)]
     SafetyStop,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RefusalCode {
-    #[allow(dead_code)] // Refusal metadata is registered but absent in P1–P8.
     Approval,
-    #[allow(dead_code)]
     Origin,
-    #[allow(dead_code)]
     Safety,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

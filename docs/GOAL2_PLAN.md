@@ -400,21 +400,22 @@ if ($LASTEXITCODE -ne 0) { throw 'G-W 失败，不能写通过' }
 
 ### VAL-01 评测适配交接（非 Q2 关闭包）
 
-**状态：D101 合成质量预备实施已获授权；正式阶段仍等待 Goal 1 / Q2-00。** 本节不是 Q2-06，不改变 Q2-00–05 的关闭条件，也不启动 VAL-02、VAL-03 或真实用户试验。
+**状态：D101 的 V1–V3 合成适配已实现并通过开发验证；正式阶段仍等待 Goal 1 / Q2-00。** 本节不是 Q2-06，不改变 Q2-00–05 的关闭条件，也不启动 VAL-02、VAL-03 或真实用户试验。
 
-**Consume → produce：** 未来只消费 [ROADMAP 7.2 的三类任务、A/B/C、反馈字段和指标登记](ROADMAP.md#72-首轮个性化试验)，以及现有 `ProfileBrief::neutral()`、`ProfileBrief::from_view()`、手工 brief Rust API、本机模板和两条 endpoint 路径；产出合成评测适配、预注册配对槽位和可回放的脱敏汇总。Q2-01 只作为 brief 接线/连续性准备证据，不作为效用结果。
+**Consume → produce：** 只消费 [ROADMAP 7.2 的三类任务、A/B/C、反馈字段和指标登记](ROADMAP.md#72-首轮个性化试验)，以及现有 `ProfileBrief::neutral()`、`ProfileBrief::from_view()`、手工 brief Rust API、本机模板和两条 endpoint 路径；产出合成评测适配、预注册配对槽位和可回放的脱敏汇总。Q2-01 只作为 brief 接线/连续性准备证据，不作为效用结果。
 
 **进入条件：** D101 允许 V1–V3 测试专用合成适配提前推进。正式阶段仍要求 Goal 1 以 ACCEPTANCE/STATUS 实际关闭、Q2-00 签发可比较实现输入和可用构建。真实作者或志愿者阶段另需主动产品评测同意、开始/截止时间、撤回说明和逐次 endpoint 授权；任一真实阶段条件缺失保持 NOT STARTED。
 
 **允许范围：** 先做覆盖差集，再由协调者按[实施拆分](design/2026-10-19-val-01-evaluation-design.md)认领 `crates/soulcore/tests/val01_evaluation.rs` 和其子模块。D101 只允许测试/离线评测代码；不新增产品 UI、IPC、schema、产品表、遥测、研究导出、网络权限或新的 gate/baseline/hash。
 
-- [ ] 用合成输入证明 A/B/C 实际 brief 被构造；B 构造失败必须显式失败，不能沿用 Session 的 neutral 回退仍标 B；T1 voice 相同或运行条件不一致时，Pair 的 `comparability_status` 必须记录 `not_comparable`。
-- [ ] 分别覆盖 T1 本机语气骨架、T2 默认占位端点、T3 一次性原文端点；loopback 只验证适配和字段口径，不填写真人偏好。
-- [ ] 固定 AB/AC/BC 槽位、左右 variant/种子、任务类型、模型/版本和缺失规则；能够从 Pair/Candidate 字段（含 `comparability_status`）重算 assigned→started→generated→rated→completed 漏斗及各指标分母，并从匿名单参与者 Run 的 `consent_state` 单列 withdrawn 数量。
-- [ ] 证明拒绝、降级、未配置 endpoint、审批不匹配和安全暂停不会被计成正常端点胜负；原始 prompt、候选正文和编辑后正文不进入仓库回执。
-- [ ] 按第 6 节回执字段记录实际命令、退出码、合成样本数、未跑项、数据边界和独立审查；真实试验开始前另写匿名/汇总 consent 回执，只记录 `consent_state`、开始/截止日期和撤回数量，不保存姓名、签名或原始同意文本。该回执不是 gate。
+- [x] 用合成输入证明 A/B/C 实际 brief 被构造；B 构造失败必须显式失败，不能沿用 Session 的 neutral 回退仍标 B；T1 voice 相同或运行条件不一致时，Pair 的 `comparability_status` 必须记录 `not_comparable`。适配器另在准备前拒绝 endpoint 条件漂移，不生成异端点配对。
+- [x] 分别覆盖 T1 本机语气骨架、T2 默认占位端点、T3 一次性原文端点；loopback 只验证适配和字段口径，不填写真人偏好。
+- [x] 固定 AB/AC/BC 槽位、左右 variant/种子、任务类型、模型/版本和缺失规则；能够从 Pair/Candidate 字段（含 `comparability_status`）重算 assigned→started→generated→rated→completed 漏斗及各指标分母，并从匿名单参与者 Run 的 `consent_state` 单列 withdrawn 数量。
+- [x] 证明拒绝、降级、未配置 endpoint、审批不匹配和安全暂停不会被计成正常端点胜负；原始 prompt、候选正文和编辑后正文不进入仓库回执。
+- [x] 按第 6 节回执字段记录实际命令、退出码、合成样本数、未跑项、数据边界和独立审查，见设计文档的 V1–V3 实施回执。
+- [ ] 真实试验开始前另写匿名/汇总 consent 回执，只记录 `consent_state`、开始/截止日期和撤回数量，不保存姓名、签名或原始同意文本。该回执不是 gate，当前真实试验仍未启动。
 
-**当前验证：实施准备，尚未运行适配测试。** 实际分片结果续写于设计文档和 STATUS；历史设计不作为执行证据。若无法保持条件可比、盲法或最小数据边界，状态写 BLOCKED/NOT RUN，不通过改产品功能或扩大数据采集绕过。
+**当前验证：2026-10-20 合成适配 50 项与既有回归 34 项通过，严格定向 Clippy、根格式退出 0。** 实际分片、独立审查与命令见[实施回执](design/2026-10-19-val-01-evaluation-design.md#v3-实施与验证2026-10-20)和 STATUS；历史设计不作为执行证据。仅合成/临时库/loopback，无真人效果或平台完整门禁结论。若无法保持条件可比、盲法或最小数据边界，状态写 BLOCKED/NOT RUN，不通过改产品功能或扩大数据采集绕过。
 
 **2026-10-19 设计细化（历史时点）：** 作者当时要求保留进入条件、先推进后续方案设计。据公开 API 形成[合成评测适配设计](design/2026-10-19-val-01-evaluation-design.md)，补充逐边候选算术反例、一致性检查和 records/aggregate → brief/T1 → T2/T3 桥接的实施顺序；源码可行性与设计完成独立只读评审。当时仅设计，未创建测试适配、未运行上述命令或真实试验；后续 D101 的实施状态见本节顶部及设计文档。
 

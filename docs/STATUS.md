@@ -2,17 +2,19 @@
 
 本文件是当前状态入口。历史见 [2026-09-28 快照](STATUS_HISTORY_20260928.md) 与[遗忘阶段 1–4 记录](SOUL_FORGET_PROGRESS_2026-09-29.md)。历史记录中的“尚未接入”描述其当时版本，不覆盖本页的新进展。
 
-## 核心计划分阶段推进（2026-10-19，D101）
+## 核心计划分阶段推进（2026-10-19–20，D101）
 
 作者要求核心优先，逐部分分析可行性、编码、独立 review 并本地提交；系统功能与安装验收继续后置。起点为干净 `5821f29`，相对 `b22b7be` 只有文档变化。独立只读核对现有 U7 flow、source/inflight forget、crash 与公开 IPC 遗忘轨迹及对应门禁原始证据，未发现本轮必须新增的核心差集，记 NO-CHANGE；不因此关闭 U7。
 
-D101 将 [VAL-01 的 V1–V3](design/2026-10-19-val-01-evaluation-design.md) 测试专用合成适配提前为独立质量预备，正式 Goal 1/Q2、真实试验与 DATA/MODEL 生产前置保持。编码前 `cargo test -p soulcore --test q2_continuity --test q2_recovery --test session_e1 --locked --offline` 实跑 34 通过、退出 0；日志在仓库外 `E:\Project\Soul-checks-20261019-core-plan\before.log` 与 `before-exit.txt`。使用 Rust 1.83、MSVC、既有静态 OpenSSL，未更改 target 路径或全局环境。适配仍待分片实现和验证，真实任务样本为 0。
+D101 将 [VAL-01 的 V1–V3](design/2026-10-19-val-01-evaluation-design.md) 测试专用合成适配提前为独立质量预备，正式 Goal 1/Q2、真实试验与 DATA/MODEL 生产前置保持。编码前 `cargo test -p soulcore --test q2_continuity --test q2_recovery --test session_e1 --locked --offline` 实跑 34 通过、退出 0；日志在仓库外 `E:\Project\Soul-checks-20261019-core-plan\before.log` 与 `before-exit.txt`。使用 Rust 1.83、MSVC、既有静态 OpenSSL，未更改 target 路径或全局环境。分片结果如下，真实任务样本为 0。
 
 [DATA L1 设计](design/2026-10-19-data-01-recovery-boundaries.md#69-本轮-l1-设计选择与下一片验收未经运行)已收敛为当前 `SoulMemory.summary_ref`、同持有期正常读取私有保留的原 ciphertext；首片拒绝非空来源/证据关联，不把普通读取成功当完整来源核验。列出相关变更拒绝、无关写入正控制、事务内复验及 N1–N3 待验边界，完成独立只读规格/质量审查及文档检查。仅设计，无新增恢复代码、实验或正式 DATA 实施；原两组有限实验的结论保持。
 
-VAL V1 已实现普通记录、注册槽位、一致性检查和分层汇总；独立 review 的失败/安全效用混入及注册未强制核对两项均实跑反例后修复、复审。定向适配 **21 项通过**，严格定向 Clippy、格式与 diff 检查退出 0，见[分片回执](design/2026-10-19-val-01-evaluation-design.md#v1-实施与验证2026-10-19)。V2/V3 尚待实施；不是个性化效果、平台门禁或正式 Goal 关闭证据。
+VAL V1 已实现普通记录、注册槽位、一致性检查和分层汇总；独立 review 的失败/安全效用混入及注册未强制核对两项均实跑反例后修复、复审。定向适配 **21 项通过**，严格定向 Clippy、格式与 diff 检查退出 0，提交 `068295c`，见[分片回执](design/2026-10-19-val-01-evaluation-design.md#v1-实施与验证2026-10-19)。不是个性化效果、平台门禁或正式 Goal 关闭证据。
 
-随后 V2 完成显式 A/B/C brief 与真实本机模板接线，准入共享注册/许可/时间和路径安全暂停检查；返回只记生成观察，不填人工评分。新增 10 项合并 V1 共 **31 项通过**，严格定向 Clippy、格式与 diff 检查退出 0，独立只读审查无阻塞。中间 1 项测试误设已按本机真实出口元数据修正，生产未改；见[V2 回执](design/2026-10-19-val-01-evaluation-design.md#v2-实施与验证2026-10-19)。V3 继续推进，真人样本仍为 0。
+随后 V2 完成显式 A/B/C brief 与真实本机模板接线，准入共享注册/许可/时间和路径安全暂停检查；返回只记生成观察，不填人工评分。新增 10 项合并 V1 共 **31 项通过**，严格定向 Clippy、格式与 diff 检查退出 0，独立只读审查无阻塞，提交 `8d872e3`。中间 1 项测试误设已按本机真实出口元数据修正，生产未改；见[V2 回执](design/2026-10-19-val-01-evaluation-design.md#v2-实施与验证2026-10-19)。
+
+V3 完成真实 DraftSession/PolicySession 的 T2/T3 loopback 接线与临时 SQLCipher/Session 桥接。独立 review 的不同 origin 可比较、重试及截止/撤回可覆盖失败记录问题均先实跑反例再修；已终止失败保持原记录，同一组会话的 T3→T2 恢复占位。最终 **50 项适配 + 34 项既有回归 = 84 通过**，严格定向 Clippy 与根格式退出 0，独立规格/质量审查和修复复审无未解决发现，完整命令见[V3 回执](design/2026-10-19-val-01-evaluation-design.md#v3-实施与验证2026-10-20)。日志在同目录 `v3-verified-*`。本轮 U7 核心差集核对、DATA L1 设计和 VAL 三片均已完成各自范围；未更改生产功能，未运行完整平台门禁或安装验收，不能据此宣称整个 Soul 路线、正式 Goal 1/Q2 或真人效果完成。
 
 ## 严格 Clippy 续验与等价整理（2026-10-19）
 
