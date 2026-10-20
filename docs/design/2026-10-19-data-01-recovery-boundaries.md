@@ -166,7 +166,7 @@ L1 暂只评估修复当前已引用的一个密文载荷，不恢复对象、�
 
 ### 6.5 最小未来合成试验与下一步
 
-完整矩阵未运行。第 6.6 节已先验证同 CK 的版本风险及原 nonce 的有限约束，并发删除仍未验证；没有实现公开恢复功能。测试内部可用临时 SQLCipher 的受控 SQL 构造损坏/候选，不能把测试 helper 描述为生产修复入口。
+完整矩阵未运行。第 6.6 节已先验证同 CK 的版本风险及原 nonce 的有限约束，第 6.8 节补充遗忘与载荷回填的两个串行提交顺序；实际并发协议仍未验证，没有实现公开恢复功能。测试内部可用临时 SQLCipher 的受控 SQL 构造损坏/候选，不能把测试 helper 描述为生产修复入口。
 
 | 试验 | Given / When | 期望与反例 |
 |---|---|---|
@@ -235,6 +235,25 @@ L1 暂只评估修复当前已引用的一个密文载荷，不恢复对象、�
 
 下一步只需在正式阶段允许后验证这个有限组合：正常读取建立先验、相关编辑/遗忘/撤回使其失效、提交时复验、重启拒旧及异步结果拒旧。第 6.6 节未覆盖这些结果；无法建立上述前提的具体请求保持拒绝，不为使设计变为 READY 新造 hash、schema、baseline 或 gate。
 
+### 6.8 实测：遗忘与载荷回填的两种提交顺序（2026-10-19）
+
+`[V-experiment]` 干净 `b22b7becdde0f558f8cbdf0a352291b4aed23bd4` 上，在两个 fresh 临时 SQLCipher 库分别执行 L1-d 的有限顺序控制。使用合成 TestKeyProvider、真实 Memory 创建/读取和既有 `soul_memory::forget_with_outcome`；该公开 caller 内部执行存储遗忘事务，再追加既有 `ForgetExecute` 审计。没有实验手写审计或生产恢复器。
+
+每条轨迹先创建目标及独立 Memory，确认两者可读；保存当前 summary 指针、原 nonce、归属和包装 CK，仅翻转目标 ciphertext 的一个字节，真实 Memory 读取精确返回对应 blob 的 `SealBroken`。通过另一 SQLCipher 连接的事务执行 `UPDATE sealed_blobs SET ciphertext=... WHERE blob_id=...`，不 upsert、不写 nonce、不补 CK。当前权威和正确候选来自已知合成 fixture，并非从未知真实故障推断。
+
+| 提交顺序 | 实际结果 |
+|---|---|
+| 先公开遗忘，再尝试回填原 ciphertext | 遗忘回执确认 1 Memory / 1 CK / 2 blobs，审计 `Recorded`；旧指针精确拒绝为 `ContentKeyDestroyed`；随后 UPDATE 为 **0 行** |
+| 先回填原 ciphertext，再公开遗忘 | UPDATE 为 **1 行**；原 nonce、blob 元数据、CK、完整 Memory 与审计保持，真实读取恢复成功；随后同一公开遗忘正常销毁 |
+
+两序结束及显式 drop 两个连接后重开，均检查：旧指针精确拒绝、目标 CK 缺失且有销毁标记、Memory 为 Forgotten、原 blob 和该 CK 下全部 sealed_blobs 均为零；独立 Memory 仍可读。原审计前缀保持，恰好增加一条既有 `ForgetExecute`（Allowed / ROUTINE / 精确 subject / items=1），链验证通过，重开后的审计逐项相同。
+
+实际命令：`cargo run --manifest-path E:\Project\Soul-checks-20261019-continuation\local-recovery-experiment\Cargo.toml --bin delete_order --target-dir E:\Project\Soul\target --locked --offline`。19:35:38–19:35:48（UTC−07:00）退出 0，**29 次布尔断言求值通过、2 条顺序完成**；日志另有两条完成标记，不把它们算成产品测试。源码与运行前后仓库状态均为同一 clean 候选；外部依赖沿用第 6.6 节对齐的锁，仓库锁未改。Windows / Rust 1.83、dev unoptimized、debug=0、incremental=0、jobs=4，复用既有静态 OpenSSL；在本候选完整 G-W 结束后串行执行。
+
+外部证据在同一 `local-recovery-experiment` 目录：`src/bin/delete_order.rs`、`delete-order-run.log`、`delete-order-result.json`，输出仅固定名称、布尔与计数。最终源码和运行证据已独立只读核验，无阻塞发现；再次核对外部锁与根锁，除实验自身外依赖包版本差集为空，不代表 feature 组合相同。
+
+本实验验证两个串行提交结果，并未同时运行两个事务，也没有实现生产修复的事务内指针/nonce/来源/许可复验。因此不是完整 L1-d、任意并发恢复或 DATA-02 通过。未检查 `outcome.cleanup`，不声称 WAL 物理清理完成；未知损坏准入、真实删除权威、取消/旧批准、进程崩溃、UI 旧结果及跨机均未验证。正式实施前置不变。
+
 ## 7. 决策清单
 
 这些是应交作者/主会话收敛的问题，不是实现者可以自行填入的默认值。
@@ -287,6 +306,6 @@ L1 暂只评估修复当前已引用的一个密文载荷，不恢复对象、�
 | P4 桌面入口 | 分离的本人备份/恢复预览、确认、取消与状态 | Tauri 注册/IPC 类型串行；React 独立限定路径 | R14 与真实 Windows 文件行为；根测试不能替代独立桌面 workspace |
 | P5 研究输出 | 单独研究许可与聚合导出设计、实现任务 | `research_preview`/schema/新导出路径另发任务，不能由恢复实现者顺手完成 | RES-01 张力已处理、产品允许落盘、R13；无许可继续仅预览 |
 
-初版进行了权威与源码可行性核查，后续第 6.6 节运行了外部有限设计实验；没有实施公开恢复/迁移或运行其完整验收，没有 DPAPI 跨机、真实数据/密钥读取或外部端点调用。源码事实、实测对照、逻辑反例与未来验收严格区分；文档结构和有限实验通过不证明恢复能力。
+初版进行了权威与源码可行性核查，后续第 6.6 / 6.8 节运行了外部有限设计实验；没有实施公开恢复/迁移或运行其完整验收，没有 DPAPI 跨机、真实数据/密钥读取或外部端点调用。源码事实、实测对照、逻辑反例与未来验收严格区分；文档结构和有限实验通过不证明恢复能力。
 
 下一步由主会话按作者授权收敛 L1 所需决定，范围外的跨机、整库与研究问题继续后置；再按正式阶段条件分配实施路径。在产品决定与前置满足前，保持 DESIGN_REQUIRED；本页不将设计评审记为 DATA-01 契约生效或 DATA-02 已实施。
