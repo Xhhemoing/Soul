@@ -169,3 +169,13 @@ U1–U6 均已实现并完成独立源码复审（REVIEWED），U7 当前环境�
 作者随后明确授权接管以上既有修改，复核后分阶段提交。本次先读实际 diff，由独立只读 reviewer 核对测试的正向控制、同库来源失效、真实 IPC、请求与接受审计和重启断言，无阻塞发现。主会话重新执行上表两条测试命令：核心 4 通过、独立 desktop IPC 68 通过，均退出 0；定向 `rustfmt --edition 2021 --check` 检查核心测试和 `ipc_roundtrip.rs`（含新增子模块），以及相关路径 `git diff --check` 均退出 0。重复执行不累计为新增测试。
 
 本次仍为 Windows / pwsh 7.6.5 / Rust 1.83.0，沿用上述仅进程内构建参数及已存在的 OpenSSL 静态库。新证据为 `E:\Project\Soul-checks-20261019-continuation\initial-core.log`、`initial-ipc.log` 与各自 `*-exit.txt`。以上测试和记录随本节提交；原 G-M 观察单独收录，不代签人工验收，不扩称新 G-W、真实效用、推送或合并。
+
+## U7：真实 HTTP 在途来源遗忘
+
+基于 `7814fe3`，独立规划复核定位原轨迹只覆盖发送前、execute 后/accept 前的差集。新增 `crates/soulcore/tests/unified_assistance_inflight_forget.rs`，沿用 D97 与现有 store 遗忘 API，不改生产接口或授权。
+
+真实 Session/SQLCipher 先成功起草作为正控制；第二个 loopback 服务收到完整 HTTP body 后通过 channel 通知，只有显式释放才回复。直接同库 Contact 遗忘在回复前完成，worker 完成 channel 仍空，普通新准备精确返回 Busy。释放后旧结果为 `PLAN_HASH_MISMATCH`，实际 `egress.request=2`、`draft.create=1`；槽恢复后可重新准备。经真实导入索引选择该联系人消息，核对 event body 与索引 CK 一致、遗忘前可读，遗忘后及重启后均精确拒绝该 CK；独立目标仍可读，独立未消费批准也不能跨重启使用。审计无合成正文。
+
+主会话实际执行 `cargo test -p soulcore --test unified_assistance_inflight_forget --test session_draft_work --test unified_assistance_source_forget --locked --offline`：**13 通过、0 失败，退出 0**，含新增 1、既有 12。环境沿用上节，证据为 `E:\Project\Soul-checks-20261019-continuation\inflight-forget-final.log` / `inflight-forget-final-exit.txt`。初轮 `inflight-forget.log` 退出 101：fixture 没有可选联系人标签，测试在构造 CK 控制时失败；修正测试选择后重跑，不称业务缺陷红绿修复。最终新文件 `rustfmt --edition 2021 --check` 退出 0，实际源码经独立只读复核无阻塞。
+
+同步依赖完整请求及显式响应 channel，不以 sleep 推测 HTTP 阶段；accept/read/release 均有界。成功路径 join worker；断言失败路径的部分 worker 可能短暂 detach，端点 Drop 释放响应并 join 服务线程。该验证不替代真实 WebView 旧正文清除、OS 通知、外部服务效用或完整平台门禁；没有修改生产逻辑、数据迁移、依赖锁和算法。
