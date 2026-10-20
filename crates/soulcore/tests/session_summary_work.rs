@@ -42,9 +42,15 @@ impl GateEndpoint {
                     Err(error) => panic!("test listener: {error}"),
                 }
             };
-            stream.set_read_timeout(Some(WAIT)).unwrap();
+            // Windows can carry the listener's nonblocking mode into accept.
+            // A read timeout does not switch that accepted socket to blocking.
+            stream.set_nonblocking(false).unwrap();
+            stream.set_write_timeout(Some(WAIT)).unwrap();
             let mut bytes = Vec::new();
             loop {
+                let remaining = until.saturating_duration_since(Instant::now());
+                assert!(!remaining.is_zero(), "complete HTTP request timed out");
+                stream.set_read_timeout(Some(remaining)).unwrap();
                 let mut buf = [0; 4096];
                 let count = stream.read(&mut buf).unwrap();
                 assert!(count > 0);
@@ -63,7 +69,9 @@ impl GateEndpoint {
                 }
             }
             seen_tx.send(()).unwrap();
-            let _ = go.recv();
+            if go.recv_timeout(WAIT).is_err() {
+                return;
+            }
             let body = serde_json::json!({"choices":[{"message":{"content":REPLY}}]}).to_string();
             let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
             let _ = stream.write_all(response.as_bytes());

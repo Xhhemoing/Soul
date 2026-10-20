@@ -26,6 +26,13 @@ struct GateEndpoint {
 impl GateEndpoint {
     fn start() -> Self {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        Self::from_listener(listener, None)
+    }
+
+    fn from_listener(
+        listener: TcpListener,
+        mut body_pending: Option<mpsc::SyncSender<()>>,
+    ) -> Self {
         let url = format!("http://{}", listener.local_addr().unwrap());
         listener.set_nonblocking(true).unwrap();
         let (seen_tx, received) = mpsc::channel();
@@ -44,9 +51,15 @@ impl GateEndpoint {
                     Err(error) => panic!("test listener: {error}"),
                 }
             };
-            stream.set_read_timeout(Some(WAIT)).unwrap();
+            // Windows can carry the listener's nonblocking mode into accept.
+            // A read timeout does not switch that accepted socket to blocking.
+            stream.set_nonblocking(false).unwrap();
+            stream.set_write_timeout(Some(WAIT)).unwrap();
             let mut bytes = Vec::new();
             loop {
+                let remaining = until.saturating_duration_since(Instant::now());
+                assert!(!remaining.is_zero(), "complete HTTP request timed out");
+                stream.set_read_timeout(Some(remaining)).unwrap();
                 let mut buf = [0; 4096];
                 let count = stream.read(&mut buf).unwrap();
                 assert!(count > 0);
@@ -62,10 +75,15 @@ impl GateEndpoint {
                     if bytes.len() >= at + 4 + length {
                         break;
                     }
+                    if let Some(observer) = body_pending.take() {
+                        let _ = observer.send(());
+                    }
                 }
             }
             seen_tx.send(()).unwrap();
-            let _ = go.recv();
+            if go.recv_timeout(WAIT).is_err() {
+                return;
+            }
             let body = serde_json::json!({"choices":[{"message":{"content":REPLY}}]}).to_string();
             let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
             let _ = stream.write_all(response.as_bytes());
@@ -93,6 +111,54 @@ impl Drop for GateEndpoint {
             let _ = worker.join();
         }
     }
+}
+
+#[test]
+fn gate_endpoint_waits_for_the_complete_body_on_an_accepted_connection() {
+    use std::net::TcpStream;
+
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+    client.set_write_timeout(Some(WAIT)).unwrap();
+    client.set_read_timeout(Some(WAIT)).unwrap();
+    // Queue the headers and half the body before accept. The next server read
+    // must wait for the controlled second segment, rather than depending on
+    // whether the production client happened to send everything in one write.
+    client
+        .write_all(b"POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 11\r\nConnection: close\r\n\r\nhello")
+        .unwrap();
+    let (pending_tx, pending_rx) = mpsc::sync_channel(1);
+    let mut endpoint = GateEndpoint::from_listener(listener, Some(pending_tx));
+    let pending = pending_rx.recv_timeout(WAIT);
+    let before = endpoint.received.recv_timeout(Duration::from_millis(100));
+    let withheld = matches!(before, Err(mpsc::RecvTimeoutError::Timeout));
+
+    // Finish and release even on the expected red path, then join before any
+    // assertion: a failed fixture regression must not leave a blocked server.
+    let sent = client.write_all(b" world");
+    let complete = if withheld {
+        endpoint.received.recv_timeout(WAIT)
+    } else {
+        Err(mpsc::RecvTimeoutError::Disconnected)
+    };
+    endpoint.respond();
+    let mut response = Vec::new();
+    let read = client.read_to_end(&mut response);
+    drop(client);
+    let server = endpoint.worker.take().unwrap().join();
+
+    pending.expect("server parsed headers while the body was incomplete");
+    assert!(
+        withheld,
+        "endpoint stopped or announced arrival before the complete body: {before:?}"
+    );
+    sent.expect("send the remaining request body");
+    complete.expect("complete body reaches the endpoint");
+    read.expect("bounded response read");
+    server.expect("server completes without a socket-read panic");
+    let response = String::from_utf8(response).unwrap();
+    assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+    assert!(response.contains(REPLY));
 }
 
 fn session(url: &str) -> (tempfile::TempDir, Session) {

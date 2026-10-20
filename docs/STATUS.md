@@ -10,6 +10,8 @@
 
 已完成独立只读源码与红绿日志复核，无阻塞发现，提交 `2e37a6e`。共享锁获取沿用阻塞式 OS 锁；既有 settle timeout 只限制空文件轮询，不承诺活写者永久持锁时的读取超时。随后该干净候选完整 G-W 的密钥套件 49 项通过，但后续 `session_draft_work` 合成端点读取返回 Windows WouldBlock，门禁停止，见[第二次失败记录](gates/20261019-2e37a6e-win.md)。独立 desktop 及后续阶段未运行；G-L 暂缓、系统 G-M 后置，Goal 1、正式 Goal 2 与 U7 未关闭。
 
+该第二处失败定位为合成端点接入流未明确切回 blocking。先新增“预连接、预写半段正文、完整前不得通知到达”的受控反例，实际得到 Windows 10035 / Disconnected，退出 101；随后在草稿、摘要、在途遗忘三个同模式夹具显式设置 blocking，草稿/摘要沿既有 WAIT 补齐总读取期限、响应等待与写超时。生产行为、原撤回/忙槽/来源失效/审计断言未改变。独立只读复核无阻塞；`cargo test -p soulcore --test session_draft_work --test session_summary_work --test unified_assistance_inflight_forget --locked --offline` **22 通过**（11+10+1）、退出 0，根格式/diff 检查通过。原始证据为同一仓库外目录的 `endpoint-body-red.log`、`endpoint-fixtures-green.log` 及退出码文件；新干净候选完整 G-W 待运行，局部绿不代替门禁。
+
 ## 后续方案设计（2026-10-19，实施未启动）
 
 按作者“保留门禁边界，先推进后续方案设计”的选择，完成 [VAL-01 合成评测适配设计](design/2026-10-19-val-01-evaluation-design.md)。基于当前公开 brief / DraftSession / policy API，独立只读复核可行性与逐边算术，明确先记录/汇总、再 brief/T1、最后 T2/T3 和真实 Session 桥接。未新增产品或测试适配源码，示例是合成手算期望，未测用户偏好。正式实施仍依赖 Goal 1 关闭与 Q2-00；G-L 暂缓、系统 G-M 后置与真实样本为 0 的边界不变。

@@ -57,6 +57,9 @@ impl HeldEndpoint {
                     Err(error) => panic!("loopback accept: {error}"),
                 }
             };
+            // Accept may inherit nonblocking mode on Windows; timeouts alone
+            // do not make a read wait for the rest of the HTTP body.
+            stream.set_nonblocking(false).unwrap();
             stream.set_write_timeout(Some(WAIT)).unwrap();
             let mut bytes = Vec::new();
             loop {
