@@ -48,3 +48,13 @@
 同步期间，另一会话续写了开放任务研究的运行、失败和未知费用记录，生产源码未变化；该研究结论以[所属设计](2026-10-22-open-task-flow.md)及其独立评审为准。本次只保存其已有源码与材料，没有自行调用模型、重算账本或为其补签研究验收。Goal 1、U7、正式 Goal 2、Wave 1 及 G-L/G-W/G-M 的原状态保持。完整 G-L 继续暂缓，完整 G-W/G-M、安装卸载和外部模型实验不属于本次同步验证。
 
 记录规则首次周整理到期日为 2026-10-29，本次尚未到期；历史存量未全面盘点的限制保留。本次不迁移或删除仓库外原始证据。
+
+## 实际提交与推送结果
+
+- 暂存范围最终为 226 个路径，Git 识别文档迁移后源码快照共 221 个文件改动。暂存后无剩余未暂存或未跟踪文件；修后 `git diff --cached --check` 退出 0。
+- 源码提交：`bf04030242ab84ec1e3c84f53d576066d435adbb`，`feat: save research and task context work`；`git commit` 退出 0。
+- `git push origin HEAD:refs/heads/codex/soul-rebuild-20261019` 退出 0，远端从 `b0e2334` 前进到 `bf04030`。无 force、无 main 合并、无 tag 或 release。
+- `git ls-remote origin refs/heads/codex/soul-rebuild-20261019` 退出 0，回读完整 SHA 与本地源码提交一致；随后 `git status --short` 为空。
+- `commit.log`、`source-commit.txt`、`push.log`、`source-remote-verification.txt`、`git-actions.txt` 保存上述实际结果。本节和 STATUS 的后续文档回执单独提交，最后一次提交/推送及 SHA 回读保存在同目录的 `receipt-commit.log`、`receipt-push.log`、`final-verification.txt`；这些本机日志不随仓库上传。
+
+本次已实现的是 GitHub 开发分支同步。根全套检查因编译内存失败未完成，前端全套有一次失败且单文件复跑通过；不能据此称完整测试全绿。没有运行 production build、完整 Clippy/既有审计全集或 G-L/G-W/G-M，也没有新增外部模型实验。
