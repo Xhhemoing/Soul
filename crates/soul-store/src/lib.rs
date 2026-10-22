@@ -36,8 +36,13 @@ pub mod keys;
 pub mod preparation;
 pub mod reminders;
 pub mod research_preview;
+pub mod research_retention;
 pub mod sql;
 pub mod store;
+
+#[cfg(any(test, feature = "test-repair"))]
+#[doc(hidden)]
+pub mod local_ciphertext_repair;
 
 pub use audit::{AuditLink, ChainError, GENESIS_PREV_HASH};
 pub use keys::{DpapiKeyProvider, KeyError, KeyProvider, KeyResult, SecretKey, TestKeyProvider};

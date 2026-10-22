@@ -25,12 +25,14 @@ soul-memory = { workspace = true }
 soul-collect = { workspace = true }
 soul-draft = { workspace = true }
 soul-fileplan = { workspace = true }
+soul-local-files = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+soul-store = { workspace = true, features = ["test-repair"] }
 soul-testkit = { workspace = true }
 tempfile = { workspace = true }
 # AC-24 through the product session, which needs the store's `fail_point!`

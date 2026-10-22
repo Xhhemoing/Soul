@@ -23,6 +23,11 @@ use tauri::{Manager, WebviewWindowBuilder};
 
 #[path = "ipc_roundtrip/assistance_forget_flow.rs"]
 mod assistance_forget_flow;
+#[path = "ipc_roundtrip/communication_goal.rs"]
+mod communication_goal;
+#[cfg(windows)]
+#[path = "ipc_roundtrip/research_retention.rs"]
+mod research_retention;
 
 /// A directory no installation uses.
 ///
@@ -3785,6 +3790,70 @@ fn select_context_memory(shell: &Shell, id: &Value) -> Value {
     shell.invoke("prepare_memory_context", json!({ "request": {
         "candidate_ids": [id], "query": null, "memory_type": "preference", "time_specific": false
     }})).expect("the explicit candidate becomes a local context")
+}
+
+#[test]
+fn task_context_diagnostics_cross_real_ipc_without_releasing_unknown_contexts() {
+    let shell = Shell::on(scratch());
+    let memory = shell.invoke("create_memory", json!({"memory": {
+        "memory_type": "preference", "title": "合成会议", "summary": "时间：九点\n地点：北门"
+    }})).unwrap();
+    let id = memory["memory_id"].clone();
+    let matched = shell
+        .invoke(
+            "prepare_task_context",
+            json!({"request": {
+                "candidate_ids": [id], "task": "周五会议\n需要确认：时间、地点"
+            }}),
+        )
+        .unwrap();
+    assert_eq!(matched["assessment"]["status"], json!("matched"));
+    assert_eq!(matched["assessment"]["question"], Value::Null);
+    assert_eq!(
+        matched["assessment"]["requirements"][0]["source_ids"],
+        json!([id])
+    );
+    let context = matched["memory"]["context_id"].clone();
+    assert!(context.is_string());
+    let clarified = shell
+        .invoke(
+            "prepare_task_context",
+            json!({"request": {
+                "candidate_ids": [id], "task": "需要确认：联系人"
+            }}),
+        )
+        .unwrap();
+    assert_eq!(clarified["assessment"]["status"], json!("clarify"));
+    assert!(clarified["assessment"]["question"]
+        .as_str()
+        .unwrap()
+        .contains("联系人"));
+    assert_eq!(clarified["memory"]["context_id"], Value::Null);
+    assert!(shell
+        .invoke(
+            "draft_reply_with_memory",
+            json!({"pasted": "synthetic", "contextId": context})
+        )
+        .is_err());
+    let unknown = shell
+        .invoke(
+            "prepare_task_context",
+            json!({"request": {
+                "candidate_ids": [id], "task": "帮我确认安排"
+            }}),
+        )
+        .unwrap();
+    assert_eq!(unknown["assessment"]["status"], json!("unknown"));
+    assert_eq!(unknown["memory"]["context_id"], Value::Null);
+    assert_eq!(unknown["assessment"]["question"], Value::Null);
+    assert!(shell
+        .invoke(
+            "prepare_task_context",
+            json!({"request": {
+                "candidate_ids": [id], "task": "需要确认：时间", "owner_ids": [id]
+            }})
+        )
+        .is_err());
 }
 
 fn assert_jsonl_prose_absent(answer: &Value, text: &str) {

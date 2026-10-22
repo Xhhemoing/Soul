@@ -123,6 +123,47 @@ fn summarize(store: &FakeStore) -> (PersonSummary, Vec<SoulEvidence>) {
     (summary, resolved)
 }
 
+#[test]
+fn malformed_tagged_evidence_refuses_summary_even_after_a_valid_latest_match() {
+    for damaged_first in [false, true] {
+        let store = store_with_one_partner();
+        let graph = soul_graph::load(&store).unwrap();
+        let edge = graph.edges_for(peer())[0];
+        let mut resolved = soul_graph::resolve_evidence(&store, edge).unwrap();
+        // 105 and 106 share the latest timestamp. Keep 105 valid and damage
+        // 101, then deliberately put the valid match ahead of/after damage.
+        let damaged = resolved
+            .iter_mut()
+            .find(|row| row.evidence_id == id("101"))
+            .unwrap();
+        damaged.source_refs[0]
+            .as_object_mut()
+            .unwrap()
+            .remove("occurred_at");
+        resolved.sort_by_key(|row| {
+            if row.evidence_id == id("101") {
+                if damaged_first {
+                    0
+                } else {
+                    1
+                }
+            } else if row.evidence_id == id("105") {
+                if damaged_first {
+                    1
+                } else {
+                    0
+                }
+            } else {
+                2
+            }
+        });
+        assert!(
+            analysis::summarize_person(&graph, peer(), &resolved).is_err(),
+            "every cited tagged source must be validated before selecting a latest match"
+        );
+    }
+}
+
 /// A generator that answers with whatever it was told to, without a socket.
 ///
 /// Used for the rephrasing path only: what reaches the wire is covered in
@@ -313,6 +354,7 @@ fn every_sentence_in_the_summary_is_one_the_frozen_renderer_wrote() {
         .iter()
         .find(|row| {
             soul_graph::interaction::interactions_in(row)
+                .expect("valid fixture")
                 .iter()
                 .any(|seen| {
                     seen.occurred_at.as_str() == edge.tie_strength.last_contact_utc.as_str()

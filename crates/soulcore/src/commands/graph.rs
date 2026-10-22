@@ -12,6 +12,8 @@
 //! opens it — so what the interface can draw is who was talked to, how often,
 //! and which evidence rows say so.
 
+use std::collections::{btree_map::Entry, BTreeMap};
+
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -22,6 +24,7 @@ use soul_schema::common::{Sha256Hex, SupportedBand};
 use soul_schema::evidence::SoulEvidence;
 use soul_schema::memory::ForgetState;
 use soul_store::SqlCipherStore;
+use soul_store_api::ProfileStore;
 
 /// 工作假设，非临床结论. Re-exported rather than copied so the desktop shell and
 /// its tests read the same constant `soul-policy`'s denylist tests hold.
@@ -143,8 +146,43 @@ pub fn evidence_for(
 pub fn people_view(store: &SqlCipherStore) -> Result<PeopleGraphView, GraphError> {
     let graph = load(store)?;
     let mut ties = Vec::with_capacity(graph.edges.len());
+    // Inspect only request UUIDs. Sorting this copy does not change the order
+    // in which evidence documents are read or failures are returned.
+    let repeated = {
+        let mut ids: Vec<Uuid> = graph
+            .edges
+            .iter()
+            .flat_map(|edge| edge.evidence_ids.iter().copied())
+            .collect();
+        ids.sort_unstable();
+        let mut repeated = Vec::new();
+        for pair in ids.windows(2) {
+            if pair[0] == pair[1] && repeated.last() != Some(&pair[0]) {
+                repeated.push(pair[0]);
+            }
+        }
+        repeated
+    };
+    // Successful metadata is shared only within this read. Keys are requested
+    // UUIDs, even if a damaged stored document carries a different evidence id.
+    let mut metadata: BTreeMap<Uuid, EvidenceRowView> = BTreeMap::new();
     for edge in &graph.edges {
-        ties.push(TieEdgeView::of(edge, &edge_evidence(store, edge)?));
+        let mut evidence = Vec::with_capacity(edge.evidence_ids.len());
+        for evidence_id in &edge.evidence_ids {
+            if repeated.binary_search(evidence_id).is_err() {
+                evidence.push(EvidenceRowView::of(&store.get_evidence(*evidence_id)?));
+                continue;
+            }
+            let row = match metadata.entry(*evidence_id) {
+                Entry::Occupied(entry) => entry.into_mut(),
+                Entry::Vacant(entry) => {
+                    entry.insert(EvidenceRowView::of(&store.get_evidence(*evidence_id)?))
+                }
+            };
+            // Reused ids still occupy every original slot, in the same order.
+            evidence.push(row.clone());
+        }
+        ties.push(TieEdgeView::of(edge, evidence));
     }
     Ok(PeopleGraphView::of(&graph, ties))
 }
@@ -269,7 +307,7 @@ pub struct TieEdgeView {
 }
 
 impl TieEdgeView {
-    fn of(edge: &TieEdge, evidence: &[SoulEvidence]) -> TieEdgeView {
+    fn of(edge: &TieEdge, evidence: Vec<EvidenceRowView>) -> TieEdgeView {
         TieEdgeView {
             relationship_id: edge.relationship_id.to_string(),
             from_contact_id: edge.from_contact_id.to_string(),
@@ -300,7 +338,7 @@ impl TieEdgeView {
             first_contact_utc: edge.tie_strength.first_contact_utc.as_str().to_owned(),
             last_contact_utc: edge.tie_strength.last_contact_utc.as_str().to_owned(),
             local_only: edge.egress_scope == soul_schema::relationship::EgressScope::LocalOnly,
-            evidence: evidence.iter().map(EvidenceRowView::of).collect(),
+            evidence,
         }
     }
 }

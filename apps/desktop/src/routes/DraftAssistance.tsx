@@ -40,7 +40,7 @@ export function DraftAssistance({ selection, context, memory, insight, busy, has
   };
   return <section className="panel"><h2>本次辅助事项</h2>
     <p>事项 {selection.item_id}。请核对当前目标与参考材料；尚未授权端点使用。</p>
-    <p><a href={assistanceHash(selection.item_id)}>打开事项的当前版本</a>。目标完成、取消、改期或来源变化后，旧准备不能继续使用。</p>
+    <p><a href={assistanceHash(selection.item_id)}>打开事项的当前版本</a>。在事项页编辑目标会修改已保存目标。目标编辑、完成、取消、改期或来源变化后，旧准备不能继续使用。</p>
     <button type="button" disabled={busy || hasQuote} onClick={prepare}>核对并准备</button>
     <button type="button" disabled={busy} onClick={() => { if (owns()) draftAssistanceSelection.clear(); }}>清除事项，使用普通起草</button>
     {error === null ? null : <p role="alert">{error}</p>}
@@ -54,6 +54,16 @@ export function DraftAssistance({ selection, context, memory, insight, busy, has
       </label>)}
     </>}
     {insight === null ? null : <><InsightReferences reference={insight.reference} />
+      {insight.goal_preview === null ? <p>本次没有可纳入的本人目标正文。</p> : <>
+        <MemoryReferences preview={insight.goal_preview} />
+        {insight.goal_preview.selected.length === 1 && insight.goal_preview.selected[0]?.privacy_class === "owner" ? <label>
+          <input type="checkbox" checked={insight.include_goal} disabled={busy || hasQuote || insight.context_id === null} onChange={(event) => {
+            if (!owns() || getHasQuote() || draftLane.snapshot().busy || insight.context_id === null) return;
+            onInsight({ ...insight, include_goal: event.target.checked });
+          }} />本次另行允许把这条本人目标的脱敏节选提供给端点（仍需最终确认）
+        </label> : <p>此目标当前不可纳入端点材料，正文仅供本地核对；匿名计数可独立选择。</p>}
+        {insight.include_goal ? null : <p>未勾选时目标正文保持本地，不随计数或粘贴原文的许可提供给端点。</p>}
+      </>}
       <label><input type="checkbox" checked={insight.include_counts} disabled={busy || hasQuote || insight.context_id === null} onChange={(event) => {
         if (!owns() || getHasQuote() || draftLane.snapshot().busy || insight.context_id === null) return;
         onInsight({ ...insight, include_counts: event.target.checked });

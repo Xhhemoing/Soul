@@ -2,11 +2,10 @@
  * 研究预览. AC-20: what the research track would see, on screen and nowhere
  * else.
  *
- * There is no button on this page, and that is the whole design. v0.1 research
- * is preview-only, so the screen has nothing to save with: `core.ts` names
- * every command the shell has and none of them writes an export. The two
- * promises underneath are stronger than a missing button, though, and both are
- * checked on the Rust side rather than asserted here. `written_to_disk` is
+ * The original preview stays read-only. D107 adds a separate explicitly
+ * confirmed activity-retention panel, with its own request and lifecycle.
+ * The preview promises are checked on the Rust side rather than asserted
+ * here. `written_to_disk` is
  * typed as the literal `false` because `preview_manifest` is the only
  * constructor and it sets the field itself; `third_party_rows` is typed as the
  * literal `0` because `ZeroThirdPartyRows` refuses to deserialize anything
@@ -21,6 +20,7 @@ import { useEffect, useState } from "react";
 
 import { researchPreview, type Refusal, type ResearchPreview, type ResearchRow } from "../core";
 import { asRefusal, Refused } from "../refusal";
+import { ResearchSave } from "./ResearchSave";
 
 /** The six columns `ExportField` allows, in words. */
 const FIELD: Record<string, string> = {
@@ -48,6 +48,15 @@ function cell(value: string | number | null): string {
 }
 
 export function Research(): React.JSX.Element {
+  return (
+    <>
+      <div data-testid="research-read-only"><ResearchPreviewPanel /></div>
+      <ResearchSave />
+    </>
+  );
+}
+
+function ResearchPreviewPanel(): React.JSX.Element {
   const [preview, setPreview] = useState<ResearchPreview | null>(null);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
 
@@ -122,7 +131,7 @@ export function Research(): React.JSX.Element {
         <h2 id="research-table-heading">行</h2>
         {/*
           An empty table says why the query came back empty and nothing more.
-          This page only calls `research_preview`, so it cannot know whether
+          This preview only calls `research_preview`, so it cannot know whether
           collection is running or whether anything was ever imported;
           `candidate_rows_total` is the one number that separates "there was
           nothing to aggregate" from "everything found was excluded". Which

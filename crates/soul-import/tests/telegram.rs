@@ -280,6 +280,58 @@ fn a_message_without_a_unix_timestamp_is_refused_rather_than_guessed_at() {
     assert_eq!(failure.defects.len(), 1, "only that one message is wrong");
 }
 
+#[test]
+fn civil_date_missing_or_wrong_type_is_refused_without_echoing_values() {
+    const MARKER: &str = "synthetic-private-date-marker";
+    let malformed = [
+        None,
+        Some(serde_json::Value::Null),
+        Some(serde_json::json!(42)),
+        Some(serde_json::json!(true)),
+        Some(serde_json::json!([MARKER])),
+        Some(serde_json::json!({"private": MARKER})),
+        Some(serde_json::json!(MARKER)),
+    ];
+    for (case, date) in malformed.into_iter().enumerate() {
+        let mut document = basic();
+        let message = document["chats"]["list"][0]["messages"][0]
+            .as_object_mut()
+            .unwrap();
+        message.insert(
+            "text".into(),
+            serde_json::json!("synthetic-private-body-marker"),
+        );
+        match date {
+            Some(value) => {
+                message.insert("date".into(), value);
+            }
+            None => {
+                message.remove("date");
+            }
+        }
+        let failure = match soul_import::telegram::parse(&document) {
+            Err(failure) => failure,
+            Ok(_) => panic!("malformed civil date case {case} was accepted"),
+        };
+        assert!(failure.mentions_field("date"));
+        assert_eq!(failure.defects.len(), 1);
+        let display = failure.to_string();
+        assert!(!display.contains(MARKER));
+        assert!(!display.contains("synthetic-private-body-marker"));
+    }
+}
+
+#[test]
+fn valid_civil_date_does_not_override_the_authoritative_unix_instant() {
+    let mut document = basic();
+    document["chats"]["list"][0]["messages"][0]["date"] = serde_json::json!("2024-02-29T23:59:59");
+    let staged = soul_import::telegram::parse(&document).expect("valid civil date");
+    assert_eq!(
+        staged.messages[0].occurred_at.as_str(),
+        "2026-08-21T09:12:00Z"
+    );
+}
+
 /// AC-25's import channel, on the format that arrives in pieces.
 ///
 /// Telegram cuts a `text` into runs wherever an entity begins, so a sentence
@@ -518,7 +570,7 @@ fn an_owner_group_message_does_not_fan_out_to_historical_speakers() {
         .list_evidence()
         .expect("evidence")
         .iter()
-        .flat_map(interaction::interactions_in)
+        .flat_map(|row| interaction::interactions_in(row).expect("valid synthetic interaction"))
         .collect();
     assert_eq!(
         observations

@@ -83,6 +83,7 @@ pub fn configure<R: tauri::Runtime>(
             commands::recompute_local_insight,
             commands::import_recovery_state,
             commands::prepare_memory_context,
+            commands::prepare_task_context,
             commands::prepare_insight_context,
             commands::evidence_sources,
             commands::read_evidence_event,
@@ -131,6 +132,9 @@ pub fn configure<R: tauri::Runtime>(
             commands::forget_memory,
             commands::retry_forget_cleanup,
             commands::research_preview,
+            commands::prepare_research_save,
+            commands::confirm_research_save,
+            commands::cancel_research_save,
             commands::audit_chain,
             commands::collect_status,
             commands::grant_collect_consent,
@@ -183,9 +187,8 @@ pub fn run() {
             move |item| {
                 if let Some(window) = handle.get_webview_window("main") {
                     // `item` is a typed UUID, never source text or an external URL.
-                    let _ = window.eval(&format!(
-                        "window.location.hash = '#/assistance?item={item}'"
-                    ));
+                    let _ =
+                        window.eval(format!("window.location.hash = '#/assistance?item={item}'"));
                 }
                 tray::reveal_main_window(&handle);
             },

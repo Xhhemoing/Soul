@@ -186,7 +186,7 @@ fn observations(
     if row.source_refs.len() > MAX_SOURCE_REFS {
         return Err(too_large());
     }
-    let refs = interaction::interactions_in(&row);
+    let refs = interaction::interactions_in(&row).map_err(|_| unavailable())?;
     if refs.is_empty() || refs.len() != row.source_refs.len() {
         return Err(unavailable());
     }
@@ -315,7 +315,7 @@ fn provenance(
         if row.kind != EvidenceKind::Message {
             continue;
         }
-        let refs = interaction::interactions_in(&row);
+        let refs = interaction::interactions_in(&row).map_err(|_| unavailable())?;
         if refs.len() != row.source_refs.len() {
             return Err(unavailable());
         }

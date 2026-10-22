@@ -636,6 +636,7 @@ export const COMMANDS = {
   confirmImport: "confirm_import",
   importRecoveryState: "import_recovery_state",
   prepareMemoryContext: "prepare_memory_context",
+  prepareTaskContext: "prepare_task_context",
   prepareInsightContext: "prepare_insight_context",
   evidenceSources: "evidence_sources",
   readEvidenceEvent: "read_evidence_event",
@@ -704,6 +705,9 @@ export const COMMANDS = {
   forgetMemory: "forget_memory",
   retryForgetCleanup: "retry_forget_cleanup",
   researchPreview: "research_preview",
+  prepareResearchSave: "prepare_research_save",
+  confirmResearchSave: "confirm_research_save",
+  cancelResearchSave: "cancel_research_save",
   auditChain: "audit_chain",
   collectStatus: "collect_status",
   grantCollectConsent: "grant_collect_consent",
@@ -724,6 +728,33 @@ export interface MemorySelectionPreview {
 export interface MemoryContextView { readonly context_id: string | null; readonly preview: MemorySelectionPreview }
 export interface MemoryContextRequest {
   readonly candidate_ids: readonly string[]; readonly query: string | null; readonly memory_type: string | null; readonly time_specific: boolean;
+}
+export interface TaskContextRequest { readonly candidate_ids: readonly string[]; readonly task: string }
+export interface TaskAssessment {
+  readonly status: "matched" | "clarify" | "unknown" | "budget_limited";
+  readonly requirements: readonly { readonly field: string; readonly status: "matched" | "missing" | "conflict" | "unknown"; readonly source_ids: readonly string[] }[];
+  readonly supplemented_ids: readonly string[]; readonly question: string | null; readonly notice: string;
+}
+export interface TaskContextView { readonly memory: MemoryContextView; readonly assessment: TaskAssessment }
+
+/** Local task checking uses the same source revision and explicit candidate boundary. */
+export async function prepareTaskContext(request: TaskContextRequest): Promise<TaskContextView> {
+  const captured = { candidate_ids: [...request.candidate_ids], task: request.task };
+  invalidateDraftSource();
+  const value = await currentDraftResult<TaskContextView>(COMMANDS.prepareTaskContext, { request: captured });
+  const allowed = new Set(captured.candidate_ids);
+  const selected = new Set(value.memory.preview.selected.map((entry) => entry.memory_id));
+  if (value.memory.preview.selected.some((entry) => !allowed.has(entry.memory_id) || entry.citation.memory_id !== entry.memory_id)
+    || value.memory.preview.excluded.some((entry) => !allowed.has(entry.memory_id))
+    || value.assessment.requirements.some((need) => need.source_ids.some((id) => !allowed.has(id)))
+    || value.assessment.supplemented_ids.some((id) => !selected.has(id))
+    || (value.assessment.status !== "matched" && value.memory.context_id !== null)
+    || (value.assessment.status === "matched" && (value.memory.context_id === null || value.memory.preview.outcome !== "context"
+      || value.assessment.requirements.length === 0 || value.assessment.question !== null
+      || value.assessment.requirements.some((need) => need.status !== "matched" || !need.source_ids.some((id) => selected.has(id)))))) {
+    throw new Error("任务核对返回的范围或状态不符，请重新核对。");
+  }
+  return value;
 }
 export interface MemoryDraftValue { readonly draft: Draft; readonly context: MemorySelectionPreview }
 export interface MemoryDraftPlan {
@@ -784,8 +815,9 @@ export interface InsightReference {
 export interface InsightContextView { readonly context_id: string; readonly reference: InsightReference }
 export interface InsightDraftValue { readonly draft: Draft; readonly reference: InsightReference }
 export interface InsightDraftPlan {
-  readonly prepared: { readonly plan: E1DraftPlan; readonly encoded_bytes: number; readonly body_preview: string; readonly includes_counts: boolean };
+  readonly prepared: { readonly plan: E1DraftPlan; readonly encoded_bytes: number; readonly body_preview: string; readonly includes_counts: boolean; readonly includes_goal: boolean };
   readonly reference: InsightReference;
+  readonly goal_preview: MemorySelectionPreview | null;
 }
 export function prepareInsightContext(request: InsightContextRequest): Promise<InsightContextView> {
   invalidateDraftSource();
@@ -794,8 +826,8 @@ export function prepareInsightContext(request: InsightContextRequest): Promise<I
 export function localDraftWithInsight(pasted: string, contextId: string): Promise<InsightDraftValue> {
   return currentDraftResult(COMMANDS.localDraftWithInsight, { pasted, contextId });
 }
-export function prepareDraftWithInsight(pasted: string, contextId: string, includeCounts = false, includeOriginal = false): Promise<InsightDraftPlan> {
-  return currentDraftResult(COMMANDS.prepareDraftWithInsight, { pasted, contextId, includeCounts, includeOriginal });
+export function prepareDraftWithInsight(pasted: string, contextId: string, includeCounts = false, includeOriginal = false, includeGoal = false): Promise<InsightDraftPlan> {
+  return currentDraftResult(COMMANDS.prepareDraftWithInsight, { pasted, contextId, includeCounts, includeOriginal, includeGoal });
 }
 export interface LocalInsight {
   readonly bundle_id: string; readonly operation_id: string; readonly namespace_id: string;
@@ -834,7 +866,7 @@ export interface AssistanceGoalFields { readonly title: string; readonly summary
 /** Native returns revision, while mutation requests name expected_revision. */
 export type AssistanceContextView =
   | { readonly item_id: string; readonly revision: string; readonly kind: "memory"; readonly memory: MemoryContextView }
-  | { readonly item_id: string; readonly revision: string; readonly kind: "insight"; readonly insight: InsightContextView };
+  | { readonly item_id: string; readonly revision: string; readonly kind: "insight"; readonly insight: InsightContextView; readonly goal_preview: MemorySelectionPreview | null };
 
 function checkedAssistanceDetail(value: AssistanceItemDetail, itemId?: string): AssistanceItemDetail {
   if ((itemId !== undefined && value.item.item_id !== itemId)
@@ -1381,6 +1413,59 @@ export function retryForgetCleanup(): Promise<ForgetCleanupResult> {
 /** What the research track would see. On screen only. */
 export function researchPreview(): Promise<ResearchPreview> {
   return invoke<ResearchPreview>(COMMANDS.researchPreview);
+}
+
+export interface ResearchSavePrepare {
+  readonly scope: { readonly from_day: string; readonly to_day: string };
+  readonly destination: string;
+}
+export interface ResearchSavePreview {
+  readonly request_id: string;
+  readonly destination: string;
+  readonly prepared_at_utc: string;
+  readonly dataset: {
+    readonly scope: ResearchSavePrepare["scope"];
+    readonly rows: readonly { readonly event_kind: string; readonly time_bucket_utc: string; readonly aggregate_count: number }[];
+    readonly counts: {
+      readonly candidate_events: number;
+      readonly included_events: number;
+      readonly excluded_policy_events: number;
+      readonly excluded_unavailable_events: number;
+      readonly excluded_time_events: number;
+      readonly out_of_range_events: number;
+    };
+  };
+  readonly notice: string;
+}
+export interface ResearchSaveReceipt {
+  readonly request_id: string;
+  readonly destination: string;
+  readonly row_count: number;
+  readonly included_events: number;
+  readonly written_to_disk: boolean;
+  readonly transaction_closed: boolean;
+}
+export interface ResearchSaveCancel {
+  readonly cancelled: boolean;
+  readonly already_published: boolean;
+}
+// A Session holds one prepared research save. Serialize native preparation
+// across route lifetimes so an abandoned older request cannot replace a newer
+// preview. Confirm/cancel stay immediate and address their specific request id.
+let researchSavePreparation: Promise<void> = Promise.resolve();
+export function prepareResearchSave(request: ResearchSavePrepare): Promise<ResearchSavePreview> {
+  const captured = { scope: { ...request.scope }, destination: request.destination };
+  const result = researchSavePreparation.then(() =>
+    invoke<ResearchSavePreview>(COMMANDS.prepareResearchSave, { request: captured }),
+  );
+  researchSavePreparation = result.then(() => undefined, () => undefined);
+  return result;
+}
+export function confirmResearchSave(requestId: string): Promise<ResearchSaveReceipt> {
+  return invoke<ResearchSaveReceipt>(COMMANDS.confirmResearchSave, { requestId });
+}
+export function cancelResearchSave(requestId: string): Promise<ResearchSaveCancel> {
+  return invoke<ResearchSaveCancel>(COMMANDS.cancelResearchSave, { requestId });
 }
 
 /** The audit chain, played back and checked by the store. */

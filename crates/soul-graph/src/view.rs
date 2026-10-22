@@ -5,6 +5,8 @@
 //! that returned ids nobody had checked would look exactly the same on screen
 //! and mean nothing.
 
+use std::collections::BTreeMap;
+
 use uuid::Uuid;
 
 use soul_schema::contact::ContactClass;
@@ -34,13 +36,23 @@ pub fn load<S: GraphStore>(store: &S) -> GraphResult<SoulGraph> {
         edges.push(read_edge(&stored)?);
     }
 
+    // Build only after every stored edge has been read, including edges whose
+    // endpoints have no contact. Preserve list order and count self-loops once.
+    let mut incident: BTreeMap<Uuid, Vec<&TieEdge>> = BTreeMap::new();
+    for edge in &edges {
+        incident.entry(edge.from_contact_id).or_default().push(edge);
+        if edge.to_contact_id != edge.from_contact_id {
+            incident.entry(edge.to_contact_id).or_default().push(edge);
+        }
+    }
+
     let nodes = contacts
         .into_iter()
         .map(|contact| {
-            let touching: Vec<&TieEdge> = edges
-                .iter()
-                .filter(|edge| edge.touches(contact.contact_id))
-                .collect();
+            let touching = incident
+                .get(&contact.contact_id)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
             PersonNode {
                 contact_id: contact.contact_id,
                 contact_class: contact.contact_class,

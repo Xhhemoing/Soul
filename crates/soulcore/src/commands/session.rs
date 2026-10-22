@@ -97,6 +97,15 @@ use crate::config::Config;
 
 #[path = "session_import.rs"]
 mod import_work;
+#[path = "session_research_retention.rs"]
+mod research_retention;
+pub use research_retention::{
+    ResearchSaveCancel, ResearchSavePrepare, ResearchSavePreview, ResearchSaveReceipt,
+    SessionResearchSaveCompletion, SessionResearchSaveWork,
+};
+#[cfg(test)]
+#[path = "session_repair.rs"]
+mod repair;
 pub use import_work::{
     ImportNamespaceView, ImportOperationView, ImportPrepareRequest, ImportRecoveryState,
     PreparedImportView, SessionImportCompletion, SessionImportPrepareCompletion,
@@ -106,6 +115,12 @@ pub use import_work::{
 mod memory_context;
 pub use memory_context::{
     MemoryContextRequest, MemoryContextView, MemoryDraftPlan, MemoryDraftValue,
+};
+#[path = "session_task_context.rs"]
+mod task_context;
+pub use task_context::{
+    TaskAssessment, TaskContextRequest, TaskContextView, TaskRequirement, TaskRequirementStatus,
+    TaskStatus,
 };
 #[path = "session_insight.rs"]
 mod insight_context;
@@ -501,6 +516,10 @@ pub struct Session {
     /// value when the forget runs: the same shape the endpoint drafting path
     /// uses to make an approval describe what is actually about to happen.
     held_forget: Option<HeldForget>,
+    held_research: Option<research_retention::HeldResearchSave>,
+    active_research: Option<research_retention::ActiveResearchSave>,
+    #[cfg(test)]
+    held_repair: Option<repair::HeldRepair>,
     /// Whether collection may run, for this process and no longer.
     ///
     /// Opened closed at every launch and never read from disk. That is AC-02
@@ -854,6 +873,10 @@ impl Session {
             held_insight: None,
             pending_insight: None,
             held_forget: None,
+            held_research: None,
+            active_research: None,
+            #[cfg(test)]
+            held_repair: None,
             consent: ConsentHandle::closed(),
             collector: None,
             collect_problem: None,
@@ -1304,6 +1327,13 @@ impl Session {
             self.pending_insight = None;
             self.held_insight = None;
         }
+        // The independent pending paths remain mutually exclusive. Only the
+        // goal bound to this dispatched insight may share its worker.
+        let (insight, bound_goal) = match insight {
+            Some(context) => (Some(context.selection), context.goal),
+            None => (None, None),
+        };
+        let memory = memory.or(bound_goal);
         let id = Uuid::now_v7();
         let finished = Arc::new(AtomicBool::new(false));
         self.active_draft = Some(ActiveDraft {
@@ -1862,6 +1892,8 @@ impl Session {
     ) -> Result<MemoryDetail, SessionRefusal> {
         self.invalidate_drafts();
         let memory_id = parse_id(memory_id, "记忆")?;
+        #[cfg(test)]
+        self.invalidate_repair(memory_id);
         let at = now_unix_seconds();
         let store = self.opened_store()?;
         let mut store = hold(&store);
@@ -1919,6 +1951,13 @@ impl Session {
         if !self.forget_was_previewed(confirmation) {
             return Err(self.refuse_forget());
         }
+        #[cfg(test)]
+        self.invalidate_repair(
+            self.held_forget
+                .as_ref()
+                .expect("the confirmation matched the held preview")
+                .memory_id,
+        );
 
         let at = now_unix_seconds();
         let store = self.opened_store()?;

@@ -143,6 +143,7 @@ pub(crate) fn select_context(
     for evidence_id in summary.evidence_ids() {
         let row = store.get_evidence(evidence_id)?;
         let event_ids = interaction::interactions_in(&row)
+            .map_err(|_| unavailable())?
             .into_iter()
             .map(|reference| reference.event_id)
             .collect::<BTreeSet<_>>()
@@ -710,7 +711,7 @@ fn evidence_dependencies(
         d.uuids.push(soul_graph::corrected_relationship(row)?);
         return Some(d);
     }
-    let interactions = interaction::interactions_in(row);
+    let interactions = interaction::interactions_in(row).ok()?;
     if interactions.is_empty()
         || interactions.len() != row.source_refs.len()
         || interactions.len() > MAX_UUIDS / 4

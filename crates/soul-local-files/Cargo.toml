@@ -1,0 +1,11 @@
+[package]
+name = "soul-local-files"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Single-file, no-overwrite local research publication on Windows."
+
+[dev-dependencies]
+tempfile = { workspace = true }

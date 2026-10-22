@@ -1,6 +1,6 @@
 # DATA-01：迁移、恢复与遗忘边界设计草案
 
-日期：2026-10-19。状态：**设计候选；此前范围与有限实验已有独立只读评审，本轮 L1 已独立只读规格/质量审查，实施未启动，组合验收未运行**。
+日期：2026-10-19；2026-10-20 续写。状态：**L1 的 N1 测试专用存储验证已完成本片范围，实际结果与独立评审见第 10 节。生产恢复与 N2/N3 未启动**。此前设计评审及有限实验仅按各自原版本解释。
 
 本草案最重要的限制是：遗忘当前库中的 CK，不能追溯销毁已经复制到离线旧备份中的 CK。若数据库、根密钥和同库遗忘记录一起回滚，仅凭旧包内部信息无法判断备份后发生过哪些遗忘。不得把“增加墓碑”写成绝对保证，也不得为解决此问题自动增加出网或跨设备协调。
 
@@ -303,8 +303,8 @@ N1 仅合成 fixtures、临时库和测试凭据，不需要网络；后续拒�
 
 | 问题 | 必须选定的范围 | 未决定前的候选行为 |
 |---|---|---|
-| DQ1：优先恢复哪种故障 | L1 首片选择本次正常成功读取私有保有的 Memory summary 原密文，仅修当前 ciphertext；具体采集、拒绝矩阵和顺序见第 6.9 节 | 只设计；未知真实故障准入未验证，不接旧文件或创建恢复入口 |
-| DQ2：删除权威由谁保有 | L1 在同一持有期按第 6.9 节复验当前相关 CK/删除/领域依赖，Session 请求针对性失效；重启拒旧先验；跨启动独立权威后置 | 无法建立本次前提则拒绝；包内删除表不作最新权威；组合流程未验证 |
+| DQ1：优先恢复哪种故障 | L1 首片选择本次正常成功读取私有保有的 Memory summary 原密文，仅修当前 ciphertext；具体采集、拒绝矩阵和顺序见第 6.9 节 | N1 存储合成验证见第 10 节；未知真实故障准入未验证，不接旧文件或创建恢复入口 |
+| DQ2：删除权威由谁保有 | L1 在同一持有期按第 6.9 节复验当前相关 CK/删除/领域依赖，Session 请求针对性失效；重启拒旧先验；跨启动独立权威后置 | 无法建立本次前提则拒绝；包内删除表不作最新权威；N1 存储交错见第 10 节，N2 请求生命周期仍未验证 |
 | DQ3：首版是否只 replace | L1 仅修当前载荷，不 replace/merge；整库切换与合并后置 | 不提供自动 merge/upsert 或活动目录覆盖 |
 | DQ4：密钥可携带方式 | L1 保留原设备/原密钥，不导入旧 CK；跨机 K2/K3 后置 | 不把 DPAPI blob 当跨机包，不输出明文根密钥 |
 | DQ5：跨库来源身份 | 独立库识别、同人关联、旧 ID/AAD/CK/引用映射、历史无索引处置 | 不根据固定 owner UUID、名字或路径建立关联 |
@@ -355,4 +355,90 @@ L1 单独按第 6.9 节推进：本轮有限选择和依赖/拒绝矩阵已交�
 
 初版进行了权威与源码可行性核查，后续第 6.6 / 6.8 节运行了外部有限设计实验；没有实施公开恢复/迁移或运行其完整验收，没有 DPAPI 跨机、真实数据/密钥读取或外部端点调用。源码事实、实测对照、逻辑反例与未来验收严格区分；文档结构和有限实验通过不证明恢复能力。
 
-下一步由主会话按正式阶段条件分配 N1；范围外的跨机、整库与研究问题继续后置。相关产品决定与实施前置满足前保持 DESIGN_REQUIRED；本页不将设计评审记为 DATA-01 契约生效或 DATA-02 已实施。
+上述为 N1 认领前的交接记录；2026-10-20 已按 D102 分配测试专用 N1，实际结果见下节。范围外的跨机、整库与研究问题继续后置，生产前置保持；本页不将设计评审或 N1 合成验证记为 DATA-01 契约生效或 DATA-02 已实施。
+
+## 10. N1 测试专用存储验证（2026-10-20）
+
+执行起点为 `codex/soul-rebuild-20261019` @ `6a56d852d23a051c7c4e9845642791295c541105`，候选为 dirty；已有配置与文档整理保持。D102 将本片提前为合成质量预备，主线程统一执行测试，子 Agent 只写认领代码，另有独立只读评审。
+
+代码落位为 `crates/soul-store/src/local_ciphertext_repair.rs` 及其测试专用子模块，`lib.rs` 只作 `#[cfg(test)]` 注册。这样可使用现有 crate 内存储连接，不新增公共恢复 API、依赖、schema 或生产行为。`soul-store` 没有 `soul-memory` 依赖，本片实际复用 `MemoryStore` / `BlobStore`、SQLCipher 事务、现有加解密与遗忘；不声称调用了 `soul_memory::read`。字段形状由已有 Memory schema 核验，明文字节预算由合成测试显式传入，UTF-8 和 char_count 分别验证；此预算不是新的产品默认值，也不证明 `SelectionLimits` 的生产限额。
+
+首个红测已实际运行：
+
+```pwsh
+$ErrorActionPreference = 'Stop'
+cargo test -p soul-store --lib local_ciphertext_repair::n1_restores_only_corrupted_ciphertext_through_real_store --locked --offline
+if ($LASTEXITCODE -ne 0) { throw 'N1 定向测试失败；按记录区分预期红测与异常失败' }
+```
+
+编译成功后 **0 passed / 1 failed**，Cargo 退出 **101**；失败点为正常 fixture 已可读后的 `capture normal snapshot: Backend("N1 prototype not implemented")`。这是未实现测试原型的预期失败，不是已复现的生产恢复缺陷。编译 18.26 秒、测试 0.30 秒。原始 `n1-red.log` / `n1-red-exit.txt` 在仓库外 `E:\Project\Soul-checks-20261020-n1-val\`，同目录 `env.ps1` / `environment.json` 记录 Rust 1.83、Windows MSVC、既有静态 OpenSSL、jobs=4、DEV/TEST DEBUG=0、incremental=0；未覆盖 `CARGO_TARGET_DIR`。
+
+### 原型与实际覆盖
+
+最终新增两个测试专用文件：`src/local_ciphertext_repair.rs` 和 `src/local_ciphertext_repair/tests.rs`，共 **11 项测试函数**，其中若干为独立参数化反例。采集/修复复用 `SqlCipherStore::transact`；Held 私有、按值消费，不实现 Debug/Serialize/Clone，原密文及包装 CK 由 `Zeroizing` 持有；正常读取的明文只作瞬时验证。生产模块除 `lib.rs` 的 `#[cfg(test)]` 注册外未改动。
+
+实际执行证明：受控损坏后仅条件回填目标 ciphertext；完整 Memory、归属、原 nonce、包装 CK 和原审计保持；原样或当前仍可认证的载荷不写；两种非空关联集合在采集及提交分别拒绝；依赖变化、旧/错误密文、预算/UTF-8/字符计数异常拒绝；复验后、UPDATE 后、提交前故障及条件 UPDATE 未命中均回滚且核对存储零残留。
+
+两个真实连接分别覆盖 Edit、Source、Evidence、Forget、Unrelated 五种变更的两种提交顺序，原日志逐项输出实际锁争用与提交顺序。修复先提交的轨迹在真实修复事务内令另一连接写入并观察 `locked`；变更先提交的轨迹用额外持锁 fixture 观察竞争，释放后让变更先提交，再一次性消费 Held 复验。后一种轨迹不声称忙锁发生于一个已消费的修复请求，也不复用失败后的 Held。遗忘两种顺序均重开核对 CK/blob 缺失、独立 Memory 可读；Unrelated 正控制允许目标修复。
+
+### 最终开发验证与独立评审
+
+以下均由主线程在同一 dirty 源码候选上实际执行；日志位于上述仓库外目录，每条配套同名前缀的 `-exit.txt`。先验红测与重复绿测不累加成新增用例数。
+
+| 实际命令 | 实际结果 | 日志 |
+| --- | --- | --- |
+| `cargo test -p soul-store --lib local_ciphertext_repair --locked --offline -- --nocapture` | 11 passed / 0 failed，退出 0；编译 17.14 秒，执行 1.47 秒 | `n1-green.log` |
+| `cargo clippy -p soul-store --lib --tests --locked --offline -- -D warnings` | 退出 0，18.55 秒 | `n1-clippy.log` |
+| `cargo test -p soul-store --lib --test conformance_real --test forget --test forget_scope --test malformed_nonce --test no_plaintext_at_rest --locked --offline` | **60 + 4 + 7 + 2 + 2 + 2 = 77 passed**，0 failed，退出 0；60 项 lib 中已包含新增 11 项 | `n1-final-regression.log` |
+| `cargo fmt --all -- --check` | 最终退出 0；仅新增文件的初次格式检查曾退出 1，随后按格式输出用 apply_patch 修正，无整仓格式写入 | `final-fmt.log`；首次差异保留 `format-check-initial.log` |
+
+独立只读规格/质量评审未发现阻塞缺陷；已核原始 `n1-green` 日志与实际双连接轨迹。其非阻塞发现为本模块一条错误传播注释过强，已收窄：复用的 scalar preflight 会将部分 key 查询失败折为 `LOCAL_SOURCE_UNAVAILABLE`；成功准入另外核对可报错的销毁记录、CK 解包和包装行，不宣称所有拒绝保留原始 Backend 分类，不修改生产 helper。最终 Clippy/77 项回归/格式检查在该修订后执行。
+
+**本片结论：** 已验证上述有限存储原型与指定反例，未提供生产恢复能力。没有新增依赖、schema、产品权限、IPC、持久协议或门禁，未提交。N2 的 Session 一次确认、取消、物理槽、旧结果失效，N3 的公开 IPC/UI，以及未知真实损坏准入、任意历史 ABA、进程崩溃、该原型的 WAL 物理清理、整库/跨机恢复均不在本片证明范围；既有遗忘回归通过不扩大这些承诺。根 crate 验证不代表桌面 workspace 或完整 G-L/G-W/G-M 通过。
+
+## 11. N2 测试专用 Session 生命周期（2026-10-20）
+
+作者在接续代码任务时明确选择“推进 N2 测试专用验证”（D106）。起点仍为 `codex/soul-rebuild-20261019` @ `6a56d852d23a051c7c4e9845642791295c541105 + dirty`；本节承接第 6.9 节的请求生命周期，不改变第 10 节原 N1 的历史验证范围。任务与单写者路径见[阶段计划第 13 节](2026-10-20-next-stage-plan.md#13-d106-测试专用-n2-session-生命周期)。
+
+本片使用真实 Session、临时 SQLCipher 和合成凭据。Session 中持有字段与准备/确认/取消方法只在 `cfg(test)` 下存在；存储 `test-repair` feature 默认关闭，仅开发依赖启用以复用同一 N1 采集/事务代码。先验不新增明文或裸 CK 副本、不序列化、不进入审计。一个请求只对应一个目标，确认回显身份，匹配后消费；目标受管编辑和遗忘定向失效，无关写入由存储依赖复验允许。
+
+恢复沿 Session → store guard → 事务同步完成，不增加修复异步任务。取消在确认前则拒绝旧请求，提交后取消不撤销已提交写入；已有起草 worker 仍服从真实物理槽和旧代次拒收。普通产品构建不开放恢复 API/IPC/UI；未知真实损坏准入、N3、生产恢复、任意历史 ABA、进程崩溃窗口和 WAL 物理清理均不由本片签发。
+
+### 首次行为红测
+
+主线程运行 `cargo test -p soulcore --lib n2_restores_summary_through_real_session_and_read --locked --offline`：编译成功（21.26 秒），测试 **0 passed / 1 failed**（0.34 秒），Cargo 退出 **101**。临时 Session 的合成 Memory 已正常写入、读取，随后在 `prepare normal snapshot` 处收到尚未实现的 N2 固定拒绝。此结果证明新增原型尚缺实现，不是已复现的生产恢复缺陷。
+
+原始记录在仓库外 `E:\Project\Soul-checks-20261021-n2-session\n2-red.log` / `n2-red-result.json`；目录日期使用 UTC，本地执行日期为 2026-10-20（UTC−07:00）。同目录 `env.ps1` / `environment.json` 记录 Rust/Cargo 1.83、pwsh 7.6.5、既有 VS2022 MSVC/静态 OpenSSL、jobs=4、DEV/TEST DEBUG=0、incremental=0，沿用 target 路径，未安装依赖或修改全局配置。
+
+### 实际实现与组合结果
+
+`session_repair.rs` 及其 `tests.rs` 已实现私有原型和 12 项测试，`session.rs` 仅添加测试构建中的字段、初始化、模块和目标编辑/遗忘失效调用。N1 的回填事务算法保持，采集扩为 `capture_checked`：在同一事务内完成先验采集和调用者提供的真实 `soul_memory::read` 校验，避免嵌套 `transact` 或两次独立读取。原 N1 `capture` 继续作为本模块测试包装；公开测试类型的 Debug 只返回固定 redacted 标识，内部字段不打印，不可 Clone/Serialize。
+
+实跑正例确认：正常读取 → 保有先验 → 仅破坏 summary ciphertext → 精确确认 → 更新 1 行 → 真实 Session 读取恢复；与损坏前完整持久表逐项相同，领域字段、密钥行、原 nonce、其他数据和审计均保持。重复确认拒绝。取消先发生时不写，提交后取消不撤销；替换、失败准备和重新选择同目标均不会恢复旧身份。
+
+受管编辑覆盖空修改、同类型、同摘要、改后返回原值及失败修改；旧请求全部拒绝。正常遗忘销毁目标 CK/blob，旧确认不能恢复它，独立记忆仍可读。新增/编辑另一 Memory、设置 profile 语气及这些操作的审计写入后，目标恢复仍成立且独立修改保持。两个关联集合分别在采集前及准备后加入，普通 read 可成功，但 N2 拒绝并保持真实持久状态。事务 UPDATE 触发失败后无残留，即使解除故障也不能重放已消费确认。关闭额外连接并 drop Session 后，重新 open 成功，但旧请求与已损坏内容均不可用于重新准备。
+
+成功与事务失败都使旧 held context、端点批准失效；批准重放时 loopback 请求数为 0。已有 owned draft worker 未结束时，N2 确认拒绝且消费，原 worker 身份和忙槽保留；worker 实际执行后，迟到结果拒收，不写 `draft.create`，已发的 1 次请求仍按真实 `egress.request` 审计保留。本片没有新异步恢复任务，不把这一观察表述为新恢复 worker 的取消/崩溃证明。
+
+### 最终开发验证
+
+下列命令由主线程在当前候选串行执行，日志及同名前缀 `-result.json` 均在上述仓库外目录。重复运行不累计测试数；最终核心与存储两组共 **150 项通过**，其中已包含 12 项 N2 和 11 项 N1。
+
+| 实际命令 | 结果 | 日志 |
+| --- | --- | --- |
+| `cargo test -p soulcore --lib n2_ --locked --offline` | 12 passed / 0 failed，exit 0；编译 33.07 秒，执行 0.67 秒 | `n2-green.log` |
+| `cargo test -p soulcore --lib --test session_memory_context --test profile_memory_commands --test session_e1 --test q2_recovery --locked --offline` | 36 + 4 + 3 + 27 + 3 = **73 passed**，exit 0；含 12 项 N2 | `core-regression.log` |
+| `cargo test -p soul-store --lib --test conformance_real --test forget --test forget_scope --test malformed_nonce --test no_plaintext_at_rest --locked --offline` | 60 + 4 + 7 + 2 + 2 + 2 = **77 passed**，exit 0；含 11 项 N1 | `store-regression.log` |
+| `cargo clippy -p soulcore -p soul-store --lib --tests --locked --offline -- -D warnings` | exit 0 | `clippy.log` |
+| `cargo check -p soulcore --lib --locked --offline --message-format=json` | exit 0；实际 compiler-artifact 显示 soul-store/soulcore 均 `features=[]`、`profile.test=false` | `product-check.log` / `product-features.json` |
+| `cargo fmt --all -- --check` | 最终在新进程运行，exit 0 | `fmt.log` |
+
+普通依赖树也分别实跑：`cargo tree -p soulcore -e normal,build,features -i soul-store --locked --offline`，以及 `cargo tree --manifest-path apps/desktop/src-tauri/Cargo.toml -e normal,build,features -i soul-store --locked --offline`，均 exit 0，仅有 store default，无 `test-repair`。记录为 `root-feature-tree.log` / `desktop-feature-tree.log` / `feature-tree-result.json`。依赖树不替代桌面构建或平台测试；本轮只实际编译检查了普通核心库。
+
+首次格式检查 exit 1，仅为本轮两个新增 Session 文件及存储模块 imports 排版；使用 `apply_patch` 修正，保留 `initial-fmt.log` / `initial-fmt-result.json`。同一 PowerShell 连续初始化 VS 环境时，在最后格式检查前出现 `The input line is too long` / `The syntax of the command is incorrect`；虽该次 Cargo fmt exit 0，仍保留 `sequence-environment-note.json` / `sequence-fmt-result.json`，并在新进程重跑最终格式检查，无该诊断且 exit 0。没有把工具环境提示隐去或当作业务断言失败。
+
+不运行完整根/独立桌面测试、G-L/G-W/G-M、UI、安装、真实端点或真人效用；不续签历史平台结果，不开放生产恢复。两个锁文件和根 Cargo.toml 保持不变，所有此前 dirty 内容保留，未提交、推送或合并。
+
+独立只读评审 `/root/n2_review` 已先核任务与本轮实际增量，再核原始红绿、回归、编译 feature 与格式记录，未发现代码阻塞。唯一非阻塞项是本节曾把同事务内 read 与先验采集的顺序写反；现已校准为“在同一事务内完成先验采集和真实 read 校验”，代码未变。评审只读原始执行证据，不冒称评审者重新运行测试。五份相关文档的本地链接目标、增量空白和新增文件尾随空白检查通过；这些文档检查不代替上述执行。
+
+本片为 **REVIEWED，开发范围验证完成**；源码保持 dirty，未标正式 GATED/INTEGRATED。下一动作是在具体恢复需求与生产准入条件齐备时评估公开接线；N3、真实损坏准入与正式 DATA/MODEL 前置保持，不再重复本片相同覆盖面的合成验证。当前摘要仅维护在 [STATUS](../STATUS.md)。

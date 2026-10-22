@@ -33,6 +33,7 @@ DPAPI → KEK → DB DEK → 每单元 CK。正文字段 AEAD，AAD=行 id+字�
 | 内容遗忘 | `crates/soul-store/src/forget.rs` | 提交前失败回滚；内容密钥销毁、墓碑和推断失据；提交后清理/审计问题不得伪装成“什么都没发生” |
 | 应用级导入事务 | `crates/soulcore/src/commands/session.rs` 的 `commit_import` | 导入、审计和图谱重建在同一事务边界内；失败不得留下部分导入 |
 | 研究预览 | `crates/soul-store/src/research_preview.rs` | 按主体及逐行用途限制过滤；第三人行数为零，预览不写导出文件 |
+| D107 本机研究留存 | `soul-store/research_retention`、`soulcore/session_research_retention`、`soul-local-files`；[实现与验证范围](design/2026-10-20-research-experiment.md#第二批实现选择2026-10-20) | 独立一次确认、当前来源/授权/CK 复验、事务内发布、不覆盖目标、发布前取消与未提交文件清理；独立明文副本不随库内遗忘删除 |
 
 规矩（沿用 D57 的版本纪律）：
 
@@ -49,6 +50,8 @@ DPAPI → KEK → DB DEK → 每单元 CK。正文字段 AEAD，AAD=行 id+字�
 ## HITL
 
 未知动作拒绝。`plan_hash` 变化拒绝。能力令牌一次性、限作用域、限 TTL。v0.1 不消费写文件令牌。
+
+D107 的研究保存使用单独的 Session 一次请求，确认仅接受本次预览 ID，范围和目的地由核心持有；不开放通用文件写入令牌。批准与拒绝审计不含目的地、来源 ID、小时桶或正文。发布后的事务关闭异常不能改报“未保存”。
 
 ## 注入
 

@@ -42,7 +42,7 @@ describe("事项绑定的现有起草链", () => {
     expect(core.callsTo("generate_draft")).toHaveLength(0); expect(network).toEqual([]);
   });
   it("事项统计view直接交现有insight helper，计数默认不进入端点，确认前零生成", async () => {
-    const { core, user } = await page({ preparingAssistance: () => ({ item_id: ASSISTANCE_ITEM_ID, revision: ASSISTANCE_REVISION, kind: "insight", insight: anInsightContext() }) });
+    const { core, user } = await page({ preparingAssistance: () => ({ item_id: ASSISTANCE_ITEM_ID, revision: ASSISTANCE_REVISION, kind: "insight", insight: anInsightContext(), goal_preview: null }) });
     await user.click(screen.getByRole("button", { name: "核对并准备" })); await idle();
     expect(core.callsTo("prepare_insight_context")).toHaveLength(0);
     expect(screen.getByRole("checkbox", { name: /本次另行允许将这份匿名派生计数/ })).not.toBeChecked();

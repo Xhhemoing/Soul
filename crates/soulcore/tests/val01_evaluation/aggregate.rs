@@ -1,8 +1,28 @@
 //! Synthetic arithmetic only. Metrics are descriptive and never issue a PASS.
 use super::{pairs::ValidatedEvaluation, records::*};
+use serde::ser::SerializeSeq;
+use serde::{Serialize, Serializer};
 use std::collections::BTreeMap;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+fn strata_rows<S, K, V>(map: &BTreeMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    K: Serialize,
+    V: Serialize,
+{
+    #[derive(Serialize)]
+    struct Row<'a, K, V> {
+        stratum: &'a K,
+        summary: &'a V,
+    }
+    let mut rows = serializer.serialize_seq(Some(map.len()))?;
+    for (stratum, summary) in map {
+        rows.serialize_element(&Row { stratum, summary })?;
+    }
+    rows.end()
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Funnel {
     pub assigned: usize,
     pub started: usize,
@@ -10,7 +30,7 @@ pub struct Funnel {
     pub rated: usize,
     pub completed: usize,
 }
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Fraction {
     pub numerator: usize,
     pub denominator: usize,
@@ -20,7 +40,7 @@ impl Fraction {
         (self.denominator != 0).then(|| self.numerator as f64 / self.denominator as f64)
     }
 }
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct PreferenceStats {
     pub target_wins: usize,
     pub ties: usize,
@@ -32,14 +52,15 @@ impl PreferenceStats {
             .then(|| (self.target_wins as f64 + 0.5 * self.ties as f64) / self.denominator as f64)
     }
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SourceLayer {
     LocalTemplate,
     UndegradedEndpoint,
     DegradedTemplate,
     NotGenerated,
 }
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct PairStratum {
     pub evaluation_run: String,
     pub participant_scope: ParticipantScope,
@@ -49,13 +70,13 @@ pub struct PairStratum {
     pub conditions: Conditions,
     pub source: SourceLayer,
 }
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct CandidateStratum {
     pub pair: PairStratum,
     pub variant: Variant,
     pub source: SourceLayer,
 }
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct CohortStratum {
     pub participant_scope: ParticipantScope,
     pub task_type: TaskType,
@@ -64,28 +85,30 @@ pub struct CohortStratum {
     pub conditions: Conditions,
     pub source: SourceLayer,
 }
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct ParticipantPreferences {
     pub per_run: BTreeMap<String, f64>,
     pub median: Option<f64>,
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct EditPair {
     pub pair_id: String,
     pub control_seconds: u64,
     pub target_seconds: u64,
 }
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct PairSummary {
     pub funnel: Funnel,
     pub degraded_pairs: usize,
     pub safety_excluded_pairs: usize,
     pub preference: PreferenceStats,
     pub edits: Vec<EditPair>,
+    pub edit_valid_pairs: usize,
+    pub edit_missing_pairs: usize,
     pub median_difference: Option<f64>,
     pub median_ratio: Option<f64>,
 }
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct CandidateSummary {
     pub assigned: usize,
     pub generated: usize,
@@ -98,15 +121,20 @@ pub struct CandidateSummary {
     pub safety_missing: usize,
     pub help_counts: Vec<u32>,
     pub missing: BTreeMap<MissingReason, usize>,
+    pub edit_missing: BTreeMap<MissingReason, usize>,
+    pub pause_missing: BTreeMap<MissingReason, usize>,
     pub failures: BTreeMap<FailureCode, usize>,
 }
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct Summary {
     pub funnel: Funnel,
     pub withdrawn_runs: usize,
     pub generated_candidates: usize,
+    #[serde(serialize_with = "strata_rows")]
     pub pairs: BTreeMap<PairStratum, PairSummary>,
+    #[serde(serialize_with = "strata_rows")]
     pub candidates: BTreeMap<CandidateStratum, CandidateSummary>,
+    #[serde(serialize_with = "strata_rows")]
     pub participant_preferences: BTreeMap<CohortStratum, ParticipantPreferences>,
 }
 fn median(mut values: Vec<f64>) -> Option<f64> {
@@ -229,17 +257,14 @@ pub fn summarize(validated: &ValidatedEvaluation<'_>) -> Summary {
                 .iter()
                 .find(|c| c.requested_variant != pair.contrast.target())
                 .expect("validated contrast control");
-            group.edits.push(EditPair {
-                pair_id: pair.pair_id.clone(),
-                control_seconds: *control
-                    .edit_seconds
-                    .value()
-                    .expect("validated completed edit time"),
-                target_seconds: *target
-                    .edit_seconds
-                    .value()
-                    .expect("validated completed edit time"),
-            });
+            match (control.edit_seconds.value(), target.edit_seconds.value()) {
+                (Some(control_seconds), Some(target_seconds)) => group.edits.push(EditPair {
+                    pair_id: pair.pair_id.clone(),
+                    control_seconds: *control_seconds,
+                    target_seconds: *target_seconds,
+                }),
+                _ => group.edit_missing_pairs += 1,
+            }
         }
         for candidate in candidates {
             let candidate_layer = candidate_source(candidate);
@@ -272,6 +297,12 @@ pub fn summarize(validated: &ValidatedEvaluation<'_>) -> Summary {
             if let Some(reason) = candidate.missing_reason {
                 *row.missing.entry(reason).or_default() += 1;
             }
+            if let Measured::Missing(reason) = candidate.edit_seconds {
+                *row.edit_missing.entry(reason).or_default() += 1;
+            }
+            if let Measured::Missing(reason) = candidate.pause_seconds {
+                *row.pause_missing.entry(reason).or_default() += 1;
+            }
             if candidate.failure_code != FailureCode::None {
                 *row.failures.entry(candidate.failure_code).or_default() += 1;
             }
@@ -302,6 +333,7 @@ pub fn summarize(validated: &ValidatedEvaluation<'_>) -> Summary {
         }
     }
     for (key, group) in &mut report.pairs {
+        group.edit_valid_pairs = group.edits.len();
         group.median_difference = median(
             group
                 .edits

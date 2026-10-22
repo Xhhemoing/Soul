@@ -291,20 +291,20 @@ fn read_instant(
     locator: &Locator,
     defects: &mut Vec<Defect>,
 ) -> Option<Timestamp> {
-    if let Some(date) = message.get("date").and_then(Value::as_str) {
-        if !is_civil_datetime(date) {
+    match message.get("date") {
+        Some(Value::String(date)) if is_civil_datetime(date) => {}
+        Some(_) => {
             defects.push(Defect::field(
                 locator.clone(),
                 "date",
-                "is not a `YYYY-MM-DDTHH:MM:SS` instant".to_owned(),
+                "must be a valid `YYYY-MM-DDTHH:MM:SS` civil date string".to_owned(),
             ));
         }
-    } else if message.get("date").is_none() {
-        defects.push(Defect::field(
+        None => defects.push(Defect::field(
             locator.clone(),
             "date",
             "is required and this message has no time".to_owned(),
-        ));
+        )),
     }
 
     let raw = message.get("date_unixtime");

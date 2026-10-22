@@ -82,9 +82,9 @@ describe("起草页", () => {
     await screen.findByRole("heading", { name: "草稿" });
     noSendButton();
 
-    // Nor a place to type one in: the only fields are the paste and the draft.
+    // Only drafting inputs and local memory/task filters; no message composer.
     const fields = screen.getAllByRole("textbox").map((field) => field.id);
-    expect(fields.sort()).toEqual(["draft-text", "memory-query", "pasted"]);
+    expect(fields.sort()).toEqual(["draft-text", "memory-query", "pasted", "task-information"]);
   });
 
   it("不发送这句话是核心说的，不是界面自己写的", async () => {

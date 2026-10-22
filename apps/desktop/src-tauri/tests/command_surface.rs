@@ -140,6 +140,37 @@ fn the_shell_never_reads_an_endpoint_address_itself() {
 #[test]
 fn the_command_layer_stays_thin() {
     for name in COMMAND_NAMES {
+        if matches!(*name, "prepare_research_save" | "cancel_research_save") {
+            let start = COMMANDS_RS.find(&format!("pub async fn {name}(")).unwrap();
+            let body = COMMANDS_RS[start..]
+                .split("#[tauri::command]")
+                .next()
+                .unwrap();
+            let compact: String = body.chars().filter(|c| !c.is_whitespace()).collect();
+            let argument = if *name == "prepare_research_save" {
+                "request"
+            } else {
+                "&request_id"
+            };
+            assert!(compact.contains(&format!(
+                "spawn_blocking(move||session.held().{name}({argument}))"
+            )));
+            assert_eq!(compact.matches("session.held()").count(), 1);
+            for forbidden in [
+                "issue_token",
+                "authorize_e1",
+                "RedactedBody",
+                "letmutguard",
+                "letguard",
+                "std::fs",
+            ] {
+                assert!(
+                    !compact.contains(forbidden),
+                    "{name} must only schedule forwarding"
+                );
+            }
+            continue;
+        }
         if matches!(
             *name,
             "generate_draft"
@@ -147,6 +178,7 @@ fn the_command_layer_stays_thin() {
                 | "preview_plan"
                 | "prepare_import"
                 | "confirm_import"
+                | "confirm_research_save"
                 | "preview_assistance_local_template"
         ) {
             // Scheduling is the exception. Policy/body construction
@@ -170,6 +202,11 @@ fn the_command_layer_stays_thin() {
                 (
                     "begin_import_prepare_request(request)",
                     "complete_import_prepare(completed)",
+                )
+            } else if *name == "confirm_research_save" {
+                (
+                    "begin_research_save(&request_id)",
+                    "complete_research_save(completed)",
                 )
             } else if *name == "preview_assistance_local_template" {
                 (

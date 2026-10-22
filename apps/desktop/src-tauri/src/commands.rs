@@ -39,7 +39,10 @@ use soulcore::commands::session::{
     PreparedImportView, PreviewAssistanceLocalTemplate, RefreshAssistanceObservation,
     RetryAssistanceNotificationWithdrawal, Session, SessionRefusal, SessionStatus,
     SetAssistanceCategoryPreference, SetAssistanceFeedback, SetAssistanceLocalPreparation,
-    SetAssistanceReminder,
+    SetAssistanceReminder, TaskContextRequest, TaskContextView,
+};
+use soulcore::commands::session::{
+    ResearchSaveCancel, ResearchSavePrepare, ResearchSavePreview, ResearchSaveReceipt,
 };
 use soulcore::commands::shell::{CloudNotice, ConfigSnapshot, WizardAnswers, WizardRefused};
 use soulcore::commands::sources::{
@@ -342,12 +345,14 @@ pub fn prepare_draft_with_insight(
     context_id: String,
     include_counts: bool,
     include_original: bool,
+    include_goal: Option<bool>,
 ) -> Result<InsightDraftPlan, SessionRefusal> {
-    session.held().prepare_draft_with_insight(
+    session.held().prepare_draft_with_insight_and_goal(
         &pasted,
         &context_id,
         include_counts,
         include_original,
+        include_goal.unwrap_or(false),
     )
 }
 
@@ -357,6 +362,14 @@ pub fn prepare_memory_context(
     request: MemoryContextRequest,
 ) -> Result<MemoryContextView, SessionRefusal> {
     session.held().prepare_memory_context(request)
+}
+
+#[tauri::command]
+pub fn prepare_task_context(
+    session: State<'_, SessionState>,
+    request: TaskContextRequest,
+) -> Result<TaskContextView, SessionRefusal> {
+    session.held().prepare_task_context(request)
 }
 
 #[tauri::command]
@@ -752,6 +765,44 @@ pub fn research_preview(
     session.held().research()
 }
 
+#[tauri::command]
+pub async fn prepare_research_save(
+    session: State<'_, SessionState>,
+    request: ResearchSavePrepare,
+) -> Result<ResearchSavePreview, SessionRefusal> {
+    let session = session.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || session.held().prepare_research_save(request))
+        .await
+        .map_err(|_| SessionRefusal::from(DraftRefusal::WorkerFailed))?
+}
+
+#[tauri::command]
+pub async fn confirm_research_save(
+    session: State<'_, SessionState>,
+    request_id: String,
+) -> Result<ResearchSaveReceipt, SessionRefusal> {
+    let session = session.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let work = session.held().begin_research_save(&request_id)?;
+        let completed = work.execute();
+        let result = session.held().complete_research_save(completed);
+        result
+    })
+    .await
+    .map_err(|_| SessionRefusal::from(DraftRefusal::WorkerFailed))?
+}
+
+#[tauri::command]
+pub async fn cancel_research_save(
+    session: State<'_, SessionState>,
+    request_id: String,
+) -> Result<ResearchSaveCancel, SessionRefusal> {
+    let session = session.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || session.held().cancel_research_save(&request_id))
+        .await
+        .map_err(|_| SessionRefusal::from(DraftRefusal::WorkerFailed))?
+}
+
 /// The audit chain, played back and checked.
 #[tauri::command]
 pub fn audit_chain(session: State<'_, SessionState>) -> Result<AuditChainView, SessionRefusal> {
@@ -855,6 +906,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "recompute_local_insight",
     "import_recovery_state",
     "prepare_memory_context",
+    "prepare_task_context",
     "draft_reply_with_memory",
     "prepare_draft_with_memory",
     "list_import_namespaces",
@@ -898,6 +950,9 @@ pub const COMMAND_NAMES: &[&str] = &[
     "forget_memory",
     "retry_forget_cleanup",
     "research_preview",
+    "prepare_research_save",
+    "confirm_research_save",
+    "cancel_research_save",
     "audit_chain",
     "collect_status",
     "grant_collect_consent",

@@ -43,9 +43,9 @@ pub struct MemoryDraftPlan {
 
 #[derive(Debug)]
 pub(super) struct HeldMemory {
-    id: Uuid,
-    revision: Uuid,
-    selection: ContextSelection,
+    pub(super) id: Uuid,
+    pub(super) revision: Uuid,
+    pub(super) selection: ContextSelection,
     pub(super) assistance: Option<assistance::AssistanceBinding>,
 }
 #[derive(Debug)]
@@ -55,7 +55,7 @@ pub(super) struct PendingMemory {
     pub(super) assistance: Option<assistance::AssistanceBinding>,
 }
 
-fn changed() -> SessionRefusal {
+pub(super) fn changed() -> SessionRefusal {
     SessionRefusal {
         reason_code: "MEMORY_CONTEXT_CHANGED".to_owned(),
         explanation:
@@ -64,7 +64,7 @@ fn changed() -> SessionRefusal {
     }
 }
 
-fn material(
+pub(super) fn material(
     selection: &ContextSelection,
     owner_ids: &[Uuid],
 ) -> Result<MemoryContext, SessionRefusal> {
@@ -239,9 +239,15 @@ impl Session {
             &memory,
         )
         .map_err(|refusal| self.refuse_draft(refusal))?;
-        selection
-            .retain_ids(&prepared.retained_memory_ids)
-            .map_err(|_| changed())?;
+        if selection.retain_ids(&prepared.retained_memory_ids).is_err() {
+            // The real HTTP serializer may remove complete entries. A task
+            // diagnosis must not survive losing its required supports, and a
+            // rejected replacement must leave no dispatchable preparation.
+            self.draft.discard();
+            self.held_memory = None;
+            self.pending_memory = None;
+            return Err(changed());
+        }
         if let Err(refusal) = self
             .note_injection(memory.injection_signals().len() as u64)
             .and_then(|_| {

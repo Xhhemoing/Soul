@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Soul · 合成卡操作演练</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <header><p class="eyebrow">SOUL / SYNTHETIC LAB</p><h1>合成卡操作演练</h1>
+      <p>五张固定合成卡 · 仅本机 · 不是产品入口</p>
+      <aside>本次仅检查操作与记录流程。mock 使用固定回复，不验证模型效果；结果不是真人效用证据。
+        请勿输入真实聊天或个人信息。编辑内容仅留在当前页面，不会提交或保存。</aside>
+    </header>
+    <p id="status" role="status" aria-live="polite">正在连接本机服务…</p>
+    <p id="deadline" class="hint"></p>
+    <section id="workspace" aria-labelledby="stage-title"></section>
+    <footer id="session-actions" hidden>
+      <button id="stop" type="button" class="secondary">结束并保留已有反馈</button>
+      <button id="withdraw" type="button" class="danger">撤回本次演练</button>
+      <p>结束或撤回会立即清除页面正文。服务关闭后需重新运行命令才能开始新演练。</p>
+    </footer>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

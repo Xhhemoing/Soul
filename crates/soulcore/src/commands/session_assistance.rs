@@ -98,6 +98,7 @@ pub enum AssistanceContextView {
         item_id: Uuid,
         revision: Uuid,
         insight: InsightContextView,
+        goal_preview: Option<Box<soul_memory::MemorySelectionPreview>>,
     },
 }
 #[derive(Debug, Clone)]
@@ -513,12 +514,41 @@ impl Session {
                 bundle_id,
                 contact_id,
             })?;
+            let goal = if let AssistanceSource::ManualGoal { memory_id, .. } = &item.source {
+                let shared = self.opened_store()?;
+                let selected = soul_memory::select_for_draft(
+                    &*hold(&shared),
+                    &soul_memory::MemorySelectionRequest {
+                        candidate_ids: vec![*memory_id],
+                        query: None,
+                        memory_type: Some(MemoryType::Commitment),
+                        time_scope: soul_memory::MemoryTimeScope::Unspecified,
+                    },
+                    soul_memory::SelectionLimits::default(),
+                )
+                .map_err(|_| changed())?;
+                if !selected.selected().is_empty()
+                    && (selected.selected().len() != 1
+                        || selected.selected()[0].memory_id() != *memory_id)
+                {
+                    return Err(changed());
+                }
+                Some(selected)
+            } else {
+                None
+            };
+            let goal_preview = goal.as_ref().map(|selection| Box::new(selection.preview()));
+            // Excluded goal material remains a local preview, not an outbound
+            // grant. It must not disable independently selected statistics.
+            let goal = goal.filter(|selection| !selection.selected().is_empty());
             self.held_insight.as_mut().ok_or_else(changed)?.assistance = Some(binding.clone());
+            self.held_insight.as_mut().ok_or_else(changed)?.goal = goal;
             self.revalidate_assistance(&binding)?;
             Ok(AssistanceContextView::Insight {
                 item_id: item.item_id,
                 revision: item.revision,
                 insight,
+                goal_preview,
             })
         } else {
             let AssistanceSource::ManualGoal { memory_id, .. } = item.source else {

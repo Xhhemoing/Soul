@@ -23,8 +23,9 @@ const reference: core.InsightReference = {
 const selected: core.InsightContextView = { context_id: "context", reference };
 const local: core.InsightDraftValue = { draft: aTemplateDraft(), reference };
 const prepared: core.InsightDraftPlan = {
-  prepared: { plan: anE1Plan(), body_preview: "本次统计仅供本地参考", encoded_bytes: 1234, includes_counts: false },
+  prepared: { plan: anE1Plan(), body_preview: "本次统计仅供本地参考", encoded_bytes: 1234, includes_counts: false, includes_goal: false },
   reference,
+  goal_preview: null,
 };
 
 beforeEach(() => {
@@ -49,8 +50,8 @@ it("本机与端点准备使用外层camelCase，默认不给端点计数，也�
   await core.prepareDraftWithInsight("synthetic", "context", true, true);
   expect(vi.mocked(invoke).mock.calls).toEqual([
     ["local_draft_with_insight", { pasted: "synthetic", contextId: "context" }],
-    ["prepare_draft_with_insight", { pasted: "synthetic", contextId: "context", includeCounts: false, includeOriginal: false }],
-    ["prepare_draft_with_insight", { pasted: "synthetic", contextId: "context", includeCounts: true, includeOriginal: true }],
+    ["prepare_draft_with_insight", { pasted: "synthetic", contextId: "context", includeCounts: false, includeOriginal: false, includeGoal: false }],
+    ["prepare_draft_with_insight", { pasted: "synthetic", contextId: "context", includeCounts: true, includeOriginal: true, includeGoal: false }],
   ]);
 });
 

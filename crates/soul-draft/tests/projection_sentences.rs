@@ -600,6 +600,7 @@ fn a_projected_point_cites_the_exchange_its_date_is_counted_from() {
         .iter()
         .filter(|row| {
             soul_graph::interaction::interactions_in(row)
+                .expect("valid fixture")
                 .iter()
                 .any(|seen| seen.occurred_at.as_str() == last)
         })

@@ -676,6 +676,7 @@ fn outgoing_reads_require_a_live_incoming_speaker_and_bound_all_witness_work() {
             .filter(|id| {
                 let row = store.get_evidence(*id).unwrap();
                 soul_graph::interaction::interactions_in(&row)
+                    .expect("valid fixture")
                     .iter()
                     .any(|reference| reference.direction == Direction::Incoming)
             })
@@ -733,6 +734,7 @@ fn metadata_two_outgoing_events_share_one_budget_even_when_each_raw_read_fits() 
                 .map(|id| store.get_evidence(*id).unwrap())
                 .filter(|row| {
                     soul_graph::interaction::interactions_in(row)
+                        .expect("valid fixture")
                         .iter()
                         .all(|reference| reference.direction == Direction::Outgoing)
                 })
@@ -742,7 +744,7 @@ fn metadata_two_outgoing_events_share_one_budget_even_when_each_raw_read_fits() 
         .unwrap();
     let mut combined = outgoing[0].clone();
     combined.source_refs.extend(outgoing[1].source_refs.clone());
-    let observations = soul_graph::interaction::interactions_in(&combined);
+    let observations = soul_graph::interaction::interactions_in(&combined).expect("valid fixture");
     assert_eq!(observations.len(), 2);
     store.put_evidence(combined.clone()).unwrap();
     soul_graph::correct_tie(

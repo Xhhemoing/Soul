@@ -58,10 +58,10 @@ describe("明确本地统计参与本次起草", () => {
     const checkbox = screen.getByRole("checkbox", { name: /匿名 A2 派生计数/ }); expect(checkbox).not.toBeChecked();
     await user.click(checkbox); await user.click(screen.getByRole("button", { name: "用你自己的模型端点写" }));
     await screen.findByRole("heading", { name: "确认这一次要生成什么" }); expect(checkbox).toBeDisabled();
-    expect(native.callsTo("prepare_draft_with_insight")[0]?.payload).toEqual({ pasted: TEXT, contextId: INSIGHT_CONTEXT_ID, includeCounts: true, includeOriginal: false });
+    expect(native.callsTo("prepare_draft_with_insight")[0]?.payload).toEqual({ pasted: TEXT, contextId: INSIGHT_CONTEXT_ID, includeCounts: true, includeOriginal: false, includeGoal: false });
     await user.click(screen.getByTestId("e1-carry-original"));
     await waitFor(() => expect(native.callsTo("prepare_draft_with_insight")).toHaveLength(2));
-    expect(native.callsTo("prepare_draft_with_insight")[1]?.payload).toEqual({ pasted: TEXT, contextId: INSIGHT_CONTEXT_ID, includeCounts: true, includeOriginal: true });
+    expect(native.callsTo("prepare_draft_with_insight")[1]?.payload).toEqual({ pasted: TEXT, contextId: INSIGHT_CONTEXT_ID, includeCounts: true, includeOriginal: true, includeGoal: false });
     await screen.findByRole("heading", { name: "确认这一次要生成什么" });
     expect(screen.getByText("本次模型请求包含已勾选的匿名 A2 派生计数。")).toBeVisible();
     expect(screen.getByText(/完整请求 UTF-8 JSON：1200 字节/)).toBeVisible();
@@ -75,7 +75,7 @@ describe("明确本地统计参与本次起草", () => {
   it("默认本地统计不入wire，最终展示采用核心reference/bytes/body而不保留旧副本", async () => {
     const reference = anInsightReference({ summary: aPersonSummary({ text: "最终完整可信统计材料", points: [{ ...aPersonSummary().points[0]!, statement: "最终统计完整项", evidence_ids: [] }] }) });
     const { native, user } = await page({ preparingDraftInsight: () => anInsightDraftPlan({ reference,
-      prepared: { plan: anE1Plan(), includes_counts: false, encoded_bytes: 65432, body_preview: "FINAL LOCAL REFERENCE MARKER" } }) });
+      prepared: { plan: anE1Plan(), includes_counts: false, includes_goal: false, encoded_bytes: 65432, body_preview: "FINAL LOCAL REFERENCE MARKER" } }) });
     await preview(user); const oldText = anInsightReference().summary.text;
     await user.click(screen.getByRole("button", { name: "用你自己的模型端点写" }));
     await screen.findByRole("heading", { name: "这份准备实际保留的统计材料" });

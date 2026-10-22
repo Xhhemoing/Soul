@@ -44,6 +44,7 @@ pub mod insights;
 pub mod memory;
 pub mod policy;
 pub mod profile;
+mod research_archive;
 pub mod session;
 pub mod shell;
 pub mod sources;

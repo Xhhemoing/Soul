@@ -344,7 +344,7 @@ fn points_for(edge: &TieEdge, resolved: &[SoulEvidence]) -> DraftResult<Vec<Summ
     let strength = &edge.tie_strength;
     let band = strength.band;
     let counted = counted_rows(edge, resolved);
-    let last_contact = last_contact_row(strength, resolved, &counted);
+    let last_contact = last_contact_row(strength, resolved, &counted)?;
 
     let mut points = Vec::new();
     for bullet in a2_adapt::bullets_for(edge, &counted, last_contact) {
@@ -451,15 +451,24 @@ fn last_contact_row(
     strength: &TieStrength,
     resolved: &[SoulEvidence],
     counted: &[Uuid],
-) -> Option<Uuid> {
+) -> DraftResult<Option<Uuid>> {
     let last = strength.last_contact_utc.as_str();
-    resolved
-        .iter()
-        .find(|row| {
-            counted.contains(&row.evidence_id)
-                && interaction::interactions_in(row)
-                    .iter()
-                    .any(|observation| observation.occurred_at.as_str() == last)
-        })
-        .map(|row| row.evidence_id)
+    let mut found = None;
+    // Validate all resolved sources before allowing any summary. Even a valid
+    // latest match must not hide a later malformed tagged reference.
+    for row in resolved {
+        let observations =
+            interaction::interactions_in(row).map_err(|_| DraftError::UnresolvedEvidence {
+                evidence_id: row.evidence_id,
+            })?;
+        if found.is_none()
+            && counted.contains(&row.evidence_id)
+            && observations
+                .iter()
+                .any(|observation| observation.occurred_at.as_str() == last)
+        {
+            found = Some(row.evidence_id);
+        }
+    }
+    Ok(found)
 }

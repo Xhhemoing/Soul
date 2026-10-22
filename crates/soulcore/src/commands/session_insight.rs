@@ -1,6 +1,7 @@
 //! A single-use reference to one contact's trusted, exact A2 bundle snapshot.
 use super::*;
 use crate::commands::insights::{self, InsightReference, SelectedInsightContext};
+use soul_memory::{ContextSelection, MemorySelectionPreview};
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -25,6 +26,7 @@ pub struct InsightDraftValue {
 pub struct InsightDraftPlan {
     pub prepared: draft::InsightPrepared,
     pub reference: InsightReference,
+    pub goal_preview: Option<MemorySelectionPreview>,
 }
 
 #[derive(Debug)]
@@ -33,6 +35,7 @@ pub(super) struct HeldInsight {
     revision: Uuid,
     selection: SelectedInsightContext,
     pub(super) assistance: Option<assistance::AssistanceBinding>,
+    pub(super) goal: Option<ContextSelection>,
 }
 
 #[derive(Debug)]
@@ -40,6 +43,12 @@ pub(super) struct PendingInsight {
     preparation_id: String,
     selection: SelectedInsightContext,
     pub(super) assistance: Option<assistance::AssistanceBinding>,
+    goal: Option<ContextSelection>,
+}
+
+pub(super) struct DispatchedInsightContext {
+    pub selection: SelectedInsightContext,
+    pub goal: Option<ContextSelection>,
 }
 
 fn changed() -> SessionRefusal {
@@ -67,6 +76,7 @@ impl Session {
             revision: self.draft_revision,
             selection,
             assistance: None,
+            goal: None,
         });
         Ok(InsightContextView {
             context_id: id,
@@ -84,6 +94,9 @@ impl Session {
             self.revalidate_assistance(binding)?;
         }
         self.revalidate_insight(&held.selection)?;
+        if let Some(goal) = &held.goal {
+            self.revalidate_memory(goal)?;
+        }
         Ok(held.selection.clone())
     }
 
@@ -99,7 +112,7 @@ impl Session {
     pub(super) fn insight_for_dispatch(
         &self,
         approval: &Approval,
-    ) -> Result<Option<SelectedInsightContext>, SessionRefusal> {
+    ) -> Result<Option<DispatchedInsightContext>, SessionRefusal> {
         if let Some(pending) = &self.pending_insight {
             if pending.preparation_id != approval.preparation_id {
                 return Err(changed());
@@ -108,7 +121,13 @@ impl Session {
                 self.revalidate_assistance(binding)?;
             }
             self.revalidate_insight(&pending.selection)?;
-            return Ok(Some(pending.selection.clone()));
+            if let Some(goal) = &pending.goal {
+                self.revalidate_memory(goal)?;
+            }
+            return Ok(Some(DispatchedInsightContext {
+                selection: pending.selection.clone(),
+                goal: pending.goal.clone(),
+            }));
         }
         Ok(None)
     }
@@ -143,13 +162,58 @@ impl Session {
         include_counts: bool,
         include_original: bool,
     ) -> Result<InsightDraftPlan, SessionRefusal> {
+        self.prepare_draft_with_insight_and_goal(
+            pasted,
+            context_id,
+            include_counts,
+            include_original,
+            false,
+        )
+    }
+
+    pub fn prepare_draft_with_insight_and_goal(
+        &mut self,
+        pasted: &str,
+        context_id: &str,
+        include_counts: bool,
+        include_original: bool,
+        include_goal: bool,
+    ) -> Result<InsightDraftPlan, SessionRefusal> {
         self.require_store_idle()?;
         self.require_draft_slot()?;
+        // Every replacement attempt revokes the old approval, including a
+        // missing/non-owner goal or a stale context rejected before rendering.
+        self.draft.discard();
+        self.pending_memory = None;
+        self.pending_insight = None;
         let selection = self.selected_insight(context_id)?;
         let assistance = self
             .held_insight
             .as_ref()
             .and_then(|held| held.assistance.clone());
+        let goal = if include_goal {
+            let held = self.held_insight.as_ref().ok_or_else(changed)?;
+            if held.assistance.is_none() {
+                return Err(changed());
+            }
+            Some(held.goal.clone().ok_or_else(changed)?)
+        } else {
+            None
+        };
+        let goal_material = goal
+            .as_ref()
+            .map(|goal| {
+                let ids: Vec<_> = goal
+                    .selected()
+                    .iter()
+                    .map(|entry| entry.memory_id())
+                    .collect();
+                if ids.len() != 1 {
+                    return Err(changed());
+                }
+                memory_context::material(goal, &ids)
+            })
+            .transpose()?;
         self.held_memory = None;
         self.pending_memory = None;
         self.pending_insight = None;
@@ -161,12 +225,21 @@ impl Session {
             brief,
             pasted,
             include_original,
-            &selection,
-            include_counts,
+            draft::InsightMaterial {
+                selected: &selection,
+                include_counts,
+                goal: goal_material.as_ref(),
+            },
         )
         .map_err(|refusal| self.refuse_draft(refusal))?;
-        if let Err(refusal) =
-            self.note_injection(injection::scan(&UntrustedText::new(pasted)).len() as u64)
+        if let Err(refusal) = goal_material
+            .as_ref()
+            .map_or(Ok(()), |material| {
+                self.note_injection(material.injection_signals().len() as u64)
+            })
+            .and_then(|_| {
+                self.note_injection(injection::scan(&UntrustedText::new(pasted)).len() as u64)
+            })
         {
             self.draft.discard();
             return Err(refusal);
@@ -175,10 +248,12 @@ impl Session {
             preparation_id: prepared.plan.preparation_id.clone(),
             selection: selection.clone(),
             assistance,
+            goal: goal.clone(),
         });
         Ok(InsightDraftPlan {
             prepared,
             reference: selection.reference(),
+            goal_preview: goal.as_ref().map(ContextSelection::preview),
         })
     }
 }

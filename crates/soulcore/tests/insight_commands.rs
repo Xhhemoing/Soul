@@ -182,7 +182,9 @@ fn body_pointer_replay_is_not_a_readable_source_and_cannot_be_recomputed() {
     let (_directory, mut store, bundle) = fixture();
     let edge = store.list_relationships().unwrap().remove(0);
     let evidence = store.get_evidence(edge.evidence_ids[0]).unwrap();
-    let observation = soul_graph::interaction::interactions_in(&evidence).remove(0);
+    let observation = soul_graph::interaction::interactions_in(&evidence)
+        .expect("valid fixture")
+        .remove(0);
     let mut event = store.get_event(observation.event_id).unwrap();
     // append-only events cannot be overwritten through the store. Instead,
     // point the evidence at a real event with another row's canonical seal.
@@ -190,7 +192,9 @@ fn body_pointer_replay_is_not_a_readable_source_and_cannot_be_recomputed() {
     event.event_id = Uuid::now_v7();
     store.append_event(event.clone()).unwrap();
     let mut changed = evidence.clone();
-    let mut reference = soul_graph::interaction::interactions_in(&changed).remove(0);
+    let mut reference = soul_graph::interaction::interactions_in(&changed)
+        .expect("valid fixture")
+        .remove(0);
     assert_ne!(reference.event_id, event.event_id);
     assert_eq!(reference.event_id, original);
     reference.event_id = event.event_id;

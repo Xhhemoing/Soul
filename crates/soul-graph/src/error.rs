@@ -25,10 +25,9 @@ pub enum GraphError {
     #[error("interaction evidence {evidence_id} has the same contact on both ends")]
     SelfLoop { evidence_id: Uuid },
 
-    /// An interaction carries an instant the build cannot turn into a UTC
-    /// second. Damaged evidence fails the rebuild rather than being folded in
-    /// under a timestamp nobody could read.
-    #[error("interaction evidence {evidence_id} carries a timestamp this build cannot read")]
+    /// A tagged interaction has unreadable required structure or timestamp.
+    /// Only its evidence identity is exposed, never the damaged field value.
+    #[error("interaction evidence {evidence_id} has unreadable structure or time")]
     UnreadableInteraction { evidence_id: Uuid },
 
     /// A stored edge carries `types` or `tie_strength` this build cannot read.

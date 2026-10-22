@@ -17,6 +17,7 @@ members = [
   "crates/soul-draft",
   "crates/soul-fileplan",
   "crates/soul-win-dpapi",
+  "crates/soul-local-files",
   "crates/soul-algo-tie",
   "crates/soul-algo-trait",
 ]
@@ -78,6 +79,7 @@ soul-collect = { path = "crates/soul-collect", version = "0.1.0" }
 soul-draft = { path = "crates/soul-draft", version = "0.1.0" }
 soul-fileplan = { path = "crates/soul-fileplan", version = "0.1.0" }
 soul-win-dpapi = { path = "crates/soul-win-dpapi", version = "0.1.0" }
+soul-local-files = { path = "crates/soul-local-files", version = "0.1.0" }
 soul-algo-tie = { path = "crates/soul-algo-tie", version = "0.3.0" }
 soul-algo-trait = { path = "crates/soul-algo-trait", version = "0.3.0" }
 

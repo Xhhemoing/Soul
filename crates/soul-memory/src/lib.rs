@@ -25,6 +25,7 @@ pub mod error;
 pub mod outcome;
 pub mod selection;
 pub mod service;
+pub mod task_context;
 
 pub use draft::{
     MemoryContent, MemoryDigest, MemoryDraft, MemoryEdit, DEFAULT_PLACEHOLDER, SUMMARY_FIELD,
@@ -39,3 +40,7 @@ pub use selection::{
     SelectionOutcome, MEMORY_CONTEXT_NOTICE,
 };
 pub use service::{create, forget, list, preview_forget, read, update};
+pub use task_context::{
+    select_task_context, TaskAssessment, TaskRequirement, TaskRequirementStatus, TaskSelection,
+    TaskStatus,
+};

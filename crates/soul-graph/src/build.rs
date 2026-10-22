@@ -53,6 +53,35 @@ pub struct GraphBuild {
     pub audit: Vec<AuditContent>,
 }
 
+/// Display ordering for an already-adapted timestamp. UTC seconds come from
+/// the adapter; fractional digits retain arbitrary precision without floating
+/// point or nanosecond truncation. Removing trailing zeroes makes equivalent
+/// fractions equal, and the original text breaks ties deterministically.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct DisplayInstant {
+    unix_seconds: i64,
+    fraction: String,
+    text: String,
+}
+
+impl DisplayInstant {
+    fn from_adapted(unix_seconds: i64, text: &str) -> Self {
+        // adapt() has already validated the date, fractional digits and zone.
+        let fraction = if text.as_bytes().get(19) == Some(&b'.') {
+            let digits = &text[20..];
+            let end = digits.bytes().take_while(u8::is_ascii_digit).count();
+            digits[..end].trim_end_matches('0')
+        } else {
+            ""
+        };
+        Self {
+            unix_seconds,
+            fraction: fraction.to_owned(),
+            text: text.to_owned(),
+        }
+    }
+}
+
 /// One peer's observations, gathered for the frozen rule.
 ///
 /// The rule works in whole Unix seconds, but what an edge displays is the
@@ -65,25 +94,24 @@ struct PeerEvidence {
     /// This peer's adapted rows, in evidence order. Input to the rule.
     rows: Vec<soul_algo_tie::Interaction>,
     evidence_ids: BTreeSet<Uuid>,
-    /// RFC 3339 in UTC sorts lexicographically, which is why every writer in
-    /// this workspace normalizes to `Z` before storing a timestamp. Comparing
-    /// the stored strings keeps the exact instant a caller wrote, fractional
-    /// seconds included.
-    first_contact: String,
-    last_contact: String,
+    /// Compare actual instants across offsets and unequal fractional lengths,
+    /// while retaining the exact timestamp expression for display.
+    first_contact: DisplayInstant,
+    last_contact: DisplayInstant,
     /// Newest one-to-one instant. `None` means the two have never spoken
     /// privately.
-    last_direct_contact: Option<String>,
+    last_direct_contact: Option<DisplayInstant>,
 }
 
 impl PeerEvidence {
-    fn new(interned_peer_id: u64, occurred_at: &str) -> PeerEvidence {
+    fn new(interned_peer_id: u64, unix_seconds: i64, occurred_at: &str) -> PeerEvidence {
+        let instant = DisplayInstant::from_adapted(unix_seconds, occurred_at);
         PeerEvidence {
             interned_peer_id,
             rows: Vec::new(),
             evidence_ids: BTreeSet::new(),
-            first_contact: occurred_at.to_owned(),
-            last_contact: occurred_at.to_owned(),
+            first_contact: instant.clone(),
+            last_contact: instant,
             last_direct_contact: None,
         }
     }
@@ -95,21 +123,22 @@ impl PeerEvidence {
         occurred_at: &str,
         venue: Venue,
     ) {
+        let instant = DisplayInstant::from_adapted(row.occurred_at_unix, occurred_at);
         self.rows.push(row);
         self.evidence_ids.insert(evidence_id);
-        if occurred_at < self.first_contact.as_str() {
-            self.first_contact = occurred_at.to_owned();
+        if instant < self.first_contact {
+            self.first_contact = instant.clone();
         }
-        if occurred_at > self.last_contact.as_str() {
-            self.last_contact = occurred_at.to_owned();
+        if instant > self.last_contact {
+            self.last_contact = instant.clone();
         }
         if venue == Venue::Direct
             && self
                 .last_direct_contact
-                .as_deref()
-                .is_none_or(|held| occurred_at > held)
+                .as_ref()
+                .is_none_or(|held| &instant > held)
         {
-            self.last_direct_contact = Some(occurred_at.to_owned());
+            self.last_direct_contact = Some(instant);
         }
     }
 }
@@ -145,14 +174,17 @@ fn tie_strength_of(
         incoming_count: reading.incoming_count,
         conversation_count: reading.conversation_count,
         active_day_count: reading.active_day_count,
-        first_contact_utc: Timestamp::new(acc.first_contact.clone()),
-        last_contact_utc: Timestamp::new(acc.last_contact.clone()),
+        first_contact_utc: Timestamp::new(acc.first_contact.text.clone()),
+        last_contact_utc: Timestamp::new(acc.last_contact.text.clone()),
         direct_out_count: reading.direct_out_count,
         direct_in_count: reading.direct_in_count,
         group_out_count: reading.group_out_count,
         group_in_count: reading.group_in_count,
         direct_active_day_count: reading.direct_active_day_count,
-        last_direct_contact_utc: acc.last_direct_contact.clone().map(Timestamp::new),
+        last_direct_contact_utc: acc
+            .last_direct_contact
+            .as_ref()
+            .map(|instant| Timestamp::new(instant.text.clone())),
         silent_days: reading.silent_days,
         as_of_utc: Some(Timestamp::new(soul_policy::clock::rfc3339_utc(
             reading.as_of_unix,
@@ -199,6 +231,9 @@ where
         });
     }
     let Some(owner_id) = owners.first().copied() else {
+        for evidence in store.list_evidence()? {
+            interaction::interactions_in(&evidence)?;
+        }
         // Nothing has been imported yet, so there is nobody to be at the centre
         // of the graph and nothing to derive.
         return Ok(GraphBuild::default());
@@ -237,7 +272,7 @@ where
                 .or_default()
                 .insert(evidence.evidence_id);
         }
-        for observation in interaction::interactions_in(&evidence) {
+        for observation in interaction::interactions_in(&evidence)? {
             if observation.peer_contact_id == observation.self_contact_id {
                 return Err(GraphError::SelfLoop {
                     evidence_id: evidence.evidence_id,
@@ -269,7 +304,13 @@ where
             }
             peers
                 .entry(observation.peer_contact_id)
-                .or_insert_with(|| PeerEvidence::new(row.peer_id, observation.occurred_at.as_str()))
+                .or_insert_with(|| {
+                    PeerEvidence::new(
+                        row.peer_id,
+                        row.occurred_at_unix,
+                        observation.occurred_at.as_str(),
+                    )
+                })
                 .absorb(
                     evidence.evidence_id,
                     row,
@@ -292,10 +333,40 @@ where
         return Ok(build);
     };
 
+    // Preserve the store's first matching row, in either edge direction.
+    // Borrow old rows rather than cloning their strengths or evidence again;
+    // only the selected strength is parsed in the peer loop below.
+    let mut edges_by_peer = BTreeMap::new();
+    for edge in &existing_edges {
+        let peer_id = if edge.from_contact_id == owner_id {
+            edge.to_contact_id
+        } else if edge.to_contact_id == owner_id {
+            edge.from_contact_id
+        } else {
+            continue;
+        };
+        edges_by_peer.entry(peer_id).or_insert(edge);
+    }
+    let mut inferences_by_relationship = BTreeMap::new();
+    for inference in &existing_inferences {
+        if !inference.statement_key.starts_with(TIE_STATEMENT_PREFIX) {
+            continue;
+        }
+        if let Some(relationship_id) = inference
+            .target
+            .get("relationship_id")
+            .and_then(Value::as_str)
+        {
+            // Exact stored text is significant: parsing a UUID here would
+            // also match uppercase or unhyphenated targets that never matched.
+            inferences_by_relationship
+                .entry(relationship_id)
+                .or_insert(inference);
+        }
+    }
+
     for (peer_id, acc) in &peers {
-        let existing_edge = existing_edges
-            .iter()
-            .find(|edge| connects(edge, owner_id, *peer_id));
+        let existing_edge = edges_by_peer.get(peer_id).copied();
         let relationship_id = existing_edge
             .map(|edge| edge.relationship_id)
             .unwrap_or_else(Uuid::now_v7);
@@ -334,9 +405,9 @@ where
         store.put_relationship(edge)?;
         build.edges_written.push(relationship_id);
 
-        let existing_inference = existing_inferences
-            .iter()
-            .find(|inference| is_tie_statement_about(inference, relationship_id));
+        let existing_inference = inferences_by_relationship
+            .get(relationship_id.to_string().as_str())
+            .copied();
         let inference_id = existing_inference
             .map(|inference| inference.inference_id)
             .unwrap_or_else(Uuid::now_v7);
@@ -379,11 +450,6 @@ fn read_strength(edge: &SoulRelationship) -> GraphResult<Option<TieStrength>> {
             })
         })
         .transpose()
-}
-
-fn connects(edge: &SoulRelationship, left: Uuid, right: Uuid) -> bool {
-    (edge.from_contact_id == left && edge.to_contact_id == right)
-        || (edge.from_contact_id == right && edge.to_contact_id == left)
 }
 
 /// Whether this inference is the tie statement about that edge.

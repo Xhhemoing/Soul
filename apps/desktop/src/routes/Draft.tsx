@@ -171,7 +171,7 @@ export function Draft(): React.JSX.Element {
     if (requests.finish(ticket, !known && !changed) && address === getRouteAddress() && materialGeneration === draftMaterialSelection.generation()) {
       setOutcome(changed ? { kind: "source_changed" }
         : known ? { kind: "refused", refusal: asRefusal(error) } : { kind: "unknown" });
-      if (insight !== null) setInsight({ ...insight, context_id: null, include_counts: false });
+      if (insight !== null) setInsight({ ...insight, context_id: null, include_counts: false, include_goal: false, goal_preview: null });
     }
   };
 
@@ -205,7 +205,7 @@ export function Draft(): React.JSX.Element {
         const result = await localDraftWithInsight(ticket.text, insight.context_id);
         if (finish(ticket)) {
           setOutcome({ kind: "draft", draft: result.draft });
-          setInsight({ context_id: null, reference: result.reference, include_counts: false });
+          setInsight({ context_id: null, reference: result.reference, include_counts: false, include_goal: false, goal_preview: null });
         }
         return;
       }
@@ -231,11 +231,12 @@ export function Draft(): React.JSX.Element {
     if (ticket === null) return;
     run(ticket, async () => {
       if ((selection !== null || assistance?.kind === "insight") && insight?.context_id !== null && insight?.context_id !== undefined) {
-        const material = await prepareDraftWithInsight(ticket.text, insight.context_id, insight.include_counts, expected !== undefined);
+        const material = await prepareDraftWithInsight(ticket.text, insight.context_id, insight.include_counts, expected !== undefined, insight.include_goal);
         const next = requests.remember(ticket, material.prepared.plan);
         if (finish(ticket) && next !== null) {
           setQuote(next); setOutcome({ kind: "none" }); setInsightPlan(material);
-          setInsight({ ...insight, reference: material.reference, include_counts: material.prepared.includes_counts });
+          setInsight({ ...insight, reference: material.reference, include_counts: material.prepared.includes_counts,
+            include_goal: material.prepared.includes_goal, goal_preview: material.goal_preview });
         }
         return;
       }
@@ -369,7 +370,7 @@ export function Draft(): React.JSX.Element {
         onPrepared={(value) => {
           rememberDisplay();
           setAssistance(value); setMemory(value.kind === "memory" ? { context: value.memory, owner_ids: [] } : null);
-          setInsight(value.kind === "insight" ? { ...value.insight, include_counts: false } : null);
+          setInsight(value.kind === "insight" ? { ...value.insight, include_counts: false, include_goal: false, goal_preview: value.goal_preview } : null);
           setQuote(null); setMemoryPlan(null); setInsightPlan(null); setOutcome({ kind: "none" });
           setInput((previous) => ({ ...previous, revision: requests.invalidate() }));
         }} onMemory={setMemory} onInsight={setInsight} /> : selection === null ? <DraftMemory value={displayCurrent ? memory : null} busy={lane.busy || lane.uncertain} hasQuote={quote !== null} getHasQuote={() => requests.hasQuote()} getPasteGeneration={() => pasteGeneration.current} onEdit={memoryEdit} onChange={(value) => {
@@ -384,6 +385,8 @@ export function Draft(): React.JSX.Element {
         }} />}
       {!displayCurrent || insightPlan === null ? null : <section className="panel"><h2>这份准备实际保留的统计材料</h2>
         <InsightReferences reference={insightPlan.reference} />
+        {insightPlan.goal_preview === null ? null : <MemoryReferences preview={insightPlan.goal_preview} />}
+        <p>{insightPlan.prepared.includes_goal ? "本次模型请求包含另行勾选的本人目标脱敏节选。目标出处只说明这份材料的来源，不证明整篇草稿的事实。" : "本次模型请求未纳入本人目标正文。"}</p>
         <p>完整请求 UTF-8 JSON：{insightPlan.prepared.encoded_bytes} 字节（含固定指令和围栏，不是 token 数）。</p>
         <p>{insightPlan.prepared.includes_counts ? "本次模型请求包含已勾选的匿名 A2 派生计数。" : "本次模型请求未获得统计计数，仅保留本地参考标记。"}</p>
         <details><summary>查看实际脱敏统计材料</summary><pre className="pre-wrap">{insightPlan.prepared.body_preview}</pre></details>

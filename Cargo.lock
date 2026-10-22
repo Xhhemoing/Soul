@@ -1585,6 +1585,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "soul-local-files"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "soul-memory"
 version = "0.1.0"
 dependencies = [
@@ -1724,6 +1731,7 @@ dependencies = [
  "soul-fileplan",
  "soul-graph",
  "soul-import",
+ "soul-local-files",
  "soul-memory",
  "soul-policy",
  "soul-profile",

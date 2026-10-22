@@ -7,6 +7,10 @@ license.workspace = true
 publish = false
 description = "Soul's encrypted main database: SQLCipher pages, XChaCha20-Poly1305 fields, forgetting by content-key destruction."
 
+[features]
+# Synthetic Session lifecycle experiments only; never enabled by normal deps.
+test-repair = []
+
 [dependencies]
 soul-schema = { workspace = true }
 soul-store-api = { workspace = true }

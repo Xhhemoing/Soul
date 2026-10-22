@@ -1,7 +1,20 @@
 //! Test-only registration types from ROADMAP 7.2. No prompt/output text is stored.
+use serde::{Deserialize, Deserializer, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+// Optional observations must still be explicitly present as null in input.
+fn required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MissingReason {
+    /// The task completed, but this timing observation was not made.
+    NotMeasured,
     NotStarted,
     ConsentWithdrawnBeforeGeneration,
     DeadlineReached,
@@ -11,7 +24,8 @@ pub enum MissingReason {
     NotCompleted,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Measured<T> {
     Value(T),
     Missing(MissingReason),
@@ -27,40 +41,47 @@ impl<T> Measured<T> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Reported<T> {
     Known(T),
     Unknown,
     NotExposed,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ParticipantScope {
     Author,
     VolunteerAnonymous,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum FeedbackPurpose {
     ProductEvaluation,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ConsentState {
     Granted,
     Withdrawn,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Variant {
     A,
     B,
     C,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TaskType {
     T1,
     T2,
     T3,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SemanticStratum {
     NotApplicable,
     Coordination,
@@ -69,7 +90,8 @@ pub enum SemanticStratum {
     #[allow(dead_code)]
     RelationshipFollowup,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Contrast {
     AB,
     AC,
@@ -90,12 +112,14 @@ impl Contrast {
         }
     }
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Comparability {
     Comparable,
     NotComparable,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PairCompletion {
     Completed,
     Incomplete,
@@ -103,31 +127,36 @@ pub enum PairCompletion {
     SystemFailure,
     SafetyStop,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Preference {
     Left,
     Right,
     Tie,
     Unrated,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BlindStatus {
     Intact,
     Broken,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Path {
     LocalTemplate,
     EndpointPlaceholder,
     EndpointOriginal,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RedactionCondition {
     LocalOnly,
     Placeholder,
     SingleUseOriginal,
 }
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Conditions {
     pub path: Path,
     pub model_id: Reported<String>,
@@ -136,25 +165,29 @@ pub struct Conditions {
     pub context_limit: Reported<u32>,
     pub redaction_condition: RedactionCondition,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ActualBrief {
     Neutral,
     FromView,
     ManualVoice,
     Unknown,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BriefBuildStatus {
     Built,
     Failed,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DraftSource {
     ToneTemplate,
     UserEndpoint,
     None,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DegradedReason {
     None,
     ReplyUnreadable,
@@ -162,14 +195,16 @@ pub enum DegradedReason {
     ReplyClinical,
     NotGenerated,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CandidateCompletion {
     Completed,
     Incomplete,
     SystemFailure,
     SafetyStop,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum FailureCode {
     None,
     NotStarted,
@@ -183,20 +218,24 @@ pub enum FailureCode {
     ResponseRejected,
     SafetyStop,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RefusalCode {
     Approval,
     Origin,
     Safety,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SanitizedNote {
     SyntheticFeedback,
+    SyntheticOperatorFeedback,
     TemplateSlotFilled,
     FactCorrectedBeforeCompletion,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Run {
     pub evaluation_run: String,
     /// Synthetic monotonic seconds; real adapters must use one time basis.
@@ -217,7 +256,8 @@ impl Run {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Pair {
     pub evaluation_run: String,
     pub task_slot: u32,
@@ -229,7 +269,9 @@ pub struct Pair {
     pub right_variant: Variant,
     pub presentation_seed: u64,
     pub comparability_status: Comparability,
+    #[serde(deserialize_with = "required_option")]
     pub pair_started_at: Option<u64>,
+    #[serde(deserialize_with = "required_option")]
     pub pair_completed_at: Option<u64>,
     pub pair_completion_status: PairCompletion,
     pub preference: Preference,
@@ -237,7 +279,8 @@ pub struct Pair {
     pub conditions: Conditions,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Candidate {
     pub pair_id: String,
     pub candidate_id: String,
@@ -259,6 +302,7 @@ pub struct Candidate {
     pub placeheld_turns: Measured<u32>,
     pub carries_exempted_original: Measured<bool>,
     pub refusal_code: Measured<RefusalCode>,
+    #[serde(deserialize_with = "required_option")]
     pub missing_reason: Option<MissingReason>,
     pub sanitized_note: Measured<SanitizedNote>,
     pub delivery: bool,
@@ -304,7 +348,8 @@ impl Candidate {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RegisteredSlot {
     pub evaluation_run: String,
     pub task_slot: u32,
@@ -336,7 +381,8 @@ impl RegisteredSlot {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Evaluation {
     pub runs: Vec<Run>,
     pub registered_slots: Vec<RegisteredSlot>,

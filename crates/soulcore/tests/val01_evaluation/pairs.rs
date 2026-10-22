@@ -2,7 +2,8 @@
 use super::records::*;
 use std::collections::BTreeSet;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ErrorKind {
     DuplicateId,
     MissingRun,
@@ -172,6 +173,66 @@ fn valid_task_shape(task: TaskType, semantic: SemanticStratum, conditions: &Cond
 fn validate_candidate(c: &Candidate, pair: &Pair, errors: &mut Vec<RecordError>) {
     let id = &c.candidate_id;
     let completed = c.candidate_completion_status == CandidateCompletion::Completed;
+    let timing_missing = matches!(
+        c.edit_seconds,
+        Measured::Missing(MissingReason::NotMeasured)
+    ) || matches!(
+        c.pause_seconds,
+        Measured::Missing(MissingReason::NotMeasured)
+    );
+    // NotMeasured means a completed timing observation was not made. Existing
+    // stage reasons are preserved; it cannot excuse a missing non-timing fact.
+    let other_not_measured = [
+        matches!(
+            c.actual_brief_state,
+            Measured::Missing(MissingReason::NotMeasured)
+        ),
+        matches!(
+            c.brief_build_status,
+            Measured::Missing(MissingReason::NotMeasured)
+        ),
+        matches!(
+            c.first_pass_accepted,
+            Measured::Missing(MissingReason::NotMeasured)
+        ),
+        matches!(c.help_count, Measured::Missing(MissingReason::NotMeasured)),
+        matches!(
+            c.unsupported_claim,
+            Measured::Missing(MissingReason::NotMeasured)
+        ),
+        matches!(
+            c.required_fact_error_count,
+            Measured::Missing(MissingReason::NotMeasured)
+        ),
+        matches!(
+            c.privacy_or_safety_stop,
+            Measured::Missing(MissingReason::NotMeasured)
+        ),
+        matches!(
+            c.placeheld_turns,
+            Measured::Missing(MissingReason::NotMeasured)
+        ),
+        matches!(
+            c.carries_exempted_original,
+            Measured::Missing(MissingReason::NotMeasured)
+        ),
+        matches!(
+            c.refusal_code,
+            Measured::Missing(MissingReason::NotMeasured)
+        ),
+        matches!(
+            c.sanitized_note,
+            Measured::Missing(MissingReason::NotMeasured)
+        ),
+    ]
+    .into_iter()
+    .any(|missing| missing);
+    if (timing_missing && !completed)
+        || (timing_missing != (c.missing_reason == Some(MissingReason::NotMeasured)))
+        || other_not_measured
+    {
+        error(errors, id, ErrorKind::Stage);
+    }
     let safety_stop = c.privacy_or_safety_stop == Measured::Value(true)
         || c.candidate_completion_status == CandidateCompletion::SafetyStop
         || c.failure_code == FailureCode::SafetyStop;
@@ -273,8 +334,14 @@ fn validate_candidate(c: &Candidate, pair: &Pair, errors: &mut Vec<RecordError>)
     }
     if completed
         && (!c.generated
-            || c.edit_seconds.value().is_none()
-            || c.pause_seconds.value().is_none()
+            || !matches!(
+                c.edit_seconds,
+                Measured::Value(_) | Measured::Missing(MissingReason::NotMeasured)
+            )
+            || !matches!(
+                c.pause_seconds,
+                Measured::Value(_) | Measured::Missing(MissingReason::NotMeasured)
+            )
             || c.help_count.value().is_none()
             || c.first_pass_accepted.value().is_none()
             || c.privacy_or_safety_stop != Measured::Value(false)

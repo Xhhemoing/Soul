@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { DraftSourceChangedError, getDraftSourceRevision, prepareInsightContext, type InsightReference } from "../core";
+import { DraftSourceChangedError, getDraftSourceRevision, prepareInsightContext, type InsightReference, type MemorySelectionPreview } from "../core";
 import { asRefusal } from "../refusal";
 import { draftInsightSelection, type InsightSelection } from "./draftMaterialSelection";
 import { draftLane, isDraftRefusal } from "./draftRequests";
@@ -9,6 +9,8 @@ export interface InsightTask {
   readonly context_id: string | null;
   readonly reference: InsightReference;
   readonly include_counts: boolean;
+  readonly include_goal: boolean;
+  readonly goal_preview: MemorySelectionPreview | null;
 }
 
 export function DraftInsights({ selection, value, busy, canClear, hasQuote, getHasQuote, getPasteGeneration, onChange, onClear }: {
@@ -44,7 +46,7 @@ export function DraftInsights({ selection, value, busy, canClear, hasQuote, getH
       const context = await result;
       if (context.reference.bundle_id !== selection.bundle_id || context.reference.contact_id !== selection.contact_id
         || context.reference.summary.contact_id !== selection.contact_id) throw new Error("统计返回的来源身份不符，请重新核对。");
-      if (current() && deliverySource === getDraftSourceRevision()) onChange({ ...context, include_counts: false });
+      if (current() && deliverySource === getDraftSourceRevision()) onChange({ ...context, include_counts: false, include_goal: false, goal_preview: null });
     }).catch((error: unknown) => {
       unknown = !isDraftRefusal(error) && !(error instanceof DraftSourceChangedError);
       if (current() && deliverySource === getDraftSourceRevision()) setError(asRefusal(error).explanation);

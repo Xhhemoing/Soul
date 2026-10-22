@@ -237,9 +237,19 @@ impl fmt::Debug for MemorySelectionPreview {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextSelection {
-    selected: Vec<SelectedMemory>,
-    excluded: Vec<SelectionExclusion>,
-    outcome: SelectionOutcome,
+    pub(crate) selected: Vec<SelectedMemory>,
+    pub(crate) excluded: Vec<SelectionExclusion>,
+    pub(crate) outcome: SelectionOutcome,
+    pub(crate) task_guard: Option<TaskGuard>,
+}
+
+/// Every readable diagnostic dependency remains request-local, including
+/// candidates that were not ultimately shown. Each required field needs one
+/// surviving support, not every duplicate record with the same literal value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TaskGuard {
+    pub pool: Vec<SelectedMemory>,
+    pub support_groups: Vec<Vec<Uuid>>,
 }
 
 impl ContextSelection {
@@ -280,6 +290,14 @@ impl ContextSelection {
                 .iter()
                 .any(|id| !self.selected.iter().any(|entry| entry.memory_id() == *id))
         {
+            return Err(SelectionError::InvalidRetainedIds);
+        }
+        if self.task_guard.as_ref().is_some_and(|guard| {
+            guard
+                .support_groups
+                .iter()
+                .any(|group| !group.iter().any(|id| retained.contains(id)))
+        }) {
             return Err(SelectionError::InvalidRetainedIds);
         }
         self.selected.retain(|entry| {
@@ -350,6 +368,7 @@ where
         selected: Vec::new(),
         excluded: Vec::new(),
         outcome: SelectionOutcome::Abstain,
+        task_guard: None,
     };
     let mut seen = BTreeSet::new();
     if request.time_scope == MemoryTimeScope::AtTime {
@@ -454,7 +473,12 @@ pub fn revalidate_selection<S>(
 where
     S: MemoryStore + BlobStore,
 {
-    for selected in &selection.selected {
+    for selected in selection.selected.iter().chain(
+        selection
+            .task_guard
+            .iter()
+            .flat_map(|guard| guard.pool.iter()),
+    ) {
         let current = store
             .get_memory(selected.memory_id())
             .map_err(|_| SelectionError::SourceChanged)?;

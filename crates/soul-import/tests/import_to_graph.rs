@@ -108,7 +108,7 @@ fn what_the_user_says_to_a_group_is_attributed_to_nobody() {
         .list_evidence()
         .expect("evidence")
         .iter()
-        .flat_map(interaction::interactions_in)
+        .flat_map(|row| interaction::interactions_in(row).expect("valid fixture"))
         .filter(|observation| observation.venue == soul_graph::Venue::Group)
         .collect();
     assert!(
@@ -190,7 +190,7 @@ fn an_owner_group_message_does_not_write_one_outgoing_row_per_speaker() {
         .list_evidence()
         .expect("evidence")
         .iter()
-        .flat_map(interaction::interactions_in)
+        .flat_map(|row| interaction::interactions_in(row).expect("valid fixture"))
         .collect();
     assert_eq!(
         observations

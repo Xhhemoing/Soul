@@ -2,16 +2,14 @@
  * 研究预览: AC-20 on the screen a person reads it on.
  *
  * Three claims, and none of them is "the button is hidden". Nothing was
- * written to disk, no row is about anybody else, and there is no command on
- * this page that could produce a file — the last one is checked against
- * `core.ts`'s own list, which is the only place the shell names a command.
+ * written by the preview, no row is about anybody else, and the original
+ * preview has no save action. D107's distinct panel requires its own request.
  */
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { Research } from "./Research";
-import { COMMANDS } from "../core";
 import { denylistHits, diagnosticTerms, renderedText } from "../test/denylist";
 import {
   aResearchPreview,
@@ -143,18 +141,16 @@ describe("研究预览页", () => {
   });
 
   /**
-   * The absence of an export is a fact about the command list rather than
-   * about this component's layout: `core.ts` is the only place the shell names
-   * a command, and none of them writes anything.
+   * Opening the old preview neither prepares nor confirms the independent
+   * save action. Its original screen-only semantics remain unchanged.
    */
-  it("界面上没有导出按钮，能调用的命令里也没有一个会写文件", async () => {
+  it("只读预览区域没有保存按钮，打开页面不会准备或保存文件", async () => {
     const attempts = forbidNetwork();
-    await open();
+    const core = await open();
 
-    expect(screen.queryAllByRole("button")).toEqual([]);
-    for (const command of Object.values(COMMANDS)) {
-      expect(command).not.toMatch(/export|write_|save|download|upload/);
-    }
+    expect(within(screen.getByTestId("research-read-only")).queryAllByRole("button")).toEqual([]);
+    expect(core.calls.every((call) => !/research_save/.test(call.cmd))).toBe(true);
+    expect(screen.getByTestId("research-on-screen-only")).toHaveTextContent("没有落盘");
     expect(attempts).toEqual([]);
   });
 

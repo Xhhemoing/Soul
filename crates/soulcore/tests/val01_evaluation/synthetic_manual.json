@@ -1,0 +1,480 @@
+{
+  "runs": [
+    {
+      "evaluation_run": "synthetic-manual-run",
+      "run_started_at": 1,
+      "run_deadline_at": 10000,
+      "participant_scope": "author",
+      "feedback_purpose": "product_evaluation",
+      "consent_state": "granted"
+    }
+  ],
+  "registered_slots": [
+    {
+      "evaluation_run": "synthetic-manual-run",
+      "task_slot": 1,
+      "pair_id": "synthetic-M1",
+      "task_type": "t2",
+      "semantic_stratum": "not_applicable",
+      "contrast": "a_b",
+      "left_variant": "a",
+      "right_variant": "b",
+      "presentation_seed": 43,
+      "conditions": {
+        "path": "endpoint_placeholder",
+        "model_id": {
+          "known": "synthetic-model"
+        },
+        "model_version": {
+          "known": "synthetic-v1"
+        },
+        "service_parameters": {
+          "known": "synthetic-temperature=0"
+        },
+        "context_limit": {
+          "known": 4096
+        },
+        "redaction_condition": "placeholder"
+      }
+    },
+    {
+      "evaluation_run": "synthetic-manual-run",
+      "task_slot": 2,
+      "pair_id": "synthetic-M2",
+      "task_type": "t2",
+      "semantic_stratum": "not_applicable",
+      "contrast": "a_b",
+      "left_variant": "a",
+      "right_variant": "b",
+      "presentation_seed": 44,
+      "conditions": {
+        "path": "endpoint_placeholder",
+        "model_id": {
+          "known": "synthetic-model"
+        },
+        "model_version": {
+          "known": "synthetic-v1"
+        },
+        "service_parameters": {
+          "known": "synthetic-temperature=0"
+        },
+        "context_limit": {
+          "known": 4096
+        },
+        "redaction_condition": "placeholder"
+      }
+    },
+    {
+      "evaluation_run": "synthetic-manual-run",
+      "task_slot": 3,
+      "pair_id": "synthetic-M3",
+      "task_type": "t2",
+      "semantic_stratum": "not_applicable",
+      "contrast": "a_b",
+      "left_variant": "a",
+      "right_variant": "b",
+      "presentation_seed": 45,
+      "conditions": {
+        "path": "endpoint_placeholder",
+        "model_id": {
+          "known": "synthetic-model"
+        },
+        "model_version": {
+          "known": "synthetic-v1"
+        },
+        "service_parameters": {
+          "known": "synthetic-temperature=0"
+        },
+        "context_limit": {
+          "known": 4096
+        },
+        "redaction_condition": "placeholder"
+      }
+    }
+  ],
+  "pairs": [
+    {
+      "evaluation_run": "synthetic-manual-run",
+      "task_slot": 1,
+      "pair_id": "synthetic-M1",
+      "task_type": "t2",
+      "semantic_stratum": "not_applicable",
+      "contrast": "a_b",
+      "left_variant": "a",
+      "right_variant": "b",
+      "presentation_seed": 43,
+      "conditions": {
+        "path": "endpoint_placeholder",
+        "model_id": {
+          "known": "synthetic-model"
+        },
+        "model_version": {
+          "known": "synthetic-v1"
+        },
+        "service_parameters": {
+          "known": "synthetic-temperature=0"
+        },
+        "context_limit": {
+          "known": 4096
+        },
+        "redaction_condition": "placeholder"
+      },
+      "comparability_status": "comparable",
+      "pair_started_at": 10,
+      "pair_completed_at": 200,
+      "pair_completion_status": "completed",
+      "preference": "right",
+      "blind_status": "intact"
+    },
+    {
+      "evaluation_run": "synthetic-manual-run",
+      "task_slot": 2,
+      "pair_id": "synthetic-M2",
+      "task_type": "t2",
+      "semantic_stratum": "not_applicable",
+      "contrast": "a_b",
+      "left_variant": "a",
+      "right_variant": "b",
+      "presentation_seed": 44,
+      "conditions": {
+        "path": "endpoint_placeholder",
+        "model_id": {
+          "known": "synthetic-model"
+        },
+        "model_version": {
+          "known": "synthetic-v1"
+        },
+        "service_parameters": {
+          "known": "synthetic-temperature=0"
+        },
+        "context_limit": {
+          "known": 4096
+        },
+        "redaction_condition": "placeholder"
+      },
+      "comparability_status": "comparable",
+      "pair_started_at": 10,
+      "pair_completed_at": 200,
+      "pair_completion_status": "completed",
+      "preference": "tie",
+      "blind_status": "intact"
+    },
+    {
+      "evaluation_run": "synthetic-manual-run",
+      "task_slot": 3,
+      "pair_id": "synthetic-M3",
+      "task_type": "t2",
+      "semantic_stratum": "not_applicable",
+      "contrast": "a_b",
+      "left_variant": "a",
+      "right_variant": "b",
+      "presentation_seed": 45,
+      "conditions": {
+        "path": "endpoint_placeholder",
+        "model_id": {
+          "known": "synthetic-model"
+        },
+        "model_version": {
+          "known": "synthetic-v1"
+        },
+        "service_parameters": {
+          "known": "synthetic-temperature=0"
+        },
+        "context_limit": {
+          "known": 4096
+        },
+        "redaction_condition": "placeholder"
+      },
+      "comparability_status": "comparable",
+      "pair_started_at": 10,
+      "pair_completed_at": 200,
+      "pair_completion_status": "completed",
+      "preference": "left",
+      "blind_status": "intact"
+    }
+  ],
+  "candidates": [
+    {
+      "pair_id": "synthetic-M1",
+      "candidate_id": "synthetic-M1-a",
+      "requested_variant": "a",
+      "actual_brief_state": {
+        "value": "neutral"
+      },
+      "brief_build_status": {
+        "value": "built"
+      },
+      "generated": true,
+      "draft_source": "user_endpoint",
+      "degraded_reason": "none",
+      "candidate_completion_status": "completed",
+      "first_pass_accepted": {
+        "value": true
+      },
+      "edit_seconds": {
+        "missing": "not_measured"
+      },
+      "pause_seconds": {
+        "value": 0
+      },
+      "help_count": {
+        "value": 0
+      },
+      "unsupported_claim": {
+        "value": false
+      },
+      "required_fact_error_count": "not_applicable",
+      "privacy_or_safety_stop": {
+        "value": false
+      },
+      "failure_code": "none",
+      "placeheld_turns": {
+        "value": 1
+      },
+      "carries_exempted_original": {
+        "value": false
+      },
+      "refusal_code": "not_applicable",
+      "missing_reason": "not_measured",
+      "sanitized_note": {
+        "value": "synthetic_feedback"
+      },
+      "delivery": false
+    },
+    {
+      "pair_id": "synthetic-M1",
+      "candidate_id": "synthetic-M1-b",
+      "requested_variant": "b",
+      "actual_brief_state": {
+        "value": "from_view"
+      },
+      "brief_build_status": {
+        "value": "built"
+      },
+      "generated": true,
+      "draft_source": "user_endpoint",
+      "degraded_reason": "none",
+      "candidate_completion_status": "completed",
+      "first_pass_accepted": {
+        "value": false
+      },
+      "edit_seconds": {
+        "value": 10
+      },
+      "pause_seconds": {
+        "value": 0
+      },
+      "help_count": {
+        "value": 0
+      },
+      "unsupported_claim": {
+        "value": false
+      },
+      "required_fact_error_count": "not_applicable",
+      "privacy_or_safety_stop": {
+        "value": false
+      },
+      "failure_code": "none",
+      "placeheld_turns": {
+        "value": 1
+      },
+      "carries_exempted_original": {
+        "value": false
+      },
+      "refusal_code": "not_applicable",
+      "missing_reason": null,
+      "sanitized_note": {
+        "value": "synthetic_feedback"
+      },
+      "delivery": false
+    },
+    {
+      "pair_id": "synthetic-M2",
+      "candidate_id": "synthetic-M2-a",
+      "requested_variant": "a",
+      "actual_brief_state": {
+        "value": "neutral"
+      },
+      "brief_build_status": {
+        "value": "built"
+      },
+      "generated": true,
+      "draft_source": "user_endpoint",
+      "degraded_reason": "none",
+      "candidate_completion_status": "completed",
+      "first_pass_accepted": {
+        "value": true
+      },
+      "edit_seconds": {
+        "value": 0
+      },
+      "pause_seconds": {
+        "missing": "not_measured"
+      },
+      "help_count": {
+        "value": 0
+      },
+      "unsupported_claim": {
+        "value": false
+      },
+      "required_fact_error_count": "not_applicable",
+      "privacy_or_safety_stop": {
+        "value": false
+      },
+      "failure_code": "none",
+      "placeheld_turns": {
+        "value": 1
+      },
+      "carries_exempted_original": {
+        "value": false
+      },
+      "refusal_code": "not_applicable",
+      "missing_reason": "not_measured",
+      "sanitized_note": {
+        "value": "synthetic_feedback"
+      },
+      "delivery": false
+    },
+    {
+      "pair_id": "synthetic-M2",
+      "candidate_id": "synthetic-M2-b",
+      "requested_variant": "b",
+      "actual_brief_state": {
+        "value": "from_view"
+      },
+      "brief_build_status": {
+        "value": "built"
+      },
+      "generated": true,
+      "draft_source": "user_endpoint",
+      "degraded_reason": "none",
+      "candidate_completion_status": "completed",
+      "first_pass_accepted": {
+        "value": false
+      },
+      "edit_seconds": {
+        "value": 90
+      },
+      "pause_seconds": {
+        "value": 0
+      },
+      "help_count": {
+        "value": 0
+      },
+      "unsupported_claim": {
+        "value": false
+      },
+      "required_fact_error_count": "not_applicable",
+      "privacy_or_safety_stop": {
+        "value": false
+      },
+      "failure_code": "none",
+      "placeheld_turns": {
+        "value": 1
+      },
+      "carries_exempted_original": {
+        "value": false
+      },
+      "refusal_code": "not_applicable",
+      "missing_reason": null,
+      "sanitized_note": {
+        "value": "synthetic_feedback"
+      },
+      "delivery": false
+    },
+    {
+      "pair_id": "synthetic-M3",
+      "candidate_id": "synthetic-M3-a",
+      "requested_variant": "a",
+      "actual_brief_state": {
+        "value": "neutral"
+      },
+      "brief_build_status": {
+        "value": "built"
+      },
+      "generated": true,
+      "draft_source": "user_endpoint",
+      "degraded_reason": "none",
+      "candidate_completion_status": "completed",
+      "first_pass_accepted": {
+        "value": true
+      },
+      "edit_seconds": {
+        "value": 80
+      },
+      "pause_seconds": {
+        "value": 0
+      },
+      "help_count": {
+        "value": 0
+      },
+      "unsupported_claim": {
+        "value": false
+      },
+      "required_fact_error_count": "not_applicable",
+      "privacy_or_safety_stop": {
+        "value": false
+      },
+      "failure_code": "none",
+      "placeheld_turns": {
+        "value": 1
+      },
+      "carries_exempted_original": {
+        "value": false
+      },
+      "refusal_code": "not_applicable",
+      "missing_reason": null,
+      "sanitized_note": {
+        "value": "synthetic_feedback"
+      },
+      "delivery": false
+    },
+    {
+      "pair_id": "synthetic-M3",
+      "candidate_id": "synthetic-M3-b",
+      "requested_variant": "b",
+      "actual_brief_state": {
+        "value": "from_view"
+      },
+      "brief_build_status": {
+        "value": "built"
+      },
+      "generated": true,
+      "draft_source": "user_endpoint",
+      "degraded_reason": "none",
+      "candidate_completion_status": "completed",
+      "first_pass_accepted": {
+        "value": false
+      },
+      "edit_seconds": {
+        "value": 100
+      },
+      "pause_seconds": {
+        "value": 0
+      },
+      "help_count": {
+        "value": 0
+      },
+      "unsupported_claim": {
+        "value": false
+      },
+      "required_fact_error_count": "not_applicable",
+      "privacy_or_safety_stop": {
+        "value": false
+      },
+      "failure_code": "none",
+      "placeheld_turns": {
+        "value": 1
+      },
+      "carries_exempted_original": {
+        "value": false
+      },
+      "refusal_code": "not_applicable",
+      "missing_reason": null,
+      "sanitized_note": {
+        "value": "synthetic_feedback"
+      },
+      "delivery": false
+    }
+  ]
+}

@@ -95,6 +95,7 @@ fn local_reference_has_exact_citations_and_preserves_the_template_and_single_use
     for source in &reference.sources {
         let row = store.get_evidence(source.evidence_id).unwrap();
         let expected: BTreeSet<_> = soul_graph::interaction::interactions_in(&row)
+            .expect("valid fixture")
             .into_iter()
             .map(|reference| reference.event_id)
             .collect();

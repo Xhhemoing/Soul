@@ -319,8 +319,7 @@ impl DraftSession {
         &mut self,
         policy: &mut PolicySession,
         request: DraftRequest,
-        selected: &super::insights::SelectedInsightContext,
-        include_counts: bool,
+        material: InsightMaterial<'_>,
         exemption: Option<OneShotExemption>,
     ) -> Result<InsightPrepared, DraftRefusal> {
         allow(
@@ -332,9 +331,17 @@ impl DraftSession {
         self.pending = None;
         // The one-shot exemption belongs only to the pasted turn. The
         // trusted aggregate uses its existing anonymous redaction factory.
-        let base = self.drafter.redact(&request, exemption)?;
-        let statistics = if include_counts {
-            analysis::summary_body(selected.counts(), policy.redactor())
+        let base = if let Some(goal) = material.goal {
+            // Reuse OwnerExcerpt redaction, but never its suffix trimming:
+            // the complete explicitly selected goal must fit with statistics.
+            self.drafter
+                .redact_memory_context(&request, goal, exemption)?
+                .body()?
+        } else {
+            self.drafter.redact(&request, exemption)?
+        };
+        let statistics = if material.include_counts {
+            analysis::summary_body(material.selected.counts(), policy.redactor())
         } else {
             policy.redactor().redact_for_e1(&[Turn::new(
                 Uuid::now_v7(),
@@ -357,7 +364,8 @@ impl DraftSession {
             plan,
             encoded_bytes,
             body_preview,
-            includes_counts: include_counts,
+            includes_counts: material.include_counts,
+            includes_goal: material.goal.is_some(),
         })
     }
 
@@ -610,6 +618,7 @@ pub struct InsightPrepared {
     pub encoded_bytes: usize,
     pub body_preview: String,
     pub includes_counts: bool,
+    pub includes_goal: bool,
 }
 
 impl std::fmt::Debug for InsightPrepared {
@@ -619,6 +628,7 @@ impl std::fmt::Debug for InsightPrepared {
             .field("plan", &self.plan)
             .field("encoded_bytes", &self.encoded_bytes)
             .field("includes_counts", &self.includes_counts)
+            .field("includes_goal", &self.includes_goal)
             .finish_non_exhaustive()
     }
 }
@@ -888,14 +898,19 @@ pub fn prepare_pasted_with_memory(
     )
 }
 
+pub(crate) struct InsightMaterial<'a> {
+    pub selected: &'a super::insights::SelectedInsightContext,
+    pub include_counts: bool,
+    pub goal: Option<&'a MemoryContext>,
+}
+
 pub(crate) fn prepare_pasted_with_insight(
     drafting: &mut DraftSession,
     policy: &mut PolicySession,
     brief: ProfileBrief,
     pasted: &str,
     include_original: bool,
-    selected: &super::insights::SelectedInsightContext,
-    include_counts: bool,
+    material: InsightMaterial<'_>,
 ) -> Result<InsightPrepared, DraftRefusal> {
     let request = DraftRequest::from_paste(brief, pasted);
     let exemption = if include_original {
@@ -906,7 +921,7 @@ pub(crate) fn prepare_pasted_with_insight(
     } else {
         None
     };
-    drafting.prepare_with_insight(policy, request, selected, include_counts, exemption)
+    drafting.prepare_with_insight(policy, request, material, exemption)
 }
 
 /// Step two: the user read the plan and approved this exact preparation.

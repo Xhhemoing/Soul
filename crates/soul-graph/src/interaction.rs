@@ -154,16 +154,29 @@ pub fn interaction_evidence(
 
 /// The interactions recorded in one evidence row, ignoring `source_refs` that
 /// belong to some other module.
-pub fn interactions_in(evidence: &SoulEvidence) -> Vec<InteractionRef> {
+pub fn interactions_in(evidence: &SoulEvidence) -> crate::GraphResult<Vec<InteractionRef>> {
     evidence
         .source_refs
         .iter()
         .filter(|value| value.get("ref_kind").and_then(Value::as_str) == Some("graph_interaction"))
-        .filter_map(|value| serde_json::from_value(value.clone()).ok())
+        .map(|value| {
+            let invalid = || crate::GraphError::UnreadableInteraction {
+                evidence_id: evidence.evidence_id,
+            };
+            let reference: InteractionRef =
+                serde_json::from_value(value.clone()).map_err(|_| invalid())?;
+            crate::t4d_adapt::rfc3339_to_unix(reference.occurred_at.as_str())
+                .map_err(|_| invalid())?;
+            Ok(reference)
+        })
         .collect()
 }
 
-/// Is this evidence row an interaction observation?
+/// Does this message carry an interaction tag? Classification is not validation.
 pub fn is_interaction(evidence: &SoulEvidence) -> bool {
-    evidence.kind == EvidenceKind::Message && !interactions_in(evidence).is_empty()
+    evidence.kind == EvidenceKind::Message
+        && evidence
+            .source_refs
+            .iter()
+            .any(|value| value.get("ref_kind").and_then(Value::as_str) == Some("graph_interaction"))
 }
