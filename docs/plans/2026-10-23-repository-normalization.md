@@ -174,6 +174,29 @@ Windows 原生窗口实际 profile、托盘/剪贴板、安装和远端 CI 未�
 
 收尾入口为 `final-capture.ps1` 与 `verify-documents.ps1`：保存当前 branch/HEAD/空暂存区、`final-tracked.patch`、相关 `final-source/` 和路径清单，结合起点 `initial/` 与 `initial-tracked.patch` 区分既有 dirty。普通源文件副本不是新 baseline/hash/gate；本轮没有生成提交 SHA 或远端 run URL。当前文档只核对本地文件目标和 STATUS 行数，不冒充全历史锚点或外链验证。
 
-**N3 本地实现、所列合成运行验证和独立复审已完成；未提交、合入或发布。** 所有业务输入为内置合成 fixture、显式合成文本及临时新库。主链实际使用真实 TCP HTTP 和生产 IPC handler，native 部分使用 MockRuntime；UI 刷新及竞态在 Vitest/jsdom 验证。没有把这种组合称为真实 WebView/Windows 人工交互端到端通过。
+**N3 验收收尾时，本地实现、所列合成运行验证和独立复审已完成，尚未提交、合入或发布；后续提交与推送见下方同步回执。** 所有业务输入为内置合成 fixture、显式合成文本及临时新库。主链实际使用真实 TCP HTTP 和生产 IPC handler，native 部分使用 MockRuntime；UI 刷新及竞态在 Vitest/jsdom 验证。没有把这种组合称为真实 WebView/Windows 人工交互端到端通过。
 
 当前 `cargo-deny` 可执行文件缺失，本轮未安装、未跑公告/许可证扫描；E 盘低空间没有处理，结果属于本节注明的 D 盘构建资源配置。原生窗口 profile/焦点、剪贴板、文件选择器、托盘、Tauri 发布打包/安装和目标 SHA 远端 CI 未运行；不签发 G-L/G-W/G-M 或 Goal 关闭，不恢复研究或真实数据。后续进入 N4 的提交/远端交付与作者原生观察边界，不能由本地通过自动推定已获发布授权。
+
+## 同步与工作区进度回执
+
+2026-10-23（America/Los_Angeles），作者明确要求“先同步代码并更新工作区进度”。主线程据此提交并推送已完成的 D109/N1/N2/N3 连续候选到既有开发分支；没有修改 Actions 设置、分支保护或 main，没有创建 PR、合并、发布、安装或启动真实数据流程。
+
+代码提交为 [`79a0aa06e2615346d6c06dcf72efd6b8bfb60a08`](https://github.com/Xhhemoing/Soul/commit/79a0aa06e2615346d6c06dcf72efd6b8bfb60a08)，标题 `feat: unify desktop and synthetic API runtime`。同步前本地和远端分支均为 `c5be3ed3aaa09b6ef5e2a8861a07d7c7c1fa8b46`，无远端新增提交，无需合并或冲突处理。127 个明确路径组成这次提交，暂存集合与复核清单一致；提交后实际 push 成功，`git ls-remote` 回读目标分支为同一 `79a0aa0`。
+
+独立只读复核未发现无关运行文件、数据库或凭据混入；N3 `final-source` 的 218 份文件与同步前内容一致。127 个提交路径中有 40 个早先 D109/N1/N2 路径不在该 218 份快照内，不能将快照比较误述为全部提交路径的重新验证。业务代码没有在同步阶段修改；沿用上节对应候选已执行的检查和各阶段复审，本次没有重复运行完整构建或合成测试。
+
+本机原始证据在 `E:/SoulSyntheticLab/local-api-sync-20261023/`，不随代码发布：
+
+| 操作 / 核验 | 实际结果与记录 |
+| --- | --- |
+| 范围与独立复核 | `initial-status.txt`、`candidate-paths.txt`、`candidate-comparison.json`、`review.log`；127 路径同集，218 文件比较无差异。 |
+| 获取及同步前远端查询 | `git fetch origin`、`git ls-remote --heads origin refs/heads/codex/soul-rebuild-20261019` 均退出 0；`fetch-recorded.txt`、`remote-before-stage.txt`、`attempts.jsonl`。 |
+| 暂存、差异检查和代码提交 | 明确清单 `git add -- <paths>`、`git diff --cached --check`、`git commit` 均退出 0；`stage-code.txt`、`staged-code-whitespace.txt`、`staged-code-stat.txt`、`commit-code.txt`、`code-sha.txt`。 |
+| 推送与远端回读 | `git push origin HEAD:refs/heads/codex/soul-rebuild-20261019`、后续 `git ls-remote` 均退出 0；`push-code.txt`、`remote-code.txt`。代码提交推送后工作树为空，见 `status-after-code.txt`。 |
+| 目标代码 SHA 的远端检查 | `gh api repos/Xhhemoing/Soul/actions/runs?head_sha=79a0aa06e2615346d6c06dcf72efd6b8bfb60a08&per_page=100` 与该 commit 的 `check-runs` 均退出 0、`total_count: 0`；`code-runs.txt`、`code-checks.txt`。空集合表示未运行，不是通过。 |
+| 远端设置只读核对 | `gh api .../actions/permissions` 返回 `enabled: false`；`gh api .../branches/main` 返回 `protected: false`，均退出 0；`actions-after-code.txt`、`main-protection.txt`。同步起点 PR 列表为空，见 `pr-state.json`。 |
+
+失败及缺失保留：最初 fetch 无 stdout，原 Tee-Object 管道未创建预期日志；后续重新执行并同时记录退出码及空输出文件，未补造旧日志。上下文恢复时一条只读 status 命令误附不存在的命令名，退出 1，没有文件或 Git 状态变更；纠正后通过记录脚本重新读取。说明见 `recovery-notes.md`。Git 提示两份既有 CRLF 文件按仓库规则转为 LF，差异检查退出 0。
+
+工作区进度在后续独立文档提交更新：STATUS 标明代码已同步与 CI 未运行，PLAN_INDEX 将 N3 写入/事件从设计改为已实现并补复审入口，CI 操作说明引用实际代码 SHA；不让文档提交冒充新的业务验证。`verify-documents.ps1` 与 `git diff --check` 均退出 0，四份文档的 115 个本地文件目标无缺失、STATUS 为 32 行、新同步标题存在；未检查全部历史锚点或外部 URL，记录见 `progress-documents.txt`、`document-targets.json`、`progress-whitespace.txt`。独立只读复核未发现具体阻塞，结论追加于 `review.log`；最终文档提交、推送和远端回读记录继续保存到同一外部目录。当前待补仍是 hosted CI/依赖公告检查和 N4 原生人工验收；研究暂停、合成数据边界、G-L/G-W/G-M 与 Goal 未关闭状态不变。

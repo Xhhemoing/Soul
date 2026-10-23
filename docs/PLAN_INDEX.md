@@ -23,9 +23,9 @@
 
 | 问题 | 具体入口 |
 | --- | --- |
-| 规范化按什么顺序落实、哪些实际运行过 | [规范化计划与回执](plans/2026-10-23-repository-normalization.md)；N1 规则/文档/CI 与 N2 runtime/API 回执分开，远端结果不借用本地检查 |
+| 规范化按什么顺序落实、哪些实际运行过 | [规范化计划与回执](plans/2026-10-23-repository-normalization.md)；分别记录 N1 规则/文档/CI、N2 runtime/API、N3 写入/事件及同步回执，远端结果不借用本地检查 |
 | 日常协作、失败处理与 CI 如何执行 | [协作与记录](operations/repository-workflow.md)、[CI 覆盖与远端证据](operations/ci.md)、[ADR-001](decisions/ADR-001-repository-governance.md) |
-| 本地 HTTP API 如何与 Tauri 共用操作及事件 | [本地 API 架构与合成启动](architecture/local-api.md)、[ADR-002](decisions/ADR-002-local-api-runtime.md)、[N2 独立复审](reviews/2026-10-23-local-api-phase1.md)；共享只读实现与 N3 写入/事件设计分列，默认关闭且仅合成验证 |
+| 本地 HTTP API 如何与 Tauri 共用操作及事件 | [本地 API 架构与合成启动](architecture/local-api.md)、[ADR-002](decisions/ADR-002-local-api-runtime.md)、[N2 独立复审](reviews/2026-10-23-local-api-phase1.md)、[N3 独立复审](reviews/2026-10-23-local-api-phase2.md)；共享读写 runtime、主体归属与事件/UI 刷新已实现，默认关闭且仅合成验证 |
 | 核心框架与当前实现是否一致、下一闭环如何执行 | [v1.3 修订与执行分析及 D109 实施回执](design/2026-10-22-core-framework-v1.3-execution.md)、[产品切片独立评审](reviews/2026-10-22-scoped-register-implementation.md)；精确人物／场合本地语域偏好已接存储／遗忘、Session/IPC/UI，范围与实际验证分别记录。原[文档核验](reviews/2026-10-22-core-framework-v1.3-revision.md)、[v1.2 增量审核](reviews/2026-10-22-core-framework-v1.2-review.md)、[v1.1 五层审核](reviews/2026-10-22-core-framework-v1.1-review.md)保留各自历史范围；全套 Claim/自动召回未实施 |
 | 调研、测试与实验结果如何保存、何时整理 | [AGENTS 记录要求](../AGENTS.md#调研测试与实验记录)；每次结果落盘，任务收尾/交接整理，活跃开发每 7 天检查；最近周整理范围及剩余项见 [STATUS](STATUS.md#记录维护) |
 | 不预设信息选项，从合成原文提取需求/来源并判断缺口与选材 | [开放任务完整流程](design/2026-10-22-open-task-flow.md)及[独立评审](reviews/2026-10-22-open-task-flow.md)；Sol 24/Luna 12 原文主批完成，预整理因 HTTP502/未知结算停止；系列实验已按作者要求暂停，见[检查点](design/2026-10-22-open-task-flow.md#暂停检查点2026-10-22) |

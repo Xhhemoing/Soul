@@ -1,6 +1,6 @@
 # 合成 CI
 
-本页说明 D110 第一阶段的 [GitHub Actions 配置](../../.github/workflows/ci.yml)。作者已授权恢复 hosted CI 的配置准备；当前本地候选尚未推送、未触发远端运行，也未修改仓库 Actions 设置或分支保护。既有 G-L 暂缓、G-W/G-M 与安装验收边界仍适用。
+本页说明 D110 第一阶段的 [GitHub Actions 配置](../../.github/workflows/ci.yml)。代码及配置已按作者的同步指示推送为 [`79a0aa0`](https://github.com/Xhhemoing/Soul/commit/79a0aa06e2615346d6c06dcf72efd6b8bfb60a08)；2026-10-23 推送后查询时 Actions 仍关闭，该 SHA 没有远端 run/check。本次未修改 Actions 设置或分支保护；既有 G-L 暂缓、G-W/G-M 与安装验收边界仍适用。
 
 ## 运行范围
 
@@ -35,8 +35,8 @@ Action 用法按 2026-10-23 官方资料核对：[checkout](https://github.com/a
 
 ## 证据与验收边界
 
-当前配置基于 `codex/soul-rebuild-20261019`，HEAD `c5be3ed3aaa09b6ef5e2a8861a07d7c7c1fa8b46` 加既有 D109 及本次 dirty 候选。配置调查原始资料与首次路径查询失败保存在本机 `E:/SoulSyntheticLab/repository-normalization-20261023/ci-worker.log` 及同目录官方来源副本；它们未随仓库发布。调查未运行构建/测试、未安装工具，构建执行通道由主线程统一安排，实际本地验证结果见 D110 所属实施记录。
+N1 配置调查起点为 `codex/soul-rebuild-20261019`，HEAD `c5be3ed3aaa09b6ef5e2a8861a07d7c7c1fa8b46` 加当时的 D109 及规范化 dirty 候选。调查原始资料与首次路径查询失败保存在本机 `E:/SoulSyntheticLab/repository-normalization-20261023/ci-worker.log` 及同目录官方来源副本；它们未随仓库发布。调查未运行构建/测试、未安装工具，实际本地验证和后续同步分别见[所属实施记录](../plans/2026-10-23-repository-normalization.md)。
 
-本地语法检查、命令帮助或既有历史绿灯不能证明这个 workflow 已通过 hosted 执行。授权推送后，记录实际远端候选 SHA、run URL、事件（PR 可能是 merge ref）和各步骤结果；失败、取消和 filtered/ignored 数量都保留。当前没有远端 run URL，不能补造。
+本地语法检查、命令帮助或既有历史绿灯不能证明这个 workflow 已通过 hosted 执行。本次已回读远端代码 SHA `79a0aa06e2615346d6c06dcf72efd6b8bfb60a08`，Actions runs 与 check-runs 查询均返回空集合，原始结果在 `E:/SoulSyntheticLab/local-api-sync-20261023/`，见[同步回执](../plans/2026-10-23-repository-normalization.md#同步与工作区进度回执)。没有 run URL 或执行事件/步骤结果；后续恢复 hosted 执行时须记录实际目标 SHA（PR 可能是 merge ref）、run URL 与各步骤结果，保留失败、取消及 filtered/ignored 范围。
 
 这条 Windows 自动检查不等于作者 Windows 11 的完整 G-W、G-M、安装/卸载、真实 WebView 交互或用户效用验证；也不是 Linux `just ci-full`，不解除 G-L 暂缓。它不发布、不签名、不安装应用、不自动合并，不产生正式平台 PASS。分支保护和 required checks 按本次规范化方向推进，依赖候选先完成审阅/同步且实际 hosted 检查可核对；当前尚未执行远端设置变更。
