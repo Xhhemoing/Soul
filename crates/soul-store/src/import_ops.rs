@@ -325,6 +325,25 @@ impl SqlCipherStore {
         next: ImportOperationState,
         error: Option<ImportOperationError>,
     ) -> StoreResult<ImportOperation> {
+        self.end_import_operation_with(lease, id, expected, next, error, |_, _| Ok(()))
+    }
+
+    /// Execute bookkeeping and the caller's typed audit in the same transaction.
+    /// The hook runs only after a real validated transition; any hook failure
+    /// rolls the operation back. Existing callers retain the no-hook API above.
+    pub fn end_import_operation_with<E, F>(
+        &mut self,
+        lease: &ImportRuntimeLease,
+        id: Uuid,
+        expected: ImportOperationState,
+        next: ImportOperationState,
+        error: Option<ImportOperationError>,
+        hook: F,
+    ) -> Result<ImportOperation, E>
+    where
+        E: From<StoreError>,
+        F: FnOnce(&mut Self, &ImportOperation) -> Result<(), E>,
+    {
         lease.ready(self)?;
         if !matches!(
             (expected, next),
@@ -336,17 +355,18 @@ impl SqlCipherStore {
                 ImportOperationState::Rejected | ImportOperationState::Invalidated
             )
         ) {
-            return Err(fixed("IMPORT_TRANSITION_INVALID"));
+            return Err(fixed("IMPORT_TRANSITION_INVALID").into());
         }
         self.transact(|store| {
             let mut operation = store.import_operation(id)?;
             if operation.state != expected {
-                return Err(fixed("IMPORT_OPERATION_STATE_CHANGED"));
+                return Err(fixed("IMPORT_OPERATION_STATE_CHANGED").into());
             }
             operation.state = next;
             operation.error_code = error;
             operation.audit_state = ImportAuditState::NotApplicable;
             store.write_import_operation(&operation)?;
+            hook(store, &operation)?;
             Ok(operation)
         })
     }

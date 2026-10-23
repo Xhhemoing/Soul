@@ -31,8 +31,10 @@ use tauri::Manager;
 pub mod assistance_runtime;
 pub mod commands;
 pub mod instance;
+pub mod local_api;
 pub mod notification_runtime;
 pub mod notification_transport;
+pub mod runtime_events;
 pub mod tray;
 
 /// State and command registration, kept separate from the window and the tray.
@@ -99,6 +101,11 @@ pub fn configure<R: tauri::Runtime>(
             commands::confirm_import,
             commands::config_snapshot,
             commands::session_status,
+            commands::runtime_status,
+            commands::runtime_people,
+            commands::runtime_memory,
+            commands::runtime_event_snapshot,
+            commands::prepare_synthetic_import,
             commands::complete_wizard,
             commands::cloud_toggle,
             commands::files_view,
@@ -109,6 +116,12 @@ pub fn configure<R: tauri::Runtime>(
             commands::correct_tie,
             commands::release_tie,
             commands::draft_reply,
+            commands::scoped_register_recipients,
+            commands::scoped_register_status,
+            commands::draft_scoped_reply,
+            commands::propose_scoped_register,
+            commands::confirm_scoped_register,
+            commands::discard_scoped_register_proposal,
             commands::draft_notices,
             commands::prepare_draft,
             commands::generate_draft,
@@ -143,6 +156,8 @@ pub fn configure<R: tauri::Runtime>(
 }
 
 pub fn run() {
+    let launch =
+        local_api::LaunchMode::from_environment().expect("Soul local API configuration refused");
     // Before anything else, and before a database in particular. Closing the
     // window leaves Soul in the tray, so the second launch is the ordinary way
     // back in: the user clicks Soul in the Start menu again. That process must
@@ -154,6 +169,10 @@ pub fn run() {
     let _instance = match instance::claim() {
         instance::Claim::Ours(guard) => guard,
         instance::Claim::AlreadyRunning => {
+            if matches!(launch, local_api::LaunchMode::Synthetic(_)) {
+                eprintln!("soul: synthetic API launch refused while Soul is running");
+                return;
+            }
             if !instance::reveal_running_instance() {
                 // The first Soul is still starting and has no window yet.
                 // Leaving is still right: it will finish, and a second store
@@ -164,62 +183,100 @@ pub fn run() {
         }
     };
 
-    // The one place a database is opened. `soulcore` works out where this
-    // machine keeps Soul's data — `%LOCALAPPDATA%\Soul` on the platform this
-    // ships to — and a session that could not be built is a Soul that has
-    // nowhere to keep anything, which is worth stopping for rather than
-    // starting an interface that would refuse every route.
-    let session = soulcore::commands::session::Session::open_platform_directory()
-        .expect("Soul could not work out where to keep its data");
-
-    configure(
-        tauri::Builder::default(),
-        commands::SessionState::new(session),
-    )
-    .setup(|app| {
-        app.manage(tray::install_or_report(app.handle()));
-        app.manage(assistance_runtime::AssistanceRuntime::start(
-            app.state::<commands::SessionState>().shared(),
-        ));
-        let handle = app.handle().clone();
-        app.manage(notification_runtime::NotificationRuntime::start(
-            app.state::<commands::SessionState>().shared(),
-            move |item| {
-                if let Some(window) = handle.get_webview_window("main") {
-                    // `item` is a typed UUID, never source text or an external URL.
-                    let _ =
-                        window.eval(format!("window.location.hash = '#/assistance?item={item}'"));
-                }
-                tray::reveal_main_window(&handle);
-            },
-        ));
-        Ok(())
-    })
-    // Closing the window puts Soul in the tray rather than ending it —
-    // but only when there is a tray to put it in. Without one the tray
-    // menu's 退出 is unreachable, and a window that will not close and
-    // cannot be quit is worse than no tray at all.
-    .on_window_event(|window, event| {
-        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            if window.state::<tray::TrayState>().installed {
-                api.prevent_close();
-                let _ = window.hide();
-            }
+    let mut context = tauri::generate_context!();
+    let (state, api_host) = match launch {
+        local_api::LaunchMode::Disabled => {
+            // The ordinary product launch keeps its original platform path.
+            let session = soulcore::commands::session::Session::open_platform_directory()
+                .expect("Soul could not work out where to keep its data");
+            (commands::SessionState::new(session), None)
         }
-    })
-    .build(tauri::generate_context!())
-    .expect("Soul could not start")
-    .run(|app, event| {
+        local_api::LaunchMode::Synthetic(root) => {
+            let launch =
+                local_api::SyntheticLaunch::create(&root).expect("Soul synthetic launch refused");
+            // Pin the explicit config and WebView2's higher-precedence process
+            // override before starting workers or constructing any WebView.
+            launch.configure_webview_profile(
+                &mut context.config_mut().app.windows,
+                |key, value| {
+                    std::env::set_var(key, value);
+                },
+            );
+            let (state, host) = launch.start().expect("Soul synthetic API startup refused");
+            (state, Some(host))
+        }
+    };
+
+    // Both launch branches provide their already-created sole Session owner.
+    let application = configure(tauri::Builder::default(), state)
+        .setup(move |app| {
+            app.manage(tray::install_or_report(app.handle()));
+            if let Some(host) = api_host {
+                app.manage(host);
+                return Ok(());
+            }
+            app.manage(assistance_runtime::AssistanceRuntime::start(
+                app.state::<commands::SessionState>().shared(),
+            ));
+            let handle = app.handle().clone();
+            app.manage(notification_runtime::NotificationRuntime::start(
+                app.state::<commands::SessionState>().shared(),
+                move |item| {
+                    if let Some(window) = handle.get_webview_window("main") {
+                        // `item` is a typed UUID, never source text or an external URL.
+                        let _ = window
+                            .eval(format!("window.location.hash = '#/assistance?item={item}'"));
+                    }
+                    tray::reveal_main_window(&handle);
+                },
+            ));
+            Ok(())
+        })
+        // Closing the window puts Soul in the tray rather than ending it —
+        // but only when there is a tray to put it in. Without one the tray
+        // menu's 退出 is unreachable, and a window that will not close and
+        // cannot be quit is worse than no tray at all.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.state::<tray::TrayState>().installed {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
+        .build(context)
+        .expect("Soul could not start");
+    // The relay is externally owned so its AppHandle cannot keep itself alive
+    // through managed state. Notifications may be missed before subscription;
+    // UI listen-first snapshots/focus reconciliation remain authoritative.
+    let relay = runtime_events::RuntimeEventRelay::start(
+        &application.state::<commands::SessionState>().runtime(),
+        application.handle().clone(),
+    )
+    .expect("Soul runtime event relay could not start");
+    application.run(move |app, event| {
         if matches!(event, tauri::RunEvent::Exit) {
             // Signal every owner before waiting for any worker or collector.
-            app.state::<assistance_runtime::AssistanceRuntime>()
-                .request_stop();
-            app.state::<notification_runtime::NotificationRuntime>()
-                .request_stop();
-            app.state::<assistance_runtime::AssistanceRuntime>()
-                .shutdown();
-            app.state::<notification_runtime::NotificationRuntime>()
-                .shutdown();
+            if let Some(owner) = app.try_state::<assistance_runtime::AssistanceRuntime>() {
+                owner.request_stop();
+            }
+            if let Some(owner) = app.try_state::<notification_runtime::NotificationRuntime>() {
+                owner.request_stop();
+            }
+            if let Some(owner) = app.try_state::<local_api::LocalApiHost>() {
+                owner.request_stop();
+            }
+            relay.request_stop();
+            if let Some(owner) = app.try_state::<assistance_runtime::AssistanceRuntime>() {
+                owner.shutdown();
+            }
+            if let Some(owner) = app.try_state::<notification_runtime::NotificationRuntime>() {
+                owner.shutdown();
+            }
+            if let Some(owner) = app.try_state::<local_api::LocalApiHost>() {
+                owner.shutdown();
+            }
+            relay.shutdown();
         }
     });
 }

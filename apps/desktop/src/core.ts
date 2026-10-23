@@ -14,7 +14,19 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { ForgetAudit, ForgetCleanup } from "./forgetOutcome";
+import type {
+  MemoryDetailView,
+  MemoryIdRequest,
+  PeoplePage,
+  PeoplePageRequest,
+  RuntimeStatus,
+  RuntimeEvent,
+  RuntimeEventSnapshot,
+  RuntimeOperation,
+} from "./generated/runtime";
 
 /** The only state the cloud switch has in v0.1. There is no `enabled`. */
 export type CloudState = "not_yet_available";
@@ -633,6 +645,7 @@ export const COMMANDS = {
   importOperation: "import_operation",
   discardImport: "discard_import",
   prepareImport: "prepare_import",
+  prepareSyntheticImport: "prepare_synthetic_import",
   confirmImport: "confirm_import",
   importRecoveryState: "import_recovery_state",
   prepareMemoryContext: "prepare_memory_context",
@@ -672,6 +685,10 @@ export const COMMANDS = {
   previewAssistanceLocalTemplate: "preview_assistance_local_template",
   configSnapshot: "config_snapshot",
   sessionStatus: "session_status",
+  runtimeStatus: "runtime_status",
+  runtimePeople: "runtime_people",
+  runtimeMemory: "runtime_memory",
+  runtimeEventSnapshot: "runtime_event_snapshot",
   completeWizard: "complete_wizard",
   cloudToggle: "cloud_toggle",
   filesView: "files_view",
@@ -686,6 +703,12 @@ export const COMMANDS = {
   prepareDraft: "prepare_draft",
   generateDraft: "generate_draft",
   discardDraft: "discard_draft",
+  scopedRegisterRecipients: "scoped_register_recipients",
+  scopedRegisterStatus: "scoped_register_status",
+  draftScopedReply: "draft_scoped_reply",
+  proposeScopedRegister: "propose_scoped_register",
+  confirmScopedRegister: "confirm_scoped_register",
+  discardScopedRegisterProposal: "discard_scoped_register_proposal",
   setUserEndpoint: "set_user_endpoint",
   clearUserEndpoint: "clear_user_endpoint",
   previewSoulImportV1: "preview_soul_import_v1",
@@ -1070,16 +1093,20 @@ export interface ImportPrepareRequest {
 }
 
 export function listImportNamespaces(): Promise<readonly ImportNamespace[]> {
-  return invoke(COMMANDS.listImportNamespaces);
+  return currentSourceRead(COMMANDS.listImportNamespaces);
 }
 export function recentImportOperations(): Promise<readonly ImportOperationView[]> {
-  return invoke(COMMANDS.recentImportOperations);
+  return currentSourceRead(COMMANDS.recentImportOperations);
 }
 export function importOperation(operationId: string): Promise<ImportOperationView> {
   return invoke(COMMANDS.importOperation, { operationId });
 }
 export function prepareImport(request: ImportPrepareRequest): Promise<PreparedImport> {
   return mutateDraftSource(COMMANDS.prepareImport, { request });
+}
+/** The loopback API's built-in synthetic fixture; never accepts a file path. */
+export function prepareSyntheticImport(request: { readonly fixture_id: "basic" }): Promise<PreparedImport> {
+  return mutateDraftSource(COMMANDS.prepareSyntheticImport, { request });
 }
 export function confirmImport(operationId: string, previewId: string): Promise<ImportOperationView> {
   return mutateDraftSource(COMMANDS.confirmImport, { operationId, previewId });
@@ -1096,7 +1123,168 @@ export function discardImport(operationId: string): Promise<ImportOperationView>
 export type DraftSourceRevision = symbol;
 let draftSourceRevision: DraftSourceRevision = Symbol("draft source");
 let pendingDraftSourceMutations = 0;
+const externalOperations = new Map<string, RuntimeOperation>();
+let runtimeReconciliationPending = false;
+let runtimeSyncFailure: string | null = null;
+const externalSourceListeners = new Set<() => void>();
+let externalSourceRevision = Symbol("external runtime source");
+const localCorrelations = new Set<string>();
+const activeLocalCorrelations = new Set<string>();
+const runtimeCommands = new Set<string>([
+  "prepare_import", "prepare_synthetic_import", "confirm_import", "discard_import",
+  "draft_scoped_reply", "propose_scoped_register", "confirm_scoped_register",
+  "discard_scoped_register_proposal", "update_memory", "preview_forget", "forget_memory",
+]);
 const draftSourceListeners = new Set<(revision: DraftSourceRevision) => void>();
+
+export function hasPendingSourceChanges(): boolean {
+  return pendingDraftSourceMutations !== 0 || externalOperations.size !== 0 || runtimeReconciliationPending;
+}
+
+/** A safe connectivity notice, never the native error or request contents. */
+export function getRuntimeSyncFailure(): string | null { return runtimeSyncFailure; }
+
+/** External runtime changes only; successful local mutation receipts stay owned. */
+export function subscribeExternalSource(listener: () => void): () => void {
+  externalSourceListeners.add(listener);
+  return () => { externalSourceListeners.delete(listener); };
+}
+
+export function getExternalSourceRevision(): symbol { return externalSourceRevision; }
+
+function invalidateExternalSource(): void {
+  externalSourceRevision = Symbol("external runtime source");
+  invalidateDraftSource();
+  for (const listener of [...externalSourceListeners]) listener();
+}
+
+async function invokeRuntime<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (!runtimeCommands.has(command)) return invoke<T>(command, args);
+  const correlationId = crypto.randomUUID();
+  activeLocalCorrelations.add(correlationId);
+  try { return await invoke<T>(command, { ...args, correlationId }); }
+  finally {
+    activeLocalCorrelations.delete(correlationId);
+    localCorrelations.add(correlationId);
+    // Bound settled history without evicting the identity of a pending write.
+    if (localCorrelations.size > 256) localCorrelations.delete(localCorrelations.values().next().value!);
+  }
+}
+
+/** Mount once in App. Subscribe first; snapshots repair dropped final events. */
+export function startRuntimeEvents(): () => void {
+  let live = true;
+  let unlisten: (() => void) | undefined;
+  let epoch: string | null = null;
+  let sequence = 0;
+  let reconciling = false;
+  let reconcileAgain = false;
+  let subscribed = false;
+  let connecting = false;
+  let retryTimer: number | undefined;
+  let retryDelay = 1_000;
+  let webviewLabel: string | null = null;
+  try { webviewLabel = getCurrentWebview().label; }
+  catch { /* Without trusted native metadata, no event qualifies as our echo. */ }
+  const retiredEpochs = new Set<string>();
+  const own = (operation: RuntimeOperation): boolean => webviewLabel !== null
+    && operation.caller.transport === "desktop" && operation.caller.webview_label === webviewLabel
+    && operation.correlation_id !== null
+    && (localCorrelations.has(operation.correlation_id) || activeLocalCorrelations.has(operation.correlation_id));
+  // Until subscription plus its first fresh snapshot, a whole remote mutation
+  // may have completed unseen. A polling-only baseline cannot establish safety.
+  runtimeReconciliationPending = true;
+  runtimeSyncFailure = null;
+  invalidateExternalSource();
+  const reconcile = async (): Promise<void> => {
+    if (!live || !subscribed) return;
+    if (reconciling) { reconcileAgain = true; return; }
+    reconciling = true;
+    try {
+      const snapshot = await invoke<RuntimeEventSnapshot>(COMMANDS.runtimeEventSnapshot);
+      if (!live || !subscribed || snapshot === undefined || !Array.isArray(snapshot.active_operations)) return;
+      if (retiredEpochs.has(snapshot.epoch)) return;
+      // An event delivered while this read was in flight is newer evidence.
+      if (snapshot.epoch === epoch && snapshot.sequence < sequence) return;
+      const active = snapshot.active_operations.filter((operation) => !own(operation));
+      const changed = runtimeReconciliationPending || (epoch !== null && (epoch !== snapshot.epoch || sequence !== snapshot.sequence))
+        || active.length !== externalOperations.size || active.some((operation) => !externalOperations.has(operation.operation_id));
+      if (epoch !== null && epoch !== snapshot.epoch) retiredEpochs.add(epoch);
+      epoch = snapshot.epoch; sequence = snapshot.sequence;
+      runtimeReconciliationPending = false;
+      runtimeSyncFailure = null;
+      externalOperations.clear();
+      for (const operation of active) externalOperations.set(operation.operation_id, operation);
+      if (changed) invalidateExternalSource();
+    } catch {
+      // A failed event transport never changes the invoke's result or claims rollback.
+      if (live) {
+        runtimeReconciliationPending = true;
+        runtimeSyncFailure = "本机状态同步未连接，正在重试；旧内容暂不展示。";
+        invalidateExternalSource();
+      }
+    } finally {
+      reconciling = false;
+      if (live && reconcileAgain) { reconcileAgain = false; void reconcile(); }
+    }
+  };
+  const receive = ({ payload: event }: { payload: RuntimeEvent }): void => {
+    if (!live) return;
+    if (retiredEpochs.has(event.epoch)) return;
+    if (event.epoch === epoch && event.sequence <= sequence) return;
+    const gap = epoch !== null && (event.epoch !== epoch || event.sequence !== sequence + 1);
+    if (epoch !== null && event.epoch !== epoch) { retiredEpochs.add(epoch); externalOperations.clear(); }
+    if (gap) runtimeReconciliationPending = true;
+    epoch = event.epoch; sequence = event.sequence;
+    if (!own(event)) {
+      if (event.phase === "started") externalOperations.set(event.operation_id, event);
+      else externalOperations.delete(event.operation_id);
+      invalidateExternalSource();
+    } else if (gap) invalidateExternalSource();
+    if (gap) void reconcile();
+  };
+  const connect = (): void => {
+    if (!live || subscribed || connecting) return;
+    connecting = true;
+    void listen<RuntimeEvent>("soul-runtime-change", receive).then((release) => {
+      connecting = false;
+      if (!live) { release(); return; }
+      unlisten = release;
+      subscribed = true;
+      retryDelay = 1_000;
+      void reconcile();
+    }).catch(() => {
+      connecting = false;
+      if (!live) return;
+      runtimeReconciliationPending = true;
+      runtimeSyncFailure = "本机状态同步未连接，正在重试；旧内容暂不展示。";
+      invalidateExternalSource();
+      retryTimer = window.setTimeout(() => { retryTimer = undefined; connect(); }, retryDelay);
+      retryDelay = Math.min(retryDelay * 2, 10_000);
+    });
+  };
+  const recover = (): void => {
+    if (subscribed) void reconcile();
+    else if (retryTimer === undefined) connect();
+  };
+  const visible = (): void => { if (document.visibilityState === "visible") recover(); };
+  window.addEventListener("focus", recover);
+  document.addEventListener("visibilitychange", visible);
+  const timer = window.setInterval(recover, 10_000);
+  connect();
+  return () => {
+    if (!live) return;
+    live = false; unlisten?.();
+    if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+    window.clearInterval(timer);
+    window.removeEventListener("focus", recover);
+    document.removeEventListener("visibilitychange", visible);
+    runtimeSyncFailure = null;
+    if (externalOperations.size !== 0 || runtimeReconciliationPending) {
+      externalOperations.clear(); runtimeReconciliationPending = false; invalidateExternalSource();
+    }
+  };
+}
 
 export function getDraftSourceRevision(): DraftSourceRevision {
   return draftSourceRevision;
@@ -1149,7 +1337,7 @@ async function mutateDraftSource<T>(command: string, args?: Record<string, unkno
   pendingDraftSourceMutations += 1;
   try {
     invalidateDraftSource();
-    return await invoke<T>(command, args);
+    return await invokeRuntime<T>(command, args);
   } finally {
     pendingDraftSourceMutations -= 1;
     invalidateDraftSource();
@@ -1158,23 +1346,46 @@ async function mutateDraftSource<T>(command: string, args?: Record<string, unkno
 
 function currentDraftResult<T>(command: string, args: Record<string, unknown>,
   changed: () => Error = () => new DraftSourceChangedError()): Promise<T> {
-  if (pendingDraftSourceMutations !== 0) return Promise.reject(changed());
+  if (hasPendingSourceChanges()) return Promise.reject(changed());
   const source = draftSourceRevision;
-  return invoke<T>(command, args).then((value) => {
-    if (pendingDraftSourceMutations !== 0 || source !== draftSourceRevision) {
+  return invokeRuntime<T>(command, args).then((value) => {
+    if (hasPendingSourceChanges() || source !== draftSourceRevision) {
       throw changed();
     }
     return value;
   });
 }
 
+/** Remote/unknown work blocks reads; local writes retain their existing read lifecycle. */
+function currentSourceRead<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (runtimeReconciliationPending || externalOperations.size !== 0) return Promise.reject(new DraftSourceChangedError());
+  const source = draftSourceRevision;
+  return invokeRuntime<T>(command, args).then((value) => {
+    if (runtimeReconciliationPending || externalOperations.size !== 0 || source !== draftSourceRevision) throw new DraftSourceChangedError();
+    return value;
+  });
+}
+
 export function configSnapshot(): Promise<ConfigSnapshot> {
-  return invoke<ConfigSnapshot>(COMMANDS.configSnapshot);
+  return currentSourceRead<ConfigSnapshot>(COMMANDS.configSnapshot);
+}
+
+/** Safe shared-runtime reads use the generated Rust DTOs unchanged. */
+export function runtimeStatus(): Promise<RuntimeStatus> {
+  return currentSourceRead<RuntimeStatus>(COMMANDS.runtimeStatus);
+}
+
+export function runtimePeople(request: PeoplePageRequest): Promise<PeoplePage> {
+  return currentSourceRead<PeoplePage>(COMMANDS.runtimePeople, { request });
+}
+
+export function runtimeMemory(request: MemoryIdRequest): Promise<MemoryDetailView> {
+  return currentSourceRead<MemoryDetailView>(COMMANDS.runtimeMemory, { request });
 }
 
 /** Whether the wizard is behind us, and whether there is a database to read. */
 export function sessionStatus(): Promise<SessionStatus> {
-  return invoke<SessionStatus>(COMMANDS.sessionStatus);
+  return currentSourceRead<SessionStatus>(COMMANDS.sessionStatus);
 }
 
 /** Finish the first-run wizard. The core refuses to return an open config. */
@@ -1215,7 +1426,7 @@ export function previewPlan(path: string): Promise<PlanPreview> {
 
 /** The people graph, with every tie's evidence already resolved. */
 export function peopleGraph(): Promise<PeopleGraph> {
-  return invoke<PeopleGraph>(COMMANDS.peopleGraph);
+  return currentSourceRead<PeopleGraph>(COMMANDS.peopleGraph);
 }
 
 /** Everything Soul will say about one person, and what each line rests on. */
@@ -1236,12 +1447,89 @@ export function releaseTie(relationshipId: string): Promise<PeopleGraph> {
  * Write a reply to something the user pasted. Nothing leaves the machine.
  *
  * `pasted` is treated as somebody else's words by the core, without being read
- * for clues about whose they are. There is no second argument, and in
- * particular there is nowhere to put a recipient: the core has no command that
- * takes one.
+ * for clues about whose they are. This ordinary entry has no scope argument;
+ * the explicitly selected local scope uses the separate entry below.
  */
 export function draftReply(pasted: string): Promise<Draft> {
   return currentDraftResult<Draft>(COMMANDS.draftReply, { pasted });
+}
+
+export type ScopedOccasion = "personal" | "work" | "study";
+export type ScopedRegister = "casual" | "plain" | "formal";
+export interface ScopedRegisterRecipient {
+  readonly person_id: string;
+  readonly identifier_hint: string;
+}
+export interface ScopedRegisterPreference {
+  readonly preference_id: string;
+  readonly revision: string;
+  readonly memory_id: string;
+  readonly register: ScopedRegister;
+}
+export interface ScopedRegisterStatus {
+  readonly person_id: string;
+  readonly occasion: ScopedOccasion;
+  readonly state: "absent" | "active" | "inactive" | "forgotten" | "unavailable";
+  readonly preference: ScopedRegisterPreference | null;
+  readonly memory_id: string | null;
+  readonly notice: string;
+}
+export interface ScopedDraftResult {
+  readonly result_id: string;
+  readonly person_id: string;
+  readonly occasion: ScopedOccasion;
+  readonly draft: Draft;
+  readonly applied_preference: ScopedRegisterPreference | null;
+}
+export interface ScopedRegisterProposal {
+  readonly proposal_id: string;
+  readonly result_id: string;
+  readonly edit_revision: number;
+  readonly person_id: string;
+  readonly occasion: ScopedOccasion;
+  readonly register: ScopedRegister;
+  readonly expected_revision: string | null;
+  readonly notice: string;
+}
+export function scopedRegisterRecipients(): Promise<readonly ScopedRegisterRecipient[]> {
+  return currentDraftResult(COMMANDS.scopedRegisterRecipients, {});
+}
+export async function scopedRegisterStatus(personId: string, occasion: ScopedOccasion): Promise<ScopedRegisterStatus> {
+  const value = await currentDraftResult<ScopedRegisterStatus>(COMMANDS.scopedRegisterStatus, { personId, occasion });
+  if (value.person_id !== personId || value.occasion !== occasion
+    || !["absent", "active", "inactive", "forgotten", "unavailable"].includes(value.state)
+    || (value.state === "active" ? value.preference === null || value.memory_id !== value.preference.memory_id : value.preference !== null)) {
+    throw { reason_code: "SCOPED_STATUS_MISMATCH", explanation: "返回的偏好状态与所选范围不符，请重新读取。" };
+  }
+  return value;
+}
+export function draftScopedReply(pasted: string, personId: string, occasion: ScopedOccasion): Promise<ScopedDraftResult> {
+  return currentDraftResult(COMMANDS.draftScopedReply, { pasted, personId, occasion });
+}
+export async function proposeScopedRegister(resultId: string, editRevision: number, register: ScopedRegister): Promise<ScopedRegisterProposal> {
+  // A late proposal still needs its targeted cleanup; do not lose its ID at
+  // the generic source filter before the native Session can discard it.
+  if (hasPendingSourceChanges()) throw new DraftSourceChangedError();
+  const source = getDraftSourceRevision();
+  const value = await invokeRuntime<ScopedRegisterProposal>(COMMANDS.proposeScopedRegister, { resultId, editRevision, register });
+  if (hasPendingSourceChanges() || source !== getDraftSourceRevision()) {
+    await discardScopedRegisterProposal(value.proposal_id);
+    throw new DraftSourceChangedError();
+  }
+  return value;
+}
+export function confirmScopedRegister(proposalId: string, expectedRevision: string | null): Promise<ScopedRegisterPreference> {
+  // A successful write is a receipt, not a draft projection: its own source
+  // invalidation must not turn a committed confirmation into an unknown result.
+  return mutateDraftSource(COMMANDS.confirmScopedRegister, { proposalId, expectedRevision });
+}
+export function discardScopedRegisterProposal(proposalId: string): Promise<boolean> {
+  // Targeted cancellation must also run while a source mutation is pending.
+  // Even a structured refusal is not evidence that cleanup completed. Keep
+  // cancellation failures distinct from a known drafting refusal.
+  return invokeRuntime<boolean>(COMMANDS.discardScopedRegisterProposal, { proposalId }).catch(() => {
+    throw new Error("未能确认这次偏好提案已撤销，请完全退出并重新打开应用后继续。");
+  });
 }
 
 export function draftNotices(): Promise<DraftNotices> {
@@ -1367,12 +1655,12 @@ export function setVoice(field: string, option: string): Promise<ProfileScreen> 
 
 /** Every memory, with the prose still sealed. */
 export function memoryList(): Promise<MemoryList> {
-  return invoke<MemoryList>(COMMANDS.memoryList);
+  return currentSourceRead<MemoryList>(COMMANDS.memoryList);
 }
 
 /** One memory, opened. */
 export function memoryDetail(memoryId: string): Promise<MemoryDetail> {
-  return invoke<MemoryDetail>(COMMANDS.memoryDetail, { memoryId });
+  return currentSourceRead<MemoryDetail>(COMMANDS.memoryDetail, { memoryId });
 }
 
 export function createMemory(memory: NewMemory): Promise<MemoryDetail> {
@@ -1391,7 +1679,7 @@ export function updateMemory(memoryId: string, change: MemoryChange): Promise<Me
  * something other than what was on the screen the user read.
  */
 export function previewForget(memoryId: string): Promise<ForgetPreview> {
-  return invoke<ForgetPreview>(COMMANDS.previewForget, { memoryId });
+  return currentSourceRead<ForgetPreview>(COMMANDS.previewForget, { memoryId });
 }
 
 /**

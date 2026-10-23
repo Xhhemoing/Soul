@@ -13,7 +13,7 @@
 | 要确认什么 | 唯一权威 |
 | --- | --- |
 | 产品方向、v0.1 十三条切片与功能边界 | [PRODUCT_LOCK](PRODUCT_LOCK.md) |
-| 已拍板的选择与语义变更 | [DECISIONS](DECISIONS.md)；本地门禁 D61–D63、材料清理 D64、平台 D65、长期路线 D66–D68、W1–W5 D69–D77、统一辅助 D97–D100、核心预备顺序 D101、N1/VAL 执行范围 D102、计时缺测与离线记录入口 D103、合成受控生成与盲呈现 D104、本机合成操作工具 D105、测试专用 N2 顺序调整 D106、研究实验版收口 D107 |
+| 已拍板的选择与语义变更 | [DECISIONS](DECISIONS.md) 为决定索引；当前治理见 D110 / [ADR-001](decisions/ADR-001-repository-governance.md)，API 见 D111 / [ADR-002](decisions/ADR-002-local-api-runtime.md)。旧 D61–D64 的 CI/合并部分按 D110 更新，其余产品、算法、授权与平台决定保留 |
 | T4D / A0 / A1 / A2 / A3、常量、as_of 与回退链 | [算法决定](algorithms/DECISION.md)；中文话术见 [COPY_ZH](algorithms/COPY_ZH.md)，落选方案见 [REJECTED](algorithms/REJECTED.md) |
 | Goal 1 验收矩阵、红线与关闭条件 | [ACCEPTANCE](ACCEPTANCE.md)；矩阵与产品切片同时满足 |
 | 加密、密钥、遗忘、审计与安全边界 | [SECURITY](SECURITY.md) |
@@ -23,8 +23,12 @@
 
 | 问题 | 具体入口 |
 | --- | --- |
+| 规范化按什么顺序落实、哪些实际运行过 | [规范化计划与回执](plans/2026-10-23-repository-normalization.md)；N1 规则/文档/CI 与 N2 runtime/API 回执分开，远端结果不借用本地检查 |
+| 日常协作、失败处理与 CI 如何执行 | [协作与记录](operations/repository-workflow.md)、[CI 覆盖与远端证据](operations/ci.md)、[ADR-001](decisions/ADR-001-repository-governance.md) |
+| 本地 HTTP API 如何与 Tauri 共用操作及事件 | [本地 API 架构与合成启动](architecture/local-api.md)、[ADR-002](decisions/ADR-002-local-api-runtime.md)、[N2 独立复审](reviews/2026-10-23-local-api-phase1.md)；共享只读实现与 N3 写入/事件设计分列，默认关闭且仅合成验证 |
+| 核心框架与当前实现是否一致、下一闭环如何执行 | [v1.3 修订与执行分析及 D109 实施回执](design/2026-10-22-core-framework-v1.3-execution.md)、[产品切片独立评审](reviews/2026-10-22-scoped-register-implementation.md)；精确人物／场合本地语域偏好已接存储／遗忘、Session/IPC/UI，范围与实际验证分别记录。原[文档核验](reviews/2026-10-22-core-framework-v1.3-revision.md)、[v1.2 增量审核](reviews/2026-10-22-core-framework-v1.2-review.md)、[v1.1 五层审核](reviews/2026-10-22-core-framework-v1.1-review.md)保留各自历史范围；全套 Claim/自动召回未实施 |
 | 调研、测试与实验结果如何保存、何时整理 | [AGENTS 记录要求](../AGENTS.md#调研测试与实验记录)；每次结果落盘，任务收尾/交接整理，活跃开发每 7 天检查；最近周整理范围及剩余项见 [STATUS](STATUS.md#记录维护) |
-| 不预设信息选项，从合成原文提取需求/来源并判断缺口与选材 | [开放任务完整流程](design/2026-10-22-open-task-flow.md)及[独立评审](reviews/2026-10-22-open-task-flow.md)；Sol 24/Luna 12 原文主批完成，预整理因 HTTP502/未知结算停止，沿用累计 $5 上限 |
+| 不预设信息选项，从合成原文提取需求/来源并判断缺口与选材 | [开放任务完整流程](design/2026-10-22-open-task-flow.md)及[独立评审](reviews/2026-10-22-open-task-flow.md)；Sol 24/Luna 12 原文主批完成，预整理因 HTTP502/未知结算停止；系列实验已按作者要求暂停，见[检查点](design/2026-10-22-open-task-flow.md#暂停检查点2026-10-22) |
 | 来源元数据、缺口/冲突边界与全新任务三模型复测 | [元数据与新任务复测](design/2026-10-22-task-metadata-retest.md)及[独立评审](reviews/2026-10-22-task-metadata-retest.md)；12 新场景/72 case、相关与无关不可读、明确更正、完整替代证据、累计费用 |
 | 新合成任务的必要性、缺口、支持组选材与真实模型比较 | [任务与模型合成比较](design/2026-10-22-task-model-comparison.md)与[独立评审](reviews/2026-10-22-task-model-comparison.md)；24 family/96 case、Jev 留存及 GPT-6 Luna/Sol、6.1 Sol 配对实测、本地算法阶段计时、场景/费用/标注边界 |
 | 数据处理流程、具体选材算法与 Jev/本地模型怎样取舍 | [数据处理与选材方案及合成重放](design/2026-10-22-data-selection-pipeline.md)；分类型处理、CK 派生边界、支持组选择、BGE/Qwen/Jev 候选及完整分母；[独立评审](reviews/2026-10-22-data-selection-pipeline.md)；不代表模型或生产默认已接入 |
@@ -68,14 +72,18 @@
 | `apps/desktop/` | React UI 与独立的 `src-tauri` Cargo workspace |
 | `fixtures/`、`scripts/` | 合成测试材料、既有执行与人工验收入口 |
 | `docs/` 顶层 | 产品、决定、当前状态、验收、路线和架构入口 |
-| `docs/design/` | 具体方案、调研结果、实施计划与各自测试/实验回执；优先续写所属主题，链接仓库外原始证据；参考实现留在 `design/reference/` |
-| `docs/algorithms/`、`docs/schemas/`、`docs/architecture/` | 算法权威、数据契约、架构图源与导出图 |
+| `docs/product/` | 产品规范导航；既有 PRODUCT_LOCK、ACCEPTANCE、SECURITY 保持原路径和权威 |
+| `docs/decisions/` | 新 ADR 的决定、理由与边界；DECISIONS 保留编号索引和旧决定 |
+| `docs/operations/` | 日常命令、协作、失败处理、记录和 CI 运行方式 |
+| `docs/plans/` | 新跨模块实施顺序、阶段验收与相应回执；当前状态仍只放 STATUS |
+| `docs/design/` | 既有具体方案、调研与各自实验回执，优先续写所属主题；参考实现留在 `design/reference/`，不为改目录而重复拆散活跃记录 |
+| `docs/algorithms/`、`docs/schemas/`、`docs/architecture/` | 算法权威、数据契约、架构设计及图源与导出图 |
 | `docs/gates/`、`docs/reviews/` | 对应版本的平台证据、审查与修复记录 |
-| `docs/history/` | 历史状态和阶段记录；按原日期与版本解释，不覆盖当前 STATUS |
+| `docs/archive/`、`docs/history/` | 本次起归档与既有历史记录；保留原日期、失败和未完成项，不覆盖当前 STATUS |
 | `target/`、`node_modules/`、`.pnpm-store/` | 本地构建或依赖缓存；保持既有路径，不纳入提交 |
 | `.learnings/` | 本地工具的草稿记录；稳定结论整理进 AGENTS 或既有设计，不作为另一份项目记忆权威 |
 
-静态 [架构 HTML](architecture.html)、[框架 HTML](framework-design.html) 和 [历史总览](project-overview.html) 保留各自标注的版本范围；当前状态从 STATUS 查询。历史阶段的 [Wave 1 计划](SOUL_WAVE1_IMPLEMENTATION_PLAN_2026-09-27.md)继续保留为原范围依据；旧状态见 [history/](history/)。D64 已删除的工作提示词、扫描流程与 hosted CI 不恢复。
+静态 [架构 HTML](architecture.html)、[框架 HTML](framework-design.html) 和 [历史总览](project-overview.html) 保留各自标注的版本范围；当前状态从 STATUS 查询。历史阶段的 [Wave 1 计划](SOUL_WAVE1_IMPLEMENTATION_PLAN_2026-09-27.md)继续保留为原范围依据；旧状态见 [archive](archive/STATUS_20261023.md)及 [history/](history/)。D64 已删除的工作提示词和扫描流程不恢复；CI 配置恢复按 D110，远端启用与实际运行分别记录。
 
 ## 变更时维护哪一处
 
@@ -88,4 +96,4 @@
 | schemas | 同批维护既有 schemas.lock.json，说明已落库数据影响 |
 | 当前进展 | 更新 STATUS 摘要；命令、失败与详细回执留在相关设计或门禁，旧状态归档时修复相对链接 |
 | 调研、测试、实验与周期整理 | 按 [AGENTS 记录要求](../AGENTS.md#调研测试与实验记录)保存逐次结果，详细证据归所属文档；本页只维护导航，STATUS 只保留当前结论与最近周整理信息 |
-| 合并 | 遵守 D63；当前暂缓或后置某平台不等于该平台通过 |
+| 合并 | 遵守 D110 / ADR-001 的目标 SHA 远端证据要求；当前暂缓或后置某平台不等于该平台通过，正式验收仍按 gates/README |

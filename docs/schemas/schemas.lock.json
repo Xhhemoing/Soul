@@ -3,7 +3,7 @@
   "algorithm": "sha256",
   "schemas": {
     "_defs.schema.json": "5e565260e72d17dd0a93445df6b2dc16ced44827c53200d9af02585b350be7e7",
-    "audit.schema.json": "4c6b96dd33c3112278443b2d7e1845fa415a66e740405ad3d247b5a79ee2cc83",
+    "audit.schema.json": "ca050b953b31096772146779de5c357279953693fdd199bcb53feab54581e296",
     "contact.schema.json": "b94ad999fb8ba6c29e8f6d1549a180368c8ec0baae2650177ce94889cea9e9b6",
     "event.schema.json": "51f81dc9d435c158470a0267f30ac9d280ee38ea905269b48ab5c2655d28b96d",
     "evidence.schema.json": "c597c3a9841371ad4ccd012415e85d6c565daa4d2e3a0cf15e8d4ae57f5478fa",

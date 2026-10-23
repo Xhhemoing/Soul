@@ -57,6 +57,7 @@ import { DraftInsights, InsightReferences, type InsightTask } from "./DraftInsig
 import { draftAssistanceSelection, draftInsightSelection, draftMaterialSelection, draftMemoryCandidates } from "./draftMaterialSelection";
 import { DraftAssistance } from "./DraftAssistance";
 import { getRouteAddress, subscribeRouteAddress, useRouteAddress } from "../routeAddress";
+import { DraftScopedVoice } from "./DraftScopedVoice";
 
 /** What the core said, in the shape the screen renders it. */
 type Outcome =
@@ -74,6 +75,30 @@ const DEGRADED: Record<string, string> = {
 };
 
 export function Draft(): React.JSX.Element {
+  const address = useRouteAddress();
+  const material = useSyncExternalStore(draftMaterialSelection.subscribe, draftMaterialSelection.generation);
+  const lane = useSyncExternalStore(draftLane.subscribe, draftLane.snapshot);
+  const [scope, setScope] = useState<{ readonly address: typeof address; readonly material: number } | null>(null);
+  const scoped = scope !== null && scope.address === address && scope.material === material;
+  const hasMaterials = draftInsightSelection.snapshot() !== null || draftAssistanceSelection.snapshot() !== null || draftMemoryCandidates.snapshot().length > 0;
+  const enter = (): void => {
+    if (hasMaterials || address !== getRouteAddress()) return;
+    const slot = draftLane.begin("discard");
+    if (slot === null) return;
+    // Clear an ordinary preparation before mounting the isolated local scope.
+    void discardDraft().then(() => {
+      draftLane.finish(slot, false);
+      if (address === getRouteAddress() && material === draftMaterialSelection.generation()) setScope({ address, material });
+    }, () => { draftLane.finish(slot, true); });
+  };
+  return scoped ? <DraftScopedVoice onExit={() => setScope(null)} /> : <>
+    <section className="panel"><button type="button" disabled={hasMaterials || lane.busy || lane.uncertain} onClick={enter}>按联系人和场合本地起草</button>
+      <p className="muted">这是普通本地模板的可选范围。使用手选记忆、Insight 或 Assistance 时，先结束材料选择再进入。</p></section>
+    <OrdinaryDraft />
+  </>;
+}
+
+function OrdinaryDraft(): React.JSX.Element {
   const [input, setInput] = useState({ text: "", revision: 0 });
   const [requests] = useState(() => new DraftRequests());
   const lane = useSyncExternalStore(draftLane.subscribe, draftLane.snapshot);

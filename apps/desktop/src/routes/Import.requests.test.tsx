@@ -74,7 +74,7 @@ describe("未知提交明确核对与不重发", () => {
     const discard = await screen.findByRole("button", { name: `丢弃操作 ${IMPORT_OPERATION_ID} 的旧准备` });
     expect(screen.getByLabelText("选择导出文件")).toBeDisabled();
     await user.click(discard); await waitFor(() => expect(lane.snapshot().unknown).toBe(false));
-    expect(core.callsTo("discard_import")[0]?.payload).toEqual({ operationId: IMPORT_OPERATION_ID });
+    expect(core.callsTo("discard_import")[0]?.payload).toEqual({ operationId: IMPORT_OPERATION_ID, correlationId: expect.any(String) });
     expect(core.callsTo("confirm_import")).toHaveLength(0);
     await prepare(); expect(core.callsTo("prepare_import")).toHaveLength(1);
   });
@@ -84,7 +84,7 @@ describe("未知提交明确核对与不重发", () => {
     const user = userEvent.setup(); render(<Import lane={lane} />); await user.click(screen.getByRole("button", { name: "核对最近记录" }));
     await user.click(await screen.findByRole("button", { name: `丢弃操作 ${IMPORT_OPERATION_ID} 的旧准备` }));
     await waitFor(() => expect(lane.snapshot().unknown).toBe(false));
-    expect(core.callsTo("discard_import")[0]?.payload).toEqual({ operationId: IMPORT_OPERATION_ID });
+    expect(core.callsTo("discard_import")[0]?.payload).toEqual({ operationId: IMPORT_OPERATION_ID, correlationId: expect.any(String) });
     expect(core.callsTo("confirm_import")).toHaveLength(0);
   });
   it("recent读取之后迟到的旧恢复证明不解除另一shared-lane新意图的未知状态", async () => {

@@ -43,13 +43,7 @@ impl VoiceField {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum VoiceRegister {
-    Casual,
-    Plain,
-    Formal,
-}
+pub use soul_store_api::scoped_preference::VoiceRegister;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

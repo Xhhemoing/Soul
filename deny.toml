@@ -90,8 +90,10 @@ deny = [
   # HTTP clients. None of these may appear in the shipped graph except through
   # `soul-egress`, and the wrappers below are the whole of that exception.
   { name = "reqwest", wrappers = ["soul-egress"] },
-  { name = "hyper", wrappers = ["reqwest", "hyper-util", "hyper-rustls"] },
-  { name = "hyper-util", wrappers = ["reqwest", "hyper-rustls"] },
+  # Local server edges are independently restricted by the root and desktop
+  # egress audits; this is not an exception for arbitrary API dependencies.
+  { name = "hyper", wrappers = ["reqwest", "hyper-util", "hyper-rustls", "soul-api", "axum"] },
+  { name = "hyper-util", wrappers = ["reqwest", "hyper-rustls", "soul-api", "axum"] },
   { name = "ureq" },
   { name = "curl" },
   { name = "curl-sys" },

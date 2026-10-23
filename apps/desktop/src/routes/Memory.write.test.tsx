@@ -7,7 +7,8 @@ import type { MemoryDetail, MemoryList } from "../core";
 import { Memory } from "./Memory";
 import { MemoryRequests } from "./memoryRequests";
 
-vi.mock("../core", () => ({
+vi.mock("../core", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../core")>(),
   createMemory: vi.fn(), forgetMemory: vi.fn(), memoryDetail: vi.fn(), memoryList: vi.fn(),
   previewForget: vi.fn(), retryForgetCleanup: vi.fn(), updateMemory: vi.fn(),
 }));

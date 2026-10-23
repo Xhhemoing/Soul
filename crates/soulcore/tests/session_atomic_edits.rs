@@ -115,6 +115,70 @@ fn new_memory() -> NewMemory {
 }
 
 #[test]
+fn scoped_register_confirmation_rolls_back_memory_key_binding_and_audit() {
+    use soul_schema::{
+        common::SchemaVersion,
+        contact::{ContactClass, SoulContact},
+        memory::ForgetState,
+    };
+    use soul_store_api::GraphStore;
+    use soulcore::commands::session::{PreferenceOccasion, VoiceRegister};
+    use uuid::Uuid;
+    let (_directory, mut session, conn) = scratch();
+    session.set_voice("register", "formal").unwrap();
+    let person = Uuid::now_v7();
+    session
+        .store()
+        .unwrap()
+        .lock()
+        .unwrap()
+        .put_contact(SoulContact {
+            schema_version: SchemaVersion,
+            contact_id: person,
+            contact_class: ContactClass::ThirdParty,
+            display_label_ref: None,
+            identifiers: None,
+            forget_state: ForgetState::Active,
+        })
+        .unwrap();
+    let draft = session
+        .draft_scoped_reply(
+            "synthetic",
+            &person.to_string(),
+            PreferenceOccasion::Personal,
+        )
+        .unwrap();
+    let proposal = session
+        .propose_scoped_register(&draft.result_id.to_string(), 1, VoiceRegister::Casual)
+        .unwrap();
+    let before = rows(&conn);
+    fail_audit(&conn);
+    let refusal = session
+        .confirm_scoped_register(&proposal.proposal_id.to_string(), None)
+        .unwrap_err();
+    assert_rolled_back(&conn, &before, refusal);
+    let count: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM scoped_register_preferences",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 0);
+    assert!(session
+        .confirm_scoped_register(&proposal.proposal_id.to_string(), None)
+        .is_err());
+    let draft = session
+        .draft_scoped_reply(
+            "synthetic",
+            &person.to_string(),
+            PreferenceOccasion::Personal,
+        )
+        .unwrap();
+    assert!(draft.applied_preference.is_none());
+}
+
+#[test]
 fn an_axis_correction_rolls_back_its_evidence_and_profile_when_audit_fails() {
     let (_directory, mut session, conn) = scratch();
     let profile = session.profile().expect("the original profile");

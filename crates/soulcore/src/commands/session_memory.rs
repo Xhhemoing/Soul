@@ -194,6 +194,7 @@ impl Session {
         pasted: &str,
         context_id: &str,
     ) -> Result<MemoryDraftValue, SessionRefusal> {
+        self.clear_scoped_draft();
         self.require_store_idle()?;
         let selection = self.selected_memory(context_id)?;
         self.held_insight = None;
@@ -219,6 +220,7 @@ impl Session {
         owner_ids: &[Uuid],
         include_original: bool,
     ) -> Result<MemoryDraftPlan, SessionRefusal> {
+        self.clear_scoped_draft();
         self.require_draft_slot()?;
         let mut selection = self.selected_memory(context_id)?;
         let assistance = self

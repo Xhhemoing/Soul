@@ -47,6 +47,11 @@ export class MemoryRequests {
     return true;
   }
 
+  /** Invalidate a displayed quote without surrendering a physical write. */
+  invalidatePreview(): void {
+    this.preview = null;
+  }
+
   nextList(): number {
     return ++this.listSerial;
   }

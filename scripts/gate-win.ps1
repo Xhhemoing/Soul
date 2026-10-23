@@ -1,7 +1,7 @@
 # G-W: the Windows gate, on the author's Windows 11 machine.
 #
-# There is no hosted CI for this repository (DECISIONS D50). This script is
-# what the old `test-windows` and `package` jobs did, minus the runner: it
+# D110 restores synthetic hosted CI configuration; it does not replace G-W.
+# This script retains the author's full Windows platform gate: it
 # builds the workspace, runs the desktop shell's tests, builds the release
 # binaries with the frontend embedded, checks the manifest *inside* soul.exe,
 # and runs the AC-21 headless smoke against those binaries.

@@ -115,6 +115,7 @@ describe("自传记忆页", () => {
     await user.click(screen.getByRole("button", { name: "改好了" }));
 
     expect(core.callsTo("update_memory")[0]?.payload).toEqual({
+      correlationId: expect.any(String),
       memoryId: MEMORY_ID,
       change: {
         memory_type: "episodic",
@@ -170,6 +171,7 @@ describe("自传记忆页", () => {
     await user.click(screen.getByRole("button", { name: "就按上面这些，遗忘它" }));
 
     expect(core.callsTo("forget_memory")[0]?.payload).toEqual({
+      correlationId: expect.any(String),
       confirmation: { preview_id: PREVIEW_ID, memory_id: MEMORY_ID },
     });
     // One press, one forget. The core spends the preview it matched, so a

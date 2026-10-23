@@ -59,6 +59,7 @@ pub(crate) struct ForgetPlan {
     pub(crate) feedback_rows: Vec<Vec<Option<String>>>,
     pub(crate) preparation_rows: Vec<Vec<Option<String>>>,
     pub(crate) template_rows: Vec<Vec<Option<String>>>,
+    pub(crate) scoped_register_rows: Vec<Vec<Option<String>>>,
 }
 
 #[cfg(test)]
@@ -381,8 +382,12 @@ impl SqlCipherStore {
                       WHERE contact_id = ? AND display_label_key_id IS NOT NULL
                      UNION ALL
                      SELECT content_key_id FROM sealed_blobs WHERE row_id = ?
+                     UNION ALL
+                     SELECT k.content_key_id FROM memory_content_keys k
+                       JOIN scoped_register_preferences p ON p.memory_id=k.memory_id
+                      WHERE p.person_contact_id = ?
                  ) ORDER BY content_key_id",
-                &[id.to_string(), id.to_string()],
+                &[id.to_string(), id.to_string(), id.to_string()],
             ),
         }
     }
@@ -407,7 +412,7 @@ impl SqlCipherStore {
         // row, and without that the row would never become a tombstone.
         let mut keys_twice = key_text.clone();
         keys_twice.extend(key_text.clone());
-        let contacts = self.uuid_column(
+        let mut contacts = self.uuid_column(
             &format!(
                 "SELECT contact_id FROM contacts
                  WHERE display_label_key_id IN ({key_slots})
@@ -417,6 +422,23 @@ impl SqlCipherStore {
             ),
             &keys_twice,
         )?;
+        // A scoped preference's blobs are anchored at its Memory, including
+        // when its person has no display-label key of their own.
+        if let ForgetUnit::Contact(id) = unit {
+            if self
+                .conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM contacts WHERE contact_id=?1)",
+                    [id.to_string()],
+                    |r| r.get::<_, bool>(0),
+                )
+                .map_err(backend)?
+            {
+                contacts.push(id);
+                contacts.sort();
+                contacts.dedup();
+            }
+        }
 
         // Evidence a memory cites directly, plus evidence carried by the graph
         // edges a forgotten contact takes part in.
@@ -561,6 +583,16 @@ impl SqlCipherStore {
             (self.auxiliary_scope_rows(&format!("SELECT CAST(item_id AS TEXT),CAST(revision AS TEXT),CAST(enabled AS TEXT),CAST(owner_profile_id AS TEXT),CAST(failure_code AS TEXT) FROM assistance_preparation_preferences WHERE item_id IN ({slots}) ORDER BY item_id"),&items)?,
             self.auxiliary_scope_rows(&format!("SELECT CAST(item_id AS TEXT),CAST(template_id AS TEXT),CAST(item_revision AS TEXT),CAST(preference_revision AS TEXT),CAST(source_doc AS TEXT),CAST(owner_profile_id AS TEXT),CAST(voice_register AS TEXT),CAST(voice_directness AS TEXT),CAST(voice_warmth AS TEXT),CAST(voice_emoji_use AS TEXT),CAST(prepared_at AS TEXT),CAST(kind AS TEXT) FROM assistance_local_templates WHERE item_id IN ({slots}) ORDER BY item_id"),&items)?)
         };
+        let scoped_register_rows = if memories.is_empty() && contacts.is_empty() {
+            vec![]
+        } else {
+            let mut bound = as_text(&memories);
+            bound.extend(as_text(&contacts));
+            self.auxiliary_scope_rows(&format!(
+                "SELECT preference_id,revision,owner_profile_id,person_contact_id,occasion,memory_id,register,state FROM scoped_register_preferences WHERE memory_id IN ({}) OR person_contact_id IN ({}) ORDER BY preference_id",
+                placeholders(memories.len()), placeholders(contacts.len())
+            ), &bound)?
+        };
         Ok(ForgetPlan {
             content_keys,
             memories,
@@ -579,6 +611,7 @@ impl SqlCipherStore {
             feedback_rows,
             preparation_rows,
             template_rows,
+            scoped_register_rows,
         })
     }
 
@@ -731,6 +764,14 @@ impl ForgetOutcomeOps for SqlCipherStore {
 
         for memory_id in &plan.memories {
             mark_forgotten(&tx, "memories", "memory_id", *memory_id)?;
+        }
+        // Read raw IDs rather than decoding auxiliary enums: malformed
+        // metadata cannot prevent destruction of the underlying content key.
+        for row in &plan.scoped_register_rows {
+            if let Some(Some(id)) = row.first() {
+                tx.execute("UPDATE scoped_register_preferences SET revision=?2,state='inactive',register=NULL WHERE preference_id=?1",
+                    rusqlite::params![id,Uuid::now_v7().to_string()]).map_err(backend)?;
+            }
         }
         for (item_id, _, own_memory) in &plan.assistance_items {
             tx.execute(

@@ -56,10 +56,11 @@ const HOME = ROUTES[0] as RouteDefinition;
 
 export function routeForHash(hash: string): RouteDefinition {
   const path = hash.replace(/^#/, "") || "/";
-  // Only graph has a read-only, independently validated navigation target.
+  // These pages independently validate their read-only navigation targets.
   // Other route queries and extended paths retain the exact-path fallback.
   if (path.startsWith("/graph?")) return ROUTES.find((route) => route.id === "graph") ?? HOME;
   if (path.startsWith("/assistance?")) return ROUTES.find((route) => route.id === "assistance") ?? HOME;
+  if (path.startsWith("/memory?")) return ROUTES.find((route) => route.id === "memory") ?? HOME;
   return ROUTES.find((route) => route.path === path) ?? HOME;
 }
 

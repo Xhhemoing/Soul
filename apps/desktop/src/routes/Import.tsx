@@ -3,6 +3,8 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   confirmImport, discardImport, importOperation, listImportNamespaces, prepareImport, recentImportOperations,
   importRecoveryState,
+  subscribeDraftSource, getDraftSourceRevision, hasPendingSourceChanges,
+  subscribeExternalSource, getExternalSourceRevision,
   MAX_IMPORT_BYTES, IMPORT_OVER_BYTE_BUDGET_NOTICE,
   type ImportNamespace, type ImportOperationView, type ImportSource, type PreparedImport, type Refusal,
 } from "../core";
@@ -27,6 +29,37 @@ export function Import({ lane = durableImport }: { readonly lane?: DurableImport
   const owner = useRef<symbol | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const queryOwner = useRef<symbol | null>(null);
+  const deferredRefresh = useRef(false);
+  const preparedSource = useRef<symbol | null>(null);
+
+  useEffect(() => {
+    let source = getDraftSourceRevision();
+    const unsubscribe = subscribeDraftSource((next) => {
+      if (next === source) return;
+      source = next;
+      if (!hasPendingSourceChanges() && !lane.snapshot().busy) {
+        const refresh = ++namespaceRevision.current;
+        setNamespaceRefresh(refresh);
+      }
+    });
+    const unsubscribeExternal = subscribeExternalSource(() => {
+      preparedSource.current = null;
+      setPrepared(null); queryOwner.current = null; setRows([]); setChecking(false);
+      deferredRefresh.current = true;
+      if (!hasPendingSourceChanges() && !lane.snapshot().busy) {
+        deferredRefresh.current = false;
+        const refresh = ++namespaceRevision.current; setNamespaceRefresh(refresh);
+      }
+    });
+    return () => { unsubscribe(); unsubscribeExternal(); };
+  }, [lane]);
+
+  useEffect(() => {
+    if (!state.busy && deferredRefresh.current && !hasPendingSourceChanges()) {
+      deferredRefresh.current = false;
+      const refresh = ++namespaceRevision.current; setNamespaceRefresh(refresh);
+    }
+  }, [state.busy]);
 
   useEffect(() => {
     const mount = Symbol("import route"); owner.current = mount;
@@ -47,6 +80,7 @@ export function Import({ lane = durableImport }: { readonly lane?: DurableImport
   }, [lane, state.receipt, namespaceRefresh]);
 
   const reset = (): void => {
+    preparedSource.current = null;
     setPrepared(null); setRefusal(null); if (input.current !== null) input.current.value = "";
   };
   const read = async (file?: File): Promise<void> => {
@@ -57,15 +91,19 @@ export function Import({ lane = durableImport }: { readonly lane?: DurableImport
         if (file.size > MAX_IMPORT_BYTES) throw { reason_code: "ROUTINE", explanation: IMPORT_OVER_BYTE_BUDGET_NOTICE };
         const text = await file.text();
         if (ticket === null || ticket !== owner.current) return;
+        const source = getExternalSourceRevision();
         const result = await prepareImport({ text, source: format, namespace_id: namespace || null, legacy_choice: forward ? "forward_only" : "reject" });
         lane.remember(result.operation.operation_id);
-        if (owner.current === ticket) { setPrepared(result); setLookup(result.operation.operation_id); }
+        if (owner.current === ticket) {
+          if (source === getExternalSourceRevision()) { preparedSource.current = source; setPrepared(result); }
+          setLookup(result.operation.operation_id);
+        }
       }, null);
     } catch (error: unknown) { if (owner.current === ticket) setRefusal(asRefusal(error)); }
     finally { if (input.current !== null && owner.current === ticket) input.current.value = ""; }
   };
   const confirm = async (): Promise<void> => {
-    if (prepared === null) return;
+    if (prepared === null || preparedSource.current !== getExternalSourceRevision() || hasPendingSourceChanges()) return;
     const ticket = owner.current; const approved = prepared; setRefusal(null);
     try {
       await lane.run(async () => {
@@ -114,7 +152,9 @@ export function Import({ lane = durableImport }: { readonly lane?: DurableImport
         namespaceRevision.current += 1;
         setNamespaceRefresh(namespaceRevision.current);
       }
-    } catch (error: unknown) { if (owner.current === mount) setRefusal(asRefusal(error)); }
+    } catch (error: unknown) {
+      if (queryOwner.current === query && owner.current === mount && generation === lane.generation()) setRefusal(asRefusal(error));
+    }
     finally { if (queryOwner.current === query) { queryOwner.current = null; setChecking(false); } }
   };
   const blocked = state.busy || state.unknown || prepared !== null || checking;

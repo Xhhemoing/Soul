@@ -140,6 +140,49 @@ fn the_shell_never_reads_an_endpoint_address_itself() {
 #[test]
 fn the_command_layer_stays_thin() {
     for name in COMMAND_NAMES {
+        if matches!(
+            *name,
+            "prepare_import" | "confirm_import" | "prepare_synthetic_import"
+        ) {
+            let position = COMMANDS_RS.find(&format!("pub async fn {name}(")).unwrap();
+            let body = &COMMANDS_RS[position..];
+            let open = body.find('{').unwrap();
+            let mut depth = 0;
+            let close = body[open..]
+                .char_indices()
+                .find_map(|(index, c)| {
+                    if c == '{' {
+                        depth += 1;
+                    }
+                    if c == '}' {
+                        depth -= 1;
+                        if depth == 0 {
+                            return Some(open + index);
+                        }
+                    }
+                    None
+                })
+                .unwrap();
+            let compact: String = body[open + 1..close]
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect();
+            let compact = compact
+                .replace("move||{", "move||")
+                .replace("}).await", ").await");
+            let guard = if *name == "prepare_import" {
+                "session.require_product_mode()?;"
+            } else {
+                ""
+            };
+            let arguments = if *name == "confirm_import" {
+                "&operation_id,&preview_id"
+            } else {
+                "request"
+            };
+            assert_eq!(compact, format!("{guard}letruntime=session.runtime();letcontext=caller.context(correlation_id);tauri::async_runtime::spawn_blocking(move||runtime.{name}(&context,{arguments})).await.map_err(|_|SessionRefusal::from(DraftRefusal::WorkerFailed))?"), "{name} must only inject trusted context and forward the owned blocking operation");
+            continue;
+        }
         if matches!(*name, "prepare_research_save" | "cancel_research_save") {
             let start = COMMANDS_RS.find(&format!("pub async fn {name}(")).unwrap();
             let body = COMMANDS_RS[start..]
@@ -259,10 +302,55 @@ fn the_command_layer_stays_thin() {
             .chars()
             .filter(|character| !character.is_whitespace())
             .collect::<String>();
+        let expression = if matches!(
+            *name,
+            "authorize_directory"
+                | "set_user_endpoint"
+                | "preview_soul_import_v1"
+                | "preview_telegram"
+                | "commit_soul_import_v1"
+                | "commit_telegram"
+                | "grant_collect_consent"
+        ) {
+            expression
+                .strip_prefix("session.require_product_mode()?;")
+                .expect("restricted commands refuse synthetic mode before forwarding")
+        } else {
+            expression.as_str()
+        };
         let forwarded = if *name == "draft_notices" {
             expression == "DraftNotices::of_this_build()"
         } else if *name == "retry_forget_cleanup" {
             expression == "soulcore::commands::memory::retry_cleanup_for_session(&session.held())"
+        } else if let Some(expected) = match *name {
+            "session_status" => Some("session.0.legacy_status()"),
+            "people_graph" => Some("session.0.legacy_people()"),
+            "memory_detail" => Some("session.0.legacy_memory(&memory_id)"),
+            "runtime_status" => Some("session.0.status()"),
+            "runtime_people" => Some("session.0.people(request)"),
+            "runtime_memory" => Some("session.0.memory(request)"),
+            "runtime_event_snapshot" => Some("session.0.event_snapshot()"),
+            "import_operation" => Some("session.0.import_operation(&operation_id)"),
+            "discard_import" => Some("session.0.discard_import(&caller.context(correlation_id),&operation_id)"),
+            "scoped_register_status" => Some("session.0.scoped_register_status(&person_id,occasion)"),
+            "draft_scoped_reply" => Some("session.0.draft_scoped_reply(&caller.context(correlation_id),&pasted,&person_id,occasion)"),
+            "propose_scoped_register" => Some("session.0.propose_scoped_register(&caller.context(correlation_id),&result_id,edit_revision,register)"),
+            "confirm_scoped_register" => Some("session.0.confirm_scoped_register(&caller.context(correlation_id),&proposal_id,expected_revision)"),
+            "discard_scoped_register_proposal" => Some("session.0.discard_scoped_register_proposal(&caller.context(correlation_id),&proposal_id)"),
+            "update_memory" => Some("session.0.edit_memory(&caller.context(correlation_id),&memory_id,&change)"),
+            "preview_forget" => Some("session.0.preview_forget(&caller.context(correlation_id),&memory_id)"),
+            "forget_memory" => Some("session.0.forget_memory(&caller.context(correlation_id),&confirmation)"),
+            _ => None,
+        } {
+            // rustfmt adds the optional final argument comma when it expands
+            // a call. Accept only that outer trailing comma; every other
+            // token, including trusted context and arguments, stays exact.
+            expression == expected
+                || expression.strip_suffix(",)").is_some_and(|prefix| {
+                    expected
+                        .strip_suffix(')')
+                        .is_some_and(|expected_prefix| prefix == expected_prefix)
+                })
         } else {
             expression.starts_with("session.held().")
                 && expression.ends_with(')')

@@ -28,6 +28,10 @@ mod communication_goal;
 #[cfg(windows)]
 #[path = "ipc_roundtrip/research_retention.rs"]
 mod research_retention;
+#[path = "ipc_roundtrip/runtime_reads.rs"]
+mod runtime_reads;
+#[path = "ipc_roundtrip/scoped_register.rs"]
+mod scoped_register;
 
 /// A directory no installation uses.
 ///

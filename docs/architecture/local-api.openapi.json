@@ -1,0 +1,1920 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Soul synthetic local API",
+    "description": "Synthetic-only authenticated loopback read adapter for the shared runtime.",
+    "license": {
+      "name": "LicenseRef-Soul-Proprietary",
+      "identifier": "LicenseRef-Soul-Proprietary"
+    },
+    "version": "1"
+  },
+  "paths": {
+    "/v1/events/snapshot": {
+      "get": {
+        "tags": [
+          "crate::openapi_writes"
+        ],
+        "operationId": "event_snapshot",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeEventSnapshot"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe refusal; JSON body has finite receive and size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/imports/prepare": {
+      "post": {
+        "tags": [
+          "crate::openapi_writes"
+        ],
+        "operationId": "import_prepare",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyntheticImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimePreparedImport"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe refusal; JSON body has finite receive and size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/imports/{operation_id}": {
+      "get": {
+        "tags": [
+          "crate::openapi_writes"
+        ],
+        "operationId": "import_state",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "description": "Exact canonical hyphenated UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeImportOperation"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe refusal; JSON body has finite receive and size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/imports/{operation_id}/confirm": {
+      "post": {
+        "tags": [
+          "crate::openapi_writes"
+        ],
+        "operationId": "import_confirm",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "description": "Exact canonical hyphenated UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeImportOperation"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe refusal; JSON body has finite receive and size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/imports/{operation_id}/discard": {
+      "post": {
+        "tags": [
+          "crate::openapi_writes"
+        ],
+        "operationId": "import_discard",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "description": "Exact canonical hyphenated UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeImportOperation"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe refusal; JSON body has finite receive and size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/memories/{memory_id}": {
+      "get": {
+        "tags": [],
+        "operationId": "memory",
+        "parameters": [
+          {
+            "name": "memory_id",
+            "in": "path",
+            "description": "Exact canonical hyphenated UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryDetailView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadError"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe transport or read refusal, including 404, 405 and 503",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "crate::openapi_writes"
+        ],
+        "operationId": "memory_edit",
+        "parameters": [
+          {
+            "name": "memory_id",
+            "in": "path",
+            "description": "Exact canonical hyphenated UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryEditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryDetailView"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe refusal; JSON body has finite receive and size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/memories/{memory_id}/forget-confirm": {
+      "post": {
+        "tags": [
+          "crate::openapi_writes"
+        ],
+        "operationId": "forget_confirm",
+        "parameters": [
+          {
+            "name": "memory_id",
+            "in": "path",
+            "description": "Exact canonical hyphenated UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeForgetConfirmation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeForgetReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe refusal; JSON body has finite receive and size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/memories/{memory_id}/forget-preview": {
+      "post": {
+        "tags": [
+          "crate::openapi_writes"
+        ],
+        "operationId": "forget_preview",
+        "parameters": [
+          {
+            "name": "memory_id",
+            "in": "path",
+            "description": "Exact canonical hyphenated UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeForgetPreview"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe refusal; JSON body has finite receive and size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/memories/{memory_id}/state": {
+      "get": {
+        "tags": [
+          "crate::openapi_writes"
+        ],
+        "operationId": "memory_state",
+        "parameters": [
+          {
+            "name": "memory_id",
+            "in": "path",
+            "description": "Exact canonical hyphenated UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeMemoryState"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe refusal; JSON body has finite receive and size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/people": {
+      "get": {
+        "tags": [],
+        "operationId": "people",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeoplePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadError"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe transport or read refusal, including 404, 405 and 503",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scoped/confirm": {
+      "post": {
+        "tags": [
+          "crate::openapi_writes"
+        ],
+        "operationId": "scoped_confirm",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScopedConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeScopedReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe refusal; JSON body has finite receive and size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scoped/draft": {
+      "post": {
+        "tags": [
+          "crate::openapi_writes"
+        ],
+        "operationId": "scoped_draft",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScopedDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeScopedDraft"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe refusal; JSON body has finite receive and size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scoped/propose": {
+      "post": {
+        "tags": [
+          "crate::openapi_writes"
+        ],
+        "operationId": "scoped_propose",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScopedProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeScopedProposal"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe refusal; JSON body has finite receive and size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scoped/status": {
+      "get": {
+        "tags": [
+          "crate::openapi_writes"
+        ],
+        "operationId": "scoped_status",
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "occasion",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/RuntimeOccasion"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeScopedStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe refusal; JSON body has finite receive and size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scoped/{proposal_id}/discard": {
+      "post": {
+        "tags": [
+          "crate::openapi_writes"
+        ],
+        "operationId": "scoped_discard",
+        "parameters": [
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "description": "Exact canonical hyphenated UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe refusal; JSON body has finite receive and size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/status": {
+      "get": {
+        "tags": [],
+        "operationId": "status",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadError"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Safe transport or read refusal, including 404, 405 and 503",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BuiltinFixtureId": {
+        "type": "string",
+        "enum": [
+          "basic"
+        ]
+      },
+      "CallerTransport": {
+        "type": "string",
+        "enum": [
+          "desktop",
+          "http"
+        ]
+      },
+      "EmptyRequest": {
+        "type": "object",
+        "description": "Strict empty JSON for operations whose full address is in the route.",
+        "additionalProperties": false
+      },
+      "ImportConfirmRequest": {
+        "type": "object",
+        "description": "The operation ID is carried by the versioned route, never selected implicitly.",
+        "required": [
+          "preview_id"
+        ],
+        "properties": {
+          "preview_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MemoryDetailView": {
+        "type": "object",
+        "required": [
+          "memory_id",
+          "memory_type",
+          "title",
+          "summary",
+          "third_party_content_present"
+        ],
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          },
+          "memory_type": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "third_party_content_present": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MemoryEditRequest": {
+        "type": "object",
+        "properties": {
+          "memory_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "OperationKind": {
+        "type": "string",
+        "enum": [
+          "import_prepare",
+          "import_confirm",
+          "import_discard",
+          "scoped_draft",
+          "scoped_propose",
+          "scoped_confirm",
+          "scoped_discard",
+          "memory_edit",
+          "forget_preview",
+          "forget_confirm"
+        ]
+      },
+      "PeoplePage": {
+        "type": "object",
+        "required": [
+          "people",
+          "offset",
+          "limit",
+          "total",
+          "has_more",
+          "third_party_data_is_local_only"
+        ],
+        "properties": {
+          "has_more": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonView"
+            }
+          },
+          "third_party_data_is_local_only": {
+            "type": "boolean"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "PeoplePageRequest": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "default": 50,
+            "maximum": 100,
+            "minimum": 1
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0,
+            "maximum": 1000000,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "PersonView": {
+        "type": "object",
+        "required": [
+          "contact_id",
+          "is_you",
+          "identifier_hint",
+          "interaction_count",
+          "tie_count",
+          "forgotten"
+        ],
+        "properties": {
+          "contact_id": {
+            "type": "string"
+          },
+          "forgotten": {
+            "type": "boolean"
+          },
+          "identifier_hint": {
+            "type": "string"
+          },
+          "interaction_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "is_you": {
+            "type": "boolean"
+          },
+          "last_contact_utc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tie_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReadError": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ReadErrorCode"
+          },
+          "details": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReadErrorDetail"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReadErrorCode": {
+        "type": "string",
+        "enum": [
+          "invalid_request",
+          "read_failed"
+        ]
+      },
+      "ReadErrorDetail": {
+        "type": "string",
+        "description": "Safe field labels only. Neither exceptions nor request values belong here.",
+        "enum": [
+          "limit",
+          "offset",
+          "memory_id"
+        ]
+      },
+      "RuntimeAuditState": {
+        "type": "string",
+        "enum": [
+          "not_applicable",
+          "recorded",
+          "unconfirmed"
+        ]
+      },
+      "RuntimeCaller": {
+        "type": "object",
+        "required": [
+          "transport"
+        ],
+        "properties": {
+          "transport": {
+            "$ref": "#/components/schemas/CallerTransport"
+          },
+          "webview_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeEventSnapshot": {
+        "type": "object",
+        "required": [
+          "epoch",
+          "sequence",
+          "active_operations"
+        ],
+        "properties": {
+          "active_operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeOperation"
+            }
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeForgetCleanup": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "state"
+            ],
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "complete"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "state"
+            ],
+            "properties": {
+              "checkpoint": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RuntimeWalCheckpoint"
+                  }
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "pending"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "RuntimeForgetConfirmation": {
+        "type": "object",
+        "required": [
+          "preview_id",
+          "memory_id"
+        ],
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          },
+          "preview_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeForgetPreview": {
+        "type": "object",
+        "required": [
+          "preview_id",
+          "memory_id",
+          "content_key_count",
+          "memories_affected",
+          "contacts_affected",
+          "sealed_blobs_destroyed",
+          "inferences_orphaned",
+          "import_namespaces_revoked",
+          "local_insights_invalidated",
+          "assistance_items_invalidated",
+          "audit_entries_retained",
+          "destroys_anything",
+          "notice"
+        ],
+        "properties": {
+          "assistance_items_invalidated": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "audit_entries_retained": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "contacts_affected": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "content_key_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "destroys_anything": {
+            "type": "boolean"
+          },
+          "import_namespaces_revoked": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "inferences_orphaned": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "local_insights_invalidated": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "memories_affected": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "memory_id": {
+            "type": "string"
+          },
+          "notice": {
+            "type": "string"
+          },
+          "preview_id": {
+            "type": "string"
+          },
+          "sealed_blobs_destroyed": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeForgetReceipt": {
+        "type": "object",
+        "required": [
+          "memory_id",
+          "content_keys_destroyed",
+          "sealed_blobs_destroyed",
+          "inferences_orphaned",
+          "import_namespaces_revoked",
+          "local_insights_invalidated",
+          "assistance_items_invalidated",
+          "matched_preview",
+          "logical_committed",
+          "cleanup",
+          "audit"
+        ],
+        "properties": {
+          "assistance_items_invalidated": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "audit": {
+            "$ref": "#/components/schemas/RuntimeAuditState"
+          },
+          "cleanup": {
+            "$ref": "#/components/schemas/RuntimeForgetCleanup"
+          },
+          "content_keys_destroyed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "import_namespaces_revoked": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "inferences_orphaned": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "local_insights_invalidated": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "logical_committed": {
+            "type": "boolean"
+          },
+          "matched_preview": {
+            "type": "boolean"
+          },
+          "memory_id": {
+            "type": "string"
+          },
+          "sealed_blobs_destroyed": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeImportCounts": {
+        "type": "object",
+        "required": [
+          "participants",
+          "messages",
+          "duplicates",
+          "contacts_created",
+          "contacts_matched",
+          "events_written",
+          "evidence_written",
+          "messages_with_injection_markers",
+          "ties_rebuilt"
+        ],
+        "properties": {
+          "contacts_created": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "contacts_matched": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "duplicates": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "events_written": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "evidence_written": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "messages": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "messages_with_injection_markers": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "participants": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "ties_rebuilt": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeImportOperation": {
+        "type": "object",
+        "required": [
+          "operation_id",
+          "preview_id",
+          "namespace_id",
+          "state",
+          "preview",
+          "audit_state",
+          "namespace_revoked"
+        ],
+        "properties": {
+          "audit_state": {
+            "$ref": "#/components/schemas/RuntimeAuditState"
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "namespace_id": {
+            "type": "string"
+          },
+          "namespace_revoked": {
+            "type": "boolean"
+          },
+          "operation_id": {
+            "type": "string"
+          },
+          "preview": {
+            "$ref": "#/components/schemas/RuntimeImportCounts"
+          },
+          "preview_id": {
+            "type": "string"
+          },
+          "receipt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RuntimeImportCounts"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/RuntimeImportState"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeImportState": {
+        "type": "string",
+        "enum": [
+          "reserved",
+          "running",
+          "committed",
+          "rejected",
+          "discarded",
+          "invalidated",
+          "interrupted"
+        ]
+      },
+      "RuntimeLocalDraft": {
+        "type": "object",
+        "required": [
+          "text",
+          "not_sent_notice",
+          "source_notice",
+          "third_party_turns",
+          "placeheld_turns",
+          "carries_exempted_original"
+        ],
+        "properties": {
+          "carries_exempted_original": {
+            "type": "boolean"
+          },
+          "not_sent_notice": {
+            "type": "string"
+          },
+          "placeheld_turns": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source_notice": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "third_party_turns": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeMemoryState": {
+        "type": "object",
+        "required": [
+          "memory_id",
+          "forget_state",
+          "third_party_content_present"
+        ],
+        "properties": {
+          "forget_state": {
+            "type": "string"
+          },
+          "memory_id": {
+            "type": "string"
+          },
+          "third_party_content_present": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeOccasion": {
+        "type": "string",
+        "enum": [
+          "personal",
+          "work",
+          "study"
+        ]
+      },
+      "RuntimeOperation": {
+        "type": "object",
+        "required": [
+          "operation_id",
+          "caller",
+          "kind"
+        ],
+        "properties": {
+          "caller": {
+            "$ref": "#/components/schemas/RuntimeCaller"
+          },
+          "correlation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/OperationKind"
+          },
+          "operation_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimePreferenceState": {
+        "type": "string",
+        "enum": [
+          "absent",
+          "active",
+          "inactive",
+          "forgotten",
+          "unavailable"
+        ]
+      },
+      "RuntimePreparedImport": {
+        "type": "object",
+        "required": [
+          "operation",
+          "notice"
+        ],
+        "properties": {
+          "notice": {
+            "type": "string"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/RuntimeImportOperation"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeRegister": {
+        "type": "string",
+        "enum": [
+          "casual",
+          "plain",
+          "formal"
+        ]
+      },
+      "RuntimeScopedDraft": {
+        "type": "object",
+        "required": [
+          "result_id",
+          "person_id",
+          "occasion",
+          "draft"
+        ],
+        "properties": {
+          "applied_preference": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RuntimeScopedReceipt"
+              }
+            ]
+          },
+          "draft": {
+            "$ref": "#/components/schemas/RuntimeLocalDraft"
+          },
+          "occasion": {
+            "$ref": "#/components/schemas/RuntimeOccasion"
+          },
+          "person_id": {
+            "type": "string"
+          },
+          "result_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeScopedProposal": {
+        "type": "object",
+        "required": [
+          "proposal_id",
+          "result_id",
+          "edit_revision",
+          "person_id",
+          "occasion",
+          "register",
+          "notice"
+        ],
+        "properties": {
+          "edit_revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "expected_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notice": {
+            "type": "string"
+          },
+          "occasion": {
+            "$ref": "#/components/schemas/RuntimeOccasion"
+          },
+          "person_id": {
+            "type": "string"
+          },
+          "proposal_id": {
+            "type": "string"
+          },
+          "register": {
+            "$ref": "#/components/schemas/RuntimeRegister"
+          },
+          "result_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeScopedReceipt": {
+        "type": "object",
+        "required": [
+          "preference_id",
+          "revision",
+          "memory_id",
+          "register"
+        ],
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          },
+          "preference_id": {
+            "type": "string"
+          },
+          "register": {
+            "$ref": "#/components/schemas/RuntimeRegister"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeScopedStatus": {
+        "type": "object",
+        "required": [
+          "person_id",
+          "occasion",
+          "state",
+          "notice"
+        ],
+        "properties": {
+          "memory_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notice": {
+            "type": "string"
+          },
+          "occasion": {
+            "$ref": "#/components/schemas/RuntimeOccasion"
+          },
+          "person_id": {
+            "type": "string"
+          },
+          "preference": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RuntimeScopedReceipt"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/RuntimePreferenceState"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeStatus": {
+        "type": "object",
+        "required": [
+          "wizard_completed",
+          "store_opened",
+          "key_protection",
+          "config_problem"
+        ],
+        "properties": {
+          "config_problem": {
+            "type": "boolean"
+          },
+          "key_protection": {
+            "type": "string",
+            "description": "An allowlisted protection label; never a path or provider exception."
+          },
+          "store_opened": {
+            "type": "boolean"
+          },
+          "wizard_completed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeWalCheckpoint": {
+        "type": "object",
+        "required": [
+          "busy",
+          "log_frames",
+          "checkpointed_frames"
+        ],
+        "properties": {
+          "busy": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "checkpointed_frames": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "log_frames": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScopedConfirmRequest": {
+        "type": "object",
+        "required": [
+          "proposal_id"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proposal_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScopedDraftRequest": {
+        "type": "object",
+        "required": [
+          "pasted",
+          "person_id",
+          "occasion"
+        ],
+        "properties": {
+          "occasion": {
+            "$ref": "#/components/schemas/RuntimeOccasion"
+          },
+          "pasted": {
+            "type": "string"
+          },
+          "person_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScopedProposalRequest": {
+        "type": "object",
+        "required": [
+          "result_id",
+          "edit_revision",
+          "register"
+        ],
+        "properties": {
+          "edit_revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "register": {
+            "$ref": "#/components/schemas/RuntimeRegister"
+          },
+          "result_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SyntheticImportRequest": {
+        "type": "object",
+        "required": [
+          "fixture_id"
+        ],
+        "properties": {
+          "fixture_id": {
+            "$ref": "#/components/schemas/BuiltinFixtureId"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WriteError": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/WriteErrorCode"
+          },
+          "details": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReadErrorDetail"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WriteErrorCode": {
+        "type": "string",
+        "enum": [
+          "invalid_request",
+          "caller_mismatch",
+          "confirmation_unavailable",
+          "store_busy",
+          "operation_failed"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "runtime_bearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "security": [
+    {
+      "runtime_bearer": []
+    }
+  ]
+}

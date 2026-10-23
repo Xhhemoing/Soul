@@ -954,6 +954,30 @@ impl MemoryStore for SqlCipherStore {
     fn put_memory(&mut self, memory: SoulMemory) -> StoreResult<Uuid> {
         self.check(SchemaId::Memory, &memory)?;
         let id = memory.memory_id;
+        let scoped_bound: bool = self
+            .conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM scoped_register_preferences WHERE memory_id=?1)",
+                [id.to_string()],
+                |row| row.get(0),
+            )
+            .map_err(backend)?;
+        if scoped_bound {
+            let previous = self.get_memory(id)?;
+            if memory.memory_type != soul_schema::memory::MemoryType::Preference
+                || memory.content_key_id != previous.content_key_id
+                || previous.forget_state == soul_schema::memory::ForgetState::Forgotten
+                || !self.has_content_key(previous.content_key_id)
+                || [&memory.title_ref, &memory.summary_ref]
+                    .into_iter()
+                    .flatten()
+                    .any(|sealed| sealed.content_key_id != previous.content_key_id)
+            {
+                return Err(StoreError::ContractViolation(
+                    "a scoped preference memory must retain its type and live content key".into(),
+                ));
+            }
+        }
         let bound: bool = self
             .conn
             .query_row(
@@ -1032,6 +1056,10 @@ impl MemoryStore for SqlCipherStore {
         }
         // Direct store callers and ordinary Memory edits obey the same CAS
         // invalidation as the assistance route, in this very savepoint.
+        tx.execute(
+            "UPDATE scoped_register_preferences SET revision=?2,state='inactive',register=NULL WHERE memory_id=?1",
+            rusqlite::params![id.to_string(), Uuid::now_v7().to_string()],
+        ).map_err(backend)?;
         tx.execute("UPDATE assistance_items SET revision=?2,validity=CASE WHEN ?3='forgotten' THEN 'forgotten' ELSE validity END WHERE memory_id=?1",
             rusqlite::params![id.to_string(),Uuid::now_v7().to_string(),enum_text(&memory.forget_state)?]).map_err(backend)?;
         let item: Option<String> = tx

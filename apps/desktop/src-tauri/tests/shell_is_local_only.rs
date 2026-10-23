@@ -164,8 +164,11 @@ fn closing_the_window_leaves_soul_in_the_tray_rather_than_ending_it() {
     );
 
     // And it is registered on the chain that actually starts Soul, rather than
-    // in a helper nobody calls: after `configure` builds the application and
-    // before `run` hands it to Tauri.
+    // in a helper nobody calls: the generated context reaches build after
+    // `configure` registers the application and before `run` starts it.
+    let generated = run
+        .find("let mut context = tauri::generate_context!();")
+        .expect("run no longer generates the application context before configuring it");
     let configured = run
         .find("configure(")
         .expect("run no longer builds the application through configure");
@@ -173,15 +176,15 @@ fn closing_the_window_leaves_soul_in_the_tray_rather_than_ending_it() {
         .find(".on_window_event(")
         .expect("the close handler is not registered on a builder at all");
     let built = run
-        .find(".build(tauri::generate_context!())")
+        .find(".build(context)")
         .expect("run no longer builds the registered application");
     let started = built
         + run[built..]
             .find(".run(")
             .expect("run no longer starts the built application");
     assert!(
-        configured < registered && registered < built && built < started,
-        "the close handler is not on the builder chain that run starts",
+        generated < configured && configured < registered && registered < built && built < started,
+        "the generated context and close handler are not on the builder chain that run starts",
     );
 }
 

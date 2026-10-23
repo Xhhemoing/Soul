@@ -26,6 +26,8 @@
         "consent.grant",
         "collect.start",
         "collect.stop",
+        "import.prepare",
+        "import.discard",
         "import.commit",
         "inference.write",
         "profile.correct",

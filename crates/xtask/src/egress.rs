@@ -59,6 +59,70 @@ pub const TEST_TOOLING: &[&str] = &["soul-testkit", "xtask"];
 /// and advisory graph, the other about what can reach the network at runtime.
 pub const EGRESS_GATEWAY: &str = "soul-egress";
 
+const LOCAL_API: &str = "soul-api";
+
+// Hyper serves both client and server code. Only these explicitly requested
+// server features may enter through the local adapter. Resolved features are
+// unified with the legitimate E1 client, so inspect the requesting manifest.
+fn local_server_is_restricted(metadata: &Metadata) -> bool {
+    let Some(api) = metadata.packages.iter().find(|p| p.name == LOCAL_API) else {
+        return false;
+    };
+    if api.features.values().flatten().any(|feature| {
+        feature
+            .split_once('/')
+            .is_some_and(|(dependency, requested)| {
+                let allowed = match dependency.trim_end_matches('?') {
+                    "axum" => &["http1", "json", "query", "tokio"][..],
+                    "hyper" => &["server", "http1"][..],
+                    "hyper-util" => &["tokio", "service"][..],
+                    _ => return false,
+                };
+                !allowed.contains(&requested)
+            })
+    }) {
+        return false;
+    }
+    [
+        ("axum", &["http1", "json", "query", "tokio"][..]),
+        ("hyper", &["server", "http1"][..]),
+        ("hyper-util", &["tokio", "service"][..]),
+    ]
+    .iter()
+    .all(|(name, allowed)| {
+        let requests: Vec<_> = api
+            .dependencies
+            .iter()
+            .filter(|d| d.name == *name)
+            .collect();
+        requests.len() == 1
+            && requests.iter().all(|d| {
+                d.kind == DependencyKind::Normal
+                    && d.rename.is_none()
+                    && !d.uses_default_features
+                    && d.features.len() == allowed.len()
+                    && d.features.iter().all(|f| allowed.contains(&f.as_str()))
+            })
+    })
+}
+
+fn local_server_path(path: &[String]) -> bool {
+    let Some(index) = path.iter().rposition(|name| name == LOCAL_API) else {
+        return false;
+    };
+    let suffix: Vec<_> = path[index + 1..].iter().map(String::as_str).collect();
+    matches!(
+        suffix.as_slice(),
+        [] | ["axum"]
+            | ["hyper-util"]
+            | ["axum", "hyper-util"]
+            | ["hyper"]
+            | ["axum", "hyper"]
+            | ["hyper-util", "hyper"]
+            | ["axum", "hyper-util", "hyper"]
+    )
+}
+
 /// URL prefixes a source file may contain.
 ///
 /// `soul.local` is a naming authority for JSON Schema `$id`s and is never
@@ -143,6 +207,8 @@ pub enum GatewayFinding {
     ExceptionUnused,
     /// The gateway is not in the workspace at all.
     GatewayMissing,
+    /// The only server exception requested features beyond its reviewed surface.
+    LocalServerFeatures,
 }
 
 impl fmt::Display for GatewayFinding {
@@ -160,6 +226,10 @@ impl fmt::Display for GatewayFinding {
             GatewayFinding::GatewayMissing => {
                 write!(f, "{EGRESS_GATEWAY} is not a workspace member")
             }
+            GatewayFinding::LocalServerFeatures => write!(
+                f,
+                "{LOCAL_API} must request only its explicit server features with defaults disabled"
+            ),
         }
     }
 }
@@ -279,6 +349,7 @@ pub fn audit_dependencies_from_roots(
 
     let mut findings = Vec::new();
     let mut roots = Vec::new();
+    let restricted_server = local_server_is_restricted(metadata);
 
     for root in shipped {
         let root_name = name_of(root);
@@ -288,11 +359,11 @@ pub fn audit_dependencies_from_roots(
         // reachable both through `soul-egress` and around it must still be
         // reported for the second path, and keeping one bit per node would let
         // whichever path BFS happened to reach first silence the other.
-        let mut seen: BTreeSet<(&PackageId, bool)> = BTreeSet::new();
+        let mut seen: BTreeSet<(&PackageId, bool, bool)> = BTreeSet::new();
         let mut queue: VecDeque<(&PackageId, Vec<String>, bool)> = VecDeque::new();
         let root_is_gateway = root_name == EGRESS_GATEWAY;
         queue.push_back((root, vec![root_name.clone()], root_is_gateway));
-        seen.insert((root, root_is_gateway));
+        seen.insert((root, root_is_gateway, root_name == LOCAL_API));
 
         while let Some((current, path, via_gateway)) = queue.pop_front() {
             let Some(node) = resolve.nodes.iter().find(|n| &n.id == current) else {
@@ -311,20 +382,22 @@ pub fn audit_dependencies_from_roots(
                 }
                 let dep_name = name_of(&dep.pkg);
                 let dep_via_gateway = via_gateway || dep_name == EGRESS_GATEWAY;
-                if !seen.insert((&dep.pkg, dep_via_gateway)) {
-                    continue;
-                }
                 let mut next_path = path.clone();
                 next_path.push(dep_name.clone());
+                let server_path = local_server_path(&next_path);
+                if !seen.insert((&dep.pkg, dep_via_gateway, server_path)) {
+                    continue;
+                }
 
                 if banned.contains(dep_name.as_str()) {
                     // The gateway's own HTTP client is the sanctioned E1 path.
                     // A Tauri plugin under it is not: those are banned for
                     // opening an egress path behind the application's back,
                     // which the permit check cannot see.
-                    let sanctioned = dep_via_gateway
+                    let sanctioned = (dep_via_gateway
                         && BANNED_HTTP_CLIENTS.contains(&dep_name.as_str())
-                        && !BANNED_TAURI_PLUGINS.contains(&dep_name.as_str());
+                        && !BANNED_TAURI_PLUGINS.contains(&dep_name.as_str()))
+                        || (restricted_server && server_path && dep_name == "hyper");
                     if !sanctioned {
                         findings.push(BannedDependency {
                             root: root_name.clone(),
@@ -362,6 +435,10 @@ pub fn audit_gateway(metadata: &Metadata) -> Vec<GatewayFinding> {
 
     let mut findings = Vec::new();
     let mut gateway_holds_one = false;
+    let restricted_server = local_server_is_restricted(metadata);
+    if members.iter().any(|p| p.name == LOCAL_API) && !restricted_server {
+        findings.push(GatewayFinding::LocalServerFeatures);
+    }
 
     for package in members {
         let is_gateway = package.name == EGRESS_GATEWAY;
@@ -376,7 +453,9 @@ pub fn audit_gateway(metadata: &Metadata) -> Vec<GatewayFinding> {
             }
             if is_gateway {
                 gateway_holds_one = true;
-            } else if !exempt {
+            } else if !(exempt
+                || package.name == LOCAL_API && restricted_server && dependency.name == "hyper")
+            {
                 findings.push(GatewayFinding::SecondHolder {
                     crate_name: package.name.clone(),
                     banned: dependency.name.clone(),

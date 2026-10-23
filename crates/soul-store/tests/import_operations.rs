@@ -22,6 +22,62 @@ fn operation() -> ImportOperation {
 }
 
 #[test]
+fn bookkeeping_hook_failure_rolls_back_transition_and_retry_runs_hook_only_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("soul.db");
+    let lease = ImportRuntimeLease::claim(&db).unwrap();
+    let mut store = SqlCipherStore::open(
+        &db,
+        &TestKeyProvider::from_seed("synthetic bookkeeping hook"),
+    )
+    .unwrap();
+    store.recover_import_operations(&lease).unwrap();
+    let op = operation();
+    store.reserve_import_operation(&lease, &op).unwrap();
+    let failed: StoreResult<ImportOperation> = store.end_import_operation_with(
+        &lease,
+        op.operation_id,
+        ImportOperationState::Reserved,
+        ImportOperationState::Discarded,
+        None,
+        |_, changed| {
+            assert_eq!(changed.state, ImportOperationState::Discarded);
+            Err(StoreError::ContractViolation(
+                "synthetic audit hook refusal".into(),
+            ))
+        },
+    );
+    assert!(failed.is_err());
+    assert_eq!(store.import_operation(op.operation_id).unwrap(), op);
+    let mut calls = 0;
+    let accepted: StoreResult<ImportOperation> = store.end_import_operation_with(
+        &lease,
+        op.operation_id,
+        ImportOperationState::Reserved,
+        ImportOperationState::Discarded,
+        None,
+        |_, _| {
+            calls += 1;
+            Ok(())
+        },
+    );
+    assert_eq!(accepted.unwrap().state, ImportOperationState::Discarded);
+    let replay: StoreResult<ImportOperation> = store.end_import_operation_with(
+        &lease,
+        op.operation_id,
+        ImportOperationState::Reserved,
+        ImportOperationState::Discarded,
+        None,
+        |_, _| {
+            calls += 1;
+            Ok(())
+        },
+    );
+    assert!(replay.is_err());
+    assert_eq!(calls, 1);
+}
+
+#[test]
 fn a_worker_keeps_the_cross_session_claim_until_its_last_owner_exits() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("soul.db");

@@ -15,6 +15,7 @@ use std::sync::Arc;
 use soulcore::commands::session::Session;
 
 const COMMANDS_RS: &str = include_str!("../src/commands.rs");
+const SHARED_RUNTIME_RS: &str = include_str!("../../../../crates/soul-runtime/src/lib.rs");
 const INSTANCE_RS: &str = include_str!("../src/instance.rs");
 const LIB_RS: &str = include_str!("../src/lib.rs");
 const MAIN_RS: &str = include_str!("../src/main.rs");
@@ -23,8 +24,9 @@ const ASSISTANCE_RUNTIME_RS: &str = include_str!("../src/assistance_runtime/mod.
 const ASSISTANCE_DRIVER_RS: &str = include_str!("../src/assistance_runtime/driver.rs");
 
 /// Every source file in the shell, with the file it came from.
-fn shell_sources() -> [(&'static str, &'static str); 14] {
+fn shell_sources() -> [(&'static str, &'static str); 15] {
     [
+        ("crates/soul-runtime/src/lib.rs", SHARED_RUNTIME_RS),
         ("src/commands.rs", COMMANDS_RS),
         ("src/instance.rs", INSTANCE_RS),
         ("src/lib.rs", LIB_RS),
@@ -105,7 +107,8 @@ fn the_shell_opens_a_session_once_and_a_database_never() {
 #[test]
 fn every_command_borrows_the_one_session() {
     assert!(
-        COMMANDS_RS.contains("pub struct SessionState(Arc<Mutex<Session>>)"),
+        COMMANDS_RS.contains("pub struct SessionState(Runtime)")
+            && SHARED_RUNTIME_RS.contains("session: Arc<Mutex<Session>>"),
         "the shared state is no longer a single session",
     );
     assert!(
@@ -131,6 +134,39 @@ fn every_command_borrows_the_one_session() {
             "{name} does not take the shared session",
         );
     }
+}
+
+#[test]
+fn ipc_state_and_runtime_clones_share_the_actual_session() {
+    use soul_desktop::commands::SessionState;
+    use soul_types::MemoryIdRequest;
+    use soulcore::commands::memory::NewMemory;
+
+    let directory = tempfile::tempdir().unwrap();
+    let state = SessionState::new(Session::open(directory.path()));
+    let runtime = state.runtime();
+    let clone = state.clone().runtime();
+    assert!(Arc::ptr_eq(
+        &runtime.shared_session(),
+        &clone.shared_session()
+    ));
+    let memory = runtime
+        .held_session()
+        .write_memory(&NewMemory {
+            memory_type: "episodic".into(),
+            title: "Synthetic shared IPC state".into(),
+            summary: "A write is visible through the other runtime handle.".into(),
+        })
+        .unwrap();
+    assert_eq!(
+        clone
+            .memory(MemoryIdRequest {
+                memory_id: memory.memory_id
+            })
+            .unwrap()
+            .title,
+        "Synthetic shared IPC state"
+    );
 }
 
 /// The runtime half: every route that reads rows reads the same rows.

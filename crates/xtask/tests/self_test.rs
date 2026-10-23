@@ -270,7 +270,119 @@ fn the_http_client_exception_covers_soul_egress_and_nothing_else() {
         })
         .map(|p| p.name.as_str())
         .collect();
-    assert_eq!(holders, vec![egress::EGRESS_GATEWAY]);
+    assert_eq!(holders, vec!["soul-api", egress::EGRESS_GATEWAY]);
+}
+
+#[test]
+fn local_api_server_features_cannot_grow_client_capabilities() {
+    let metadata = workspace_metadata();
+    assert!(egress::audit_gateway(&metadata).is_empty());
+    let mut renamed = metadata.clone();
+    let api = renamed
+        .packages
+        .iter_mut()
+        .find(|p| p.name == "soul-api")
+        .unwrap();
+    api.dependencies
+        .iter_mut()
+        .find(|d| d.name == "hyper")
+        .unwrap()
+        .rename = Some("h".into());
+    api.features
+        .insert("default".into(), vec!["h/client".into()]);
+    assert!(!egress::audit_gateway(&renamed).is_empty());
+    assert!(egress::audit_dependencies(&renamed)
+        .0
+        .iter()
+        .any(|f| f.root == "soul-api" && f.banned == "hyper"));
+    for forwarded in ["hyper/client", "hyper-util?/client-legacy", "axum/ws"] {
+        let mut changed = metadata.clone();
+        let api = changed
+            .packages
+            .iter_mut()
+            .find(|p| p.name == "soul-api")
+            .unwrap();
+        api.features
+            .insert("default".into(), vec![forwarded.into()]);
+        assert!(!egress::audit_gateway(&changed).is_empty(), "{forwarded}");
+        assert!(egress::audit_dependencies(&changed)
+            .0
+            .iter()
+            .any(|f| { f.root == "soul-api" && f.banned == "hyper" }));
+    }
+    for (dependency, feature) in [
+        ("hyper", "client"),
+        ("hyper-util", "client-legacy"),
+        ("axum", "ws"),
+    ] {
+        let mut changed = metadata.clone();
+        let api = changed
+            .packages
+            .iter_mut()
+            .find(|p| p.name == "soul-api")
+            .unwrap();
+        api.dependencies
+            .iter_mut()
+            .find(|d| d.name == dependency)
+            .unwrap()
+            .features
+            .push(feature.into());
+        assert!(
+            !egress::audit_gateway(&changed).is_empty(),
+            "{dependency}/{feature}"
+        );
+        assert!(egress::audit_dependencies(&changed)
+            .0
+            .iter()
+            .any(|f| f.root == "soul-api" && f.banned == "hyper"));
+    }
+}
+
+#[test]
+fn local_api_is_not_a_second_egress_gateway() {
+    let mut metadata = workspace_metadata();
+    let gateway = metadata
+        .packages
+        .iter()
+        .find(|p| p.name == "soul-egress")
+        .unwrap();
+    let gateway_id = gateway.id.clone();
+    let client = gateway
+        .dependencies
+        .iter()
+        .find(|d| d.name == "reqwest")
+        .unwrap()
+        .clone();
+    let api = metadata
+        .packages
+        .iter_mut()
+        .find(|p| p.name == "soul-api")
+        .unwrap();
+    let api_id = api.id.clone();
+    api.dependencies.push(client);
+    let resolve = metadata.resolve.as_mut().unwrap();
+    let client_edge = resolve
+        .nodes
+        .iter()
+        .find(|n| n.id == gateway_id)
+        .unwrap()
+        .deps
+        .iter()
+        .find(|d| d.name == "reqwest")
+        .unwrap()
+        .clone();
+    resolve
+        .nodes
+        .iter_mut()
+        .find(|n| n.id == api_id)
+        .unwrap()
+        .deps
+        .push(client_edge);
+    assert!(egress::audit_gateway(&metadata).iter().any(|f| matches!(f, egress::GatewayFinding::SecondHolder { crate_name, banned } if crate_name == "soul-api" && banned == "reqwest")));
+    assert!(egress::audit_dependencies(&metadata)
+        .0
+        .iter()
+        .any(|f| f.root == "soul-api" && f.banned == "reqwest"));
 }
 
 /// The negative control for the exception: give a second crate the same
@@ -623,9 +735,8 @@ const SHIPPED: Subject = Subject {
 };
 
 /// Same roots as the egress audit, so the document describes the program that
-/// audit cleared. `soul-testkit` owns an HTTP stack and reaches `axum`; both
-/// have to be absent, and the second half of this test shows they are absent
-/// because the walk excluded them rather than because nothing was found.
+/// audit cleared. The local API now ships Axum as a restricted server;
+/// test tooling remains excluded even when it shares that dependency.
 #[test]
 fn the_sbom_describes_what_ships_and_leaves_the_test_instruments_out() {
     let metadata = workspace_metadata();
@@ -640,6 +751,10 @@ fn the_sbom_describes_what_ships_and_leaves_the_test_instruments_out() {
         "soulcore",
         "soul-store",
         "soul-egress",
+        "soul-runtime",
+        "soul-types",
+        "soul-api",
+        "axum",
         "reqwest",
         "rusqlite",
     ] {
@@ -648,7 +763,7 @@ fn the_sbom_describes_what_ships_and_leaves_the_test_instruments_out() {
             "{present} ships and belongs in the bill of materials",
         );
     }
-    for absent in ["soul-testkit", "xtask", "axum"] {
+    for absent in ["soul-testkit", "xtask"] {
         assert!(
             !names.contains(&absent),
             "{absent} is a test instrument and must not appear",
@@ -662,7 +777,7 @@ fn the_sbom_describes_what_ships_and_leaves_the_test_instruments_out() {
     let wide = sbom::from_metadata(&metadata, &EVERYTHING, &Default::default());
     let wide_names: Vec<&str> = wide.components.iter().map(|c| c.name.as_str()).collect();
     assert!(
-        wide_names.contains(&"axum") && wide_names.contains(&"soul-testkit"),
+        wide_names.contains(&"xtask") && wide_names.contains(&"soul-testkit"),
         "dropping the exclusions must widen the document, or the test above is vacuous",
     );
     assert!(wide.components.len() > document.components.len());

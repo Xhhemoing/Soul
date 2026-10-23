@@ -1,0 +1,26 @@
+[package]
+name = "soul-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Synthetic-only authenticated loopback read adapter for the shared runtime."
+
+[dependencies]
+soul-runtime = { workspace = true }
+soul-types = { workspace = true, features = ["openapi"] }
+utoipa = { workspace = true }
+axum = { workspace = true, default-features = false, features = ["http1", "json", "query", "tokio"] }
+tokio = { workspace = true, features = ["rt", "net", "sync", "time", "macros"] }
+hyper = { workspace = true, default-features = false, features = ["server", "http1"] }
+hyper-util = { workspace = true, default-features = false, features = ["tokio", "service"] }
+http-body-util = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chacha20poly1305 = { workspace = true }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+soulcore = { workspace = true }
+tempfile = { workspace = true }

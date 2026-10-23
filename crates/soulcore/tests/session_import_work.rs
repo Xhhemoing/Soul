@@ -51,6 +51,108 @@ fn fault_connection(dir: &std::path::Path) -> rusqlite::Connection {
 }
 
 #[test]
+fn b1_stale_prepare_delivery_records_its_actual_invalidation_without_delivering_a_slot() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut session = Session::open(dir.path());
+    let work = session
+        .begin_import_prepare(
+            input(),
+            ImportSourceKind::SoulImportV1,
+            None,
+            LegacyImportChoice::Reject,
+        )
+        .unwrap();
+    session.discard_draft();
+    let completed = work.execute();
+    let conn = fault_connection(dir.path());
+    let operation_id: String = conn
+        .query_row("SELECT operation_id FROM import_operations", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(
+        conn.query_row("SELECT state FROM import_operations", [], |row| row
+            .get::<_, String>(0))
+            .unwrap(),
+        "reserved"
+    );
+    let refusal = session.complete_import_prepare(completed).unwrap_err();
+    assert_eq!(refusal.reason_code, "IMPORT_SOURCE_CHANGED");
+    let operation = session.import_operation(&operation_id).unwrap();
+    assert_eq!(operation.operation.state, ImportOperationState::Invalidated);
+    assert!(!operation.prepared_here);
+    assert!(session
+        .import_recovery_state()
+        .unwrap()
+        .held_operation_id
+        .is_none());
+    assert!(session
+        .begin_import(&operation_id, &operation.operation.preview_id.to_string())
+        .is_err());
+    let audit = session.audit().unwrap();
+    assert!(audit.verified);
+    let preparations = audit
+        .entries
+        .iter()
+        .filter(|entry| entry.action == "import.prepare")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        preparations.len(),
+        2,
+        "reservation and persisted invalidation each need their own audit"
+    );
+    for entry in preparations {
+        assert_eq!(entry.subject_refs, vec![operation_id.clone()]);
+    }
+    let encoded = serde_json::to_string(&audit).unwrap();
+    assert!(!encoded.contains("明天上午"));
+    assert!(!encoded.contains("u-lilei"));
+}
+
+#[test]
+fn b1_stale_prepare_invalidation_audit_failure_rolls_back_state_and_never_delivers_a_slot() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut session = Session::open(dir.path());
+    let work = session
+        .begin_import_prepare(
+            input(),
+            ImportSourceKind::SoulImportV1,
+            None,
+            LegacyImportChoice::Reject,
+        )
+        .unwrap();
+    session.discard_draft();
+    let completed = work.execute();
+    let conn = fault_connection(dir.path());
+    let operation_id: String = conn
+        .query_row("SELECT operation_id FROM import_operations", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let before: u64 = conn
+        .query_row("SELECT count(*) FROM audit", [], |row| row.get(0))
+        .unwrap();
+    conn.execute_batch("CREATE TRIGGER reject_stale_delivery_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT, 'synthetic stale delivery audit failure'); END;").unwrap();
+    assert!(session.complete_import_prepare(completed).is_err());
+    let operation = session.import_operation(&operation_id).unwrap();
+    assert_eq!(operation.operation.state, ImportOperationState::Reserved);
+    assert!(!operation.prepared_here);
+    assert!(session
+        .import_recovery_state()
+        .unwrap()
+        .held_operation_id
+        .is_none());
+    assert_eq!(
+        conn.query_row("SELECT count(*) FROM audit", [], |row| row.get::<_, u64>(0))
+            .unwrap(),
+        before
+    );
+    conn.execute_batch("DROP TRIGGER reject_stale_delivery_audit")
+        .unwrap();
+    assert!(session.audit().unwrap().verified);
+}
+
+#[test]
 fn owner_group_messages_do_not_inflate_the_evidence_preview() {
     let dir = tempfile::tempdir().unwrap();
     let mut session = Session::open(dir.path());

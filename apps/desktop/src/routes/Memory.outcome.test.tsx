@@ -6,7 +6,8 @@ import * as core from "../core";
 import type { ForgetReceipt, MemoryList } from "../core";
 import { Memory } from "./Memory";
 
-vi.mock("../core", () => ({
+vi.mock("../core", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../core")>(),
   createMemory: vi.fn(), forgetMemory: vi.fn(), memoryDetail: vi.fn(), memoryList: vi.fn(),
   previewForget: vi.fn(), retryForgetCleanup: vi.fn(), updateMemory: vi.fn(),
 }));

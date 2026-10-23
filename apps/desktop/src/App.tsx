@@ -17,6 +17,10 @@ import { Pending } from "./components/Pending";
 import {
   configSnapshot,
   sessionStatus,
+  startRuntimeEvents,
+  subscribeDraftSource,
+  hasPendingSourceChanges,
+  getRuntimeSyncFailure,
   type ConfigSnapshot,
   type SessionStatus,
 } from "./core";
@@ -44,20 +48,35 @@ export function App(): React.JSX.Element {
   const [justFinished, setJustFinished] = useState(false);
   const route = useRoute();
 
+  useEffect(() => startRuntimeEvents(), []);
+
   useEffect(() => {
     let live = true;
-    Promise.all([configSnapshot(), sessionStatus()]).then(
+    let generation = 0;
+    const read = (): void => {
+      const ticket = ++generation;
+      const syncFailure = getRuntimeSyncFailure();
+      if (syncFailure !== null) { setFailure(syncFailure); return; }
+      if (hasPendingSourceChanges()) return;
+      void Promise.all([configSnapshot(), sessionStatus()]).then(
       ([snapshot, status]) => {
-        if (!live) return;
+        if (!live || ticket !== generation) return;
         setSnapshot(snapshot);
         setStatus(status);
+        setFailure(null);
       },
       (error: unknown) => {
-        if (live) setFailure(String(error));
+        if (live && ticket === generation) setFailure(String(error));
       },
-    );
+      );
+    };
+    // Runtime changes and a locally owned write's final settlement both wake
+    // a deferred reread; recovering the runtime alone may still find it busy.
+    const unsubscribe = subscribeDraftSource(read);
+    read();
     return () => {
       live = false;
+      unsubscribe();
     };
   }, []);
 

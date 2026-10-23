@@ -1,0 +1,163 @@
+name: Synthetic CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'codex/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: synthetic-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  windows-synthetic:
+    name: Windows synthetic checks and Tauri compilation
+    runs-on: windows-2022
+    timeout-minutes: 180
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install the repository Rust toolchain
+        run: |
+          $ErrorActionPreference = 'Stop'
+          rustup toolchain install 1.83 --profile minimal --component rustfmt --component clippy
+          if ($LASTEXITCODE -ne 0) { throw 'Rust 1.83 setup failed' }
+          rustc --version
+          if ($LASTEXITCODE -ne 0) { throw 'rustc version failed' }
+          cargo --version
+          if ($LASTEXITCODE -ne 0) { throw 'cargo version failed' }
+
+      - name: Check Rust formatting in both workspaces
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo fmt --all -- --check
+          if ($LASTEXITCODE -ne 0) { throw 'Root formatting failed' }
+          cargo fmt --all --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop formatting failed' }
+
+      - name: Prepare vendored OpenSSL build tools
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $strawberry = 'C:\Strawberry\perl\bin'
+          if (Test-Path -LiteralPath $strawberry) {
+            $env:PATH = "$strawberry;$env:PATH"
+            $strawberry | Add-Content -LiteralPath $env:GITHUB_PATH -Encoding UTF8
+          }
+          perl -MLocale::Maketext::Simple -e "print 'LMS_OK'"
+          if ($LASTEXITCODE -ne 0) { throw 'Perl/OpenSSL prerequisite failed' }
+          if (-not (Get-Command nasm.exe -ErrorAction SilentlyContinue)) {
+            choco install nasm --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'NASM installation failed' }
+            $nasmDirectory = 'C:\Program Files\NASM'
+            $env:PATH = "$nasmDirectory;$env:PATH"
+            $nasmDirectory | Add-Content -LiteralPath $env:GITHUB_PATH -Encoding UTF8
+          }
+          nasm -v
+          if ($LASTEXITCODE -ne 0) { throw 'NASM unavailable' }
+
+      - name: Strict Clippy in both workspaces
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'Root Clippy failed' }
+          cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --locked -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop Clippy failed' }
+
+      - name: Existing schema and source audits
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo run -q -p xtask --locked -- schema-freeze --check
+          if ($LASTEXITCODE -ne 0) { throw 'Existing schema check failed' }
+          cargo run -q -p xtask --locked -- e0-audit
+          if ($LASTEXITCODE -ne 0) { throw 'E0 audit failed' }
+          cargo run -q -p xtask --locked -- denylist-audit
+          if ($LASTEXITCODE -ne 0) { throw 'Denylist audit failed' }
+
+      - name: Install fixed cargo-deny binary without changing project Rust
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $denyDirectory = Join-Path $env:RUNNER_TEMP 'cargo-deny-0.18.2'
+          New-Item -ItemType Directory -Path $denyDirectory -Force | Out-Null
+          $archive = Join-Path $denyDirectory 'cargo-deny.tar.gz'
+          Invoke-WebRequest -Uri 'https://github.com/EmbarkStudios/cargo-deny/releases/download/0.18.2/cargo-deny-0.18.2-x86_64-pc-windows-msvc.tar.gz' -OutFile $archive
+          tar -xzf $archive -C $denyDirectory
+          if ($LASTEXITCODE -ne 0) { throw 'cargo-deny extraction failed' }
+          $binary = Get-ChildItem -LiteralPath $denyDirectory -Filter cargo-deny.exe -Recurse | Select-Object -First 1
+          if (-not $binary) { throw 'cargo-deny archive contains no Windows binary' }
+          $binary.DirectoryName | Add-Content -LiteralPath $env:GITHUB_PATH -Encoding UTF8
+          & $binary.FullName --version
+          if ($LASTEXITCODE -ne 0) { throw 'cargo-deny version failed' }
+
+      - name: Existing dependency policy for both workspaces
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo deny --locked check --config deny.toml
+          if ($LASTEXITCODE -ne 0) { throw 'Root dependency policy failed' }
+          cargo deny --manifest-path apps/desktop/src-tauri/Cargo.toml --locked check --config deny.toml
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop dependency policy failed' }
+
+      - name: Root tests with real collection excluded
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo test --workspace --all-targets --locked -- --skip windows::runs_on_windows
+          if ($LASTEXITCODE -ne 0) { throw 'Root synthetic tests failed' }
+
+      - name: Desktop tests with real collection excluded
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --locked -- --skip windows::runs_on_windows --skip collection_can_be_granted_and_taken_back_over_the_ipc --skip a_restart_finds_collection_off_again
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop synthetic tests failed' }
+
+      - uses: actions/setup-node@v7
+        with:
+          # jsdom 30 in the lockfile needs >=24.15 on the Node 24 line.
+          node-version: '>=24.15.0 <25'
+          package-manager-cache: false
+
+      - name: Install the pinned frontend dependencies
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm install --global pnpm@10.15.0
+          if ($LASTEXITCODE -ne 0) { throw 'pnpm setup failed' }
+          node --version
+          if ($LASTEXITCODE -ne 0) { throw 'Node version failed' }
+          pnpm --version
+          if ($LASTEXITCODE -ne 0) { throw 'pnpm version failed' }
+          pnpm install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency install failed' }
+
+      - name: Frontend typecheck and lint
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pnpm --filter @soul/desktop lint
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend typecheck/lint failed' }
+
+      - name: Frontend Vitest tests
+        env:
+          NODE_ENV: test
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pnpm --filter @soul/desktop test
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend tests failed' }
+
+      - name: Compile Windows Tauri application without an installer
+        env:
+          NODE_ENV: production
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pnpm --filter @soul/desktop tauri build --no-bundle -- --locked
+          if ($LASTEXITCODE -ne 0) { throw 'Tauri compilation failed' }

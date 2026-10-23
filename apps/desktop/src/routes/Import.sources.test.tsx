@@ -7,6 +7,7 @@ import { aPreparedImport, anImportOperation, anImportOperationView,
   IMPORT_NAMESPACE_ID, installFakeCore } from "../test/fakeCore";
 import { Import } from "./Import";
 import { DurableImport } from "./durableImport";
+import { updateMemory } from "../core";
 
 const SOURCE: ImportNamespace = { namespace_id: IMPORT_NAMESPACE_ID,
   source: "soul-import-v1", state: "active", coverage: "full_from_creation" };
@@ -30,6 +31,16 @@ async function stage(): Promise<void> {
 beforeEach(() => { localStorage.clear(); });
 
 describe("提交后的明确来源选择", () => {
+  it("其他写入结束后刷新来源，不自动准备或确认导入", async () => {
+    let sources: readonly ImportNamespace[] = [];
+    const core = installFakeCore({ listingImportNamespaces: () => sources });
+    render(<Import lane={new DurableImport()} />);
+    await waitFor(() => expect(core.callsTo("list_import_namespaces")).toHaveLength(1));
+    await act(async () => { sources = [SOURCE]; await updateMemory("synthetic-memory", { summary: "synthetic" }); });
+    expect(await screen.findByRole("option", { name: new RegExp(IMPORT_NAMESPACE_ID) })).toBeEnabled();
+    expect(core.callsTo("prepare_import")).toHaveLength(0);
+    expect(core.callsTo("confirm_import")).toHaveLength(0);
+  });
   it("提交后立即提供新来源，仍须明确选择才用于下一份准备", async () => {
     let sources: readonly ImportNamespace[] = [];
     const core = installFakeCore({ preparingImport: () => aPreparedImport(),
@@ -47,7 +58,7 @@ describe("提交后的明确来源选择", () => {
     expect(core.callsTo("confirm_import")).toHaveLength(1);
     await user.selectOptions(screen.getByLabelText("来源身份"), IMPORT_NAMESPACE_ID);
     await stage();
-    expect(core.callsTo("prepare_import")[1]?.payload).toEqual({ request: {
+    expect(core.callsTo("prepare_import")[1]?.payload).toEqual({ correlationId: expect.any(String), request: {
       text: "SYNTHETIC", source: "soul-import-v1", namespace_id: IMPORT_NAMESPACE_ID, legacy_choice: "reject" } });
   });
 

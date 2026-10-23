@@ -762,6 +762,6 @@ fn schema_six_upgrade_adds_empty_opt_in_tables_without_requeueing_or_enabling_ex
             |r| r.get::<_, String>(0)
         )
         .unwrap(),
-        "7"
+        soul_store::sql::STORE_SCHEMA_VERSION.to_string()
     );
 }

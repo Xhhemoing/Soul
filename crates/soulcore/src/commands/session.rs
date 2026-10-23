@@ -113,9 +113,16 @@ pub use import_work::{
 };
 #[path = "session_memory.rs"]
 mod memory_context;
+#[path = "session_scoped_preferences.rs"]
+mod scoped_preferences;
 pub use memory_context::{
     MemoryContextRequest, MemoryContextView, MemoryDraftPlan, MemoryDraftValue,
 };
+pub use scoped_preferences::{
+    ScopedDraftView, ScopedRegisterProposal, ScopedRegisterReceipt, ScopedRegisterRecipient,
+    ScopedRegisterStatus, ScopedRegisterStatusState,
+};
+pub use soul_store_api::scoped_preference::{PreferenceOccasion, VoiceRegister};
 #[path = "session_task_context.rs"]
 mod task_context;
 pub use task_context::{
@@ -505,6 +512,8 @@ pub struct Session {
     stale_import: Option<Uuid>,
     deferred_revoke: Option<(AuditContent, i64)>,
     held_memory: Option<memory_context::HeldMemory>,
+    held_scoped_result: Option<scoped_preferences::HeldScopedResult>,
+    held_scoped_proposal: Option<scoped_preferences::HeldScopedProposal>,
     pending_memory: Option<memory_context::PendingMemory>,
     held_insight: Option<insight_context::HeldInsight>,
     pending_insight: Option<insight_context::PendingInsight>,
@@ -869,6 +878,8 @@ impl Session {
             stale_import: None,
             deferred_revoke: None,
             held_memory: None,
+            held_scoped_result: None,
+            held_scoped_proposal: None,
             pending_memory: None,
             held_insight: None,
             pending_insight: None,
@@ -929,6 +940,21 @@ impl Session {
                 }
             },
             config_problem: self.config_problem.clone(),
+        }
+    }
+
+    /// Metadata for the trusted runtime's ownership bookkeeping only. It does
+    /// not validate, consume, replace or change any core preparation.
+    pub fn runtime_pending_slots(&self) -> RuntimePendingSlots {
+        let (scoped_result, scoped_proposal) = self.runtime_scoped_pending_ids();
+        RuntimePendingSlots {
+            import_operation: self
+                .held_import
+                .as_ref()
+                .map(|held| held.operation.operation_id),
+            scoped_result,
+            scoped_proposal,
+            forget_preview: self.held_forget.as_ref().map(|held| held.preview_id),
         }
     }
 
@@ -1206,6 +1232,7 @@ impl Session {
     /// did not open leaves the neutral voice, which is what a blank profile
     /// would have said anyway.
     pub fn draft_pasted(&mut self, pasted: &str) -> Result<DraftValue, SessionRefusal> {
+        self.clear_scoped_draft();
         self.require_store_idle()?;
         self.held_insight = None;
         if self.pending_insight.take().is_some() {
@@ -1246,6 +1273,7 @@ impl Session {
         pasted: &str,
         include_original: Option<bool>,
     ) -> Result<E1DraftPlan, SessionRefusal> {
+        self.clear_scoped_draft();
         self.require_store_idle()?;
         self.require_draft_slot()?;
         self.pending_memory = None;
@@ -1438,6 +1466,7 @@ impl Session {
     /// endpoint parse. Background foreground-duration events are not inputs
     /// to the current draft or person summary and do not use this revision.
     fn invalidate_drafts(&mut self) -> bool {
+        let scoped_changed = self.clear_scoped_draft();
         self.held_memory = None;
         self.pending_memory = None;
         self.held_insight = None;
@@ -1451,7 +1480,7 @@ impl Session {
                 .as_ref()
                 .is_some_and(|active| !active.finished.load(Ordering::Acquire));
         self.draft_revision = Uuid::now_v7();
-        changed
+        changed || scoped_changed
     }
 
     /// Write down what a refused draft owes the chain, and hand it back.
@@ -2281,6 +2310,17 @@ impl Session {
         Ok(())
     }
 
+    /// A trusted runtime rejected a foreign caller before touching a core slot.
+    /// Only its generated operation ID is accepted; this is not an audit API
+    /// for arbitrary actions, subjects, request content or caller strings.
+    pub fn record_runtime_caller_denial(&self, operation_uuid: Uuid) -> Result<(), SessionRefusal> {
+        self.append_audit(&[AuditContent::denied(
+            AuditAction::CapabilityReject,
+            ReasonCode::TokenScopeMismatch,
+        )
+        .about(&[operation_uuid])])
+    }
+
     /// Record that external content tried something, `count` times over.
     ///
     /// The shape is the one [`DirectoryScan::injection_audit`] and
@@ -2419,6 +2459,14 @@ pub struct SessionStatus {
     pub store_notice: String,
     /// Present when the configuration file could not be read or written.
     pub config_problem: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RuntimePendingSlots {
+    pub import_operation: Option<Uuid>,
+    pub scoped_result: Option<Uuid>,
+    pub scoped_proposal: Option<Uuid>,
+    pub forget_preview: Option<Uuid>,
 }
 
 /// The collection screen's whole state.

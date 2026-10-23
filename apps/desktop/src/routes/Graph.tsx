@@ -52,6 +52,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  subscribeExternalSource,
+  hasPendingSourceChanges,
+  getExternalSourceRevision,
   correctTie,
   getDraftSourceRevision,
   peopleGraph,
@@ -152,6 +155,7 @@ export function Graph(): React.JSX.Element {
   const [targetWriteConfirmed, setTargetWriteConfirmed] = useState(false);
   const targetHeading = useRef<HTMLHeadingElement>(null);
   const [renderedSource, setRenderedSource] = useState(getDraftSourceRevision);
+  const externalRefresh = useRef(false);
   const target = parseGraphTarget(targetHash);
   const resolution = graph === null ? null : resolveGraphTarget(graph, target);
   const targetRelationship = resolution?.kind === "ready" ? resolution.tie.relationship_id : null;
@@ -177,6 +181,18 @@ export function Graph(): React.JSX.Element {
         pendingRead.current = null;
         setReadStale(true);
       }
+      if (externalRefresh.current && !hasPendingSourceChanges()) {
+        externalRefresh.current = false; setTargetStale(false); setReadStale(false);
+        setReadAttempt((value) => value + 1);
+      }
+    });
+    const unsubscribeExternal = subscribeExternalSource(() => {
+      externalRefresh.current = true;
+      graphValue.current = null; setGraph(null);
+      if (!hasPendingSourceChanges()) {
+        externalRefresh.current = false; setTargetStale(false); setReadStale(false);
+        setReadAttempt((value) => value + 1);
+      }
     });
     const navigate = (): void => {
       if (!live || targetHashRef.current === window.location.hash) return;
@@ -192,6 +208,7 @@ export function Graph(): React.JSX.Element {
     return () => {
       live = false;
       unsubscribe();
+      unsubscribeExternal();
       window.removeEventListener("hashchange", navigate);
       readGeneration.current += 1;
       pendingRead.current = null;
@@ -201,6 +218,7 @@ export function Graph(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
+    if (externalRefresh.current && hasPendingSourceChanges()) return;
     const ticket = ++readGeneration.current;
     const source = getDraftSourceRevision();
     if (parseGraphTarget(targetHash).kind === "invalid") return;
@@ -230,11 +248,13 @@ export function Graph(): React.JSX.Element {
     if (targetRelationship === null || targetStale) return;
     const heading = targetHeading.current;
     const source = getDraftSourceRevision();
+    const initialFocus = document.activeElement;
     // A native hash link can reset focus after the route commits. Move focus
     // after that navigation, while keeping ownership with this exact target.
     const frame = window.requestAnimationFrame(() => {
       if (targetHashRef.current === targetHash && window.location.hash === targetHash
-        && source === getDraftSourceRevision() && heading?.isConnected && targetHeading.current === heading) heading.focus();
+        && source === getDraftSourceRevision() && heading?.isConnected && targetHeading.current === heading
+        && document.activeElement === initialFocus) heading.focus();
     });
     return () => window.cancelAnimationFrame(frame);
   }, [targetHash, targetRelationship, targetStale]);
@@ -253,6 +273,7 @@ export function Graph(): React.JSX.Element {
     const request = requests.current.beginWrite();
     if (request === null) return;
     const submittedHash = targetHashRef.current;
+    const submittedExternalSource = getExternalSourceRevision();
     setTargetWriteConfirmed(false);
     setBusy(true);
     setTieRefusal(null);
@@ -267,6 +288,8 @@ export function Graph(): React.JSX.Element {
         if (!requests.current.finishWrite(request)) return;
         setBusy(false);
         if (submittedHash !== targetHashRef.current) return;
+        // The write succeeded, but its graph is no longer the current read.
+        if (submittedExternalSource !== getExternalSourceRevision()) return;
         evidenceGeneration.current += 1; evidenceSelectionRef.current = null; setEvidenceSelection(null);
         graphValue.current = value;
         setGraph(value);

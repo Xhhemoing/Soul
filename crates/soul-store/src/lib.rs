@@ -37,6 +37,7 @@ pub mod preparation;
 pub mod reminders;
 pub mod research_preview;
 pub mod research_retention;
+pub mod scoped_preferences;
 pub mod sql;
 pub mod store;
 

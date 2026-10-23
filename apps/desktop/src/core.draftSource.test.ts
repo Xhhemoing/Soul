@@ -103,7 +103,10 @@ describe("起草结果在单 WebView 内的来源归属", () => {
         return pending.promise as Promise<never>;
       });
       const request = mutation.call();
-      expect(invoke).toHaveBeenCalledExactlyOnceWith(mutation.command, mutation.args);
+      const args = ["update_memory", "forget_memory"].includes(mutation.command)
+        ? { ...mutation.args, correlationId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i) }
+        : mutation.args;
+      expect(invoke).toHaveBeenCalledExactlyOnceWith(mutation.command, args);
       const started = core.getDraftSourceRevision();
       expect(seen).toHaveLength(2);
       pending.resolve({ acknowledged: true });

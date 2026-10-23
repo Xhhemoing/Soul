@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { routeForHash } from "../router";
 import { aPeopleGraph } from "../test/fakeCore";
 import { graphTargetHash, MAX_GRAPH_TARGET_HASH_CHARS, MAX_GRAPH_TARGET_REFERENCES, parseGraphTarget, resolveGraphTarget } from "./graphTarget";
+import { memoryTarget } from "./memoryTarget";
 
 const graph = aPeopleGraph();
 const contact = graph.people[1]!.contact_id;
@@ -28,10 +29,12 @@ describe("本地关系与证据元数据目标", () => {
     expect(parseGraphTarget(`#/graph?contact=${contact}&${refs.map((ref) => `evidence=${ref}`).join("&")}&evidence=${id(100)}`)).toEqual({ kind: "invalid" });
     expect(parseGraphTarget(`#/graph?${"x".repeat(MAX_GRAPH_TARGET_HASH_CHARS)}`)).toEqual({ kind: "invalid" });
   });
-  it("只扩展Graph查询，其他路径仍精确匹配", () => {
+  it("Graph和Memory查询分别验证目标，未扩展的路径仍精确匹配", () => {
     expect(routeForHash(graphTargetHash(contact, evidence)!).id).toBe("graph");
     expect(routeForHash("#/graph?invalid=true").id).toBe("graph");
-    for (const hash of ["#/graph/other", "#/graphical?contact=x", "#/memory?contact=x", "#/import?evidence=x"]) expect(routeForHash(hash).id).toBe("home");
+    for (const hash of ["#/graph/other", "#/graphical?contact=x", "#/import?evidence=x"]) expect(routeForHash(hash).id).toBe("home");
+    expect(routeForHash("#/memory?contact=x").id).toBe("memory");
+    expect(memoryTarget("#/memory?contact=x")).toBe("invalid");
     expect(parseGraphTarget("#/graph")).toEqual({ kind: "none" });
   });
   it("仅当前self/contact唯一边包含全部指定引用时定位，允许明确的引用子集", () => {

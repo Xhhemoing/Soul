@@ -3,7 +3,7 @@
  * the routes other work packages own are empty rather than mocked up.
  */
 
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -213,7 +213,7 @@ describe("桌面壳", () => {
     await startAtRoute("#/", { collect: COLLECT_RUNNING, snapshot: COLLECTING_SNAPSHOT });
 
     const fact = await screen.findByTestId("collect-fact");
-    expect(fact).toHaveTextContent("正在采集");
+    await waitFor(() => expect(fact).toHaveTextContent("正在采集"));
     const badge = screen.getByTestId("closed-state");
     expect(badge).not.toHaveTextContent("全部能力默认关闭");
     expect(badge).toHaveTextContent("collect_enabled");

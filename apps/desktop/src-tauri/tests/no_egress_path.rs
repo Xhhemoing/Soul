@@ -41,6 +41,81 @@ struct Graph {
     /// package id -> ids reachable through normal and build edges
     edges: std::collections::BTreeMap<String, Vec<String>>,
     root: String,
+    restricted_server: bool,
+}
+
+fn restricted_local_server(metadata: &Value) -> bool {
+    let Some(api) = metadata["packages"]
+        .as_array()
+        .and_then(|packages| packages.iter().find(|p| p["name"] == "soul-api"))
+    else {
+        return false;
+    };
+    if api["features"].as_object().is_some_and(|features| {
+        features
+            .values()
+            .filter_map(Value::as_array)
+            .flatten()
+            .any(|feature| {
+                feature
+                    .as_str()
+                    .and_then(|s| s.split_once('/'))
+                    .is_some_and(|(dependency, requested)| {
+                        let allowed = match dependency.trim_end_matches('?') {
+                            "axum" => &["http1", "json", "query", "tokio"][..],
+                            "hyper" => &["server", "http1"][..],
+                            "hyper-util" => &["tokio", "service"][..],
+                            _ => return false,
+                        };
+                        !allowed.contains(&requested)
+                    })
+            })
+    }) {
+        return false;
+    }
+    [
+        ("axum", &["http1", "json", "query", "tokio"][..]),
+        ("hyper", &["server", "http1"][..]),
+        ("hyper-util", &["tokio", "service"][..]),
+    ]
+    .iter()
+    .all(|(name, allowed)| {
+        let deps: Vec<_> = api["dependencies"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|d| d["name"] == *name)
+            .collect();
+        deps.len() == 1
+            && deps.iter().all(|d| {
+                d["kind"].is_null()
+                    && d["rename"].is_null()
+                    && d["uses_default_features"] == false
+                    && d["features"].as_array().is_some_and(|features| {
+                        features.len() == allowed.len()
+                            && features
+                                .iter()
+                                .all(|f| f.as_str().is_some_and(|s| allowed.contains(&s)))
+                    })
+            })
+    })
+}
+
+fn local_server_path(path: &[String]) -> bool {
+    let Some(index) = path.iter().rposition(|name| name == "soul-api") else {
+        return false;
+    };
+    let suffix: Vec<_> = path[index + 1..].iter().map(String::as_str).collect();
+    matches!(
+        suffix.as_slice(),
+        [] | ["axum"]
+            | ["hyper-util"]
+            | ["axum", "hyper-util"]
+            | ["hyper"]
+            | ["axum", "hyper"]
+            | ["hyper-util", "hyper"]
+            | ["axum", "hyper-util", "hyper"]
+    )
 }
 
 fn resolve(platform: &str) -> Graph {
@@ -92,6 +167,7 @@ fn resolve(platform: &str) -> Graph {
     }
 
     Graph {
+        restricted_server: restricted_local_server(&metadata),
         names,
         edges,
         root: metadata["resolve"]["root"]
@@ -107,27 +183,30 @@ fn findings(graph: &Graph) -> Vec<String> {
     // `via_gateway` is part of the visited key rather than a per-node flag: a
     // crate reachable both through `soul-egress` and around it has to be
     // reported for the second path.
-    let mut seen: BTreeSet<(String, bool)> = BTreeSet::new();
+    let mut seen: BTreeSet<(String, bool, bool)> = BTreeSet::new();
     let mut queue: VecDeque<(String, Vec<String>, bool)> = VecDeque::new();
 
     let root_name = graph.names[&graph.root].clone();
     queue.push_back((graph.root.clone(), vec![root_name], false));
-    seen.insert((graph.root.clone(), false));
+    seen.insert((graph.root.clone(), false, false));
 
     while let Some((id, path, via_gateway)) = queue.pop_front() {
         for dependency in graph.edges.get(&id).into_iter().flatten() {
             let name = graph.names[dependency].clone();
             let next_via_gateway = via_gateway || name == EGRESS_GATEWAY;
-            if !seen.insert((dependency.clone(), next_via_gateway)) {
-                continue;
-            }
             let mut next_path = path.clone();
             next_path.push(name.clone());
+            let server_path = local_server_path(&next_path);
+            if !seen.insert((dependency.clone(), next_via_gateway, server_path)) {
+                continue;
+            }
 
             let http_client = BANNED_HTTP_CLIENTS.contains(&name.as_str());
             let plugin = BANNED_TAURI_PLUGINS.contains(&name.as_str());
             if http_client || plugin {
-                if !(http_client && next_via_gateway) {
+                if !(http_client && next_via_gateway
+                    || graph.restricted_server && server_path && name == "hyper")
+                {
                     found.push(next_path.join(" -> "));
                 }
                 continue;
@@ -136,6 +215,81 @@ fn findings(graph: &Graph) -> Vec<String> {
         }
     }
     found
+}
+
+#[test]
+fn local_server_features_cannot_forward_client_capabilities() {
+    let dependencies: Vec<Value> = [
+        ("axum", vec!["http1", "json", "query", "tokio"]),
+        ("hyper", vec!["server", "http1"]),
+        ("hyper-util", vec!["tokio", "service"]),
+    ]
+    .into_iter()
+    .map(|(name, features)| {
+        serde_json::json!({
+            "name": name, "kind": null, "uses_default_features": false, "features": features
+        })
+    })
+    .collect();
+    let mut metadata = serde_json::json!({"packages": [{
+        "name": "soul-api", "dependencies": dependencies, "features": {}
+    }]});
+    assert!(restricted_local_server(&metadata));
+    for forwarded in ["hyper/client", "hyper-util?/client-legacy", "axum/ws"] {
+        metadata["packages"][0]["features"] = serde_json::json!({"default": [forwarded]});
+        assert!(!restricted_local_server(&metadata), "{forwarded}");
+    }
+    metadata["packages"][0]["dependencies"][1]["rename"] = serde_json::json!("h");
+    metadata["packages"][0]["features"] = serde_json::json!({"default": ["h/client"]});
+    assert!(
+        !restricted_local_server(&metadata),
+        "renamed server dependency"
+    );
+}
+
+#[test]
+fn local_server_exception_does_not_cover_clients_or_indirect_hyper_paths() {
+    let mut graph = resolve("x86_64-pc-windows-msvc");
+    assert!(
+        graph.restricted_server,
+        "the API manifest must explicitly restrict server features"
+    );
+    assert!(findings(&graph).is_empty());
+    let api = graph
+        .names
+        .iter()
+        .find(|(_, name)| name.as_str() == "soul-api")
+        .unwrap()
+        .0
+        .clone();
+    let client = graph
+        .names
+        .iter()
+        .find(|(_, name)| name.as_str() == "reqwest")
+        .unwrap()
+        .0
+        .clone();
+    graph.edges.get_mut(&api).unwrap().push(client);
+    assert!(findings(&graph)
+        .iter()
+        .any(|path| path.contains("soul-api -> reqwest")));
+    let hyper = graph
+        .names
+        .iter()
+        .find(|(_, name)| name.as_str() == "hyper")
+        .unwrap()
+        .0
+        .clone();
+    graph.names.insert("unreviewed".into(), "unreviewed".into());
+    graph.edges.get_mut(&api).unwrap().push("unreviewed".into());
+    graph.edges.insert("unreviewed".into(), vec![hyper]);
+    assert!(findings(&graph)
+        .iter()
+        .any(|path| path.contains("unreviewed -> hyper")));
+    graph.restricted_server = false;
+    assert!(findings(&graph)
+        .iter()
+        .any(|path| path.ends_with("soul-api -> hyper")));
 }
 
 #[test]

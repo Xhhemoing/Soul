@@ -31,7 +31,7 @@ describe("不可变导入准备与持久回执", () => {
   });
   it("只有prepare传全文，屏幕只展示计数而不展示正文或源用户ID", async () => {
     const core = installFakeCore(); render(<Import lane={new DurableImport()} />); await pick();
-    expect(core.callsTo("prepare_import")[0]?.payload).toEqual({ request: {
+    expect(core.callsTo("prepare_import")[0]?.payload).toEqual({ correlationId: expect.any(String), request: {
       text: TEXT, source: "soul-import-v1", namespace_id: null, legacy_choice: "reject" } });
     expect(renderedText()).toContain("文件包含 16 条消息");
     expect(renderedText()).not.toContain("明天上午十点"); expect(renderedText()).not.toContain("u-private-user");
@@ -44,7 +44,7 @@ describe("不可变导入准备与持久回执", () => {
     await screen.findByRole("option", { name: new RegExp(IMPORT_NAMESPACE_ID) });
     await user.selectOptions(screen.getByLabelText("来源身份"), IMPORT_NAMESPACE_ID);
     await user.click(screen.getByRole("checkbox")); await pick();
-    expect(core.callsTo("prepare_import")[0]?.payload).toEqual({ request: {
+    expect(core.callsTo("prepare_import")[0]?.payload).toEqual({ correlationId: expect.any(String), request: {
       text: TEXT, source: "telegram-desktop", namespace_id: IMPORT_NAMESPACE_ID, legacy_choice: "forward_only" } });
     expect(renderedText()).toContain("历史可能重叠");
   });
@@ -63,7 +63,7 @@ describe("不可变导入准备与持久回执", () => {
     expect(screen.getByRole("checkbox")).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "确认导入这份准备" }));
     expect(await screen.findByText(/已提交：新增事件 16 条/)).toBeVisible();
-    expect(core.callsTo("confirm_import")[0]?.payload).toEqual({ operationId: IMPORT_OPERATION_ID, previewId: IMPORT_PREVIEW_ID });
+    expect(core.callsTo("confirm_import")[0]?.payload).toEqual({ operationId: IMPORT_OPERATION_ID, previewId: IMPORT_PREVIEW_ID, correlationId: expect.any(String) });
     expect(JSON.stringify(core.callsTo("confirm_import"))).not.toContain(TEXT);
     expect(renderedText()).toContain("包括已有关系，不是新增关系数");
     expect(screen.getByRole("link", { name: "查看图谱、证据与纠正" })).toHaveAttribute("href", "#/graph");
@@ -74,7 +74,7 @@ describe("不可变导入准备与持久回执", () => {
     const user = userEvent.setup(); render(<Import lane={new DurableImport()} />); await pick();
     await user.click(screen.getByRole("button", { name: "丢弃这份准备" }));
     await waitFor(() => expect(screen.queryByRole("heading", { name: "确认这份不可变导入准备" })).toBeNull());
-    expect(core.callsTo("discard_import")[0]?.payload).toEqual({ operationId: IMPORT_OPERATION_ID });
+    expect(core.callsTo("discard_import")[0]?.payload).toEqual({ operationId: IMPORT_OPERATION_ID, correlationId: expect.any(String) });
     expect(core.callsTo("confirm_import")).toHaveLength(0); expect(screen.getByLabelText("选择导出文件")).toBeEnabled();
   });
   it("未识别本人时禁止确认且不猜测owner", async () => {

@@ -68,6 +68,8 @@ fn matrix_of_actions() -> Vec<AuditContent> {
         AuditContent::allowed(AuditAction::ConsentGrant, ReasonCode::ConsentGranted),
         AuditContent::allowed(AuditAction::CollectStart, ReasonCode::Routine),
         AuditContent::allowed(AuditAction::CollectStop, ReasonCode::Routine),
+        AuditContent::allowed(AuditAction::ImportPrepare, ReasonCode::Routine).about(&[subject]),
+        AuditContent::allowed(AuditAction::ImportDiscard, ReasonCode::Routine).about(&[subject]),
         AuditContent::allowed(AuditAction::ImportCommit, ReasonCode::Routine)
             .about(&[subject])
             .counting(AuditCounts {
@@ -132,6 +134,8 @@ fn the_recorded_matrix_verifies_and_carries_no_prose_or_names() {
         AuditAction::ConsentGrant,
         AuditAction::CollectStart,
         AuditAction::CollectStop,
+        AuditAction::ImportPrepare,
+        AuditAction::ImportDiscard,
         AuditAction::ImportCommit,
         AuditAction::InferenceWrite,
         AuditAction::ProfileCorrect,

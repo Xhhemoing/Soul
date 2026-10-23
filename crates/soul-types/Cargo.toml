@@ -1,0 +1,19 @@
+[package]
+name = "soul-types"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Transport-neutral DTOs for Soul's shared runtime."
+
+[dependencies]
+serde = { workspace = true }
+ts-rs = { workspace = true, features = ["serde-compat"] }
+utoipa = { workspace = true, optional = true }
+
+[features]
+openapi = ["dep:utoipa"]
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -18,7 +18,7 @@
  * what was on the screen in front of the user.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import {
   createMemory,
@@ -28,6 +28,11 @@ import {
   previewForget,
   retryForgetCleanup,
   updateMemory,
+  getDraftSourceRevision,
+  subscribeDraftSource,
+  DraftSourceChangedError,
+  subscribeExternalSource,
+  hasPendingSourceChanges,
   type ForgetPreview,
   type ForgetReceipt,
   type MemoryDetail,
@@ -40,6 +45,8 @@ import { cleanupStatus, type ForgetCleanup } from "../forgetOutcome";
 import { ForgetResult } from "../components/ForgetResult";
 import { MemoryRequests } from "./memoryRequests";
 import { draftMemoryCandidates } from "./draftMemorySelection";
+import { getRouteAddress, useRouteAddress, type RouteAddress } from "../routeAddress";
+import { memoryTarget } from "./memoryTarget";
 
 /** `memory.schema.json`'s kinds. The core sends which ones exist. */
 const KIND: Record<string, string> = {
@@ -62,81 +69,163 @@ function words(source: Record<string, string>, key: string): string {
 }
 
 export function Memory(): React.JSX.Element {
+  const address = useRouteAddress();
+  const target = memoryTarget(address.hash);
+  const source = useSyncExternalStore(subscribeDraftSource, getDraftSourceRevision);
+  const [viewAddress, setViewAddress] = useState(address);
+  const [navigationRetry, setNavigationRetry] = useState(0);
   const [list, setList] = useState<MemoryList | null>(null);
-  const [open, setOpen] = useState<MemoryDetail | null>(null);
+  const [storedOpen, storeOpen] = useState<{ readonly value: MemoryDetail; readonly address: RouteAddress; readonly source: symbol } | null>(null);
+  const open = storedOpen !== null && storedOpen.address === address && address === getRouteAddress()
+    && storedOpen.source === source ? storedOpen.value : null;
+  const ownsOpen = (): boolean => storedOpen !== null && storedOpen.address === getRouteAddress()
+    && storedOpen.source === getDraftSourceRevision();
+  const setOpen = (value: MemoryDetail | null): void => {
+    storeOpen(value === null ? null : { value, address, source: getDraftSourceRevision() });
+  };
   const [preview, setPreview] = useState<ForgetPreview | null>(null);
   const [receipt, setReceipt] = useState<ForgetReceipt | null>(null);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
+  const [writeNotice, setWriteNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [uncertainForget, setUncertainForget] = useState(false);
   const [cleanup, setCleanup] = useState<ForgetCleanup | null>(null);
   const [requests] = useState(() => new MemoryRequests());
+  const externalRefresh = useRef(false);
+  const owns = (ticket: number): boolean => requests.owns(ticket) && address === getRouteAddress();
 
   const reload = (): void => {
+    const source = getDraftSourceRevision();
     const ticket = requests.nextList();
     void Promise.resolve().then(() => {
-      if (!requests.ownsList(ticket)) throw new Error("inactive list request");
+      if (!requests.ownsList(ticket) || address !== getRouteAddress()) throw new Error("inactive list request");
       return memoryList();
     }).then(
-      (value) => { if (requests.ownsList(ticket)) setList(value); },
+      (value) => { if (requests.ownsList(ticket) && address === getRouteAddress() && source === getDraftSourceRevision()) setList(value); },
       (error: unknown) => {
-        if (requests.ownsList(ticket)) setRefusal(asRefusal(error));
+        if (requests.ownsList(ticket) && address === getRouteAddress() && source === getDraftSourceRevision()) setRefusal(asRefusal(error));
       },
     );
   };
 
   useEffect(() => {
     requests.activate();
-    const ticket = requests.nextList();
-    void Promise.resolve().then(() => {
-      if (!requests.ownsList(ticket)) throw new Error("inactive list request");
-      return memoryList();
-    }).then(
-      (value) => { if (requests.ownsList(ticket)) setList(value); },
-      (error: unknown) => {
-        if (requests.ownsList(ticket)) setRefusal(asRefusal(error));
-      },
-    );
     return () => requests.dispose();
   }, [requests]);
 
-  function invokeOwned<T>(ticket: number, work: () => Promise<T>): Promise<T> {
+  useEffect(() => {
+    let source = getDraftSourceRevision();
+    const unsubscribe = subscribeDraftSource((next) => {
+      if (source === next) return;
+      source = next;
+      requests.invalidatePreview(); setPreview(null);
+    });
+    const unsubscribeExternal = subscribeExternalSource(() => {
+      externalRefresh.current = true;
+      storeOpen(null); setList(null);
+      if (!hasPendingSourceChanges()) setNavigationRetry((value) => value + 1);
+    });
+    return () => { unsubscribe(); unsubscribeExternal(); };
+  }, [requests]);
+
+  useEffect(() => {
+    if (target === "invalid") return;
+    if (hasPendingSourceChanges() && externalRefresh.current) return;
+    // A same-page navigation never releases an in-flight write. Its physical
+    // settlement wakes this effect to read the latest address, not the old one.
+    const ticket = requests.begin();
+    if (ticket === null) return;
+    const refreshOnly = externalRefresh.current;
+    externalRefresh.current = false;
+    const initialSource = getDraftSourceRevision();
+    const current = (): boolean => requests.owns(ticket) && address === getRouteAddress();
+    void Promise.resolve().then(async () => {
+      if (!current()) return;
+      setViewAddress(address); setList(null); storeOpen(null); setPreview(null);
+      if (!refreshOnly) { setReceipt(null); setWriteNotice(null); setCleanup(null); setUncertainForget(false); }
+      setRefusal(null); setBusy(true);
+      if (initialSource !== getDraftSourceRevision()) throw new DraftSourceChangedError();
+      const value = await memoryList();
+      if (!current()) return;
+      if (initialSource !== getDraftSourceRevision()) throw new DraftSourceChangedError();
+      setList(value);
+      if (target !== null) {
+        const detail = await memoryDetail(target);
+        if (!current()) return;
+        if (initialSource !== getDraftSourceRevision()) throw new DraftSourceChangedError();
+        if (detail.memory_id.toLowerCase() !== target) {
+          throw { reason_code: "MEMORY_TARGET_MISMATCH", explanation: "返回的记忆与所选编号不符，请重新选择。" };
+        }
+        storeOpen({ value: detail, address, source: initialSource });
+      }
+    }).catch((error: unknown) => { if (current()) setRefusal(asRefusal(error)); }).finally(() => {
+      if (requests.finish(ticket)) {
+        setBusy(false);
+        if (address !== getRouteAddress() || (externalRefresh.current && !hasPendingSourceChanges())) setNavigationRetry((value) => value + 1);
+      }
+    });
+  }, [address, navigationRetry, requests, target]);
+
+  function invokeOwned<T>(ticket: number, work: () => Promise<T>, expectedSource?: symbol): Promise<T> {
     return Promise.resolve().then(() => {
-      if (!requests.owns(ticket)) throw new Error("inactive memory request");
+      if (!owns(ticket)) throw new Error("inactive memory request");
+      if (expectedSource !== undefined && expectedSource !== getDraftSourceRevision()) throw new DraftSourceChangedError();
       return work();
     });
   }
 
   const finish = (ticket: number): void => {
-    if (requests.finish(ticket)) setBusy(false);
+    if (requests.finish(ticket)) {
+      setBusy(false);
+      if (address !== getRouteAddress() || (externalRefresh.current && !hasPendingSourceChanges())) setNavigationRetry((value) => value + 1);
+    }
   };
 
   /** Admit before IPC, not after constructing an already-running promise. */
-  const act = (change: () => Promise<MemoryDetail>): Promise<boolean> => {
+  const act = (change: () => Promise<MemoryDetail>, expectedSource?: symbol, readOnly = false): Promise<boolean> => {
+    if (address !== getRouteAddress()) return Promise.resolve(false);
+    if (expectedSource !== undefined && expectedSource !== getDraftSourceRevision()) return Promise.resolve(false);
     const ticket = requests.begin();
     if (ticket === null) return Promise.resolve(false);
     setBusy(true);
     setRefusal(null);
+    setWriteNotice(null);
     setPreview(null);
     setReceipt(null);
-    return invokeOwned(ticket, change).then(
+    let observedSource = getDraftSourceRevision();
+    let sourceChanges = 0;
+    const unsubscribe = subscribeDraftSource((next) => {
+      if (next !== observedSource) { observedSource = next; sourceChanges += 1; }
+    });
+    return invokeOwned(ticket, change, expectedSource).then(
       (value) => {
-        if (!requests.owns(ticket)) return false;
-        setOpen(value);
+        if (!owns(ticket)) { finish(ticket); return false; }
+        if (readOnly && expectedSource !== getDraftSourceRevision()) {
+          setRefusal(asRefusal(new DraftSourceChangedError()));
+          finish(ticket);
+          return false;
+        }
+        // A successful mutation has its own start/finish notifications. Any
+        // extra source operation means this is a receipt, not current prose.
+        if (!readOnly && sourceChanges > 2) {
+          setOpen(null);
+          setWriteNotice("这次写入已收到核心回执；期间资料又有变更。请重新打开记忆，核对当前内容。");
+        } else setOpen(value);
         finish(ticket);
         reload();
         return true;
       },
       (error: unknown) => {
-        if (!requests.owns(ticket)) return false;
+        if (!owns(ticket)) { finish(ticket); return false; }
         setRefusal(asRefusal(error));
         finish(ticket);
         return false;
       },
-    );
+    ).finally(unsubscribe);
   };
 
   const askPrice = (memoryId: string): void => {
+    if (address !== getRouteAddress()) return;
     const ticket = requests.begin();
     if (ticket === null) return;
     setBusy(true);
@@ -145,13 +234,13 @@ export function Memory(): React.JSX.Element {
     setReceipt(null);
     void invokeOwned(ticket, () => previewForget(memoryId)).then(
       (value) => {
-        if (!requests.owns(ticket)) return;
+        if (!owns(ticket)) { finish(ticket); return; }
         requests.remember(ticket, value);
         setPreview(value);
         finish(ticket);
       },
       (error: unknown) => {
-        if (!requests.owns(ticket)) return;
+        if (!owns(ticket)) { finish(ticket); return; }
         setRefusal(asRefusal(error));
         finish(ticket);
       },
@@ -159,16 +248,22 @@ export function Memory(): React.JSX.Element {
   };
 
   const forget = (quoted: ForgetPreview): void => {
+    if (address !== getRouteAddress()) return;
     const ticket = requests.begin(quoted);
     if (ticket === null) return;
     setBusy(true);
     setRefusal(null);
     setCleanup(null);
+    let observedSource = getDraftSourceRevision();
+    let sourceChanges = 0;
+    const unsubscribe = subscribeDraftSource((next) => {
+      if (next !== observedSource) { observedSource = next; sourceChanges += 1; }
+    });
     void invokeOwned(ticket, () => forgetMemory({
       preview_id: quoted.preview_id, memory_id: quoted.memory_id,
     })).then(
       (value) => {
-        if (!requests.owns(ticket)) return;
+        if (!owns(ticket)) { finish(ticket); return; }
         requests.remember(ticket, null);
         setPreview(null);
         const matches = value.memory_id === quoted.memory_id;
@@ -179,12 +274,17 @@ export function Memory(): React.JSX.Element {
         reload();
       },
       (error: unknown) => {
-        if (!requests.owns(ticket)) return;
+        if (!owns(ticket)) { finish(ticket); return; }
         const problem = asRefusal(error);
         setRefusal(problem);
         // A lost IPC reply is not proof of rollback. Only an explicit
         // preview mismatch is known to leave the held preview unspent.
-        if (problem.reason_code !== "PLAN_HASH_MISMATCH") {
+        if (problem.reason_code === "PLAN_HASH_MISMATCH" && sourceChanges === 2) {
+          // Only this attempt's local start/finally occurred. The core says
+          // the quoted preparation is unspent; restore that exact quote.
+          requests.remember(ticket, quoted);
+          setPreview(quoted);
+        } else if (problem.reason_code !== "PLAN_HASH_MISMATCH") {
           requests.remember(ticket, null);
           setPreview(null);
           setOpen(null);
@@ -193,10 +293,11 @@ export function Memory(): React.JSX.Element {
         finish(ticket);
         reload();
       },
-    );
+    ).finally(unsubscribe);
   };
 
   const retryCleanup = (): void => {
+    if (address !== getRouteAddress()) return;
     const ticket = requests.begin();
     if (ticket === null) return;
     setBusy(true);
@@ -205,7 +306,7 @@ export function Memory(): React.JSX.Element {
     setCleanup(null);
     void invokeOwned(ticket, retryForgetCleanup).then(
       (value) => {
-        if (!requests.owns(ticket)) return;
+        if (!owns(ticket)) { finish(ticket); return; }
         setCleanup(value.cleanup);
         // Preserve the original counts, preview match, and audit uncertainty.
         // Cleanup cannot manufacture a missing destruction acknowledgement.
@@ -214,17 +315,23 @@ export function Memory(): React.JSX.Element {
         finish(ticket);
       },
       (error: unknown) => {
-        if (!requests.owns(ticket)) return;
+        if (!owns(ticket)) { finish(ticket); return; }
         setRefusal(asRefusal(error));
         finish(ticket);
       },
     );
   };
 
-  if (list === null) {
+  if (target === "invalid") return <section className="panel" role="alert"><p>记忆地址无效，请从记忆列表重新选择。</p><a href="#/memory">返回记忆列表</a></section>;
+
+  const rereadTarget = target === null ? null : <button type="button" disabled={busy} onClick={() => {
+    if (address === getRouteAddress()) setNavigationRetry((value) => value + 1);
+  }}>重新读取此地址</button>;
+
+  if (viewAddress !== address || address !== getRouteAddress() || list === null) {
     return refusal === null ? (
       <section className="panel" aria-busy="true"><p>正在读本机的记忆…</p></section>
-    ) : <Refused title="记忆没有读出来" refusal={refusal} testId="memory-refusal-code" />;
+    ) : <><Refused title="记忆没有读出来" refusal={refusal} testId="memory-refusal-code" />{rereadTarget}</>;
   }
 
   const recoverable = receipt !== null || uncertainForget
@@ -236,6 +343,8 @@ export function Memory(): React.JSX.Element {
       {refusal === null ? null : (
         <Refused title="这次请求需要核对" refusal={refusal} testId="memory-refusal-code" />
       )}
+      {writeNotice === null ? null : <p role="status" data-testid="memory-write-source-changed">{writeNotice}</p>}
+      {open === null && !busy ? rereadTarget : null}
       {uncertainForget ? (
         <section className="panel" role="status" data-testid="forget-uncertain">
           <h2>尚未确认上一次遗忘的结果</h2>
@@ -255,7 +364,18 @@ export function Memory(): React.JSX.Element {
           <ul className="facts" data-testid="memory-list">
             {list.memories.map((row) => (
               <Row key={row.memory_id} row={row} busy={busy}
-                onOpen={() => act(() => memoryDetail(row.memory_id))}
+                onOpen={() => {
+                  setOpen(null);
+                  const initialSource = getDraftSourceRevision();
+                  return act(async () => {
+                    const detail = await memoryDetail(row.memory_id);
+                    if (initialSource !== getDraftSourceRevision()) throw new DraftSourceChangedError();
+                    if (detail.memory_id.toLowerCase() !== row.memory_id.toLowerCase()) throw {
+                      reason_code: "MEMORY_TARGET_MISMATCH", explanation: "返回的记忆与所选编号不符，请重新选择。",
+                    };
+                    return detail;
+                  }, initialSource, true);
+                }}
                 onAskPrice={() => askPrice(row.memory_id)} />
             ))}
           </ul>
@@ -268,11 +388,11 @@ export function Memory(): React.JSX.Element {
       </section>
 
       {open === null ? null : (
-        <section className="panel"><button type="button" disabled={busy || list.memories.find((row) => row.memory_id === open.memory_id)?.forget_state !== "active"} onClick={() => draftMemoryCandidates.add(open.memory_id)}>用于本次起草</button>{" "}<a href="#/draft">前往起草并预览本次用途和出处</a></section>
+        <section className="panel"><button type="button" disabled={busy || list.memories.find((row) => row.memory_id === open.memory_id)?.forget_state !== "active"} onClick={() => { if (ownsOpen()) draftMemoryCandidates.add(open.memory_id); }}>用于本次起草</button>{" "}<a href="#/draft">前往起草并预览本次用途和出处</a></section>
       )}
       {open === null ? null : (
         <Edit key={open.memory_id} detail={open} types={list.memory_types} busy={busy}
-          onSave={(change) => act(() => updateMemory(open.memory_id, change))} />
+          onSave={(change) => ownsOpen() ? act(() => updateMemory(open.memory_id, change), storedOpen?.source) : Promise.resolve(false)} />
       )}
       {preview === null ? null : (
         <Price preview={preview} busy={busy} onForget={() => forget(preview)}
@@ -429,6 +549,7 @@ function Edit({ detail, types, busy, onSave }: EditProps): React.JSX.Element {
   return (
     <section className="panel" aria-labelledby="edit-heading">
       <h2 id="edit-heading">打开的这一条</h2>
+      <p className="muted">如果这条记忆用于联系人／场合语域偏好，普通编辑会停用该偏好；需回到起草重新明确确认。</p>
       <label className="field" htmlFor="edit-kind">
         这是什么
       </label>

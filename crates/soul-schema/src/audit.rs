@@ -17,6 +17,10 @@ pub enum AuditAction {
     CollectStart,
     #[serde(rename = "collect.stop")]
     CollectStop,
+    #[serde(rename = "import.prepare")]
+    ImportPrepare,
+    #[serde(rename = "import.discard")]
+    ImportDiscard,
     #[serde(rename = "import.commit")]
     ImportCommit,
     #[serde(rename = "inference.write")]

@@ -137,6 +137,7 @@ impl Session {
         pasted: &str,
         context_id: &str,
     ) -> Result<InsightDraftValue, SessionRefusal> {
+        self.clear_scoped_draft();
         self.require_store_idle()?;
         let selection = self.selected_insight(context_id)?;
         let brief = self.owner_brief();
@@ -179,6 +180,7 @@ impl Session {
         include_original: bool,
         include_goal: bool,
     ) -> Result<InsightDraftPlan, SessionRefusal> {
+        self.clear_scoped_draft();
         self.require_store_idle()?;
         self.require_draft_slot()?;
         // Every replacement attempt revokes the old approval, including a

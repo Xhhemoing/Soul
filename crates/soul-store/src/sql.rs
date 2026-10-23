@@ -40,9 +40,24 @@
 /// the forget ledger and the hash-chained audit cannot be built a second time —
 /// and there is deliberately no migrations table and no numbered migration
 /// files to fall out of step with the schema they claim to describe.
-pub const STORE_SCHEMA_VERSION: i64 = 7;
+// 8 adds scoped register bindings whose edit/forget maintenance older builds
+// cannot perform. D62's existing newer-version refusal protects that boundary.
+pub const STORE_SCHEMA_VERSION: i64 = 8;
 
 pub const DDL: &str = r#"
+CREATE TABLE IF NOT EXISTS scoped_register_preferences (
+    preference_id TEXT PRIMARY KEY,
+    revision TEXT NOT NULL,
+    owner_profile_id TEXT NOT NULL,
+    person_contact_id TEXT NOT NULL,
+    occasion TEXT NOT NULL CHECK(occasion IN ('personal','work','study')),
+    memory_id TEXT NOT NULL UNIQUE,
+    register TEXT CHECK(register IN ('casual','plain','formal')),
+    state TEXT NOT NULL CHECK(state IN ('active','inactive')),
+    UNIQUE(owner_profile_id,person_contact_id,occasion),
+    CHECK((state='active' AND register IS NOT NULL) OR (state='inactive' AND register IS NULL))
+);
+CREATE INDEX IF NOT EXISTS scoped_register_by_person ON scoped_register_preferences(person_contact_id);
 -- U5 stores only closed template inputs. Rendering is an explicit local read.
 CREATE TABLE IF NOT EXISTS assistance_preparation_preferences (
     item_id TEXT PRIMARY KEY,

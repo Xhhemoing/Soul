@@ -31,6 +31,49 @@ async function metadata(user: ReturnType<typeof userEvent.setup>, id = E1) {
 }
 
 describe("明确单条本地证据来源查看", () => {
+  it("延迟导航动画帧不覆盖用户随后移到metadata的键盘焦点", async () => {
+    const frames = new Map<number, FrameRequestCallback>(); let nextFrame = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      const id = ++nextFrame; frames.set(id, callback); return id;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => { frames.delete(id); });
+    const native = installFakeCore({ graph }); const user = userEvent.setup();
+    window.location.hash = target;
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    render(<Graph />);
+    const button = await screen.findByRole("button", { name: metadataName(E1) });
+    expect(frames.size).toBeGreaterThan(0);
+    act(() => { button.focus(); });
+    act(() => {
+      const pending = [...frames.values()]; frames.clear();
+      for (const callback of pending) callback(performance.now());
+    });
+    expect(button).toHaveFocus();
+    await user.keyboard("{Enter}");
+    await screen.findByRole("button", { name: rawName() });
+    expect(native.callsTo("evidence_sources")).toHaveLength(1);
+    expect(native.callsTo("read_evidence_event")).toHaveLength(0);
+    for (const command of ["person_summary", "generate_draft", "prepare_draft"]) expect(native.callsTo(command)).toHaveLength(0);
+    expect(screen.queryByTestId("evidence-event-body")).toBeNull();
+  });
+  it("导航动画帧没有被用户焦点接管时仍聚焦指定关系标题", async () => {
+    const frames = new Map<number, FrameRequestCallback>(); let nextFrame = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      const id = ++nextFrame; frames.set(id, callback); return id;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => { frames.delete(id); });
+    const native = installFakeCore({ graph }); window.location.hash = target;
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    render(<Graph />);
+    const heading = await screen.findByRole("heading", { name: "关系：本人 ↔ bbbbbbbb" });
+    expect(frames.size).toBeGreaterThan(0);
+    act(() => {
+      const pending = [...frames.values()]; frames.clear();
+      for (const callback of pending) callback(performance.now());
+    });
+    expect(heading).toHaveFocus();
+    for (const command of ["evidence_sources", "read_evidence_event", "person_summary", "generate_draft", "prepare_draft"]) expect(native.callsTo(command)).toHaveLength(0);
+  });
   it("App从洞察定位后键盘点击metadata仍不开正文，再明确点击单event只显示plain text且零E1", async () => {
     const network = forbidNetwork(); const text = '<img src="http://127.0.0.1:9/a"> <script>throw 1</script> http://127.0.0.1:9/raw';
     const native = installFakeCore({ graph, insights: [aLocalInsight({ summaries: [aPersonSummary()] })], readingEvidenceEvent: (request) => anEvidenceEvent({ ...request, body: text }) });

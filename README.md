@@ -1,49 +1,93 @@
 # Soul
 
-灵魂级个人软件。根据你授权的社交档案、电脑操作和日常记录，在你自己的设备上复刻电子版的你——人格、记忆、心理倾向、人脉图——并辅助处理电脑事务、起草回复、分析人与事。本机采集与浅层处理；云端深度分析默认关闭。行为数据可在授权下用于行为预测研究。
+灵魂级个人软件。根据你授权的社交档案、电脑操作和日常记录，在你自己的设备上复刻电子版的你——人格、记忆、心理倾向、人脉图——并辅助处理电脑事务、起草回复、分析人与事。本机采集与浅层处理；云端深度分析默认关闭。行为数据可在授权下用于行为预测研究，采集许可不自动授予研究保存许可。
 
-v0.1 在 Windows 11 上开发与验收；核心后续部署于 Linux / macOS / Windows，接入端含 macOS / Linux / Windows / Android（D65）。产品边界见 [PRODUCT_LOCK](docs/PRODUCT_LOCK.md)。
+桌面端以 Windows 为当前开发与验收平台；跨平台方向与产品边界见 [PRODUCT_LOCK](docs/PRODUCT_LOCK.md)。开发、局部检查、平台验收、合入和发布分别记录，当前完成状态只见 [STATUS](docs/STATUS.md)。
 
-## 从这里开始
+## 原则与入口
 
-- **继续开发：**读 [AGENTS.md](AGENTS.md)，再看 [当前状态](docs/STATUS.md) 和 [按任务查阅的计划索引](docs/PLAN_INDEX.md)。
-- **确认进度：**只以 [STATUS](docs/STATUS.md) 的当前摘要及对应版本证据为准；详细旧回执在 [历史目录](docs/history/)。
-- **确认范围：**[验收矩阵](docs/ACCEPTANCE.md)、[安全规范](docs/SECURITY.md)、[已定决定](docs/DECISIONS.md)。
-- **规划后续：**[长期路线](docs/ROADMAP.md)、[Goal 1 计划](docs/GOAL1_PLAN.md)、[Goal 2 计划](docs/GOAL2_PLAN.md)。
+- 数据留在获准范围内：无 E0，E1 需单次批准，只起草不发送；审计不存正文，遗忘销毁内容密钥。
+- 从当前工作树开始：[AGENTS](AGENTS.md) 是协作入口，[PLAN_INDEX](docs/PLAN_INDEX.md) 按任务导航；规范与决定见 [ACCEPTANCE](docs/ACCEPTANCE.md)、[SECURITY](docs/SECURITY.md)、[DECISIONS](docs/DECISIONS.md)。
+- 结论跟随实际版本和执行证据：[协作与记录](docs/operations/repository-workflow.md)、[远端 CI](docs/operations/ci.md)、[平台门禁](docs/gates/README.md)。历史展示页和回执只描述其原版本。
 
-Goal 1、U7、正式 Goal 2 与 Wave 1 尚未关闭。G-L 暂缓，完整 G-M、安装卸载和真实任务效用仍未齐；开发验证、平台门禁、合入与发布分别记录，旧版本的通过结论不覆盖新源码。
+## 本地启动
 
-## 项目目录
+需要 [rust-toolchain.toml](rust-toolchain.toml) 指定的 Rust、[package.json](package.json) 指定的 Node.js/pnpm，以及 Windows Tauri 构建所需的 C++ 工具和 WebView2。已有依赖可直接运行；需要准备依赖时在仓库根目录执行：
+
+```pwsh
+$ErrorActionPreference = 'Stop'
+pnpm install --frozen-lockfile
+if ($LASTEXITCODE -ne 0) { throw 'pnpm install failed' }
+```
+
+桌面启动会打开数据目录。开发时使用仓库外的新合成目录，并通过 `WEBVIEW2_USER_DATA_FOLDER` 使用独立 WebView profile；`SOUL_DATA_DIR` 只隔离库，不隔离同一登录会话的单实例。先退出自己已有的 Soul 实例，以下命令发现实例时会停止，不会终止进程。启动不批准真实数据导入、采集、研究保存或外部请求，仅使用合成材料：
+
+```pwsh
+$ErrorActionPreference = 'Stop'
+if (Get-Process | Where-Object { $_.ProcessName -eq 'soul' }) {
+    throw 'Exit the existing Soul instance before starting an isolated development session.'
+}
+$previousSoulDataDir = $env:SOUL_DATA_DIR
+$previousWebViewDataDir = $env:WEBVIEW2_USER_DATA_FOLDER
+try {
+    $env:SOUL_DATA_DIR = Join-Path ([System.IO.Path]::GetTempPath()) ('Soul-synthetic-' + [guid]::NewGuid())
+    $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $env:SOUL_DATA_DIR 'webview-profile'
+    New-Item -ItemType Directory -Path $env:SOUL_DATA_DIR | Out-Null
+    New-Item -ItemType Directory -Path $env:WEBVIEW2_USER_DATA_FOLDER | Out-Null
+    Write-Output ('Synthetic data directory: ' + $env:SOUL_DATA_DIR)
+    pnpm dev
+    if ($LASTEXITCODE -ne 0) { throw 'Soul development startup failed' }
+} finally {
+    $env:SOUL_DATA_DIR = $previousSoulDataDir
+    $env:WEBVIEW2_USER_DATA_FOLDER = $previousWebViewDataDir
+}
+```
+
+`pnpm dev` 从根目录启动 Tauri 与前端；关闭窗口可能只隐藏到托盘，结束隔离会话时使用托盘“退出”。上例目录用于临时开发，不自动删除；需保留验证证据时，将安全日志和合成复现输入保存到仓库外持久目录，记录实际位置。未设置 `SOUL_DATA_DIR` 时应用使用平台默认目录，不适合限定合成的开发验证。
+
+## 验证
+
+按改动面运行必要检查，执行后立即检查退出码。例如授权与出网及前端检查：
+
+```pwsh
+$ErrorActionPreference = 'Stop'
+cargo test -p soul-policy -p soul-egress --locked
+if ($LASTEXITCODE -ne 0) { throw 'Policy and egress tests failed' }
+pnpm --filter @soul/desktop lint
+if ($LASTEXITCODE -ne 0) { throw 'Desktop lint failed' }
+pnpm --filter @soul/desktop test
+if ($LASTEXITCODE -ne 0) { throw 'Desktop frontend tests failed' }
+```
+
+根 Rust workspace 与 `apps/desktop/src-tauri` 分别验证。桌面合成测试必须排除真实采集用例，具体命令、生产构建和平台验收边界见[检查入口](docs/operations/repository-workflow.md#检查与失败处理)。失败保留原始结果，修复后重跑原命令。合并前核对目标 SHA 的[远端 CI 实际结果](docs/operations/ci.md)；局部通过不代表完整平台验收。
+
+## 项目结构
 
 ```text
 Soul/
-├── AGENTS.md         开发规则与项目记忆维护
-├── .codex/           本项目实现 / 只读评审角色
-├── crates/           根 Rust workspace（19 个 crate）
-├── apps/desktop/     React UI；src-tauri 为独立 Cargo workspace
-├── fixtures/         合成测试材料
-├── scripts/          Windows 检查与人工验收入口
+├── AGENTS.md          协作入口
+├── .codex/            本项目实现与只读评审角色
+├── crates/            根 Rust workspace
+├── apps/desktop/      React 界面；src-tauri 是独立 Cargo workspace
+├── fixtures/          合成测试材料
+├── scripts/           检查与人工验收入口
 └── docs/
-    ├── PLAN_INDEX.md 按问题定位规范与计划
-    ├── STATUS.md     当前状态摘要
-    ├── design/       方案、实施计划与验证回执
-    ├── history/      历史状态与阶段记录
-    ├── reviews/      审查及修复记录
-    ├── gates/        按提交和平台记录的门禁证据
-    ├── algorithms/   算法与话术权威
-    ├── schemas/      数据契约与既有 lock
-    └── architecture/ 架构图源与导出图
+    ├── STATUS.md      当前状态与下一步
+    ├── PLAN_INDEX.md  按任务查阅
+    ├── decisions/     架构与治理 ADR
+    ├── plans/         实施计划
+    ├── operations/    开发、记录与 CI 操作
+    ├── design/        具体设计、调研与执行回执
+    ├── architecture/  架构方案、图源与导出图
+    ├── algorithms/    算法权威
+    ├── schemas/       数据契约与既有 lock
+    ├── reviews/       独立审查与修复记录
+    ├── gates/         版本和平台验收证据
+    └── history/       原版本历史快照
 ```
 
-Rust 工具链以 [rust-toolchain.toml](rust-toolchain.toml) 为准，前端使用 pnpm 锁文件。检查命令和构建调度见 [AGENTS.md](AGENTS.md)；根测试不覆盖独立桌面 workspace。构建与依赖缓存留在既有目录，临时日志和实验放仓库外。
+当前架构见 [ARCHITECTURE](docs/ARCHITECTURE.md)；共享 runtime/types、合成 API、预览确认与事件刷新的启动及边界见[本地 API](docs/architecture/local-api.md)。[离线架构地图](docs/architecture.html)、[使用闭环与算法展示](docs/framework-design.html)和[历史总览](docs/project-overview.html)保留各自页内版本，不实时代表当前客户端。
 
-## 架构与离线展示
+## 许可
 
-| 入口 | 使用范围 |
-| --- | --- |
-| [系统架构](docs/ARCHITECTURE.md) | 当前实现分层、操作流程与未来设计，附图源和 SVG |
-| [离线架构地图](docs/architecture.html) | 固定于 `b47ddfa` 的单文件说明快照；四图切换、节点说明、缩放和筛选，不自动联网 |
-| [使用闭环与算法 HTML](docs/framework-design.html) | 各区按页内版本标记阅读；[研究依据](docs/design/2026-10-15-usage-framework.md)与[参考模型验证](docs/design/2026-10-15-framework-validation.md)不替代生产验证 |
-| [历史总览](docs/project-overview.html) | 固定于 `6a8ad64` 的历史展示，不是 Soul 客户端，也不实时更新 |
-
-[架构审查报告](docs/reviews/2026-10-15-architecture-review.md)说明设计取舍；[门禁说明](docs/gates/README.md)说明如何读取版本证据。历史 `ebff0c9` 的缺失外部证据继续标为 NOT VERIFIED，不作为当前安装或发布证明。
+Cargo 包声明 `LicenseRef-Soul-Proprietary`，前端包指向本 README。仓库尚未提供独立 `LICENSE` 文件或可据以授予使用、复制、修改、分发权利的许可条款；不要将源码可见或这些标识解释为开源授权。许可需由权利人另行明确。

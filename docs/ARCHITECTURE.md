@@ -1,5 +1,6 @@
 # Soul 架构与演进图
 
+2026-10-23 新方向：[本地 API 与共享 runtime 架构](architecture/local-api.md)、[ADR-002](decisions/ADR-002-local-api-runtime.md)。这是下一阶段设计；现有实现仍由下列对应日期的说明描述，未把拟新增 crate 标成已经接入。
 
 **2026-10-19 当前框架：** `codex/soul-rebuild-20261019` 保留 W1–W5，按[统一辅助原计划](design/2026-10-16-unified-assistance.md)实现 U1–U6，并补充 U7 合成贯通与百项积压检查。最终检查与同步结果以 [STATUS](STATUS.md) 和[实施验证](design/2026-10-19-unified-assistance-implementation.md)为准；源码、合成验证、原生平台与真实任务效用分别记录，开发分支未合并。
 

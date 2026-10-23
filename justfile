@@ -11,8 +11,8 @@
 # Installing just:  cargo install just --locked --version 1.46.0
 # (1.46 is the last release that builds on the pinned Rust 1.83 toolchain.)
 #
-# There is no hosted CI for this repository (DECISIONS D61). Every gate runs on
-# a machine the author controls and leaves its record under docs/gates/.
+# D110 restores synthetic hosted CI configuration. Formal platform gates still
+# run on author-controlled machines and leave their records under docs/gates/.
 
 set shell := ["bash", "-uc"]
 

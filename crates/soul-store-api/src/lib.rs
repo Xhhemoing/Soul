@@ -26,6 +26,7 @@ pub mod insight;
 pub mod preparation;
 pub mod reminders;
 pub mod research;
+pub mod scoped_preference;
 pub mod types;
 
 pub use fake::FakeStore;

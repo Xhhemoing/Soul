@@ -198,12 +198,21 @@ impl SessionImportPrepareWork {
                 )?;
             }
             if let Some(id) = self.stale {
-                store.end_import_operation(
+                store.end_import_operation_with::<SessionRefusal, _>(
                     &self.runtime,
                     id,
                     ImportOperationState::Reserved,
                     ImportOperationState::Invalidated,
                     Some(ImportOperationError::SourceChanged),
+                    |store, _| {
+                        append_or_store_error(
+                            store,
+                            AuditContent::allowed(AuditAction::ImportPrepare, ReasonCode::Routine)
+                                .about(&[id]),
+                            now_unix_seconds(),
+                        )?;
+                        Ok(())
+                    },
                 )?;
             }
             let namespace = if let Some(id) = self.namespace {
@@ -242,7 +251,16 @@ impl SessionImportPrepareWork {
                 audit_state: ImportAuditState::NotApplicable,
                 created_at: now_unix_seconds(),
             };
-            store.reserve_import_operation(&self.runtime, &operation)?;
+            store.transact(|store| -> Result<(), SessionRefusal> {
+                store.reserve_import_operation(&self.runtime, &operation)?;
+                append_or_store_error(
+                    store,
+                    AuditContent::allowed(AuditAction::ImportPrepare, ReasonCode::Routine)
+                        .about(&[operation.operation_id]),
+                    now_unix_seconds(),
+                )?;
+                Ok(())
+            })?;
             Ok(HeldImport {
                 operation,
                 revision: self.revision,
@@ -624,12 +642,22 @@ impl Session {
         let held = completed.result?;
         if completed.revision != self.draft_revision {
             let store = self.opened_store()?;
-            hold(&store).end_import_operation(
+            let operation_id = held.operation.operation_id;
+            hold(&store).end_import_operation_with::<SessionRefusal, _>(
                 self.import_runtime.as_ref().ok_or_else(unknown)?,
-                held.operation.operation_id,
+                operation_id,
                 ImportOperationState::Reserved,
                 ImportOperationState::Invalidated,
                 Some(ImportOperationError::SourceChanged),
+                |store, _| {
+                    append_or_store_error(
+                        store,
+                        AuditContent::allowed(AuditAction::ImportPrepare, ReasonCode::Routine)
+                            .about(&[operation_id]),
+                        now_unix_seconds(),
+                    )?;
+                    Ok(())
+                },
             )?;
             return Err(changed());
         }
@@ -722,12 +750,21 @@ impl Session {
         if held.operation.operation_id != id {
             return Err(changed());
         }
-        hold(&store).end_import_operation(
+        hold(&store).end_import_operation_with::<SessionRefusal, _>(
             self.import_runtime.as_ref().ok_or_else(unknown)?,
             id,
             ImportOperationState::Reserved,
             ImportOperationState::Discarded,
             None,
+            |store, _| {
+                append_or_store_error(
+                    store,
+                    AuditContent::allowed(AuditAction::ImportDiscard, ReasonCode::Routine)
+                        .about(&[id]),
+                    now_unix_seconds(),
+                )?;
+                Ok(())
+            },
         )?;
         self.held_import = None;
         self.invalidate_drafts();

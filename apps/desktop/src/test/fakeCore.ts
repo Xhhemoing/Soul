@@ -8,7 +8,7 @@
  * quietly becoming a nicer core than the real one.
  */
 
-import { mockIPC } from "@tauri-apps/api/mocks";
+import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
 
 import type {
@@ -81,6 +81,13 @@ import type {
   AssistanceLocalPreparation,
   AssistanceLocalTemplatePreview,
   AssistanceLocalTemplateRequest,
+  ScopedRegisterRecipient,
+  ScopedDraftResult,
+  ScopedRegisterProposal,
+  ScopedRegisterPreference,
+  ScopedOccasion,
+  ScopedRegister,
+  ScopedRegisterStatus,
 } from "../core";
 
 export const CLOUD_LABEL = "尚未启用";
@@ -1011,6 +1018,12 @@ export interface FakeCoreOptions {
   readonly preparing?: (pasted: string, includeOriginal: boolean) => E1DraftPlan;
   readonly generating?: (approval: { preparation_id: string; plan_hash: string }) => Draft | Promise<Draft>;
   readonly discardingDraft?: () => boolean | Promise<boolean>;
+  readonly scopedRecipients?: readonly ScopedRegisterRecipient[];
+  readonly readingScopedRegisterStatus?: (personId: string, occasion: ScopedOccasion) => ScopedRegisterStatus | Promise<ScopedRegisterStatus>;
+  readonly scopedDrafting?: (pasted: string, personId: string, occasion: ScopedOccasion) => ScopedDraftResult | Promise<ScopedDraftResult>;
+  readonly proposingScopedRegister?: (resultId: string, editRevision: number, register: ScopedRegister) => ScopedRegisterProposal | Promise<ScopedRegisterProposal>;
+  readonly confirmingScopedRegister?: (proposalId: string, expectedRevision: string | null) => ScopedRegisterPreference | Promise<ScopedRegisterPreference>;
+  readonly discardingScopedRegister?: (proposalId: string) => boolean | Promise<boolean>;
   /** Able to throw: a file that does not parse arrives as a refusal value. */
   readonly readingImport?: (format: string, text: string) => ImportPreview;
   readonly importing?: (format: string, text: string) => ImportReceipt;
@@ -1062,14 +1075,14 @@ export interface FakeCoreOptions {
   readonly correcting?: (axisId: string, position: string) => ProfileScreen;
   readonly voicing?: (field: string, option: string) => ProfileScreen;
   readonly memories?: () => MemoryList;
-  readonly opening?: (memoryId: string) => MemoryDetail;
+  readonly opening?: (memoryId: string) => MemoryDetail | Promise<MemoryDetail>;
   readonly writing?: (memory: NewMemory) => MemoryDetail;
-  readonly editing?: (memoryId: string, change: MemoryChange) => MemoryDetail;
+  readonly editing?: (memoryId: string, change: MemoryChange) => MemoryDetail | Promise<MemoryDetail>;
   readonly pricing?: (memoryId: string) => ForgetPreview;
   readonly forgetting?: (confirmation: {
     preview_id: string;
     memory_id: string;
-  }) => ForgetReceipt;
+  }) => ForgetReceipt | Promise<ForgetReceipt>;
   readonly research?: () => ResearchPreview;
   readonly audit?: () => AuditChain;
   /** The collection state this launch starts in. Nobody has consented yet. */
@@ -1196,6 +1209,7 @@ function savedEndpoint(url: string, current: ConfigSnapshot): ConfigSnapshot {
 export function installFakeCore(
   snapshotOrOptions: ConfigSnapshot | FakeCoreOptions = CLOSED_SNAPSHOT,
 ): FakeCore {
+  mockWindows("main");
   const options: FakeCoreOptions =
     "collect_enabled" in snapshotOrOptions ? { snapshot: snapshotOrOptions } : snapshotOrOptions;
   const snapshot = options.snapshot ?? CLOSED_SNAPSHOT;
@@ -1233,6 +1247,8 @@ export function installFakeCore(
   mockIPC((cmd, payload) => {
     calls.push({ cmd, payload });
     switch (cmd) {
+      case "runtime_event_snapshot":
+        return { epoch: "10000000-0000-4000-8000-000000000001", sequence: 0, active_operations: [] };
       case "config_snapshot":
         return configuration;
       case "session_status":
@@ -1415,6 +1431,31 @@ export function installFakeCore(
       }
       case "draft_reply":
         return drafting((payload as { pasted?: string }).pasted ?? "");
+      case "scoped_register_recipients":
+        return options.scopedRecipients ?? [];
+      case "scoped_register_status": {
+        const asked = payload as { personId: string; occasion: ScopedOccasion };
+        return options.readingScopedRegisterStatus?.(asked.personId, asked.occasion) ?? {
+          person_id: asked.personId, occasion: asked.occasion, state: "absent", preference: null, memory_id: null, notice: "此范围尚无已确认偏好。",
+        };
+      }
+      case "draft_scoped_reply": {
+        const asked = payload as { pasted: string; personId: string; occasion: ScopedOccasion };
+        if (options.scopedDrafting === undefined) throw new Error("No synthetic scoped draft configured");
+        return options.scopedDrafting(asked.pasted, asked.personId, asked.occasion);
+      }
+      case "propose_scoped_register": {
+        const asked = payload as { resultId: string; editRevision: number; register: ScopedRegister };
+        if (options.proposingScopedRegister === undefined) throw new Error("No synthetic proposal configured");
+        return options.proposingScopedRegister(asked.resultId, asked.editRevision, asked.register);
+      }
+      case "confirm_scoped_register": {
+        const asked = payload as { proposalId: string; expectedRevision: string | null };
+        if (options.confirmingScopedRegister === undefined) throw new Error("No synthetic confirmation configured");
+        return options.confirmingScopedRegister(asked.proposalId, asked.expectedRevision);
+      }
+      case "discard_scoped_register_proposal":
+        return options.discardingScopedRegister?.((payload as { proposalId: string }).proposalId) ?? true;
       case "prepare_draft": {
         const asked = payload as { pasted?: string; includeOriginal?: boolean };
         return (options.preparing ?? (() => anE1Plan()))(
@@ -1726,7 +1767,7 @@ export function installFakeCore(
       default:
         throw `the shell called a command the core does not have: ${cmd}`;
     }
-  });
+  }, { shouldMockEvents: true });
 
   return {
     calls,
