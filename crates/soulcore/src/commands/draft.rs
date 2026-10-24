@@ -384,6 +384,7 @@ impl DraftSession {
         let id = Uuid::now_v7();
         let endpoint = policy.guard().config().e1_endpoint().cloned();
         let notice = plan_notice(endpoint.as_ref());
+        let body_preview = body.as_str().to_owned();
 
         // A second prepare replaces the first, so an unapproved body cannot
         // sit around waiting for a token that was issued for another one.
@@ -405,6 +406,7 @@ impl DraftSession {
             third_party_turns: facts.third_party_turns,
             placeheld_turns: facts.placeheld_turns,
             carries_exempted_original: facts.carries_exempted_original,
+            body_preview,
             notice,
             not_sent_notice: NOT_SENT_NOTICE.to_owned(),
         }
@@ -588,7 +590,7 @@ pub struct Drafted {
     pub audit: Vec<AuditContent>,
 }
 
-/// The helper's local preview is separate from the ordinary draft schema.
+/// The helper's local preview also names the selected memory material.
 /// Debug deliberately carries no request material.
 #[derive(Clone, PartialEq, Eq, Serialize)]
 pub struct MemoryPrepared {
@@ -635,10 +637,10 @@ impl std::fmt::Debug for InsightPrepared {
 
 /// What the user reads before deciding whether anything may leave.
 ///
-/// Counts, a model name and two sentences. There is no field here that could
-/// hold the text: the whole point of the step is that the user approves the
-/// *shape* of a request, and the shape is what the hash is taken over.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Includes the complete redacted user material held for this preparation,
+/// so the user can inspect exactly what they will approve. Debug omits that
+/// material, including when another prepared value contains this plan.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct E1DraftPlan {
     /// Which preparation this is. Echoed back on approval; see
@@ -650,8 +652,27 @@ pub struct E1DraftPlan {
     pub placeheld_turns: usize,
     /// True only when the user has already confirmed twice for one turn.
     pub carries_exempted_original: bool,
+    /// Copied from the same held RedactedBody; excludes the fixed transport
+    /// instructions and JSON envelope and is never rebuilt for the preview.
+    pub body_preview: String,
     pub notice: String,
     pub not_sent_notice: String,
+}
+
+impl std::fmt::Debug for E1DraftPlan {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("E1DraftPlan")
+            .field("preparation_id", &self.preparation_id)
+            .field("plan_hash", &self.plan_hash)
+            .field("model", &self.model)
+            .field("third_party_turns", &self.third_party_turns)
+            .field("placeheld_turns", &self.placeheld_turns)
+            .field("carries_exempted_original", &self.carries_exempted_original)
+            .field("notice", &self.notice)
+            .field("not_sent_notice", &self.not_sent_notice)
+            .finish_non_exhaustive()
+    }
 }
 
 impl E1DraftPlan {

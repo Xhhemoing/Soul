@@ -239,9 +239,8 @@ export interface Draft {
 /**
  * What the user reads before deciding whether anything may leave.
  *
- * Counts, a model name and two sentences: there is no field here that could
- * hold the third party's prose, because what is being approved is the *shape*
- * of a request. Both identifiers have to be echoed back on approval, and
+ * Includes the complete redacted material held for this preparation, so it
+ * can be inspected before approval. Both identifiers are echoed back, and
  * `soulcore` refuses an approval that does not match.
  */
 export interface E1DraftPlan {
@@ -251,6 +250,7 @@ export interface E1DraftPlan {
   readonly third_party_turns: number;
   readonly placeheld_turns: number;
   readonly carries_exempted_original: boolean;
+  readonly body_preview: string;
   readonly notice: string;
   readonly not_sent_notice: string;
 }

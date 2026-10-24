@@ -20,6 +20,34 @@ use tokio::task::JoinSet;
 
 use crate::{Secret, HEADER_TIMEOUT, MAX_CONNECTIONS, MAX_HEADER_BYTES, MAX_RESPONSE_BYTES};
 
+#[derive(Clone, Copy)]
+pub(crate) enum HostScope {
+    Synthetic,
+    #[cfg(feature = "local-validation")]
+    S1Validation,
+}
+
+impl HostScope {
+    fn permits(self, _method: &Method, _path: &str) -> bool {
+        match self {
+            Self::Synthetic => true,
+            #[cfg(feature = "local-validation")]
+            Self::S1Validation => {
+                if _method == Method::GET {
+                    matches!(
+                        _path,
+                        "/v1/status" | "/v1/people" | "/v1/events/snapshot" | "/v1/scoped/status"
+                    ) || _path
+                        .strip_prefix("/v1/memories/")
+                        .is_some_and(crate::writes::exact_id)
+                } else {
+                    crate::writes::s1_validation_route(_method, _path)
+                }
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 struct Context {
     runtime: Runtime,
@@ -28,6 +56,7 @@ struct Context {
     secret: Arc<Secret>,
     read_slots: Arc<Semaphore>,
     reads: Arc<crate::read_activity::ReadActivity>,
+    scope: HostScope,
 }
 
 pub(crate) async fn serve(
@@ -37,6 +66,7 @@ pub(crate) async fn serve(
     secret: Arc<Secret>,
     mut stop: watch::Receiver<bool>,
     reads: Arc<crate::read_activity::ReadActivity>,
+    scope: HostScope,
 ) {
     let app = Router::new().fallback(any(handle)).with_state(Context {
         runtime,
@@ -45,6 +75,7 @@ pub(crate) async fn serve(
         secret,
         read_slots: Arc::new(Semaphore::new(MAX_CONNECTIONS)),
         reads,
+        scope,
     });
     let semaphore = Arc::new(Semaphore::new(MAX_CONNECTIONS));
     let mut connections = JoinSet::new();
@@ -138,6 +169,14 @@ async fn handle(State(context): State<Context>, request: Request) -> Response {
     };
     if !equal_secret(token.as_bytes(), context.secret.0.as_bytes()) {
         return reject(StatusCode::UNAUTHORIZED);
+    }
+    // Trusted host selection is not a request field. Refuse out-of-scope
+    // routes before body decoding, queue admission, events or Session work.
+    if !context
+        .scope
+        .permits(request.method(), request.uri().path())
+    {
+        return reject(StatusCode::NOT_FOUND);
     }
     let is_write = request.method() != Method::GET;
     let operation = if is_write {

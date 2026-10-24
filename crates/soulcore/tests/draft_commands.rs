@@ -471,6 +471,83 @@ fn saying_no_to_a_plan_throws_the_body_away() {
     assert_eq!(endpoint.request_count(), 0);
 }
 
+#[test]
+fn a_t3_preview_is_the_complete_redacted_material_that_leaves_once_approved() {
+    let endpoint = MockLlm::start().expect("controlled loopback endpoint");
+    let mut policy = pointed_at(&endpoint);
+    let mut drafting = drafting();
+    let request = a_paste();
+    let exemption = ExemptionRequest::for_turn(request.third_party_turn_ids()[0])
+        .confirm(true)
+        .unwrap();
+    let plan = drafting
+        .prepare(
+            &mut policy,
+            request,
+            Some(exemption),
+            RequestOrigin::User,
+            NOW_MS,
+        )
+        .unwrap();
+
+    assert_eq!(endpoint.request_count(), 0);
+    assert!(plan.body_preview.contains("周五的场地"));
+    assert!(plan.body_preview.contains("直接过来就行"));
+    assert!(!plan.body_preview.contains(NAME));
+    assert!(!plan.body_preview.contains("13800138000"));
+    let debug = format!("{plan:?}");
+    assert!(!debug.contains("周五的场地"));
+    assert!(!debug.contains("直接过来就行"));
+
+    drafting
+        .generate(&mut policy, &plan.approval(), NOW_MS)
+        .unwrap();
+    let requests = endpoint.requests();
+    assert_eq!(requests.len(), 1);
+    let actual: serde_json::Value = serde_json::from_str(&requests[0].body).unwrap();
+    assert_eq!(
+        actual["messages"][1]["content"],
+        format!(
+            "{}\n{}\n{}",
+            soul_policy::e1::QUOTE_OPEN,
+            plan.body_preview,
+            soul_policy::e1::QUOTE_CLOSE
+        )
+    );
+    assert!(drafting
+        .generate(&mut policy, &plan.approval(), NOW_MS)
+        .is_err());
+    assert_eq!(endpoint.request_count(), 1);
+}
+
+#[test]
+fn a_t3_preview_can_be_cancelled_without_contacting_the_endpoint() {
+    let endpoint = MockLlm::start().expect("controlled loopback endpoint");
+    let mut policy = pointed_at(&endpoint);
+    let mut drafting = drafting();
+    let request = a_paste();
+    let exemption = ExemptionRequest::for_turn(request.third_party_turn_ids()[0])
+        .confirm(true)
+        .unwrap();
+    let plan = drafting
+        .prepare(
+            &mut policy,
+            request,
+            Some(exemption),
+            RequestOrigin::User,
+            NOW_MS,
+        )
+        .unwrap();
+    assert!(!plan.body_preview.is_empty());
+    assert_eq!(endpoint.request_count(), 0);
+    assert!(drafting.discard());
+    assert!(matches!(
+        drafting.generate(&mut policy, &plan.approval(), NOW_MS),
+        Err(DraftRefusal::NothingPrepared)
+    ));
+    assert_eq!(endpoint.request_count(), 0);
+}
+
 /// AC-13 across the command surface: the exemption is spent by the first
 /// preparation and the next one places the turn back behind a placeholder.
 #[test]

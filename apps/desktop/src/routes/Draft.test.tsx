@@ -240,6 +240,7 @@ describe("起草页", () => {
       plan_hash: "e6".repeat(32),
       placeheld_turns: 0,
       carries_exempted_original: true,
+      body_preview: "[姓名已占位]说周五的场地他已经订好了，你直接过来就行",
     });
     const { core, user } = await describe_(PASTED, {
       preparing: (_pasted, includeOriginal) => (includeOriginal ? exempted : anE1Plan()),
@@ -264,11 +265,12 @@ describe("起草页", () => {
     // A plan cannot be exempted twice, so there is nothing left to press.
     expect(screen.queryByRole("button", { name: "这一条按原文带上" })).toBeNull();
 
-    // Nothing has been generated, and the panel still carries no prose of
-    // anybody's — least of all the words the exemption is about.
+    // Preparing does not generate. The panel shows the core's redacted
+    // material, so the user can inspect it before this one approval.
     expect(core.callsTo("generate_draft")).toHaveLength(0);
     const panel = screen.getByRole("heading", { name: "确认这一次要生成什么" }).parentElement;
-    expect(panel?.textContent ?? "").not.toContain("场地");
+    expect(within(panel!).getByTestId("e1-body-preview").textContent).toBe(exempted.body_preview);
+    expect(panel?.textContent ?? "").not.toContain("王小明");
     for (const button of screen.queryAllByRole("button")) {
       expect(button.textContent ?? "").not.toMatch(/发送|发出|发给|替我发|回复对方/);
     }
@@ -319,6 +321,22 @@ describe("起草页", () => {
     expect(core.callsTo("generate_draft")).toHaveLength(0);
     expect(screen.queryByRole("heading", { name: "确认这一次要生成什么" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "草稿" })).toBeNull();
+  });
+
+  it("完整显示核心返回的脱敏材料，发现问题仍可取消", async () => {
+    const preview = "[姓名已占位]，账号[账号已占位]\n" + "合成材料中段\n".repeat(500) + "合成材料结尾";
+    const plan = anE1Plan({ carries_exempted_original: true, placeheld_turns: 0, body_preview: preview });
+    const { core, user } = await describe_(PASTED, { preparing: () => plan });
+
+    const shown = await screen.findByTestId("e1-body-preview");
+    expect(shown.textContent).toBe(preview);
+    expect(shown).toBeVisible();
+    expect(shown.textContent).not.toContain(PASTED);
+    await user.click(screen.getByRole("button", { name: "不了，丢掉这次准备" }));
+
+    expect(core.callsTo("discard_draft")).toHaveLength(1);
+    expect(core.callsTo("generate_draft")).toHaveLength(0);
+    expect(screen.queryByTestId("e1-body-preview")).toBeNull();
   });
 
   it("确认这一步上也没有一个按钮是发送", async () => {

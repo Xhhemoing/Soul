@@ -8,6 +8,7 @@ import { useRouteAddress } from "../routeAddress";
 import { aForgetReceipt, aMemoryDetail, aMemoryList, aTemplateDraft, installFakeCore } from "../test/fakeCore";
 import { Memory } from "./Memory";
 import { draftMemoryCandidates } from "./draftMemorySelection";
+import { draftLane } from "./draftRequests";
 
 const A = "0192f000-0000-7000-8000-0000000000a1";
 const B = "0192f000-0000-7000-8000-0000000000b2";
@@ -152,7 +153,7 @@ describe("精确记忆深链", () => {
     expect(screen.queryByDisplayValue(`合成正文${A}`)).toBeNull();
     expect(screen.queryByTestId("memory-write-source-changed")).toBeNull();
   });
-  it("从已应用偏好链接进入时，离页清理使首次读取失效可明确重读且不自动重试", async () => {
+  it.each([A, B, "unmount"])("从已应用偏好链接进入时，等待离页清理后只读取最新地址 %s", async (destination) => {
     const discard = deferred<boolean>(); let discards = 0;
     const PERSON = "11111111-1111-4111-8111-111111111111";
     const fake = installFakeCore({ memories: () => rows,
@@ -163,22 +164,40 @@ describe("精确记忆深链", () => {
       opening: detail,
     });
     const user = userEvent.setup(); window.location.hash = "#/draft";
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 0)); render(<App />);
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0)); const view = render(<App />);
     await user.click(await screen.findByRole("button", { name: "按联系人和场合本地起草" }));
     await user.selectOptions(await screen.findByLabelText("收件人物"), PERSON);
     await user.selectOptions(screen.getByLabelText("场合"), "personal");
     await user.type(screen.getByLabelText("原文"), "合成原文");
     await user.click(screen.getByRole("button", { name: "写一版本地草稿" }));
     await user.click(await screen.findByRole("link", { name: "查看或遗忘这条偏好" }));
-    await screen.findByTestId("memory-refusal-code");
+    await waitFor(() => expect(fake.callsTo("discard_draft")).toHaveLength(2));
+    if (destination === B) await act(async () => { move(hash(B)); });
+    if (destination === "unmount") view.unmount();
+    expect(screen.queryByDisplayValue(`合成正文${A}`)).toBeNull();
+    expect(screen.queryByDisplayValue(`合成正文${B}`)).toBeNull();
     expect(fake.callsTo("memory_detail")).toHaveLength(0);
     await act(async () => { discard.resolve(true); });
-    expect(screen.queryByDisplayValue(`合成正文${A}`)).toBeNull();
-    expect(fake.callsTo("memory_detail")).toHaveLength(0);
-    await user.click(screen.getByRole("button", { name: "重新读取此地址" }));
-    expect(await screen.findByDisplayValue(`合成正文${A}`)).toBeVisible();
-    expect(fake.callsTo("memory_detail").map((call) => call.payload)).toEqual([{ memoryId: A }]);
+    if (destination === "unmount") {
+      expect(fake.callsTo("memory_detail")).toHaveLength(0);
+      return;
+    }
+    expect(await screen.findByDisplayValue(`合成正文${destination}`)).toBeVisible();
+    expect(screen.queryByTestId("memory-refusal-code")).toBeNull();
+    expect(fake.callsTo("memory_detail").map((call) => call.payload)).toEqual([{ memoryId: destination }]);
+    expect(fake.callsTo("discard_draft")).toHaveLength(2);
+    expect(fake.callsTo("create_memory")).toHaveLength(0);
     expect(fake.callsTo("update_memory")).toHaveLength(0);
+    expect(fake.callsTo("preview_forget")).toHaveLength(0);
     expect(fake.callsTo("forget_memory")).toHaveLength(0);
+  });
+  it("离页清理结果仍不确定时，不把它当成已完成而读取正文", async () => {
+    const fake = installFakeCore({ memories: () => rows, opening: detail });
+    vi.spyOn(draftLane, "snapshot").mockReturnValue({ busy: false, uncertain: true });
+    window.location.hash = hash(A); render(<Memory />);
+    expect(await screen.findByTestId("memory-refusal-code")).toBeVisible();
+    expect(fake.callsTo("memory_list")).toHaveLength(0);
+    expect(fake.callsTo("memory_detail")).toHaveLength(0);
+    expect(screen.queryByDisplayValue(`合成正文${A}`)).toBeNull();
   });
 });

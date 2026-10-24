@@ -83,6 +83,14 @@ fn resolve(method: &Method, path: &str) -> Result<Route, Response> {
     Ok(route)
 }
 
+#[cfg(feature = "local-validation")]
+pub(crate) fn s1_validation_route(method: &Method, path: &str) -> bool {
+    matches!(
+        resolve(method, path),
+        Ok(Route::ScopedDraft | Route::ScopedPropose | Route::ScopedDiscard(_))
+    )
+}
+
 fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, Response> {
     serde_json::from_slice(bytes).map_err(|_| refuse(StatusCode::BAD_REQUEST))
 }

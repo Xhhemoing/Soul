@@ -7,6 +7,14 @@ license.workspace = true
 publish = false
 description = "Synthetic-only authenticated loopback read adapter for the shared runtime."
 
+[features]
+default = []
+local-validation = []
+
+[[example]]
+name = "s1_local_validation"
+required-features = ["local-validation"]
+
 [dependencies]
 soul-runtime = { workspace = true }
 soul-types = { workspace = true, features = ["openapi"] }

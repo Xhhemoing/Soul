@@ -205,6 +205,73 @@ fn the_url_extractor_finds_what_the_corpus_planted() {
     );
 }
 
+#[test]
+fn unicode_url_chinese_prefix_stays_on_character_boundaries() {
+    let sample = UntrustedText::new("中https://example.invalid/synthetic");
+    assert_eq!(
+        injection::urls_in(&sample),
+        vec!["https://example.invalid/synthetic".to_owned()],
+    );
+    assert_eq!(injection::scan(&sample), vec![InjectionSignal::EmbeddedUrl]);
+    assert!(injection::looks_like_injection(&sample));
+}
+
+#[test]
+fn unicode_url_emoji_prefix_stays_on_character_boundaries() {
+    let sample = UntrustedText::new("😀http://example.invalid/synthetic");
+    assert_eq!(
+        injection::urls_in(&sample),
+        vec!["http://example.invalid/synthetic".to_owned()],
+    );
+    assert_eq!(injection::scan(&sample), vec![InjectionSignal::EmbeddedUrl]);
+}
+
+#[test]
+fn unicode_url_ascii_space_controls_keep_existing_scheme_rules() {
+    for value in [
+        "中 https://example.invalid/synthetic",
+        "😀 https://example.invalid/synthetic",
+        "note: https://example.invalid/synthetic",
+    ] {
+        let sample = UntrustedText::new(value);
+        assert_eq!(
+            injection::urls_in(&sample),
+            vec!["https://example.invalid/synthetic".to_owned()],
+        );
+        assert_eq!(injection::scan(&sample), vec![InjectionSignal::EmbeddedUrl]);
+    }
+    for value in [
+        "ftp://example.invalid/synthetic",
+        "abchttps://example.invalid/synthetic",
+    ] {
+        let sample = UntrustedText::new(value);
+        assert!(injection::urls_in(&sample).is_empty());
+        assert!(injection::scan(&sample).is_empty());
+    }
+}
+
+#[test]
+fn unicode_url_multiple_links_keep_order_and_ignore_non_http() {
+    let sample = UntrustedText::new(
+        "中https://first.example.invalid/a 😀http://second.example.invalid/b 中ftp://ignored.example.invalid/c",
+    );
+    assert_eq!(
+        injection::urls_in(&sample),
+        vec![
+            "https://first.example.invalid/a".to_owned(),
+            "http://second.example.invalid/b".to_owned(),
+        ],
+    );
+    assert_eq!(injection::scan(&sample), vec![InjectionSignal::EmbeddedUrl]);
+}
+
+#[test]
+fn unicode_url_non_http_prefix_is_safe_and_remains_unflagged() {
+    let sample = UntrustedText::new("中ftp://example.invalid/synthetic");
+    assert!(injection::urls_in(&sample).is_empty());
+    assert!(injection::scan(&sample).is_empty());
+}
+
 // -------------------------------------------------- content stays content ---
 
 /// A pasted injection ends up in the draft as quoted third-party material,

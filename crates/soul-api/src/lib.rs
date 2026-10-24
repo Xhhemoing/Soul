@@ -1,4 +1,5 @@
-//! A synthetic-runtime HTTP adapter. No client or arbitrary invoke surface.
+//! Authenticated loopback adapter; default startup requires a synthetic runtime.
+//! The optional finite S1 host adds no client or arbitrary invoke surface.
 #![cfg_attr(not(windows), forbid(unsafe_code))]
 #![cfg_attr(windows, deny(unsafe_code))]
 
@@ -79,6 +80,12 @@ impl std::fmt::Debug for ApiServer {
 }
 
 impl ApiServer {
+    /// Explicit finite S1 validation host; unavailable in default builds.
+    #[cfg(feature = "local-validation")]
+    pub fn start_s1_validation(runtime: Runtime) -> io::Result<Self> {
+        Self::start_with_scope(runtime, transport::HostScope::S1Validation)
+    }
+
     pub fn start(runtime: Runtime) -> io::Result<Self> {
         if !runtime.is_synthetic() {
             return Err(io::Error::new(
@@ -86,6 +93,10 @@ impl ApiServer {
                 "synthetic runtime required",
             ));
         }
+        Self::start_with_scope(runtime, transport::HostScope::Synthetic)
+    }
+
+    fn start_with_scope(runtime: Runtime, scope: transport::HostScope) -> io::Result<Self> {
         let mut random = Zeroizing::new([0_u8; 32]);
         OsRng.try_fill_bytes(random.as_mut()).map_err(|_| {
             io::Error::new(io::ErrorKind::Other, "credential generation unavailable")
@@ -123,6 +134,7 @@ impl ApiServer {
                     worker_secret,
                     receiver,
                     Arc::clone(&worker_reads),
+                    scope,
                 ));
                 // Connection disconnects can drop their async JoinHandle, but
                 // admitted reads keep their own guard. Settle those reads

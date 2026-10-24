@@ -1,6 +1,6 @@
 # 本地 API 与共享运行时
 
-当前候选已接入 N3 的导入、范围偏好、Memory 编辑/遗忘及 runtime 事件；实际验证进度以[实施计划与回执](../plans/2026-10-23-repository-normalization.md#n3-当前实施切片)为准。本文描述当前接口和限制，不代替运行证据或原生平台验收。决定见 [ADR-002](../decisions/ADR-002-local-api-runtime.md)。范围仅限用户授权的合成数据。
+当前候选已接入 N3 的导入、范围偏好、Memory 编辑/遗忘及 runtime 事件；实际验证进度以[实施计划与回执](../plans/2026-10-23-repository-normalization.md#n3-当前实施切片)为准。默认产品入口仍仅限合成数据；作者明确授权的独立库 S1 验证使用下述默认关闭的专用 feature，执行证据见[战略 §13.5](../plans/2026-10-23-long-term-strategy.md#135-独立测试库与-s1-真实数据本地验证2026-10-23)。本文描述接口和限制，不代替运行证据或原生平台验收。决定见 [ADR-002](../decisions/ADR-002-local-api-runtime.md)。
 
 ## 当前基础
 
@@ -86,6 +86,30 @@ try {
 生成入口为 `cargo run -p soul-types --example typescript --locked`、`cargo run -p soul-api --example export_openapi --locked`；输出须审核后更新生成文件。接口详情看 OpenAPI，权限与生命周期说明以本文为准。
 
 ## 授权与数据隔离
+
+### 显式 S1 独立库验证
+
+`soul-api` 的 `local-validation` feature 默认关闭，仅显式 example `s1_local_validation` 使用 `ApiServer::start_s1_validation`。普通 `ApiServer::start` 继续拒绝非 synthetic Runtime，桌面启动参数与原合成模式保持原限制；不能将真实数据装入标记为 synthetic 的 Session。
+
+运行器要求绝对输入文件、全新且不存在的根目录，以及该根目录的直接子报告文件。它从明确批准的文件读取一次，经生产 Runtime 预览、同 caller 确认和事务导入后才监听；独立目录下的 `data` 保存库、配置和本目录的密钥保护文件，关闭后重开验证持久性。不接受日常默认目录回退，也不覆盖或自动删除已有目录。`--synthetic` 与 `--input` 互斥，用内置 fixture 演练同一流程。
+
+```pwsh
+$ErrorActionPreference = 'Stop'
+# 替换为本次明确批准的绝对文件、新根目录和报告路径。
+cargo run -p soul-api --example s1_local_validation --features local-validation --profile test --locked --offline -- --input '<ABSOLUTE_APPROVED_JSONL>' --root '<ABSOLUTE_NEW_ROOT>' --report '<ABSOLUTE_NEW_ROOT>/summary.json'
+if ($LASTEXITCODE -ne 0) { throw 'S1 local validation did not complete.' }
+```
+
+验证主机共用 loopback、随机 bearer、Host/Origin、输入输出限制及退出结算，在鉴权后、正文解析和 runtime 准入前使用默认拒绝的白名单。允许现有 status、people、精确 Memory、events snapshot、scoped status 读取，以及 scoped draft、propose、discard；HTTP 导入、scoped confirm、Memory 修改和遗忘均返回未开放路由。可信本机启动端负责文件和目录选择，网络请求不能提供文件路径、切换库或配置模型。
+
+真实输入行的普通 T1、Memory 材料选择、一次消费和取消由既有 trusted-core 接口验证，因为这些普通操作目前没有 HTTP 对应路由。HTTP scoped 演练使用固定工程文本与真实导入联系人，明确不声称文本 sender 与该联系人已建立映射；proposal discard 不等于普通 draft cancel。仅设置独立库中的 `plain` 测试语域，不采纳为作者真实偏好。T1 不构建外部模型请求，运行器检查能力关闭、端点未配置、采集未启动及无出网审计请求。
+
+报告只保存固定状态、计数和布尔值，未执行的测量为 `null`；正文、来源标识、bearer 和密钥不进入报告或终端。panic 诊断只允许仓库相对源码位置，不输出异常正文。运行器会结束 HTTP 服务，留下独立库与结果；此入口是有界验证工具，不是持续运行的产品 API 服务。成功只证明记录中实际执行的工程路径，不签发内容效用、T3、原生 UI 或人工验收。
+
+### 共同授权边界
+
+
+### 默认合成入口
 
 入口默认关闭；启动前要求明确的绝对合成根目录，规范化后检查范围，缺参直接拒绝，不回落真实平台目录。目录独立还不够：请求能力同时排除真实采集、任意目录读取、外部模型和研究明文保存；HTTP 导入不接收路径或任意正文。
 

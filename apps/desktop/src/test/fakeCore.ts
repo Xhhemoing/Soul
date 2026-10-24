@@ -250,7 +250,7 @@ export function aPersonSummary(overrides: Partial<PersonSummary> = {}): PersonSu
   };
 }
 
-/** What `prepare_draft` answers with: the shape of a request, never its text. */
+/** What `prepare_draft` answers with, including its redacted material. */
 export function anE1Plan(overrides: Partial<E1DraftPlan> = {}): E1DraftPlan {
   return {
     preparation_id: "0192f000-0000-7000-8000-0000000000f1",
@@ -259,6 +259,7 @@ export function anE1Plan(overrides: Partial<E1DraftPlan> = {}): E1DraftPlan {
     third_party_turns: 1,
     placeheld_turns: 1,
     carries_exempted_original: false,
+    body_preview: "[第三人正文已占位]",
     notice: E1_PLAN_NOTICE,
     not_sent_notice: NOT_SENT_NOTICE,
     ...overrides,

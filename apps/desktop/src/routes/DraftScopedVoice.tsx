@@ -39,7 +39,8 @@ export function DraftScopedVoice({ onExit }: { readonly onExit: () => void }): R
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [phase, setPhase] = useState<"idle" | "proposing" | "confirming" | "discarding" | "blocked">("idle");
   const [appliedCurrent, setAppliedCurrent] = useState(true);
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const copyAttempt = useRef<symbol | null>(null);
   const [scopeStatus, setScopeStatus] = useState<ScopedRegisterStatus | null>(null);
   const [readingStatus, setReadingStatus] = useState(false);
   const statusRequest = useRef<symbol | null>(null);
@@ -134,8 +135,15 @@ export function DraftScopedVoice({ onExit }: { readonly onExit: () => void }): R
     const version = generation.current;
     const previous = held.current;
     held.current = null;
-    setProposal(null); setSaved(null); setCopied(false);
-    if (previous === null) { apply(); return; }
+    setProposal(null); setSaved(null); setCopyStatus("idle");
+    const applyChange = (): void => {
+      // A proposal discard can delay this edit. Copies started while waiting
+      // still belong to the text/scope before the edit is actually applied.
+      copyAttempt.current = null;
+      setCopyStatus("idle");
+      apply();
+    };
+    if (previous === null) { applyChange(); return; }
     const slot = draftLane.begin("discard");
     if (slot === null) { blocked.current = true; setPhase("blocked"); return; }
     discarding.current = true;
@@ -144,7 +152,7 @@ export function DraftScopedVoice({ onExit }: { readonly onExit: () => void }): R
       draftLane.finish(slot, false);
       discarding.current = false;
       if (live.current) setPhase("idle");
-      if (current(version)) apply();
+      if (current(version)) applyChange();
     }, (error: unknown) => {
       draftLane.finish(slot, true);
       discarding.current = false;
@@ -249,6 +257,22 @@ export function DraftScopedVoice({ onExit }: { readonly onExit: () => void }): R
     });
   };
 
+  const copy = (): void => {
+    const attempt = Symbol("scoped draft copy");
+    const version = generation.current;
+    copyAttempt.current = attempt;
+    setCopyStatus("idle");
+    const owns = (): boolean => current(version) && copyAttempt.current === attempt;
+    void (async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        if (owns()) setCopyStatus("copied");
+      } catch {
+        if (owns()) setCopyStatus("failed");
+      }
+    })();
+  };
+
   return <>
     <section className="panel">
       <h2>按联系人和场合本地起草</h2>
@@ -282,8 +306,9 @@ export function DraftScopedVoice({ onExit }: { readonly onExit: () => void }): R
     {result === null ? null : <section className="panel">
       <h2>草稿</h2><label className="field" htmlFor="scoped-draft-text">你可以直接改</label>
       <textarea id="scoped-draft-text" className="paste-box" rows={6} value={text} disabled={locked} onChange={(event) => { const value = event.target.value; change(() => { editRevision.current += 1; setText(value); }); }} />
-      <button type="button" onClick={() => { void navigator.clipboard?.writeText(text).then(() => setCopied(true), () => setCopied(false)); }}>复制</button>
-      {copied ? <span>已复制到剪贴板。</span> : null}
+      <button type="button" onClick={copy}>复制</button>
+      {copyStatus === "copied" ? <span>已复制到剪贴板。</span> : null}
+      {copyStatus === "failed" ? <span role="alert">复制未完成，请选中草稿文字手动复制，或再次尝试。</span> : null}
       <p>{result.draft.not_sent_notice}</p><p>{result.draft.source_notice}</p>
       {appliedCurrent && result.applied_preference !== null ? <p data-testid="scoped-applied">本次应用了已确认的本人范围偏好：{result.applied_preference.register} · preference {result.applied_preference.preference_id} · revision {result.applied_preference.revision} · Memory {result.applied_preference.memory_id}。<a href={memoryHash(result.applied_preference.memory_id)}>查看或遗忘这条偏好</a></p>
         : <p>本次没有展示已应用的范围偏好；使用来源以当前本地结果为准。</p>}

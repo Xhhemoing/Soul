@@ -23,6 +23,8 @@
 
 | 问题 | 具体入口 |
 | --- | --- |
+| 2026-10-24 临时分支包含哪些近期开发、已知问题及待作者分析的事项 | [近期开发交接](plans/2026-10-24-development-handoff.md)；随源码提交的日期快照，区分已有实现、回执范围、原生/效用缺口与待讨论问题，不替代 STATUS 或既有产品决定 |
+| 长期目标、近期 S1 验证、下一切片与投入收敛 | [长期战略与近期验证方案](plans/2026-10-23-long-term-strategy.md)、[D112 / ADR-003](decisions/ADR-003-long-term-strategy.md)；承接作者两份 v1.2 文件及减少冒烟/哈希/单点空转的要求。S1 合成准备见 §13，反馈修正见 §13.1，HTTP/前端主路径与导航修复见 §13.2；起草焦点与复制状态修复见 §13.6.3–13.7，[复制独立评审](reviews/2026-10-24-s1-draft-copy.md)与[统计定向复审](reviews/2026-10-23-s1-feedback-statistics.md)分别记录。普通验证优先 HTTP，真实使用与作者验收仍按授权 |
 | 规范化按什么顺序落实、哪些实际运行过 | [规范化计划与回执](plans/2026-10-23-repository-normalization.md)；分别记录 N1 规则/文档/CI、N2 runtime/API、N3 写入/事件及同步回执，远端结果不借用本地检查 |
 | 日常协作、失败处理与 CI 如何执行 | [协作与记录](operations/repository-workflow.md)、[CI 覆盖与远端证据](operations/ci.md)、[ADR-001](decisions/ADR-001-repository-governance.md) |
 | 本地 HTTP API 如何与 Tauri 共用操作及事件 | [本地 API 架构与合成启动](architecture/local-api.md)、[ADR-002](decisions/ADR-002-local-api-runtime.md)、[N2 独立复审](reviews/2026-10-23-local-api-phase1.md)、[N3 独立复审](reviews/2026-10-23-local-api-phase2.md)；共享读写 runtime、主体归属与事件/UI 刷新已实现，默认关闭且仅合成验证 |
@@ -52,7 +54,7 @@
 | 可信导入统计参与本次起草 | [洞察起草材料](design/2026-10-16-insight-draft-context.md)；D76，默认 local，另选派生计数才进入最终 E1 |
 | 明确查看一条导入消息来源 | [本地来源核对](design/2026-10-16-local-evidence-view.md)；D77，两步精确锚读取，不授予原文出网或起草用途 |
 | Goal 1 的工作包和实现依赖 | [GOAL1_PLAN](GOAL1_PLAN.md) |
-| 长期数字分身、商业与研究三条路线 | [ROADMAP](ROADMAP.md)；不扩大 v0.1 产品或出网边界 |
+| 长期数字分身、商业与研究三条路线 | [ROADMAP](ROADMAP.md)保留长期依赖与正式阶段；近期按[战略指引](plans/2026-10-23-long-term-strategy.md)，不扩大 v0.1 产品或出网边界 |
 | Goal 2 任务、文件归属与前置 | [GOAL2_PLAN](GOAL2_PLAN.md)；D68 独立质量预备不代表正式启动 |
 | VAL-01 的失败、缺测、指标分母与操作入口 | [记录适配与离线重算](design/2026-10-19-val-01-evaluation-design.md#计时缺测与人工元数据入口) / [合成受控生成与盲呈现协议](design/2026-10-19-val-01-evaluation-design.md#d104-合成受控生成与盲呈现入口) / [本机合成操作工具](design/2026-10-19-val-01-evaluation-design.md#d105-本机合成操作入口)；D101–D105，执行范围和命令见原设计，不代表真人效用或 Goal 关闭 |
 | DATA-01 的局部恢复、旧备份与遗忘 | [恢复边界设计](design/2026-10-19-data-01-recovery-boundaries.md)；N1 存储见第 10 节，D106 测试专用 N2 Session 见第 11 节；区分有限实验、设计选择和实际验证，不是已生效生产契约 |

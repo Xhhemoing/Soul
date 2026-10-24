@@ -47,6 +47,7 @@ import { MemoryRequests } from "./memoryRequests";
 import { draftMemoryCandidates } from "./draftMemorySelection";
 import { getRouteAddress, useRouteAddress, type RouteAddress } from "../routeAddress";
 import { memoryTarget } from "./memoryTarget";
+import { draftLane } from "./draftRequests";
 
 /** `memory.schema.json`'s kinds. The core sends which ones exist. */
 const KIND: Record<string, string> = {
@@ -137,14 +138,41 @@ export function Memory(): React.JSX.Element {
     if (ticket === null) return;
     const refreshOnly = externalRefresh.current;
     externalRefresh.current = false;
-    const initialSource = getDraftSourceRevision();
-    const current = (): boolean => requests.owns(ticket) && address === getRouteAddress();
+    let cancelled = false;
+    let stopWaiting: (() => void) | undefined;
+    const current = (): boolean => !cancelled && requests.owns(ticket) && address === getRouteAddress();
     void Promise.resolve().then(async () => {
       if (!current()) return;
       setViewAddress(address); setList(null); storeOpen(null); setPreview(null);
       if (!refreshOnly) { setReceipt(null); setWriteNotice(null); setCleanup(null); setUncertainForget(false); }
       setRefusal(null); setBusy(true);
-      if (initialSource !== getDraftSourceRevision()) throw new DraftSourceChangedError();
+      // Leaving Draft can queue its discard before its source mutation starts.
+      // Wait only before this navigation's first read; later source changes
+      // still invalidate the read and require the existing explicit recovery.
+      if (draftLane.snapshot().busy || hasPendingSourceChanges()) {
+        await new Promise<void>((resolve) => {
+          let unsubscribeSource = (): void => {};
+          let unsubscribeLane = (): void => {};
+          let settled = false;
+          const finishWaiting = (): void => {
+            settled = true;
+            unsubscribeSource(); unsubscribeLane();
+            stopWaiting = undefined;
+            resolve();
+          };
+          const check = (): void => {
+            if (!current() || (!draftLane.snapshot().busy && !hasPendingSourceChanges())) finishWaiting();
+          };
+          stopWaiting = finishWaiting;
+          unsubscribeSource = subscribeDraftSource(check);
+          unsubscribeLane = draftLane.subscribe(check);
+          if (settled) { unsubscribeSource(); unsubscribeLane(); }
+          else check();
+        });
+      }
+      if (!current()) return;
+      if (draftLane.snapshot().uncertain) throw new DraftSourceChangedError();
+      const initialSource = getDraftSourceRevision();
       const value = await memoryList();
       if (!current()) return;
       if (initialSource !== getDraftSourceRevision()) throw new DraftSourceChangedError();
@@ -164,6 +192,7 @@ export function Memory(): React.JSX.Element {
         if (address !== getRouteAddress() || (externalRefresh.current && !hasPendingSourceChanges())) setNavigationRetry((value) => value + 1);
       }
     });
+    return () => { cancelled = true; stopWaiting?.(); };
   }, [address, navigationRetry, requests, target]);
 
   function invokeOwned<T>(ticket: number, work: () => Promise<T>, expectedSource?: symbol): Promise<T> {

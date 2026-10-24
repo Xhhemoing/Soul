@@ -771,10 +771,10 @@ fn preparing_a_generation_describes_the_request_without_quoting_it() {
 /// The field is optional so that `{ pasted }` — every invoke this shell made
 /// before the confirmation panel had a second button — still means what it
 /// used to. What the exemption changes is the request body the core is
-/// holding; what crosses back is still counts, so the paste does not follow
-/// its own permission onto the confirmation screen.
+/// holding; the confirmation screen receives the same redacted material so
+/// the user can inspect it before approving the request.
 #[test]
-fn a_second_confirmation_crosses_the_ipc_and_the_paste_does_not_follow_it() {
+fn a_second_confirmation_crosses_the_ipc_with_the_redacted_material_to_inspect() {
     let shell = Shell::on(scratch());
     let pasted = "周五的场地我已经订好了，你直接过来就行";
 
@@ -783,6 +783,11 @@ fn a_second_confirmation_crosses_the_ipc_and_the_paste_does_not_follow_it() {
         .expect("an invoke that predates the second button still describes a request");
     assert_eq!(placeheld["carries_exempted_original"], json!(false));
     assert_eq!(placeheld["placeheld_turns"], json!(1));
+    assert!(!placeheld["body_preview"].as_str().unwrap().contains(pasted));
+    assert!(placeheld["body_preview"]
+        .as_str()
+        .unwrap()
+        .contains(THIRD_PARTY_PLACEHOLDER));
 
     let exempted = shell
         .invoke(
@@ -798,10 +803,9 @@ fn a_second_confirmation_crosses_the_ipc_and_the_paste_does_not_follow_it() {
         "the plan says the turn is exempted and placeheld at the same time: {exempted}",
     );
 
-    let rendered = exempted.to_string();
     assert!(
-        !rendered.contains(pasted) && !rendered.contains("场地"),
-        "the exempted plan quotes the paste back at the confirmation screen: {exempted}",
+        exempted["body_preview"].as_str().unwrap().contains(pasted),
+        "the confirmation must show the actual redacted material before approval",
     );
 
     // Saying so out loud is the same as not saying it, and the preparation
@@ -814,6 +818,7 @@ fn a_second_confirmation_crosses_the_ipc_and_the_paste_does_not_follow_it() {
         .expect("a plan");
     assert_eq!(after["carries_exempted_original"], json!(false));
     assert_eq!(after["placeheld_turns"], json!(1));
+    assert!(!after["body_preview"].as_str().unwrap().contains(pasted));
 }
 
 /// A confirmation the user did not give sends nothing.
@@ -1391,7 +1396,7 @@ const CONFIRMED_PASTE: &str =
 
 /// AC-13 at the wire, over the real handler.
 ///
-/// `a_second_confirmation_crosses_the_ipc_and_the_paste_does_not_follow_it`
+/// `a_second_confirmation_crosses_the_ipc_with_the_redacted_material_to_inspect`
 /// proves the field arrives and changes the plan, but with nothing configured
 /// no request is ever built, so the only evidence that the exemption reaches
 /// the bytes is `soulcore`'s
@@ -1477,6 +1482,22 @@ fn a_second_confirmation_crosses_the_ipc_and_this_ones_words_travel_once() {
 
     let sent = endpoint.requests();
     assert_eq!(sent.len(), 2, "two approvals, two requests");
+    for (request, plan) in sent.iter().zip([&exempted, &after]) {
+        let actual: serde_json::Value = serde_json::from_str(&request.body).unwrap();
+        assert_eq!(
+            actual["messages"][1]["content"],
+            format!(
+                "{}\n{}\n{}",
+                soul_policy::e1::QUOTE_OPEN,
+                plan["body_preview"].as_str().unwrap(),
+                soul_policy::e1::QUOTE_CLOSE
+            )
+        );
+    }
+    let preview = exempted["body_preview"].as_str().unwrap();
+    assert!(preview.contains("场地"));
+    assert!(!preview.contains("13800138000"));
+    assert!(!preview.contains("@xiaoming"));
     for request in &sent {
         assert_eq!(request.method, "POST");
     }
@@ -1521,18 +1542,31 @@ fn a_second_confirmation_crosses_the_ipc_and_this_ones_words_travel_once() {
         sent[0].body,
     );
 
-    // And what crosses back to the WebView is still counts and identifiers:
-    // neither plan, neither draft, nor the chain beside them carries the words
-    // the user confirmed once.
+    // Only the twice-confirmed plan's preview may contain redacted material.
+    // Its metadata, the next default plan, both drafts and the audit must
+    // still contain none of the turn's words.
     let chain = shell
         .invoke("audit_chain", json!({}))
         .expect("the chain reads back");
     assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
-    let answered = format!("{exempted}{first}{after}{second}{chain}");
+    let mut exempted_metadata = exempted.clone();
+    exempted_metadata
+        .as_object_mut()
+        .unwrap()
+        .remove("body_preview")
+        .expect("the confirmed plan exposes the inspected preview");
+    let answered = format!("{exempted_metadata}{first}{after}{second}{chain}");
     assert!(
         !answered.contains("场地"),
-        "the IPC answered with the third party's words: {answered}",
+        "the IPC echoed the turn outside its confirmed preview: {answered}",
     );
+    let all_answers = format!("{exempted}{first}{after}{second}{chain}");
+    for account in ["13800138000", "@xiaoming"] {
+        assert!(
+            !all_answers.contains(account),
+            "the IPC answered with an unredacted account: {all_answers}",
+        );
+    }
 
     let _ = std::fs::remove_dir_all(&shell.directory);
 }
@@ -1603,6 +1637,10 @@ fn an_imported_name_is_placeheld_over_the_ipc_even_in_a_body_the_user_confirmed(
         json!(0),
         "the turn is exempted, so the placeholder below is one name: {plan}",
     );
+    let preview = plan["body_preview"].as_str().unwrap();
+    assert!(!preview.contains(IMPORTED_NAME));
+    assert!(preview.contains(NAME_PLACEHOLDER));
+    assert!(preview.contains("场地"));
     assert_eq!(
         endpoint.request_count(),
         0,
@@ -1654,12 +1692,15 @@ fn an_imported_name_is_placeheld_over_the_ipc_even_in_a_body_the_user_confirmed(
         .expect("the chain reads back");
     assert_eq!(chain["verified"], json!(true), "unexpected: {chain}");
     let answered = format!("{plan}{draft}{chain}");
-    for prose in [IMPORTED_NAME, "李", "雷", "场地"] {
+    for prose in [IMPORTED_NAME, "李", "雷"] {
         assert!(
             !answered.contains(prose),
             "the IPC answered with `{prose}`: {answered}",
         );
     }
+    // Only the approved redacted preview includes the turn's material;
+    // the generated reply and audit still do not echo it back.
+    assert!(!format!("{draft}{chain}").contains("场地"));
 
     let _ = std::fs::remove_dir_all(&shell.directory);
 }

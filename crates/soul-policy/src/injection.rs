@@ -198,8 +198,10 @@ pub fn urls_in(text: &UntrustedText) -> Vec<String> {
         };
         let scheme_end = cursor + offset;
         let scheme_start = raw[cursor..scheme_end]
-            .rfind(|c: char| !c.is_ascii_alphabetic())
-            .map(|index| cursor + index + 1)
+            .char_indices()
+            .rev()
+            .find(|(_, ch)| !ch.is_ascii_alphabetic())
+            .map(|(index, ch)| cursor + index + ch.len_utf8())
             .unwrap_or(cursor);
         let scheme = &raw[scheme_start..scheme_end];
         cursor = scheme_end + 3;

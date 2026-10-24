@@ -458,13 +458,8 @@ interface ConfirmProps {
 }
 
 /**
- * The screen between the two steps: what would go out, as counts.
- *
- * The third party's words are not here, and their absence is the design. The
- * plan the core hashes carries counts and a model name precisely so that
- * approving it cannot mean approving prose nobody re-read; showing the text
- * here would put back the thing the hash was kept clean of. What the user is
- * being asked is whether a request of this shape may run.
+ * The screen between the two steps: counts and the complete redacted
+ * material held by the core, which the user can inspect before approving.
  *
  * The two identifiers are shown because they are what gets echoed back. A
  * mismatch is refused by `soulcore` and nothing leaves, so they are also the
@@ -512,6 +507,9 @@ function Confirm({
           这次准备的编号：<code>{plan.preparation_id}</code>
         </li>
       </ul>
+      <h3>这次将提供给模型的脱敏材料</h3>
+      <p>请完整核对以下内容；如果仍有不想提供的信息，可以取消这次准备。</p>
+      <pre className="reading" style={{ overflowWrap: "anywhere" }} data-testid="e1-body-preview">{plan.body_preview}</pre>
       <div className="switch-row">
         <button type="button" className="primary" onClick={() => onApprove(plan)}>
           确认，开始生成
@@ -553,13 +551,23 @@ interface ResultProps {
  */
 function Result({ draft }: ResultProps): React.JSX.Element {
   const [text, setText] = useState(draft.text);
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const copyAttempt = useRef<symbol | null>(null);
+
+  useEffect(() => () => { copyAttempt.current = null; }, []);
 
   const copy = (): void => {
-    void navigator.clipboard?.writeText(text).then(
-      () => setCopied(true),
-      () => setCopied(false),
-    );
+    const attempt = Symbol("draft copy");
+    copyAttempt.current = attempt;
+    setCopyStatus("idle");
+    void (async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        if (copyAttempt.current === attempt) setCopyStatus("copied");
+      } catch {
+        if (copyAttempt.current === attempt) setCopyStatus("failed");
+      }
+    })();
   };
 
   return (
@@ -571,15 +579,21 @@ function Result({ draft }: ResultProps): React.JSX.Element {
       <textarea
         id="draft-text"
         className="paste-box"
+        autoFocus
         rows={6}
         value={text}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => {
+          copyAttempt.current = null;
+          setCopyStatus("idle");
+          setText(event.target.value);
+        }}
       />
       <div className="switch-row">
         <button type="button" className="primary" onClick={copy}>
           复制
         </button>
-        {copied ? <span className="muted">已复制到剪贴板。</span> : null}
+        {copyStatus === "copied" ? <span className="muted">已复制到剪贴板。</span> : null}
+        {copyStatus === "failed" ? <span role="alert">复制未完成，请选中草稿文字手动复制，或再次尝试。</span> : null}
       </div>
       <ul className="facts">
         <li data-testid="draft-not-sent">{draft.not_sent_notice}</li>
